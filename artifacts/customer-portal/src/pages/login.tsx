@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { useLocation, useParams } from "wouter";
+import { useLocation, useParams, useSearch } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -24,97 +25,90 @@ type LoginForm = z.infer<typeof loginSchema>;
 
 export default function Login() {
   const [, setLocation] = useLocation();
-  const [tenantId, setTenantId] = useState<number>(1);
+  const search = useSearch();
+  const queryClient = useQueryClient();
+  const [tenantId, setTenantId] = useState<number | null>(null);
+  const [resolvedSlug, setResolvedSlug] = useState<string | null>(null);
   const [tenantLogoUrl, setTenantLogoUrl] = useState<string | null>(null);
   const [tenantName, setTenantName] = useState<string>("");
   const [isPending, setIsPending] = useState(false);
   const { slug: businessSlug } = useParams<{ slug?: string }>();
-  const [businessState, setBusinessState] = useState<"none" | "loading" | "ready" | "notfound">(businessSlug ? "loading" : "none");
+  const [businessState, setBusinessState] = useState<"none" | "loading" | "ready" | "notfound">("loading");
 
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", last4Phone: "" },
   });
 
-  // Resolve tenant from URL param and fetch branding
+  // Explicit company links win. A generic entry may use verified identity or
+  // the last server-resolved business, but never a hardcoded tenant.
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const controller = new AbortController();
+    const params = new URLSearchParams(search);
     const emailParam = params.get("email");
     const tenantParam = params.get("tenant");
-
     if (emailParam) form.setValue("email", emailParam);
-
-    // Business-named URL: tenant comes ONLY from the server's slug lookup.
-    if (businessSlug) {
-      localStorage.setItem("portal_business_slug", businessSlug);
-      fetch(`/api/portal/business/${encodeURIComponent(businessSlug)}`)
-        .then(r => (r.ok ? r.json() : null))
-        .then((d: { tenantId?: number; companyName?: string; logoUrl?: string } | null) => {
-          if (!d?.tenantId) { setBusinessState("notfound"); return; }
-          setTenantId(d.tenantId);
-          setTenantName(d.companyName ?? "");
-          if (d.logoUrl) setTenantLogoUrl(d.logoUrl);
-          setBusinessState("ready");
-        })
-        .catch(() => setBusinessState("notfound"));
-      return;
-    }
-    localStorage.removeItem("portal_business_slug");
-
-    // Support both numeric tenant IDs (?tenant=11) and slugs (?tenant=divine-edge)
-    const isSlug = tenantParam && isNaN(Number(tenantParam));
-    const id = tenantParam && !isSlug ? Number(tenantParam) : 1;
-
-    if (isSlug) {
-      // Resolve slug → tenant ID via the public tenant-info endpoint
-      fetch(`/api/portal/tenant-info?slug=${encodeURIComponent(tenantParam!)}`)
-        .then(r => r.ok ? r.json() : null)
-        .then(d => {
-          if (d?.tenantId) {
-            setTenantId(d.tenantId);
-            setDefaultHeaders({ "x-tenant-id": String(d.tenantId) });
-            if (d.logoUrl) setTenantLogoUrl(d.logoUrl);
-            if (d.name) setTenantName(d.name);
+    setBusinessState("loading");
+    setTenantId(null);
+    setTenantName("");
+    setTenantLogoUrl(null);
+    setResolvedSlug(null);
+    const lookup = async (selector?: string, headers?: Record<string, string>) => {
+      const query = selector ? `?${/^\d+$/.test(selector) ? "tenantId" : "slug"}=${encodeURIComponent(selector)}` : "";
+      const response = await fetch(`/api/portal/tenant-info${query}`, { headers, signal: controller.signal });
+      return response.ok ? response.json() : null;
+    };
+    void (async () => {
+      try {
+        const explicit = businessSlug ?? tenantParam;
+        let brand;
+        if (explicit) {
+          brand = await lookup(explicit);
+        } else {
+          const staff = localStorage.getItem("divine_edge_session_token");
+          const portal = localStorage.getItem("portal_token");
+          if (staff) {
+            // An expired staff identity must not switch to a stale customer business.
+            brand = await lookup(undefined, { "x-staff-session": staff });
+          } else {
+            if (portal) brand = await lookup(undefined, { "x-portal-token": portal });
+            const saved = localStorage.getItem("portal_business_slug") || localStorage.getItem("portal_tenant_id");
+            if (!brand && saved) brand = await lookup(saved);
           }
-        })
-        .catch(() => {});
-      setTenantId(id);
-      setDefaultHeaders({ "x-tenant-id": id.toString() });
-      return; // branding loaded via slug endpoint above
-    }
-
-    setTenantId(id);
-    setDefaultHeaders({ "x-tenant-id": id.toString() });
-
-    fetch(`/api/portal/tenant-info?tenantId=${encodeURIComponent(id.toString())}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (d?.logoUrl) setTenantLogoUrl(d.logoUrl);
-        if (d?.name) setTenantName(d.name);
-      })
-      .catch(() => {});
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Keep default header in sync if tenantId changes
-  useEffect(() => {
-    setDefaultHeaders({ "x-tenant-id": tenantId.toString() });
-  }, [tenantId]);
+        }
+        if (controller.signal.aborted) return;
+        // Never carry another customer's session or cached records into login.
+        localStorage.removeItem("portal_token");
+        setDefaultHeaders({ "x-portal-token": "", "x-tenant-id": "" });
+        queryClient.clear();
+        if (!brand?.tenantId) {
+          setBusinessState(explicit ? "notfound" : "none");
+          return;
+        }
+        setTenantId(brand.tenantId);
+        setResolvedSlug(brand.slug ?? null);
+        setTenantName(brand.name ?? "");
+        setTenantLogoUrl(brand.logoUrl ?? null);
+        localStorage.setItem("portal_tenant_id", String(brand.tenantId));
+        if (brand.slug) localStorage.setItem("portal_business_slug", brand.slug);
+        else localStorage.removeItem("portal_business_slug");
+        setDefaultHeaders({ "x-tenant-id": String(brand.tenantId) });
+        setBusinessState("ready");
+      } catch {
+        if (!controller.signal.aborted) setBusinessState("notfound");
+      }
+    })();
+    return () => controller.abort();
+  }, [businessSlug, search, form, queryClient]);
 
   const onSubmit = async (values: LoginForm) => {
     setIsPending(true);
     try {
-      // Pass slug as query param so server can resolve it even if tenantId is still defaulting
-      const params = new URLSearchParams(window.location.search);
-      const tenantParam = params.get("tenant");
-      if (businessSlug && businessState !== "ready") {
+      if (!tenantId || businessState !== "ready") {
         toast.error("This business link couldn't be verified.");
         return;
       }
-      const loginUrl = businessSlug
-        ? "/api/portal/auth/login"
-        : tenantParam
-          ? `/api/portal/auth/login?tenant=${encodeURIComponent(tenantParam)}`
-          : "/api/portal/auth/login";
+      const loginUrl = `/api/portal/auth/login?tenant=${tenantId}`;
       const res = await fetch(loginUrl, {
         method: "POST",
         headers: {
@@ -124,7 +118,8 @@ export default function Login() {
         body: JSON.stringify({
           email: values.email.trim(),
           last4Phone: values.last4Phone,
-          ...(businessSlug ? { tenantId, businessSlug } : {}),
+          tenantId,
+          ...(resolvedSlug ? { businessSlug: resolvedSlug } : {}),
         }),
       });
 
@@ -135,6 +130,7 @@ export default function Login() {
       }
 
       const data = await res.json();
+      queryClient.clear();
       localStorage.setItem("portal_token", data.token);
       setDefaultHeaders({
         "x-portal-token": data.token,
@@ -167,7 +163,7 @@ export default function Login() {
           ) : (
             <div className="w-16 h-16 bg-primary text-primary-foreground rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-primary/20">
               <span className="text-3xl font-bold">
-                {tenantName ? tenantName[0].toUpperCase() : "D"}
+                {tenantName ? tenantName[0].toUpperCase() : "C"}
               </span>
             </div>
           )}
@@ -184,7 +180,11 @@ export default function Login() {
             We couldn't find this business. Check the link your service company sent you.
           </div>
         )}
+        {businessState === "none" && (
+          <p className="mb-4 rounded-lg border p-3 text-sm">Use the company-specific portal link provided by your service company. This page will not choose a different company for you.</p>
+        )}
         {/* Login card */}
+        {businessState !== "notfound" && (
         <Card className="border-border/50 shadow-2xl shadow-black/5">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -255,7 +255,7 @@ export default function Login() {
                 <Button
                   type="submit"
                   className="w-full h-12 text-md font-medium mt-2"
-                  disabled={isPending}
+                  disabled={isPending || businessState !== "ready"}
                 >
                   {isPending ? (
                     <>
@@ -273,6 +273,7 @@ export default function Login() {
             </Form>
           </CardContent>
         </Card>
+        )}
 
         <div className="mt-8 text-center text-sm text-muted-foreground">
           <p>Secure self-service powered by Divine Edge OS</p>

@@ -12,6 +12,7 @@ import { logger } from "../lib/logger";
 import { syncInvoicePaymentToQBO } from "../lib/quickbooksSync";
 import PDFDocument from "pdfkit";
 import { getStripeClient } from "../lib/stripeClient";
+import { resolveStaffSession } from "./auth";
 
 const router: IRouter = Router();
 
@@ -136,10 +137,22 @@ router.get("/portal/tenant-info", async (req, res): Promise<void> => {
   if (slugParam) {
     [tenantRow] = await db.select().from(tenantsTable).where(eq(tenantsTable.slug, slugParam)).limit(1) as any;
   } else if (idParam) {
-    const id = parseInt(idParam, 10);
-    if (!isNaN(id)) {
+    const id = Number(idParam);
+    if (Number.isInteger(id) && id > 0) {
       [tenantRow] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, id)).limit(1) as any;
     }
+  } else if (req.headers["x-staff-session"] || req.headers.authorization) {
+    const session = await resolveStaffSession(req);
+    if (session) {
+      const [activeUser] = await db.select({ id: usersTable.id }).from(usersTable).where(and(eq(usersTable.id, session.userId), eq(usersTable.tenantId, session.tenantId), eq(usersTable.isActive, true))).limit(1);
+      if (activeUser) [tenantRow] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, session.tenantId)).limit(1);
+    }
+  } else if (req.headers["x-portal-token"]) {
+    let authorized = false;
+    await requirePortalAuth(req, res, () => { authorized = true; });
+    if (!authorized) return;
+    const tenantId = (req as Request & { portalLocals: PortalLocals }).portalLocals.portalTenantId;
+    [tenantRow] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
   }
 
   if (!tenantRow) {

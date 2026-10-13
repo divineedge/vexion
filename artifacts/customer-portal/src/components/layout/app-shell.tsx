@@ -1,6 +1,7 @@
 import * as React from "react";
-import { Link, useLocation } from "wouter";
-import { usePortalGetMe, usePortalGetSummary } from "@workspace/api-client-react";
+import { Link, useLocation, useSearch } from "wouter";
+import { usePortalGetMe, usePortalGetSummary, setDefaultHeaders } from "@workspace/api-client-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { MapPin, Briefcase, FileText, Bell, LayoutDashboard, Menu, X, LogOut, Loader2, CalendarDays, ClipboardList, ClipboardCheck, MessageSquare, Gift } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -19,42 +20,73 @@ const navItems = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
+  const queryClient = useQueryClient();
+  const search = useSearch();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   
-  const token = localStorage.getItem("portal_token");
+  const isLogin = location === "/" || location.startsWith("/business/");
+  const rawSelector = new URLSearchParams(search).get("tenant");
+  const selector = rawSelector && /^\d+$/.test(rawSelector) ? String(Number(rawSelector)) : rawSelector;
+  const matchesCompany = !selector || selector === localStorage.getItem("portal_business_slug") || selector === localStorage.getItem("portal_tenant_id");
+  const token = !isLogin && matchesCompany ? localStorage.getItem("portal_token") : null;
   
   const { data: me, isLoading: isLoadingMe } = usePortalGetMe({
     query: {
       enabled: !!token,
-      queryKey: ["usePortalGetMe"]
+      queryKey: ["usePortalGetMe", token]
     }
   });
 
   const { data: summary } = usePortalGetSummary({
     query: {
       enabled: !!token,
-      queryKey: ["usePortalGetSummary"]
+      queryKey: ["usePortalGetSummary", token]
     }
   });
+  const { data: business } = useQuery<{ tenantId: number; slug: string | null; name: string; logoUrl: string | null }>({
+    queryKey: ["portalBusiness", token],
+    enabled: !!token,
+    queryFn: async () => {
+      const response = await fetch("/api/portal/tenant-info", { headers: { "x-portal-token": token! } });
+      if (!response.ok) throw new Error("Cannot verify portal business");
+      return response.json();
+    },
+  });
+  const verifiedCompanyMatches = !selector || !business || selector === String(business.tenantId) || selector === business.slug;
+  React.useEffect(() => {
+    if (!business || !verifiedCompanyMatches) return;
+    localStorage.setItem("portal_tenant_id", String(business.tenantId));
+    if (business.slug) localStorage.setItem("portal_business_slug", business.slug);
+    else localStorage.removeItem("portal_business_slug");
+  }, [business, verifiedCompanyMatches]);
+  React.useEffect(() => {
+    if (token && !verifiedCompanyMatches && selector) {
+      setLocation(/^\d+$/.test(selector) ? `/?tenant=${encodeURIComponent(selector)}` : `/business/${encodeURIComponent(selector)}`);
+    }
+  }, [token, verifiedCompanyMatches, selector, setLocation]);
 
   React.useEffect(() => {
     if (!token && location !== "/" && !location.startsWith("/business/")) {
-      const tenant = new URLSearchParams(window.location.search).get("tenant");
+      const tenant = rawSelector;
       const slug = tenant ? (!/^\d+$/.test(tenant) ? tenant : null) : localStorage.getItem("portal_business_slug");
       setLocation(slug ? `/business/${encodeURIComponent(slug)}?next=${encodeURIComponent(location)}` : tenant ? `/?tenant=${encodeURIComponent(tenant)}&next=${encodeURIComponent(location)}` : "/");
     }
-  }, [token, location, setLocation]);
+  }, [token, location, rawSelector, setLocation]);
 
   const handleLogout = () => {
     localStorage.removeItem("portal_token");
+    setDefaultHeaders({ "x-portal-token": "" });
+    queryClient.clear();
     // Return to the same business's login page so shared-email customers keep context
     const slug = localStorage.getItem("portal_business_slug");
-    setLocation(slug ? `/business/${encodeURIComponent(slug)}` : "/");
+    const id = localStorage.getItem("portal_tenant_id");
+    setLocation(slug ? `/business/${encodeURIComponent(slug)}` : id ? `/?tenant=${encodeURIComponent(id)}` : "/");
   };
 
-  if (!token) return <>{children}</>;
+  if (!token) return isLogin ? <>{children}</> : null;
 
-  if (isLoadingMe) {
+  if (!verifiedCompanyMatches) return null;
+  if (isLoadingMe || (selector && !business)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -71,10 +103,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-4">
               <Link href="/home" className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                  <span className="text-primary-foreground font-bold text-lg">D</span>
+                  {business?.logoUrl ? <img src={business.logoUrl} alt={business.name} className="w-full h-full object-contain" /> : <span className="text-primary-foreground font-bold text-lg">{business?.name?.[0] ?? "C"}</span>}
                 </div>
                 <span className="font-bold text-xl text-foreground tracking-tight hidden sm:block">
-                  Divine Edge
+                  {business?.name ?? "Client Portal"}
                 </span>
               </Link>
             </div>

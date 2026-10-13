@@ -149,4 +149,25 @@ describe("rollback-only pricing, inventory and invoice recovery",()=>{
     await expect(paymentGuardedJobInsert(db).values({tenantId:scope.tenant,customerId:customer,title:"Unfunded future service",scheduledAt:new Date(),totalAmount:100}).returning()).rejects.toThrow(/prepayment/i);
     expect(await db.select().from(jobsTable).where(and(eq(jobsTable.tenantId,scope.tenant),eq(jobsTable.title,"Unfunded future service")))).toHaveLength(0);
   });
+
+  it("never guesses a portal company and binds generic branding to verified sessions", async () => {
+    const { createHash, randomUUID } = await import("node:crypto");
+    const { staffSessionsTable } = await import("@workspace/db");
+    const staffToken = randomUUID(), portalToken = randomUUID();
+    const digest = (value: string) => createHash("sha256").update(value).digest("hex");
+    await db.insert(staffSessionsTable).values({ tenantId: scope.tenant, userId: scope.user, tokenHash: digest(staffToken), expiresAt: new Date(Date.now() + 300_000) });
+    await db.insert(customerOtpSessionsTable).values({ tenantId: scope.tenant, customerId: customer, email: "qa-brand@example.invalid", otpHash: digest("fixture"), sessionToken: digest(portalToken), expiresAt: new Date(Date.now() + 300_000) });
+    expect((await request(app).get("/portal/tenant-info")).status).toBe(404);
+    expect((await request(app).get("/portal/tenant-info").set("x-tenant-id", "1")).status).toBe(404);
+    expect((await request(app).get("/portal/tenant-info").set("x-staff-session", "forged")).status).toBe(404);
+    const staffBrand = await request(app).get("/portal/tenant-info").set("x-staff-session", staffToken).set("x-tenant-id", "1");
+    expect(staffBrand.status).toBe(200);
+    expect(staffBrand.body.tenantId).toBe(scope.tenant);
+    const portalBrand = await request(app).get("/portal/tenant-info").set("x-portal-token", portalToken).set("x-tenant-id", "1");
+    expect(portalBrand.status).toBe(200);
+    expect(portalBrand.body.tenantId).toBe(scope.tenant);
+    expect((await request(app).get(`/portal/tenant-info?tenantId=${scope.tenant}junk`).set("x-staff-session", staffToken)).status).toBe(404);
+    expect((await request(app).get("/portal/tenant-info?slug=missing-qa-business").set("x-staff-session", staffToken)).status).toBe(404);
+    expect((await request(app).get(`/portal/tenant-info?tenantId=${scope.tenant}`)).body.tenantId).toBe(scope.tenant);
+  });
 });

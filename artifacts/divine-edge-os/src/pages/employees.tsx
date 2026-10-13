@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { format } from 'date-fns';
 import { useHrMeta, useHrEmployees, EMPLOYMENT_STATUSES, type HrEmployeeRow } from '@/lib/hr';
 import { EmployeeTemplatesPanel } from '@/components/hr/EmployeeTemplatesPanel';
+import { CredentialsPanel } from '@/components/hr/CredentialsPanel';
 
 const statusLabel = (s: HrEmployeeRow['employmentStatus']) => EMPLOYMENT_STATUSES.find(x => x.value === s)?.label ?? 'Not set';
 const statusTone: Record<string, string> = {
@@ -49,6 +50,7 @@ export default function EmployeesPage() {
         <TabsList>
           <TabsTrigger value="directory">Directory</TabsTrigger>
           <TabsTrigger value="forms">Employee forms</TabsTrigger>
+          <TabsTrigger value="credentials">Licenses & certificates</TabsTrigger>
         </TabsList>
         <TabsContent value="directory" className="space-y-4 mt-4">
           <div className="flex items-center gap-2 flex-wrap">
@@ -90,6 +92,7 @@ export default function EmployeesPage() {
           </CardContent></Card>
         </TabsContent>
         <TabsContent value="forms" className="mt-4"><EmployeeTemplatesPanel /></TabsContent>
+        <TabsContent value="credentials" className="mt-4"><CredentialsPanel /></TabsContent>
       </Tabs>
     </div>
   );

@@ -9,6 +9,7 @@ import { ADMIN_ROLES, getCallerRole, getSingleAdmin } from "../lib/roles";
 import { validateTaskAssignment, roleBucketMatches } from "../lib/taskRouting";
 import { sendStaffPush } from "../lib/pushNotifications";
 import { canAccessEquipment } from "../lib/equipmentAccess";
+import { visibleCredentialNotice } from "../lib/hrCredentials";
 
 const router: IRouter = Router();
 
@@ -390,7 +391,7 @@ router.get("/notifications", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
   const rows = await db.select().from(taskNotificationsTable)
-    .where(and(eq(taskNotificationsTable.tenantId, tenantId), eq(taskNotificationsTable.recipientUserId, userId)))
+    .where(and(eq(taskNotificationsTable.tenantId, tenantId), eq(taskNotificationsTable.recipientUserId, userId), visibleCredentialNotice(tenantId, userId)))
     .orderBy(desc(taskNotificationsTable.createdAt))
     .limit(50);
   res.json(rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString() })));
@@ -401,7 +402,7 @@ router.patch("/notifications/:id/read", async (req, res): Promise<void> => {
   const userId = getUserId(req);
   const id = parseInt(req.params.id, 10);
   const [row] = await db.update(taskNotificationsTable).set({ isRead: true })
-    .where(and(eq(taskNotificationsTable.id, id), eq(taskNotificationsTable.tenantId, tenantId), eq(taskNotificationsTable.recipientUserId, userId)))
+    .where(and(eq(taskNotificationsTable.id, id), eq(taskNotificationsTable.tenantId, tenantId), eq(taskNotificationsTable.recipientUserId, userId), visibleCredentialNotice(tenantId, userId)))
     .returning();
   if (!row) { res.status(404).json({ error: "Notification not found" }); return; }
   res.json({ ...row, createdAt: row.createdAt.toISOString() });

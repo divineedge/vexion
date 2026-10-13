@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { pool } from "@workspace/db";
 import { readFile } from "node:fs/promises";
+import { startCredentialReminderScheduler } from "./lib/hrCredentials";
 
 // drizzle push handles tables but not rate-capture/immutability triggers.
 // Install the idempotent migration before this build begins serving requests.
@@ -34,4 +35,6 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+  // The scan must start after payroll trigger installation releases schema locks.
+  startCredentialReminderScheduler();
 });

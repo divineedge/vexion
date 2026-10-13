@@ -1,11 +1,48 @@
 import { Router } from "express";
 import multer from "multer";
-import { db,usersTable,hrDocumentsTable,hrApplicationsTable,employeeHistoryEntriesTable } from "@workspace/db";
+import { db,usersTable,hrDocumentsTable,hrApplicationsTable,employeeHistoryEntriesTable,hrSettingsTable } from "@workspace/db";
 import { and,eq } from "drizzle-orm";
 import { getTenantId,getUserId } from "../lib/tenantHelper";
 import { requireHr,hrAccess,HrError,hrAudit,boundedText } from "../lib/hrAccess";
 import { hrUpload,hrStorage,hrFile } from "../lib/hrFiles";
+import { credentialInput, credentialContext, credentialDocuments, credentialStatus, warningDays, validatePriorCredential } from "../lib/hrCredentials";
 const router=Router();
+router.get("/hr/credentials",async(req,res)=>{
+ const tenantId=getTenantId(req),actorId=getUserId(req);
+ await requireHr(tenantId,actorId);
+ const context=await credentialContext(tenantId);
+ const docs=await credentialDocuments(tenantId);
+ const employees=await db.select({id:usersTable.id,name:usersTable.name}).from(usersTable).where(eq(usersTable.tenantId,tenantId));
+ res.json({...context,documents:docs.filter(d=>d.employeeId&&d.credentialType).map(({objectPath:_,...doc})=>({
+  ...doc,employeeName:employees.find(e=>e.id===doc.employeeId)?.name??"Employee",
+  expirationStatus:doc.renewedByDocumentId?"renewed":credentialStatus(doc.expiresOn,context.today,context.warningDays),
+ }))});
+});
+router.put("/hr/credentials/settings",async(req,res)=>{
+ const tenantId=getTenantId(req),actorId=getUserId(req);
+ await requireHr(tenantId,actorId);
+ const leadDays=warningDays(req.body.warningDays);
+ await db.transaction(async tx=>{
+  const [before]=await tx.select().from(hrSettingsTable).where(eq(hrSettingsTable.tenantId,tenantId));
+  await tx.insert(hrSettingsTable).values({tenantId,credentialWarningDays:leadDays}).onConflictDoUpdate({target:hrSettingsTable.tenantId,set:{credentialWarningDays:leadDays}});
+  await hrAudit(tx,tenantId,actorId,"hr_credential_warning_changed",null,null,{warningDays:before?.credentialWarningDays??30},{warningDays:leadDays});
+ });
+ res.json({warningDays:leadDays});
+});
+router.patch("/hr/documents/:id/credential",async(req,res)=>{
+ const tenantId=getTenantId(req),actorId=getUserId(req);await requireHr(tenantId,actorId);
+ const input=credentialInput(req.body);
+ const document=await db.transaction(async tx=>{
+  const [before]=await tx.select().from(hrDocumentsTable).where(and(eq(hrDocumentsTable.tenantId,tenantId),eq(hrDocumentsTable.id,Number(req.params.id)))).for("update");
+  if(!before||!before.employeeId)throw new HrError("Employee document not found",404);
+  const [renewal]=await tx.select({id:hrDocumentsTable.id}).from(hrDocumentsTable).where(eq(hrDocumentsTable.renewsDocumentId,before.id));
+  if(renewal||before.renewsDocumentId)throw new HrError("Renewal evidence is immutable; upload a new renewal");
+  const [after]=await tx.update(hrDocumentsTable).set(input).where(eq(hrDocumentsTable.id,before.id)).returning();
+  await hrAudit(tx,tenantId,actorId,"hr_credential_metadata_changed",before.employeeId,null,
+   {documentId:before.id,credentialType:before.credentialType,expiresOn:before.expiresOn}, {documentId:before.id,...input});
+  const {objectPath:_,...metadata}=after;return metadata;
+ });res.json(document);
+});
 for(const kind of ["employees","applications"] as const){
  router.post(`/hr/${kind}/:id/documents`,async(req,_res,next)=>{await requireHr(getTenantId(req),getUserId(req));next();},hrUpload.single("file"),async(req,res)=>{
   const tenantId=getTenantId(req),actorId=getUserId(req),targetId=Number(req.params.id);
@@ -26,12 +63,20 @@ for(const kind of ["employees","applications"] as const){
    if(!entry)throw new HrError("Personnel record not found",404);
   }
   const info=hrFile(req.file),title=boundedText(req.body.title||info.fileName,"Document title",200,true);
+  const credential=credentialInput(req.body);
+  const renewsDocumentId=req.body.renewsDocumentId?Number(req.body.renewsDocumentId):null;
+  if((credential.credentialType||renewsDocumentId)&&!employeeId)throw new HrError("Credentials must be linked to an employee");
+  if(renewsDocumentId!==null&&(!Number.isSafeInteger(renewsDocumentId)||renewsDocumentId<1))throw new HrError("Invalid prior credential");
   const objectPath=await hrStorage.saveHrDocument(req.file!.buffer,info.mimeType);
   try{
    const document=await db.transaction(async tx=>{
-    const [document]=await tx.insert(hrDocumentsTable).values({tenantId,employeeId,applicationId,historyEntryId,title,...info,objectPath,
+    if(renewsDocumentId){
+     await validatePriorCredential(tenantId,employeeId!,renewsDocumentId,credential.credentialType,tx);
+    }
+    const [document]=await tx.insert(hrDocumentsTable).values({tenantId,employeeId,applicationId,historyEntryId,title,...info,objectPath,...credential,renewsDocumentId,
      sharedWithEmployee:employeeId!==null&&(req.body.sharedWithEmployee==="true"||req.body.sharedWithEmployee===true),uploadedBy:actorId}).returning();
-    await hrAudit(tx,tenantId,actorId,"hr_document_uploaded",employeeId,applicationId,null,{documentId:document.id,title,fileName:info.fileName,sharedWithEmployee:document.sharedWithEmployee});
+    await hrAudit(tx,tenantId,actorId,renewsDocumentId?"hr_credential_renewed":"hr_document_uploaded",employeeId,applicationId,
+     renewsDocumentId?{priorDocumentId:renewsDocumentId}:null,{documentId:document.id,title,fileName:info.fileName,sharedWithEmployee:document.sharedWithEmployee,...credential,renewsDocumentId});
     return document;
    });
    const {objectPath:_,...publicMetadata}=document;res.status(201).json(publicMetadata);

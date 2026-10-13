@@ -84,6 +84,9 @@ function normalizeDetail(d: HrEmployeeDetail): HrEmployeeDetail {
   };
 }
 export interface HrDocument {
+  credentialType: 'license' | 'certificate' | null; expiresOn: string | null;
+  renewsDocumentId: number | null; renewedByDocumentId: number | null;
+  expirationStatus: 'no_expiration' | 'expired' | 'upcoming' | 'current' | 'renewed';
   id: number; title: string; fileName: string; mimeType: string; sizeBytes: number;
   sharedWithEmployee: boolean; historyEntryId: number | null; createdAt: string;
 }
@@ -92,6 +95,7 @@ export interface HrAssignment {
   dueDate: string | null; answers: Record<string, EmpAnswer> | null; submittedAt: string | null;
 }
 export interface HrEmployeeDetail {
+  credentialWarningDays: number;
   employee: { id: number; name: string; email: string | null; role: string; isActive: boolean; hourlyRate?: number | null; needsAccountSetup?: boolean };
   profile?: HrProfile | null;
   history: HrHistoryEntry[]; documents: HrDocument[]; assignments: HrAssignment[]; canManage: boolean;
@@ -135,7 +139,7 @@ export function useHrEmployees(enabled = true) {
 }
 export function useHrEmployee(id: number) {
   const { scope, ready } = useHrScope();
-  return useQuery({ queryKey: [...scope, 'employee', id], enabled: ready && Number.isInteger(id) && id > 0, queryFn: async () => normalizeDetail(await customFetch<HrEmployeeDetail>(`/api/hr/employees/${id}`)) });
+  return useQuery({ queryKey: [...scope, 'employee', id], enabled: ready && Number.isInteger(id) && id > 0, refetchInterval: 60_000, queryFn: async () => normalizeDetail(await customFetch<HrEmployeeDetail>(`/api/hr/employees/${id}`)) });
 }
 export function useHrAudit(id: number, enabled: boolean) {
   const { scope, ready } = useHrScope();
@@ -205,14 +209,39 @@ export function useAcknowledgeHistory(employeeId: number) {
 export function useUploadDocument(employeeId: number) {
   const inv = useInvalidateEmployee(employeeId);
   return useMutation({
-    mutationFn: ({ file, title, shared, historyEntryId }: { file: File; title: string; shared: boolean; historyEntryId?: number | null }) => {
+    mutationFn: ({ file, title, shared, historyEntryId, credentialType, expiresOn, renewsDocumentId }: { file: File; title: string; shared: boolean; historyEntryId?: number | null; credentialType?: string; expiresOn?: string; renewsDocumentId?: number | null }) => {
       const fd = new FormData();
       fd.append('file', file);
       fd.append('title', title);
       fd.append('sharedWithEmployee', String(shared));
       if (historyEntryId) fd.append('historyEntryId', String(historyEntryId));
+      if (credentialType) fd.append('credentialType', credentialType);
+      if (expiresOn) fd.append('expiresOn', expiresOn);
+      if (renewsDocumentId) fd.append('renewsDocumentId', String(renewsDocumentId));
       return customFetch(`/api/hr/employees/${employeeId}/documents`, { method: 'POST', body: fd });
     },
+    onSuccess: inv,
+  });
+}
+export function useCredentialMetadata(employeeId: number) {
+  const inv = useInvalidateEmployee(employeeId);
+  return useMutation({
+    mutationFn: ({ id, credentialType, expiresOn }: { id: number; credentialType: string | null; expiresOn: string | null }) =>
+      customFetch(`/api/hr/documents/${id}/credential`, { method: 'PATCH', headers: json, body: JSON.stringify({ credentialType, expiresOn }) }),
+    onSuccess: inv,
+  });
+}
+export function useHrCredentials(enabled: boolean) {
+  const { scope, ready } = useHrScope();
+  return useQuery({
+    queryKey: [...scope, 'credentials'], enabled: enabled && ready, refetchInterval: 60_000,
+    queryFn: () => customFetch<{ warningDays: number; today: string; documents: Array<HrDocument & { employeeId: number; employeeName: string }> }>('/api/hr/credentials'),
+  });
+}
+export function useSaveCredentialWarning() {
+  const inv = useInvalidateEmployee(0);
+  return useMutation({
+    mutationFn: (warningDays: number) => customFetch('/api/hr/credentials/settings', { method: 'PUT', headers: json, body: JSON.stringify({ warningDays }) }),
     onSuccess: inv,
   });
 }

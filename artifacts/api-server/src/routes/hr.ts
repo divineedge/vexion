@@ -9,6 +9,7 @@ import { ensureTenantSlug } from "../lib/tenantSlug";
 import { publicAppUrl } from "../lib/publicSite";
 import { FormError } from "../lib/jobForms";
 import hrDocumentsRouter from "./hrDocuments";
+import { credentialContext, credentialDocuments, credentialStatus } from "../lib/hrCredentials";
 import bcrypt from "bcryptjs";
 const router=Router();
 router.use("/hr",requireVerifiedStaff,(_req,res,next)=>{res.set("Cache-Control","private, no-store");next();});
@@ -61,13 +62,25 @@ router.get("/hr/employees/:id",async(req,res)=>{
  access.hasHrAccess?undefined:eq(employeeHistoryEntriesTable.sharedWithEmployee,true))).orderBy(desc(employeeHistoryEntriesTable.id));
  const applications=sql`SELECT id FROM hr_applications WHERE tenant_id=${tenantId} AND user_id=${userId}`;
  const documents=await db.select({id:hrDocumentsTable.id,title:hrDocumentsTable.title,fileName:hrDocumentsTable.fileName,mimeType:hrDocumentsTable.mimeType,sizeBytes:hrDocumentsTable.sizeBytes,
+ credentialType:hrDocumentsTable.credentialType,expiresOn:hrDocumentsTable.expiresOn,renewsDocumentId:hrDocumentsTable.renewsDocumentId,
  sharedWithEmployee:hrDocumentsTable.sharedWithEmployee,historyEntryId:hrDocumentsTable.historyEntryId,createdAt:hrDocumentsTable.createdAt})
  .from(hrDocumentsTable).where(and(eq(hrDocumentsTable.tenantId,tenantId),or(eq(hrDocumentsTable.employeeId,userId),sql`${hrDocumentsTable.applicationId} IN (${applications})`),
  access.hasHrAccess?undefined:eq(hrDocumentsTable.sharedWithEmployee,true))).orderBy(desc(hrDocumentsTable.id));
+ const context=await credentialContext(tenantId);
+ const allDocs=await credentialDocuments(tenantId);
+ const visibleDocuments=documents.map(doc=>{
+  const next=allDocs.find(d=>d.renewsDocumentId===doc.id);
+  return {...doc,
+   // Do not disclose private successor IDs or private prior IDs to employees.
+   renewsDocumentId:access.hasHrAccess||documents.some(d=>d.id===doc.renewsDocumentId)?doc.renewsDocumentId:null,
+   renewedByDocumentId:next&&(access.hasHrAccess||documents.some(d=>d.id===next.id))?next.id:null,
+   expirationStatus:next&&(access.hasHrAccess||documents.some(d=>d.id===next.id))?"renewed":credentialStatus(doc.expiresOn,context.today,context.warningDays),
+  };
+ });
  const assignments=await db.select().from(employeeFormAssignmentsTable).where(and(eq(employeeFormAssignmentsTable.tenantId,tenantId),eq(employeeFormAssignmentsTable.userId,userId))).orderBy(desc(employeeFormAssignmentsTable.id));
  const {hourlyRate,...basic}=employee;
  const [pending]=access.hasHrAccess?await db.select({id:hrApplicationsTable.id}).from(hrApplicationsTable).where(and(eq(hrApplicationsTable.tenantId,tenantId),eq(hrApplicationsTable.userId,userId),eq(hrApplicationsTable.pendingAccountSetup,true))).limit(1):[];
- res.json({employee:access.hasHrAccess?{...employee,needsAccountSetup:!!pending}:basic,profile:profile??null,history:history.map(({entry,createdByName})=>({...entry,createdByName})),documents,assignments,canManage:access.hasHrAccess});
+ res.json({employee:access.hasHrAccess?{...employee,needsAccountSetup:!!pending}:basic,profile:profile??null,history:history.map(({entry,createdByName})=>({...entry,createdByName})),documents:visibleDocuments,assignments,canManage:access.hasHrAccess,credentialWarningDays:context.warningDays});
 });
 router.patch("/hr/employees/:id/profile",async(req,res)=>{
  const tenantId=getTenantId(req),actorId=getUserId(req),userId=id(req.params.id);await requireHr(tenantId,actorId);await employeeAccess(tenantId,actorId,userId);

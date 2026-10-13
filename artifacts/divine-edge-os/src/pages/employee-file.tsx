@@ -22,7 +22,7 @@ import {
 import { EmpFormFields, displayEmpAnswer } from '@/components/hr/EmpFormFields';
 import {
   useHrMeta, useHrEmployee, useAccountSetup, useHrAudit, useSaveProfile, useAddHistory, useShareHistory, useAcknowledgeHistory,
-  useUploadDocument, useShareDocument, downloadHrDocument, useAssignForm, useSaveAssignment, useEmployeeFormTemplates,
+  useUploadDocument, useShareDocument, useCredentialMetadata, downloadHrDocument, useAssignForm, useSaveAssignment, useEmployeeFormTemplates,
   templateActive, fetchActivity, evidenceItems, evidenceSummary, validateEmpAnswers, hrErr, fmtBytes, historyLabel,
   EMPLOYMENT_STATUSES, HISTORY_TYPES, ALLOWED_UPLOAD, MAX_UPLOAD,
   type HrEmployeeDetail, type HrProfile, type HistoryType, type EmpAnswer, type HrAssignment, type HrActivity, type GpsPoint, type HrHistoryEntry,
@@ -282,12 +282,24 @@ function AddHistorySheet({ id, open, onClose, evidence }: { id: number; open: bo
 
 function DocumentsTab({ id, data }: { id: number; data: HrEmployeeDetail }) {
   const upload = useUploadDocument(id);
+  const metadata = useCredentialMetadata(id);
   const share = useShareDocument(id);
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
   const [shared, setShared] = useState(false);
   const [hist, setHist] = useState('');
+  const [credentialType, setCredentialType] = useState('');
+  const [expiresOn, setExpiresOn] = useState('');
+  const [renews, setRenews] = useState<number | null>(null);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [filter, setFilter] = useState('all');
+  const documents = data.documents.filter(doc => filter === 'all' || doc.expirationStatus === filter);
+  const startUpload = (doc?: HrEmployeeDetail['documents'][number], edit = false) => {
+    setFile(null); setTitle(doc?.title ?? ''); setHist(''); setShared(false);
+    setCredentialType(doc?.credentialType ?? ''); setExpiresOn(edit ? doc?.expiresOn ?? '' : '');
+    setRenews(doc && !edit ? doc.id : null); setEditId(edit ? doc!.id : null); setOpen(true);
+  };
   const [busyId, setBusyId] = useState<number | null>(null);
   const pick = (f: File | null) => {
     if (f && f.size > MAX_UPLOAD) { toast.error('Files must be 10 MB or smaller'); return; }
@@ -295,8 +307,15 @@ function DocumentsTab({ id, data }: { id: number; data: HrEmployeeDetail }) {
     setFile(f); if (f && !title) setTitle(f.name.replace(/\.[^.]+$/, ''));
   };
   const submit = () => {
+    if (editId) {
+      metadata.mutate({ id: editId, credentialType: credentialType || null, expiresOn: expiresOn || null }, {
+        onSuccess: () => { toast.success('Credential details saved and audited'); setOpen(false); },
+        onError: e => toast.error(hrErr(e, 'Could not save credential details')),
+      });
+      return;
+    }
     if (!file) { toast.error('Choose a file'); return; }
-    upload.mutate({ file, title: title.trim() || file.name, shared, historyEntryId: hist ? Number(hist) : null }, {
+    upload.mutate({ file, title: title.trim() || file.name, shared, historyEntryId: hist ? Number(hist) : null, credentialType, expiresOn, renewsDocumentId: renews }, {
       onSuccess: () => { toast.success('Document uploaded'); setOpen(false); setFile(null); setTitle(''); setShared(false); setHist(''); },
       onError: e => toast.error(hrErr(e, 'Upload failed')),
     });
@@ -307,13 +326,24 @@ function DocumentsTab({ id, data }: { id: number; data: HrEmployeeDetail }) {
   };
   return (
     <div className="space-y-3">
-      {data.canManage && <div className="flex justify-end"><Button size="sm" className="gap-2" onClick={() => setOpen(true)} data-testid="button-upload-document"><Upload className="w-4 h-4" /> Upload document</Button></div>}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Select value={filter} onValueChange={setFilter}><SelectTrigger className="w-56" aria-label="Document expiration filter"><SelectValue /></SelectTrigger>
+          <SelectContent><SelectItem value="all">All documents & renewal history</SelectItem><SelectItem value="upcoming">Expiring within {data.credentialWarningDays} days</SelectItem><SelectItem value="expired">Expired</SelectItem><SelectItem value="renewed">Prior renewal evidence</SelectItem></SelectContent>
+        </Select>
+        {data.canManage && <Button size="sm" className="gap-2 ml-auto" onClick={() => startUpload()} data-testid="button-upload-document"><Upload className="w-4 h-4" /> Upload document</Button>}
+      </div>
+      <p className="text-xs text-muted-foreground">Expiration warnings are for human review only. Renewals keep the original evidence. Employee notifications require deliberate sharing.</p>
       <Card><CardContent className="p-0">
-        {data.documents.length === 0 ? <div className="p-10 text-center space-y-2"><FileText className="w-9 h-9 mx-auto text-muted-foreground/50" /><p className="font-medium">No documents</p></div> : (
-          <div className="divide-y">{data.documents.map(doc => (
-            <div key={doc.id} className="flex items-center gap-3 px-4 py-3" data-testid={`document-${doc.id}`}>
+        {documents.length === 0 ? <div className="p-10 text-center space-y-2"><FileText className="w-9 h-9 mx-auto text-muted-foreground/50" /><p className="font-medium">No matching documents</p></div> : (
+          <div className="divide-y">{documents.map(doc => (
+            <div key={doc.id} className="flex items-center gap-3 px-4 py-3 flex-wrap" data-testid={`document-${doc.id}`}>
               <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
-              <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{doc.title}</p><p className="text-xs text-muted-foreground">{doc.fileName} · {fmtBytes(doc.sizeBytes)} · {d(doc.createdAt)}{doc.historyEntryId ? ' · linked to a record' : ''}</p></div>
+              <div className="flex-1 min-w-[160px]"><p className="text-sm font-medium truncate">{doc.title}</p><p className="text-xs text-muted-foreground">{doc.fileName} · {fmtBytes(doc.sizeBytes)} · {d(doc.createdAt)}{doc.historyEntryId ? ' · linked to a record' : ''}</p>
+                {doc.credentialType && <p className="text-xs mt-1 capitalize">{doc.credentialType} · {doc.expiresOn ? `Expires ${d(doc.expiresOn)}` : 'No expiration date'} <Badge variant={doc.expirationStatus === 'expired' ? 'destructive' : 'outline'}>{doc.expirationStatus.replace('_', ' ')}</Badge></p>}
+                {(doc.renewsDocumentId || doc.renewedByDocumentId) && <p className="text-xs text-muted-foreground">Document #{doc.id}{doc.renewsDocumentId ? ` · renews #${doc.renewsDocumentId}` : ''}{doc.renewedByDocumentId ? ` · renewed by #${doc.renewedByDocumentId}` : ''}. Original evidence retained.</p>}
+              </div>
+              {data.canManage && !doc.renewedByDocumentId && <Button size="sm" variant="ghost" onClick={() => startUpload(doc, !doc.credentialType)}>{doc.credentialType ? 'Upload renewal' : 'Set credential details'}</Button>}
+              {data.canManage && doc.credentialType && !doc.renewedByDocumentId && !doc.renewsDocumentId && <Button size="sm" variant="ghost" onClick={() => startUpload(doc, true)}>Edit details</Button>}
               {data.canManage && <Button size="sm" variant="ghost" className="text-xs" disabled={share.isPending} onClick={() => share.mutate({ id: doc.id, shared: !doc.sharedWithEmployee }, { onError: e => toast.error(hrErr(e, 'Could not change sharing')) })}>{doc.sharedWithEmployee ? <><Eye className="w-3.5 h-3.5 mr-1" />Shared</> : <><EyeOff className="w-3.5 h-3.5 mr-1" />Private</>}</Button>}
               <Button size="sm" variant="outline" className="gap-1.5" disabled={busyId === doc.id} onClick={() => dl(doc)}><Download className="w-3.5 h-3.5" />{busyId === doc.id ? '…' : 'Download'}</Button>
             </div>
@@ -322,8 +352,15 @@ function DocumentsTab({ id, data }: { id: number; data: HrEmployeeDetail }) {
       </CardContent></Card>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-          <SheetHeader className="mb-5"><SheetTitle>Upload document</SheetTitle><SheetDescription>PDF, image, or Word (.docx), up to 10 MB.</SheetDescription></SheetHeader>
+          <SheetHeader className="mb-5"><SheetTitle>{editId ? 'Credential details' : renews ? 'Upload renewal' : 'Upload document'}</SheetTitle><SheetDescription>{editId ? 'The file is unchanged. Metadata changes are audited.' : renews ? 'Upload new evidence. The prior document and its expiration date will be retained. Sharing does not carry forward automatically.' : 'PDF, image, or Word (.docx), up to 10 MB.'}</SheetDescription></SheetHeader>
           <div className="space-y-4">
+            <div className="space-y-1.5"><label className="text-sm font-medium">Document type</label>
+              <Select value={credentialType || 'other'} disabled={!!renews} onValueChange={v => { setCredentialType(v === 'other' ? '' : v); if(v === 'other') setExpiresOn(''); }}>
+                <SelectTrigger aria-label="Document type"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="other">Other document</SelectItem><SelectItem value="license">License</SelectItem><SelectItem value="certificate">Certificate</SelectItem></SelectContent>
+              </Select>
+            </div>
+            {credentialType && <div className="space-y-1.5"><label className="text-sm font-medium">Expiration date (optional)</label><Input type="date" aria-label="Expiration date" value={expiresOn} onChange={e => setExpiresOn(e.target.value)} /><p className="text-xs text-muted-foreground">Blank means no expiration warning. The credential is valid through this date.</p></div>}
+            {!editId && <>
             <Input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.heic,.docx" onChange={e => pick(e.target.files?.[0] ?? null)} data-testid="input-document-file" />
             <div className="space-y-1.5"><label className="text-sm font-medium">Title</label><Input value={title} onChange={e => setTitle(e.target.value)} /></div>
             <div className="space-y-1.5"><label className="text-sm font-medium">Link to record (optional)</label>
@@ -333,7 +370,8 @@ function DocumentsTab({ id, data }: { id: number; data: HrEmployeeDetail }) {
               </Select>
             </div>
             <label className="flex items-center justify-between gap-3"><span className="text-sm">Share with employee</span><Switch checked={shared} onCheckedChange={setShared} /></label>
-            <div className="flex justify-end gap-2 pt-2 border-t"><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={submit} disabled={upload.isPending || !file}>{upload.isPending ? 'Uploading…' : 'Upload'}</Button></div>
+            </>}
+            <div className="flex justify-end gap-2 pt-2 border-t"><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={submit} disabled={upload.isPending || metadata.isPending || (!editId && !file)}>{upload.isPending || metadata.isPending ? 'Saving…' : editId ? 'Save details' : 'Upload'}</Button></div>
           </div>
         </SheetContent>
       </Sheet>

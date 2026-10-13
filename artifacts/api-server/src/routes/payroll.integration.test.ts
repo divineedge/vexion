@@ -196,4 +196,17 @@ describe.skipIf(!process.env.DATABASE_URL)("final payroll snapshots", () => {
     expect(corrected.body.snapshot).toEqual(approved.body.snapshot);
     expect(corrected.body.adjustments[0].amount).toBe(25);
   });
+  it("includes an owner's recorded work after field-work availability is turned off without changing approved payroll", async () => {
+    await db.update(tenantsTable).set({ownersSchedulable:false}).where(eq(tenantsTable.id,tenant));
+    await db.insert(timeEntriesTable).values({
+      tenantId:tenant,userId:owner,isMasterClock:true,
+      clockedInAt:new Date("2020-01-07T10:00:00Z"),clockedOutAt:new Date("2020-01-07T12:00:00Z"),
+    });
+    const preview=await request(app).post("/api/p4p/payroll/preview").send({dateFrom:"2020-01-07",dateTo:"2020-01-07"});
+    expect(preview.status,JSON.stringify(preview.body)).toBe(200);
+    const ownerRow=preview.body.snapshot.summary.technicians.find((u:{userId:number})=>u.userId===owner);
+    expect(ownerRow).toBeTruthy();
+    expect(ownerRow.clockHours).toBe(2);
+    expect((await request(app).get(`/api/p4p/payroll/periods/${period}`)).body.snapshot).toEqual(original);
+  });
 });

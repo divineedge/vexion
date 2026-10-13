@@ -5,7 +5,8 @@ import { Link } from 'wouter';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ShieldCheck, AlertTriangle, RefreshCw, ChevronDown, ArrowUpRight } from 'lucide-react';
+import { ShieldCheck, AlertTriangle, RefreshCw, ChevronDown, ArrowUpRight, FilePlus2, FileText, Loader2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 
 export interface CoverageJob {
@@ -18,8 +19,11 @@ export interface CoverageJob {
   reason: string;
   needsAttention: boolean;
   invoiceId: number | null;
+  /** Server-derived: safe to create (or recover) a draft invoice for this job. */
+  canInvoice?: boolean;
 }
-export interface CoverageReport { jobs: CoverageJob[]; checkedAt: string }
+export interface RecoveredInvoice { jobId: number; invoiceId: number }
+export interface CoverageReport { jobs: CoverageJob[]; checkedAt: string; recoveredInvoices?: RecoveredInvoice[] }
 
 const COVERAGE_KEY = ['billing-coverage'];
 
@@ -36,6 +40,11 @@ const REASONS: Record<string, string> = {
   ready_to_invoice: 'Ready to invoice.',
   no_invoice: 'Completed with no invoice.',
 };
+const RECURRING = new Set(['recurring_pending', 'recurring_cycle', 'awaiting_cycle']);
+const errText = (e: unknown) => {
+  const d = (e as { data?: { error?: string; message?: string } })?.data;
+  return d?.error || d?.message || (e instanceof Error ? e.message : '') || 'Could not create draft invoice';
+};
 const reasonText = (r: string) => REASONS[r] ?? r.replace(/_/g, ' ');
 
 export function BillingCoveragePanel({ enabled = true }: { enabled?: boolean }) {
@@ -47,12 +56,42 @@ export function BillingCoveragePanel({ enabled = true }: { enabled?: boolean }) 
     refetchInterval: 60_000,
     enabled,
   });
+  // Local record of drafts created/recovered this session; survives coverage list invalidation and audits.
+  const [created, setCreated] = useState<Record<number, { invoiceId: number; existing: boolean }>>({});
   const check = useMutation({
     mutationFn: () => customFetch<CoverageReport>('/api/billing/coverage/check', { method: 'POST' }),
-    onSuccess: res => { qc.setQueryData(COVERAGE_KEY, res); toast.success('Billing audit complete'); },
+    onSuccess: res => {
+      qc.setQueryData(COVERAGE_KEY, res);
+      const rec = res.recoveredInvoices ?? [];
+      if (rec.length) {
+        setCreated(c => ({ ...c, ...Object.fromEntries(rec.map(r => [r.jobId, { invoiceId: r.invoiceId, existing: false }])) }));
+        qc.invalidateQueries({ queryKey: ['/api/invoices'] });
+      }
+      toast.success(rec.length ? `Billing audit complete. ${rec.length} draft invoice${rec.length > 1 ? 's' : ''} recovered (not sent).` : 'Billing audit complete');
+    },
     onError: () => toast.error('Billing audit failed'),
   });
+  const [confirmFor, setConfirmFor] = useState<number | null>(null);
+  const [confirmReason, setConfirmReason] = useState('');
+  const [errors, setErrors] = useState<Record<number, string>>({});
+  const createDraft = useMutation({
+    mutationFn: ({ jobId, reason }: { jobId: number; reason?: string }) =>
+      customFetch<{ invoiceId: number; existing: boolean }>(`/api/billing/coverage/jobs/${jobId}/invoice`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reason ? { reason } : {}),
+      }),
+    onSuccess: (res, { jobId }) => {
+      setCreated(c => ({ ...c, [jobId]: res }));
+      setErrors(e => { const n = { ...e }; delete n[jobId]; return n; });
+      setConfirmFor(null); setConfirmReason('');
+      toast.success(res.existing ? 'Existing invoice found for this job' : 'Draft invoice created. Not sent.');
+      qc.invalidateQueries({ queryKey: COVERAGE_KEY });
+      qc.invalidateQueries({ queryKey: ['/api/invoices'] });
+    },
+    onError: (e, { jobId }) => { const m = errText(e); setErrors(x => ({ ...x, [jobId]: m })); toast.error(m); },
+  });
   const jobs = data?.jobs ?? [];
+  const createdOnly = Object.entries(created).filter(([jid]) => !jobs.some(j => j.id === Number(jid)));
   const attention = jobs.filter(j => j.needsAttention);
   const sorted = [...attention, ...jobs.filter(j => !j.needsAttention)];
   if (!enabled) return null;
@@ -93,6 +132,20 @@ export function BillingCoveragePanel({ enabled = true }: { enabled?: boolean }) 
           )}
         </div>
 
+        {createdOnly.length > 0 && (
+          <div className="rounded-md border bg-emerald-50/60 px-3 py-2 text-xs space-y-1" data-testid="list-coverage-created">
+            <p className="font-medium text-emerald-900">Draft invoices created this session (not sent)</p>
+            {createdOnly.map(([jid, r]) => (
+              <div key={jid} className="flex items-center justify-between gap-2">
+                <Link href={`/schedule?jobId=${jid}`} className="hover:underline">Job #{jid}{r.existing ? ' (existing invoice)' : ''}</Link>
+                <Link href={`/invoices?invoiceId=${r.invoiceId}`} className="inline-flex items-center gap-1 text-emerald-800 hover:underline" data-testid={`link-created-invoice-${jid}`}>
+                  Open invoice <ArrowUpRight className="w-3 h-3" />
+                </Link>
+              </div>
+            ))}
+          </div>
+        )}
+
         {expanded && jobs.length > 0 && (
           <div className="divide-y rounded-md border bg-background">
             {sorted.map(j => {
@@ -106,11 +159,39 @@ export function BillingCoveragePanel({ enabled = true }: { enabled?: boolean }) 
                       {j.completedAt ? ` · Completed ${new Date(j.completedAt).toLocaleDateString()}` : ''}
                     </p>
                     <p className={`text-xs mt-0.5 ${j.needsAttention ? 'text-amber-800' : 'text-muted-foreground'}`}>{reasonText(j.reason)}</p>
+                    {errors[j.id] && <p className="text-xs mt-0.5 text-destructive" data-testid={`text-coverage-error-${j.id}`}>{errors[j.id]}</p>}
+                    {confirmFor === j.id && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Input value={confirmReason} onChange={e => setConfirmReason(e.target.value)} className="h-7 text-xs flex-1 min-w-[180px]"
+                          placeholder="Why bill now instead of the recurring cycle?" data-testid={`input-coverage-reason-${j.id}`} />
+                        <Button size="sm" className="h-7 text-xs" disabled={!confirmReason.trim() || createDraft.isPending}
+                          onClick={() => createDraft.mutate({ jobId: j.id, reason: confirmReason.trim() })} data-testid={`button-coverage-confirm-${j.id}`}>
+                          Confirm draft
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setConfirmFor(null); setConfirmReason(''); }}>Cancel</Button>
+                      </div>
+                    )}
                   </div>
                   <span className="tabular-nums font-medium shrink-0">{j.totalAmount != null ? `$${j.totalAmount.toFixed(2)}` : '—'}</span>
                   <div className="flex items-center gap-1 shrink-0">
-                    <Link href={`/jobs/${j.id}`} className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-xs hover:bg-muted" data-testid={`link-coverage-job-${j.id}`}>
-                      Open job <ArrowUpRight className="w-3 h-3" />
+                    {created[j.id] ? (
+                      <Link href={`/invoices?invoiceId=${created[j.id].invoiceId}`} className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-xs bg-emerald-100 text-emerald-800 hover:bg-emerald-200" data-testid={`link-coverage-invoice-${j.id}`}>
+                        <FileText className="w-3 h-3" /> Open invoice
+                      </Link>
+                    ) : j.invoiceId && !j.canInvoice ? (
+                      <Link href={`/invoices?invoiceId=${j.invoiceId}`} className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-xs border hover:bg-muted" data-testid={`link-coverage-review-invoice-${j.id}`}>
+                        <FileText className="w-3 h-3" /> Review invoice
+                      </Link>
+                    ) : j.canInvoice && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" disabled={createDraft.isPending && createDraft.variables?.jobId === j.id}
+                        title="Create a draft invoice. Nothing is sent to the customer."
+                        onClick={() => RECURRING.has(j.reason) ? setConfirmFor(j.id) : createDraft.mutate({ jobId: j.id })} data-testid={`button-coverage-create-${j.id}`}>
+                        {createDraft.isPending && createDraft.variables?.jobId === j.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <FilePlus2 className="w-3 h-3" />}
+                        {RECURRING.has(j.reason) ? 'Bill now' : 'Create draft'}
+                      </Button>
+                    )}
+                    <Link href={`/schedule?jobId=${j.id}`} className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-xs hover:bg-muted" data-testid={`link-coverage-job-${j.id}`}>
+                      {j.canInvoice ? 'Open job' : 'Review job'} <ArrowUpRight className="w-3 h-3" />
                     </Link>
                   </div>
                 </div>

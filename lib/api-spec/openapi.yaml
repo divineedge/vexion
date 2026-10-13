@@ -8112,6 +8112,60 @@ paths:
         "204":
           description: Deleted
 
+  /estimate-reminder-settings:
+    get:
+      operationId: getEstimateReminderSettings
+      tags: [settings]
+      responses:
+        "200":
+          description: Estimate reminder rules
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EstimateReminderSettings" }
+    patch:
+      operationId: updateEstimateReminderSettings
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EstimateReminderSettings" }
+      responses:
+        "200":
+          description: Saved reminder settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EstimateReminderSettings" }
+  /reports/pricing-review:
+    get:
+      operationId: getPricingHistoryReport
+      tags: [reports]
+      parameters:
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Historical completed work and saved budget for pricing review
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PricingHistoryReport" }
+  /billing/coverage/jobs/{id}/invoice:
+    post:
+      operationId: recoverJobInvoice
+      tags: [invoices]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InvoiceRecoveryInput" }
+      responses:
+        "200":
+          description: Existing or newly recovered invoice
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecoveredJobInvoice" }
   /expenses:
     get:
       operationId: listExpenses
@@ -13751,6 +13805,8 @@ components:
       type: object
       required: [offsetDays, label]
       properties:
+        notifyAdmin: { type: boolean }
+        createTask: { type: boolean }
         offsetDays:
           type: integer
           description: "Negative = days before due date, positive = days overdue"
@@ -15620,6 +15676,7 @@ components:
       type: object
       required: [returnUrl]
       properties:
+        saveCard: { type: boolean }
         returnUrl:
           type: string
 
@@ -16578,6 +16635,9 @@ components:
       type: object
       required: [id, tenantId, date, amount, category, createdAt, updatedAt]
       properties:
+        inventoryReceipts:
+          type: array
+          items: { $ref: "#/components/schemas/ExpenseInventoryReceipt" }
         id: { type: integer }
         tenantId: { type: integer }
         vendorId: { type: ["integer", "null"] }
@@ -16594,6 +16654,11 @@ components:
       type: object
       required: [date, amount]
       properties:
+        requestId: { type: string, minLength: 8, maxLength: 128 }
+        inventoryReceipts:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/ExpenseInventoryReceipt" }
         vendorId: { type: integer }
         date: { type: string }
         amount: { type: number }
@@ -16601,6 +16666,78 @@ components:
         description: { type: string }
         receiptUrl: { type: string }
 
+    ExpenseInventoryReceipt:
+      type: object
+      required: [inventoryItemId, quantity, costPrice, updatePrice]
+      properties:
+        inventoryItemId: { type: integer, minimum: 1 }
+        locationId: { type: integer, minimum: 1 }
+        quantity: { type: integer, minimum: 1, maximum: 1000000 }
+        costPrice: { type: number, minimum: 0 }
+        updatePrice: { type: boolean }
+        markupPct: { type: number, minimum: 0 }
+        itemName: { type: string }
+        locationName: { type: string }
+        previousCostPrice: { type: number }
+        previousSellPrice: { type: number }
+        newSellPrice: { type: number }
+    RecoveredJobInvoice:
+      type: object
+      required: [invoiceId, existing]
+      properties:
+        invoiceId: { type: integer }
+        existing: { type: boolean }
+    InvoiceRecoveryInput:
+      type: object
+      properties:
+        reason: { type: string, maxLength: 1000 }
+    EstimateReminderSettings:
+      type: object
+      required: [enabled, rules]
+      properties:
+        enabled: { type: boolean }
+        rules:
+          type: array
+          maxItems: 10
+          items: { $ref: "#/components/schemas/EstimateReminderRule" }
+    EstimateReminderRule:
+      type: object
+      required: [offsetDays, label, channels, notifyAdmin, createTask]
+      properties:
+        offsetDays: { type: integer, minimum: 1, maximum: 365 }
+        label: { type: string, minLength: 1, maxLength: 100 }
+        channels:
+          type: array
+          items: { type: string, enum: [email, sms] }
+        notifyAdmin: { type: boolean }
+        createTask: { type: boolean }
+    PricingHistoryReport:
+      type: object
+      required: [budgetJson, jobs, missingCompletionDates]
+      properties:
+        budgetJson: { type: ["string", "null"] }
+        missingCompletionDates: { type: integer }
+        jobs:
+          type: array
+          items: { $ref: "#/components/schemas/PricingHistoryJob" }
+    PricingHistoryJob:
+      type: object
+      required: [id, title, customerId, customerName, propertyAddress, serviceId, serviceName, pricingType, completedAt, recordedMinutes, totalAmount, materialSellAmount, hasOpenTimers]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        customerId: { type: ["integer", "null"] }
+        customerName: { type: ["string", "null"] }
+        propertyAddress: { type: ["string", "null"] }
+        serviceId: { type: ["integer", "null"] }
+        serviceName: { type: ["string", "null"] }
+        pricingType: { type: ["string", "null"] }
+        completedAt: { type: string }
+        recordedMinutes: { type: number }
+        totalAmount: { type: number }
+        materialSellAmount: { type: number }
+        materialSnapshotMissing: { type: boolean }
+        hasOpenTimers: { type: boolean }
     # ── Internal Tasks ────────────────────────────────────────────────────────
     QuoCall:
       type: object

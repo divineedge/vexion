@@ -51,6 +51,7 @@ import HrHiringPage from '@/pages/hr-hiring';
 import CareersPage from '@/pages/careers';
 import PortalInboxPage from '@/pages/portal-inbox';
 import BudgetPage from '@/pages/budget';
+import PricingReviewPage from '@/pages/pricing-review';
 import StaffMessagesPage from '@/pages/staff-messages';
 import OAuthConsentPage from '@/pages/oauth-consent';
 
@@ -114,6 +115,7 @@ function ProtectedRoutes() {
         <Route path="/portal-inbox/:customerId" component={PortalInboxPage} />
         <Route path="/portal-inbox" component={PortalInboxPage} />
         <Route path="/budget" component={BudgetPage} />
+        <Route path="/pricing-review" component={PricingReviewPage} />
         <Route path="/staff-messages" component={StaffMessagesPage} />
         <Route component={NotFound} />
       </Switch>

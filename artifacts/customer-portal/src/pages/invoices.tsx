@@ -1,4 +1,6 @@
-import { usePortalListInvoices, usePortalCreatePaySession } from "@workspace/api-client-react";
+import { usePortalListInvoices, customFetch } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { PayInvoiceAction } from "@/components/PayInvoiceAction";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,58 +9,34 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { FileText, Download, CheckCircle2, AlertCircle, ChevronRight, Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Link, useSearch } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 export default function Invoices() {
+  const [, navigate] = useLocation();
   const { data: invoices, isLoading, refetch } = usePortalListInvoices();
   const search = useSearch();
+  const queryClient = useQueryClient();
   const [payingId, setPayingId] = useState<number | null>(null);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
   const [invoiceSearch, setInvoiceSearch] = useState('');
   const [invoiceDateFrom, setInvoiceDateFrom] = useState('');
   const [invoiceDateTo, setInvoiceDateTo] = useState('');
 
-  const { mutate: createPaySession } = usePortalCreatePaySession({
-    mutation: {
-      onSuccess: (data, _variables) => {
-        if (data.checkoutUrl) {
-          window.location.href = data.checkoutUrl;
-        } else {
-          setPayingId(null);
-          toast.error("Could not open payment page. Please try again.");
-        }
-      },
-      onError: (err: any) => {
-        setPayingId(null);
-        const msg =
-          err?.response?.data?.error ??
-          err?.message ??
-          "Payment session failed. Please try again.";
-        toast.error(msg);
-      },
-    },
-  });
-
   // Detect Stripe redirect-back and show a success message
   useEffect(() => {
     const params = new URLSearchParams(search);
     if (params.get("payment") === "success") {
-      toast.success("Payment received! Your invoice will update shortly.");
+      toast.success("Payment received! Your invoice will update shortly.", { description: "Saved cards can be managed from your Profile." });
       refetch();
+      queryClient.invalidateQueries({ queryKey: ["portal-payment-method"] });
+      setTimeout(() => refetch(), 4000);
       // Clean the query param from the URL without a full reload
       const clean = window.location.pathname;
       window.history.replaceState({}, "", clean);
     }
-  }, [search, refetch]);
-
-  const handlePayNow = (invoiceId: number) => {
-    if (payingId !== null) return;
-    setPayingId(invoiceId);
-    const returnUrl = `${window.location.origin}${import.meta.env.BASE_URL}invoices`;
-    createPaySession({ id: invoiceId, data: { returnUrl } });
-  };
+  }, [search, refetch, queryClient]);
 
   async function downloadPdf(e: React.MouseEvent, invoiceId: number, invoiceNumber: string) {
     e.preventDefault();
@@ -66,17 +44,7 @@ export default function Invoices() {
     if (downloadingId !== null) return;
     setDownloadingId(invoiceId);
     try {
-      const token = localStorage.getItem("portal_token");
-      const params = new URLSearchParams(window.location.search);
-      const tenantId = params.get("tenant") ?? "1";
-      const res = await fetch(`/api/portal/invoices/${invoiceId}/pdf`, {
-        headers: {
-          "x-portal-token": token ?? "",
-          "x-tenant-id": tenantId,
-        },
-      });
-      if (!res.ok) throw new Error("Failed to download PDF");
-      const blob = await res.blob();
+      const blob = await customFetch<Blob>(`/api/portal/invoices/${invoiceId}/pdf`, { responseType: "blob" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -85,8 +53,8 @@ export default function Invoices() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-    } catch {
-      // silent — browser will show nothing downloaded
+    } catch (err: any) {
+      toast.error(err?.data?.error ?? "Couldn't download the PDF. Please try again.");
     } finally {
       setDownloadingId(null);
     }
@@ -115,8 +83,9 @@ export default function Invoices() {
     const isPayable = invoice.status === 'sent' || invoice.status === 'overdue';
 
     return (
-      <Link href={`/invoices/${invoice.id}`}>
-        <Card className={`shadow-sm overflow-hidden cursor-pointer hover:border-primary/40 hover:shadow-md transition-all ${invoice.status === 'overdue' ? 'border-destructive/50' : ''}`}>
+        <Card role="link" tabIndex={0} onClick={() => navigate(`/invoices/${invoice.id}`)}
+          onKeyDown={event => { if(event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {event.preventDefault();navigate(`/invoices/${invoice.id}`);} }}
+          className={`shadow-sm overflow-hidden cursor-pointer hover:border-primary/40 hover:shadow-md transition-all ${invoice.status === 'overdue' ? 'border-destructive/50' : ''}`}>
           <CardContent className="p-0">
             <div className="flex flex-col sm:flex-row items-center">
               <div className="p-6 flex-1 w-full border-b sm:border-b-0 sm:border-r border-border">
@@ -173,21 +142,14 @@ export default function Invoices() {
                 </div>
 
                 {isPayable ? (
-                  <Button
-                    className="w-full"
-                    disabled={isPaying || payingId !== null}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handlePayNow(invoice.id);
-                    }}
-                  >
-                    {isPaying ? (
-                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Opening…</>
-                    ) : (
-                      "Pay Now"
-                    )}
-                  </Button>
+                  <PayInvoiceAction
+                    invoiceId={invoice.id}
+                    returnPath="invoices"
+                    compact
+                    disabled={payingId !== null && !isPaying}
+                    onStart={() => setPayingId(invoice.id)}
+                    onFail={() => setPayingId(null)}
+                  />
                 ) : null}
                 <Button
                   variant="outline"
@@ -206,7 +168,6 @@ export default function Invoices() {
             </div>
           </CardContent>
         </Card>
-      </Link>
     );
   };
 

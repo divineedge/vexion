@@ -4,7 +4,7 @@ import {
   PackageSearch, Briefcase, Wrench,
   DollarSign,
   Megaphone, FlaskConical,
-  Settings, FileText, Footprints, BarChart3, Star, Repeat, ListTodo, Calculator,
+  Settings, FileText, Footprints, BarChart3, Star, Repeat, ListTodo, Calculator, Scale,
   Map, ClipboardList, PhoneMissed, PhoneIncoming, Inbox, Layers,
   MessageSquare, Store, ClipboardCheck, IdCard, UserPlus,
   LucideIcon,
@@ -108,6 +108,7 @@ export const adminNavSections: NavSection[] = [
       { name: 'Invoices',   href: '/invoices',   icon: DollarSign, permissionKey: 'pages.billing', aliases: ['/financials'], roles: ['canManageOffice'] },
       { name: 'Reports',    href: '/reports',    icon: BarChart3,  permissionKey: 'pages.reports', roles: ['canManageOffice'] },
       { name: 'Budget',     href: '/budget',     icon: Calculator, permissionKey: 'pages.billing', roles: ['canManageOffice'] },
+      { name: 'Pricing Review', href: '/pricing-review', icon: Scale, permissionKey: 'pages.billing', roles: ['canManageOffice'] },
     ],
   },
   {

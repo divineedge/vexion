@@ -3,6 +3,8 @@ import { logger } from "./lib/logger";
 import { pool } from "@workspace/db";
 import { readFile } from "node:fs/promises";
 import { startCredentialReminderScheduler } from "./lib/hrCredentials";
+import {installDocumentReminderSchema} from "./lib/documentReminderActions";
+import {startEstimateReminderScheduler} from "./lib/estimateReminderScheduler";
 
 // drizzle push handles tables but not rate-capture/immutability triggers.
 // Install the idempotent migration before this build begins serving requests.
@@ -15,6 +17,8 @@ try {
 }
 
 const rawPort = process.env["PORT"];
+await installDocumentReminderSchema();
+startEstimateReminderScheduler();
 
 if (!rawPort) {
   throw new Error(

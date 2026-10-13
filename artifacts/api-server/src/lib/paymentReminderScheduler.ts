@@ -11,7 +11,8 @@ import { invoiceBalance } from "./customerCredit";
  */
 
 import { db, tenantsTable, invoicesTable, customersTable, jobsTable, communicationsLogTable, stopServiceFlagsTable } from "@workspace/db";
-import { eq, and, sql, ne, isNull } from "drizzle-orm";
+import { eq, and, sql, inArray, isNull } from "drizzle-orm";
+import {reminderActions} from "./documentReminderActions";
 import { logger } from "./logger";
 import { sendSms, type SmsProviderConfig } from "./smsProvider";
 import { sendEmail, applyTemplate, type EmailProviderConfig } from "./emailProvider";
@@ -21,6 +22,8 @@ export interface ReminderRule {
   label: string;
   /** Per-rule channel selection. Omitted on rules created before this feature — falls back to the tenant's legacy global channel setting. */
   channels?: string[];
+  notifyAdmin?: boolean;
+  createTask?: boolean;
 }
 
 /**
@@ -54,7 +57,7 @@ export async function processTenant(tenant: typeof tenantsTable.$inferSelect) {
     ))
     .where(and(
       eq(invoicesTable.tenantId, tenant.id),
-      ne(invoicesTable.status, "paid"),
+      inArray(invoicesTable.status, ["sent","overdue"]),
       isNull(invoicesTable.archivedAt),
       isNull(customersTable.archivedAt),
       sql`${invoicesTable.dueDate} IS NOT NULL`,
@@ -62,7 +65,7 @@ export async function processTenant(tenant: typeof tenantsTable.$inferSelect) {
 
   for (const { invoice, customer } of unpaidInvoices) {
     if (!customer || !invoice.dueDate) continue;
-    if (customer.smsOptOut && customer.emailOptOut) continue;
+    if (invoiceBalance(invoice)<=0) continue;
 
     const daysFromDue = Math.floor((now.getTime() - invoice.dueDate.getTime()) / (1000 * 60 * 60 * 24));
     const alreadySent = (invoice.paymentRemindersSent as number[] | null) ?? [];
@@ -73,7 +76,8 @@ export async function processTenant(tenant: typeof tenantsTable.$inferSelect) {
       .sort((a, b) => b.offsetDays - a.offsetDays)[0];
 
     if (dueRule) {
-      const channels = dueRule.channels && dueRule.channels.length > 0 ? dueRule.channels : legacyChannels;
+      await reminderActions({tenantId:tenant.id,kind:"invoice",id:invoice.id,customerId:customer.id,customerName:customer.name,link:`/invoices?invoiceId=${invoice.id}`},dueRule);
+      const channels = dueRule.channels !== undefined ? dueRule.channels : legacyChannels;
       const delivered = await sendPaymentReminder({ tenant, customer, invoice, rule: dueRule, channels });
       // Only record the offset as "sent" once at least one channel actually
       // delivered. A transient provider failure must NOT be marked sent —

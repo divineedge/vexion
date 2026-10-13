@@ -8,6 +8,8 @@
 import type { PaymentReminderRuleChannelsItem } from './paymentReminderRuleChannelsItem';
 
 export interface PaymentReminderRule {
+  notifyAdmin?: boolean;
+  createTask?: boolean;
   /** Negative = days before due date, positive = days overdue */
   offsetDays: number;
   label: string;

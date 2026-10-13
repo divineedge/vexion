@@ -4,9 +4,12 @@ import {
   useCreateVendor, useUpdateVendor, useDeleteVendor,
   useListExpenses, getListExpensesQueryKey,
   useCreateExpense, useUpdateExpense, useDeleteExpense,
+  useListInventoryItems, getListInventoryItemsQueryKey,
+  useListInventoryLocations, getListInventoryLocationsQueryKey,
+  getGetFinancialsSummaryQueryKey,
   customFetch,
 } from '@workspace/api-client-react';
-import type { Vendor, ExpenseEntry } from '@workspace/api-client-react';
+import type { Vendor, ExpenseEntry, InventoryItem, InventoryLocation } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,11 +20,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Building2, Receipt, Download, Paperclip, ExternalLink, X, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Building2, Receipt, Download, Paperclip, ExternalLink, X, Loader2, PackagePlus } from 'lucide-react';
 import { format } from 'date-fns';
 import { downloadCsv } from '@/lib/csvExport';
 
 const EXPENSE_CATEGORIES = ['supplies', 'fuel', 'equipment', 'insurance', 'payroll', 'rent', 'utilities', 'marketing', 'other'];
+
+export interface ReceiptRowInput { inventoryItemId: number; locationId?: number; quantity: number; costPrice: number; updatePrice: boolean; markupPct?: number }
+interface ReceiptDraft { key: string; itemId: string; locationId: string; quantity: string; costPrice: string; updatePrice: boolean; markupPct: string }
+interface SavedReceipt { inventoryItemId?: number; itemName?: string | null; locationName?: string | null; quantity?: number; costPrice?: number; markupPct?: number | null; updatePrice?: boolean }
+const receiptsOf = (e: ExpenseEntry | null): SavedReceipt[] =>
+  ((e as unknown as { inventoryReceipts?: SavedReceipt[] | null } | null)?.inventoryReceipts ?? []);
+const newDraft = (): ReceiptDraft => ({ key: crypto.randomUUID(), itemId: '', locationId: '', quantity: '1', costPrice: '', updatePrice: false, markupPct: '' });
 
 function currentMonthRange() {
   const now = new Date();
@@ -51,6 +61,9 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [expenseSheetOpen, setExpenseSheetOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<ExpenseEntry | null>(null);
+  const [createRequestId, setCreateRequestId] = useState<string>(() => crypto.randomUUID());
+  const { data: inventoryItems = [] } = useListInventoryItems(undefined, { query: { queryKey: getListInventoryItemsQueryKey(), enabled: canEdit } });
+  const { data: inventoryLocations = [] } = useListInventoryLocations({ query: { queryKey: getListInventoryLocationsQueryKey(), enabled: canEdit } });
   const [expenseSearch, setExpenseSearch] = useState('');
   const [expenseDateFrom, setExpenseDateFrom] = useState('');
   const [expenseDateTo, setExpenseDateTo] = useState('');
@@ -87,9 +100,14 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
 
   const handleDeleteExpense = async (id: number) => {
     if (!confirm('Delete this expense entry?')) return;
-    await deleteExpense.mutateAsync({ id });
-    invalidateExpenses();
-    toast.success('Expense deleted');
+    try {
+      await deleteExpense.mutateAsync({ id });
+      invalidateExpenses();
+      toast.success('Expense deleted');
+    } catch (err) {
+      const d = (err as { data?: { error?: string; message?: string } })?.data;
+      toast.error(d?.error || d?.message || 'Could not delete expense');
+    }
   };
 
   const exportExpensesCsv = () => {
@@ -205,7 +223,7 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
             />
             <Button size="sm" variant="outline" className="gap-2" title="Download expenses as CSV" onClick={exportExpensesCsv}><Download className="w-4 h-4" /> Export CSV</Button>
             {canEdit && (
-              <Button size="sm" className="gap-2" title="Log a new vendor expense" onClick={() => { setEditingExpense(null); setExpenseSheetOpen(true); }}>
+              <Button size="sm" className="gap-2" title="Log a new vendor expense" onClick={() => { setEditingExpense(null); setCreateRequestId(crypto.randomUUID()); setExpenseSheetOpen(true); }}>
                 <Plus className="w-4 h-4" /> Log Expense
               </Button>
             )}
@@ -256,9 +274,15 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
                       <Button variant="ghost" size="icon" title="Edit this expense" className="h-8 w-8" onClick={() => { setEditingExpense(e); setExpenseSheetOpen(true); }}>
                         <Pencil className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" title="Delete this expense" className="h-8 w-8 text-destructive" onClick={() => handleDeleteExpense(e.id)}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      {receiptsOf(e).length > 0 ? (
+                        <span className="inline-flex h-8 w-8 items-center justify-center text-muted-foreground" title="Received inventory into stock. Cannot be deleted, to protect the stock audit trail." data-testid={`icon-expense-locked-${e.id}`}>
+                          <PackagePlus className="w-4 h-4" />
+                        </span>
+                      ) : (
+                        <Button variant="ghost" size="icon" title="Delete this expense" className="h-8 w-8 text-destructive" onClick={() => handleDeleteExpense(e.id)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
                     </TableCell>
                   )}
                 </TableRow>
@@ -294,12 +318,15 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
 
       {/* Expense Sheet */}
       <Sheet open={expenseSheetOpen} onOpenChange={setExpenseSheetOpen}>
-        <SheetContent>
+        <SheetContent className="overflow-y-auto sm:max-w-lg">
           <SheetHeader><SheetTitle>{editingExpense ? 'Edit Expense' : 'Log Expense'}</SheetTitle></SheetHeader>
           <ExpenseForm
+            key={editingExpense ? `e-${editingExpense.id}` : createRequestId}
             editing={editingExpense}
             vendors={vendors}
-            onSubmit={async (values, receiptFile, removeReceipt) => {
+            inventoryItems={inventoryItems}
+            inventoryLocations={inventoryLocations}
+            onSubmit={async (values, receiptFile, removeReceipt, inventoryReceipts) => {
               let receiptObjectPath: string | undefined;
 
               // Upload the receipt first so we have the objectPath ready for the expense record
@@ -330,9 +357,22 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
                 toast.success('Expense updated');
               } else {
                 saved = await createExpense.mutateAsync({
-                  data: { ...values, ...(receiptObjectPath !== undefined ? { receiptUrl: receiptObjectPath } : {}) },
+                  data: {
+                    ...values,
+                    ...(receiptObjectPath !== undefined ? { receiptUrl: receiptObjectPath } : {}),
+                    requestId: createRequestId,
+                    inventoryReceipts,
+                  } as Parameters<typeof createExpense.mutateAsync>[0]['data'],
                 });
-                toast.success('Expense logged');
+                toast.success(inventoryReceipts.length ? `Expense logged and ${inventoryReceipts.length} inventory receipt${inventoryReceipts.length > 1 ? 's' : ''} applied` : 'Expense logged');
+                if (inventoryReceipts.length) {
+                  qc.invalidateQueries({ queryKey: getListInventoryItemsQueryKey() });
+                  qc.invalidateQueries({ queryKey: ['/api/inventory'] });
+                  qc.invalidateQueries({ queryKey: getListInventoryLocationsQueryKey() });
+                  qc.invalidateQueries({ predicate: q => JSON.stringify(q.queryKey).includes('stock') });
+                }
+                qc.invalidateQueries({ queryKey: getGetFinancialsSummaryQueryKey() });
+                qc.invalidateQueries({ predicate: q => JSON.stringify(q.queryKey).includes('summary') });
               }
 
               // Register the receipt as a media attachment so /storage/read-url can verify ownership
@@ -409,15 +449,23 @@ function VendorForm({ editing, onSubmit }: { editing: Vendor | null; onSubmit: (
   );
 }
 
-function ExpenseForm({ editing, vendors, onSubmit }: {
+function ExpenseForm({ editing, vendors, inventoryItems, inventoryLocations, onSubmit }: {
   editing: ExpenseEntry | null;
   vendors: Vendor[];
+  inventoryItems: InventoryItem[];
+  inventoryLocations: InventoryLocation[];
   onSubmit: (
     values: { vendorId?: number; date: string; amount: number; category: string; description?: string },
     receiptFile: File | null,
     removeReceipt: boolean,
+    inventoryReceipts: ReceiptRowInput[],
   ) => Promise<void>;
 }) {
+  const [receipts, setReceipts] = useState<ReceiptDraft[]>([]);
+  const savedReceipts = receiptsOf(editing);
+  const activeLocations = inventoryLocations.filter(l => l.isActive);
+  const locationRequired = activeLocations.length > 1;
+  const patchReceipt = (key: string, patch: Partial<ReceiptDraft>) => setReceipts(rs => rs.map(r => r.key === key ? { ...r, ...patch } : r));
   const [vendorId, setVendorId] = useState<string>(editing?.vendorId ? String(editing.vendorId) : '');
   const [date, setDate] = useState(editing?.date ?? new Date().toISOString().slice(0, 10));
   const [amount, setAmount] = useState(editing ? String(editing.amount) : '');
@@ -442,6 +490,29 @@ function ExpenseForm({ editing, vendors, onSubmit }: {
   const handleSave = async () => {
     const amt = parseFloat(amount);
     if (!date || !amt || amt <= 0) { toast.error('Enter a valid date and amount'); return; }
+    const rows: ReceiptRowInput[] = [];
+    if (!editing) {
+      for (const [i, r] of receipts.entries()) {
+        const n = i + 1;
+        if (!r.itemId) { toast.error(`Inventory row ${n}: choose an item`); return; }
+        if (locationRequired && !r.locationId) { toast.error(`Inventory row ${n}: choose a receiving location`); return; }
+        const qty = Number(r.quantity);
+        if (!Number.isInteger(qty) || qty <= 0) { toast.error(`Inventory row ${n}: quantity must be a whole number above 0`); return; }
+        const cost = Number(r.costPrice);
+        if (r.costPrice.trim() === '' || !Number.isFinite(cost) || cost < 0) { toast.error(`Inventory row ${n}: unit cost must be 0 or more`); return; }
+        let markup: number | undefined;
+        if (r.updatePrice && r.markupPct.trim() !== '') {
+          markup = Number(r.markupPct);
+          if (!Number.isFinite(markup) || markup < 0) { toast.error(`Inventory row ${n}: markup must be 0 or more`); return; }
+        }
+        rows.push({
+          inventoryItemId: Number(r.itemId),
+          ...(r.locationId ? { locationId: Number(r.locationId) } : {}),
+          quantity: qty, costPrice: cost, updatePrice: r.updatePrice,
+          ...(markup !== undefined ? { markupPct: markup } : {}),
+        });
+      }
+    }
     setSaving(true);
     try {
       await onSubmit(
@@ -454,6 +525,7 @@ function ExpenseForm({ editing, vendors, onSubmit }: {
         },
         receiptFile,
         receiptRemoved,
+        rows,
       );
     } finally {
       setSaving(false);
@@ -553,6 +625,65 @@ function ExpenseForm({ editing, vendors, onSubmit }: {
           {receiptFile || existingReceiptUrl ? 'Replace Receipt' : 'Attach Receipt'}
         </Button>
       </div>
+
+      {/* Inventory receipts */}
+      {editing ? (
+        savedReceipts.length > 0 && (
+          <div className="space-y-1.5 rounded-md border bg-muted/30 p-3" data-testid="list-saved-inventory-receipts">
+            <p className="text-sm font-medium flex items-center gap-1.5"><PackagePlus className="w-4 h-4" /> Inventory received</p>
+            {savedReceipts.map((r, i) => (
+              <p key={i} className="text-xs text-muted-foreground">
+                {r.quantity ?? 0} x {r.itemName ?? `Item #${r.inventoryItemId}`}{r.locationName ? ` to ${r.locationName}` : ''} at ${Number(r.costPrice ?? 0).toFixed(2)} each{r.updatePrice ? ' (cost price updated' + (r.markupPct != null ? `, markup ${r.markupPct}%` : '') + ')' : ''}
+              </p>
+            ))}
+            <p className="text-xs text-muted-foreground">Stock was already applied when this expense was logged. Editing the expense does not change inventory, and this expense cannot be deleted. Adjust stock from Inventory if needed.</p>
+          </div>
+        )
+      ) : (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium">Inventory received (optional)</label>
+            <Button type="button" size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setReceipts(rs => [...rs, newDraft()])} data-testid="button-add-inventory-receipt">
+              <PackagePlus className="w-3.5 h-3.5" /> Add item
+            </Button>
+          </div>
+          {receipts.length > 0 && <p className="text-xs text-muted-foreground">Stock is added once when the expense is saved and cannot be edited on the expense later.</p>}
+          {receipts.map((r, i) => {
+            const item = inventoryItems.find(it => String(it.id) === r.itemId);
+            return (
+              <div key={r.key} className="rounded-md border p-2.5 space-y-2 bg-muted/20" data-testid={`row-inventory-receipt-${i}`}>
+                <div className="flex gap-2">
+                  <Select value={r.itemId} onValueChange={v => patchReceipt(r.key, { itemId: v, costPrice: r.costPrice || String(inventoryItems.find(it => String(it.id) === v)?.costPrice ?? '') })}>
+                    <SelectTrigger className="h-8 text-xs flex-1" data-testid={`select-receipt-item-${i}`}><SelectValue placeholder="Select item" /></SelectTrigger>
+                    <SelectContent>{inventoryItems.map(it => <SelectItem key={it.id} value={String(it.id)}>{it.name}{it.sku ? ` (${it.sku})` : ''}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" title="Remove row" onClick={() => setReceipts(rs => rs.filter(x => x.key !== r.key))}><X className="w-3.5 h-3.5" /></Button>
+                </div>
+                <Select value={r.locationId || '__none__'} onValueChange={v => patchReceipt(r.key, { locationId: v === '__none__' ? '' : v })}>
+                  <SelectTrigger className="h-8 text-xs" data-testid={`select-receipt-location-${i}`}><SelectValue placeholder={locationRequired ? 'Choose receiving location' : 'Receiving location (optional)'} /></SelectTrigger>
+                  <SelectContent>
+                    {!locationRequired && <SelectItem value="__none__">{activeLocations.length === 1 ? `Default (${activeLocations[0].name})` : 'No specific location'}</SelectItem>}
+                    {activeLocations.map(l => <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input type="number" min={1} step={1} className="h-8 text-xs" placeholder="Quantity" value={r.quantity} onChange={e => patchReceipt(r.key, { quantity: e.target.value })} data-testid={`input-receipt-qty-${i}`} />
+                  <Input type="number" min={0} step="0.01" className="h-8 text-xs" placeholder="Unit cost" value={r.costPrice} onChange={e => patchReceipt(r.key, { costPrice: e.target.value })} data-testid={`input-receipt-cost-${i}`} />
+                </div>
+                <label className="flex items-center gap-2 text-xs">
+                  <input type="checkbox" checked={r.updatePrice} onChange={e => patchReceipt(r.key, { updatePrice: e.target.checked })} data-testid={`checkbox-receipt-update-${i}`} />
+                  Update item cost price
+                </label>
+                {r.updatePrice && (
+                  <Input type="number" min={0} step="0.1" className="h-8 text-xs"
+                    placeholder={`Markup % override (blank keeps ${item?.markupPct ?? 'existing'}%)`}
+                    value={r.markupPct} onChange={e => patchReceipt(r.key, { markupPct: e.target.value })} data-testid={`input-receipt-markup-${i}`} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <Button title={editing ? 'Save changes to this expense' : 'Log this expense to the ledger'} className="w-full" onClick={handleSave} disabled={saving}>
         {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{receiptFile ? 'Uploading…' : 'Saving…'}</> : (editing ? 'Save Changes' : 'Log Expense')}

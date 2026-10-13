@@ -134,6 +134,7 @@ import type {
   EquipmentUseHistoryItem,
   Estimate,
   EstimatePipeline,
+  EstimateReminderSettings,
   EstimateRespondInput,
   EstimateTemplate,
   ExpenseEntry,
@@ -173,6 +174,7 @@ import type {
   GetJobProfitabilityReportParams,
   GetPaymentPolicy200,
   GetPlStatementReportParams,
+  GetPricingHistoryReportParams,
   GetQuickBooksAuthorizeUrl200,
   GetRepairLogSummaryParams,
   GetRouteDayDetailParams,
@@ -198,6 +200,7 @@ import type {
   InventorySupplierUpdate,
   Invoice,
   InvoiceInput,
+  InvoiceRecoveryInput,
   InvoiceTemplate,
   InvoiceUpdate,
   Job,
@@ -296,6 +299,7 @@ import type {
   PortalSummary,
   PortalUpdatePlanInput,
   PreviewCustomerPlanInput,
+  PricingHistoryReport,
   Property,
   PropertyInput,
   PropertyMeasurementUpdate,
@@ -310,6 +314,7 @@ import type {
   QuoteWithProperty,
   RecordCustomerPrepayment200,
   RecordCustomerPrepaymentBody,
+  RecoveredJobInvoice,
   RecurringInvoiceTemplate,
   RecurringSeries,
   ReorderListReport,
@@ -29491,6 +29496,286 @@ export const useDeleteVendor = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteVendorMutationOptions(options));
+    }
+
+export const getGetEstimateReminderSettingsUrl = () => {
+
+
+
+
+  return `/api/estimate-reminder-settings`
+}
+
+export const getEstimateReminderSettings = async ( options?: RequestInit): Promise<EstimateReminderSettings> => {
+
+  return customFetch<EstimateReminderSettings>(getGetEstimateReminderSettingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetEstimateReminderSettingsQueryKey = () => {
+    return [
+    `/api/estimate-reminder-settings`
+    ] as const;
+    }
+
+
+export const getGetEstimateReminderSettingsQueryOptions = <TData = Awaited<ReturnType<typeof getEstimateReminderSettings>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEstimateReminderSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEstimateReminderSettingsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEstimateReminderSettings>>> = ({ signal }) => getEstimateReminderSettings({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEstimateReminderSettings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetEstimateReminderSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getEstimateReminderSettings>>>
+export type GetEstimateReminderSettingsQueryError = ErrorType<unknown>
+
+
+
+export function useGetEstimateReminderSettings<TData = Awaited<ReturnType<typeof getEstimateReminderSettings>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEstimateReminderSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetEstimateReminderSettingsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateEstimateReminderSettingsUrl = () => {
+
+
+
+
+  return `/api/estimate-reminder-settings`
+}
+
+export const updateEstimateReminderSettings = async (estimateReminderSettings: EstimateReminderSettings, options?: RequestInit): Promise<EstimateReminderSettings> => {
+
+  return customFetch<EstimateReminderSettings>(getUpdateEstimateReminderSettingsUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(estimateReminderSettings)
+  }
+);}
+
+
+
+
+
+export const getUpdateEstimateReminderSettingsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateEstimateReminderSettings>>, TError,{data: BodyType<EstimateReminderSettings>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateEstimateReminderSettings>>, TError,{data: BodyType<EstimateReminderSettings>}, TContext> => {
+
+const mutationKey = ['updateEstimateReminderSettings'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateEstimateReminderSettings>>, {data: BodyType<EstimateReminderSettings>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateEstimateReminderSettings(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateEstimateReminderSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateEstimateReminderSettings>>>
+    export type UpdateEstimateReminderSettingsMutationBody = BodyType<EstimateReminderSettings>
+    export type UpdateEstimateReminderSettingsMutationError = ErrorType<unknown>
+
+    export const useUpdateEstimateReminderSettings = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateEstimateReminderSettings>>, TError,{data: BodyType<EstimateReminderSettings>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateEstimateReminderSettings>>,
+        TError,
+        {data: BodyType<EstimateReminderSettings>},
+        TContext
+      > => {
+      return useMutation(getUpdateEstimateReminderSettingsMutationOptions(options));
+    }
+
+export const getGetPricingHistoryReportUrl = (params?: GetPricingHistoryReportParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reports/pricing-review?${stringifiedParams}` : `/api/reports/pricing-review`
+}
+
+export const getPricingHistoryReport = async (params?: GetPricingHistoryReportParams, options?: RequestInit): Promise<PricingHistoryReport> => {
+
+  return customFetch<PricingHistoryReport>(getGetPricingHistoryReportUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPricingHistoryReportQueryKey = (params?: GetPricingHistoryReportParams,) => {
+    return [
+    `/api/reports/pricing-review`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetPricingHistoryReportQueryOptions = <TData = Awaited<ReturnType<typeof getPricingHistoryReport>>, TError = ErrorType<unknown>>(params?: GetPricingHistoryReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPricingHistoryReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPricingHistoryReportQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPricingHistoryReport>>> = ({ signal }) => getPricingHistoryReport(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPricingHistoryReport>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPricingHistoryReportQueryResult = NonNullable<Awaited<ReturnType<typeof getPricingHistoryReport>>>
+export type GetPricingHistoryReportQueryError = ErrorType<unknown>
+
+
+
+export function useGetPricingHistoryReport<TData = Awaited<ReturnType<typeof getPricingHistoryReport>>, TError = ErrorType<unknown>>(
+ params?: GetPricingHistoryReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPricingHistoryReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPricingHistoryReportQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRecoverJobInvoiceUrl = (id: number,) => {
+
+
+
+
+  return `/api/billing/coverage/jobs/${id}/invoice`
+}
+
+export const recoverJobInvoice = async (id: number,
+    invoiceRecoveryInput?: InvoiceRecoveryInput, options?: RequestInit): Promise<RecoveredJobInvoice> => {
+
+  return customFetch<RecoveredJobInvoice>(getRecoverJobInvoiceUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(invoiceRecoveryInput)
+  }
+);}
+
+
+
+
+
+export const getRecoverJobInvoiceMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recoverJobInvoice>>, TError,{id: number;data?: BodyType<InvoiceRecoveryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof recoverJobInvoice>>, TError,{id: number;data?: BodyType<InvoiceRecoveryInput>}, TContext> => {
+
+const mutationKey = ['recoverJobInvoice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof recoverJobInvoice>>, {id: number;data?: BodyType<InvoiceRecoveryInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  recoverJobInvoice(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RecoverJobInvoiceMutationResult = NonNullable<Awaited<ReturnType<typeof recoverJobInvoice>>>
+    export type RecoverJobInvoiceMutationBody = BodyType<InvoiceRecoveryInput> | undefined
+    export type RecoverJobInvoiceMutationError = ErrorType<unknown>
+
+    export const useRecoverJobInvoice = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recoverJobInvoice>>, TError,{id: number;data?: BodyType<InvoiceRecoveryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof recoverJobInvoice>>,
+        TError,
+        {id: number;data?: BodyType<InvoiceRecoveryInput>},
+        TContext
+      > => {
+      return useMutation(getRecoverJobInvoiceMutationOptions(options));
     }
 
 export const getListExpensesUrl = (params?: ListExpensesParams,) => {

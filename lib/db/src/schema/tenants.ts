@@ -114,6 +114,7 @@ export const tenantsTable = pgTable("tenants", {
   invoiceFooterText: text("invoice_footer_text"),
   // ── Payment Reminders & Stop-Service Rule ────────────────────────────────
   paymentRemindersEnabled: boolean("payment_reminders_enabled").notNull().default(false),
+  estimateReminderSettings: jsonb("estimate_reminder_settings").default({enabled:false,rules:[]}),
   /**
    * Array of { offsetDays: number, label: string, channels?: ('sms'|'email')[] }.
    * Negative = before due date, positive = overdue. `channels` is per-rule; rules

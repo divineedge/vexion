@@ -5,8 +5,10 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { ExpenseInventoryReceipt } from './expenseInventoryReceipt';
 
 export interface ExpenseEntry {
+  inventoryReceipts?: ExpenseInventoryReceipt[];
   id: number;
   tenantId: number;
   /** @nullable */

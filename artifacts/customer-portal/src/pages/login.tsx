@@ -140,7 +140,8 @@ export default function Login() {
         "x-portal-token": data.token,
       });
       toast.success(`Welcome back${data.customer?.name ? `, ${data.customer.name.split(" ")[0]}` : ""}!`);
-      setLocation("/home");
+      const next = new URLSearchParams(window.location.search).get("next");
+      setLocation(next && /^\/(estimates|invoices)(\/\d+)?(?:\?|$)/.test(next) ? next : "/home");
     } catch {
       toast.error("Connection error. Please try again.");
     } finally {

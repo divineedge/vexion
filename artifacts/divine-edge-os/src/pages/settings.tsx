@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DefaultWordingCard } from '@/components/settings/DefaultWordingCard';
 import { PaymentPolicyCard } from '@/components/billing/PaymentPolicyCard';
+import { EstimateReminderSettings } from '@/components/billing/EstimateReminderSettings';
 import { useLocation } from 'wouter';
 import {
   useGetTenantSettings, getGetTenantSettingsQueryKey,
@@ -1771,6 +1772,7 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+          <EstimateReminderSettings />
           <DeclineReasonsSettings />
         </TabsContent>
 
@@ -2301,7 +2303,7 @@ export default function SettingsPage() {
 
                 <div className="space-y-2">
                   {paymentReminderSchedule.map((rule, idx) => (
-                    <div key={idx} className="flex items-center gap-3 rounded-lg border p-3 bg-muted/20">
+                    <div key={idx} className="flex flex-wrap items-center gap-3 rounded-lg border p-3 bg-muted/20">
                       <div className="space-y-0.5 w-36">
                         <label className="text-xs text-muted-foreground">Days offset</label>
                         <div className="flex items-center gap-1">
@@ -2369,6 +2371,24 @@ export default function SettingsPage() {
                               <MessageSquare className="w-3.5 h-3.5" /> SMS
                             </label>
                           </div>
+                        </div>
+                      </div>
+                      <div className="space-y-0.5">
+                        <label className="text-xs text-muted-foreground">Internal actions</label>
+                        <div className="flex items-center gap-3 h-8">
+                          {([['notifyAdmin', 'Alert admin', 'Notify company admins when this rule fires'], ['createTask', 'Follow-up task', 'Create a follow-up task for staff when this rule fires']] as const).map(([key, text, tip]) => (
+                            <div key={key} className="flex items-center gap-1.5">
+                              <Checkbox
+                                id={`rule-${idx}-${key}`}
+                                title={tip}
+                                checked={!!(rule as any)[key]}
+                                onCheckedChange={v => setPaymentReminderSchedule(prev =>
+                                  prev.map((r, i) => i === idx ? ({ ...r, [key]: v === true } as PaymentReminderRule) : r)
+                                )}
+                              />
+                              <label htmlFor={`rule-${idx}-${key}`} className="text-sm cursor-pointer whitespace-nowrap">{text}</label>
+                            </div>
+                          ))}
                         </div>
                       </div>
                       <Button

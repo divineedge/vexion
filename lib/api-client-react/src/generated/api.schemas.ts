@@ -3753,6 +3753,8 @@ export const PaymentReminderRuleChannelsItem = {
 } as const;
 
 export interface PaymentReminderRule {
+  notifyAdmin?: boolean;
+  createTask?: boolean;
   /** Negative = days before due date, positive = days overdue */
   offsetDays: number;
   label: string;
@@ -5753,6 +5755,7 @@ export interface PortalSummary {
 }
 
 export interface PortalPaySessionInput {
+  saveCard?: boolean;
   returnUrl: string;
 }
 
@@ -6605,7 +6608,30 @@ export interface CreateVendorInput {
   notes?: string;
 }
 
+export interface ExpenseInventoryReceipt {
+  /** @minimum 1 */
+  inventoryItemId: number;
+  /** @minimum 1 */
+  locationId?: number;
+  /**
+     * @minimum 1
+     * @maximum 1000000
+     */
+  quantity: number;
+  /** @minimum 0 */
+  costPrice: number;
+  updatePrice: boolean;
+  /** @minimum 0 */
+  markupPct?: number;
+  itemName?: string;
+  locationName?: string;
+  previousCostPrice?: number;
+  previousSellPrice?: number;
+  newSellPrice?: number;
+}
+
 export interface ExpenseEntry {
+  inventoryReceipts?: ExpenseInventoryReceipt[];
   id: number;
   tenantId: number;
   /** @nullable */
@@ -6624,12 +6650,89 @@ export interface ExpenseEntry {
 }
 
 export interface CreateExpenseInput {
+  /**
+     * @minLength 8
+     * @maxLength 128
+     */
+  requestId?: string;
+  /** @maxItems 100 */
+  inventoryReceipts?: ExpenseInventoryReceipt[];
   vendorId?: number;
   date: string;
   amount: number;
   category?: string;
   description?: string;
   receiptUrl?: string;
+}
+
+export interface RecoveredJobInvoice {
+  invoiceId: number;
+  existing: boolean;
+}
+
+export interface InvoiceRecoveryInput {
+  /** @maxLength 1000 */
+  reason?: string;
+}
+
+export type EstimateReminderRuleChannelsItem = typeof EstimateReminderRuleChannelsItem[keyof typeof EstimateReminderRuleChannelsItem];
+
+
+export const EstimateReminderRuleChannelsItem = {
+  email: 'email',
+  sms: 'sms',
+} as const;
+
+export interface EstimateReminderRule {
+  /**
+     * @minimum 1
+     * @maximum 365
+     */
+  offsetDays: number;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  label: string;
+  channels: EstimateReminderRuleChannelsItem[];
+  notifyAdmin: boolean;
+  createTask: boolean;
+}
+
+export interface EstimateReminderSettings {
+  enabled: boolean;
+  /** @maxItems 10 */
+  rules: EstimateReminderRule[];
+}
+
+export interface PricingHistoryJob {
+  id: number;
+  title: string;
+  /** @nullable */
+  customerId: number | null;
+  /** @nullable */
+  customerName: string | null;
+  /** @nullable */
+  propertyAddress: string | null;
+  /** @nullable */
+  serviceId: number | null;
+  /** @nullable */
+  serviceName: string | null;
+  /** @nullable */
+  pricingType: string | null;
+  completedAt: string;
+  recordedMinutes: number;
+  totalAmount: number;
+  materialSellAmount: number;
+  materialSnapshotMissing?: boolean;
+  hasOpenTimers: boolean;
+}
+
+export interface PricingHistoryReport {
+  /** @nullable */
+  budgetJson: string | null;
+  missingCompletionDates: number;
+  jobs: PricingHistoryJob[];
 }
 
 export interface QuoCall {
@@ -7561,6 +7664,11 @@ endDate?: string;
 export type GetInventorySalesReportParams = {
 startDate?: string;
 endDate?: string;
+};
+
+export type GetPricingHistoryReportParams = {
+from?: string;
+to?: string;
 };
 
 export type ListExpensesParams = {

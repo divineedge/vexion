@@ -2,6 +2,8 @@ import { Router, type IRouter } from "express";
 import type { Request, Response, NextFunction } from "express";
 import { SchedulingPaymentError } from "../lib/paymentPolicy";
 import healthRouter from "./health";
+import pricingReviewRouter from "./pricingReview";
+import estimateRemindersRouter from "./estimateReminders";
 import paymentPolicyRouter from "./paymentPolicy";
 import acquisitionRouter from "./acquisition";
 import jobFormsRouter from "./jobForms";
@@ -80,6 +82,8 @@ import { requireVerifiedStaff } from "../lib/verifiedStaff";
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(pricingReviewRouter);
+router.use(estimateRemindersRouter);
 router.use(authRouter);
 router.use(publicQuotesRouter);
 router.use(widgetRouter);

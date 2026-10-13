@@ -5,6 +5,8 @@ import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { creditBalance } from "../lib/customerCredit";
 import { billingCoverage } from "../lib/billingCoverage";
+import { recoverJobInvoice } from "../lib/recoverJobInvoice";
+import { RecoverJobInvoiceBody } from "@workspace/api-zod";
 const router = Router();
 router.use(["/billing/coverage", "/customers/:id/credits"], async (req, res, next) => {
   if (!await isAdminRole(getTenantId(req), getUserId(req))) { res.status(403).json({ error: "Admin access required" }); return; }
@@ -12,6 +14,12 @@ router.use(["/billing/coverage", "/customers/:id/credits"], async (req, res, nex
 });
 router.get("/billing/coverage", async (req, res) => { res.json(await billingCoverage(getTenantId(req))); });
 router.post("/billing/coverage/check", async (req, res) => { res.json(await billingCoverage(getTenantId(req), true)); });
+router.post("/billing/coverage/jobs/:id/invoice", async (req,res) => {
+  const jobId=Number(req.params.id), parsed=RecoverJobInvoiceBody.safeParse(req.body ?? {});
+  if (!Number.isSafeInteger(jobId) || jobId<=0 || !parsed.success) {res.status(400).json({error:"Invalid job or billing reason"});return;}
+  try {res.json(await recoverJobInvoice(getTenantId(req),jobId,getUserId(req),parsed.data.reason));}
+  catch(error) {const failure=error as Error & {status?:number};if(failure.status){res.status(failure.status).json({error:failure.message});return;}throw error;}
+});
 router.get("/customers/:id/credits", async (req, res) => {
   const tenantId = getTenantId(req), customerId = Number(req.params.id);
   res.json({ balance: await creditBalance(db, tenantId, customerId), entries: await db.select().from(customerCreditsTable).where(and(eq(customerCreditsTable.tenantId, tenantId), eq(customerCreditsTable.customerId, customerId))).orderBy(desc(customerCreditsTable.id)) });

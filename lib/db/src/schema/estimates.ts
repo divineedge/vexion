@@ -29,6 +29,7 @@ import { estimateTemplatesTable } from "./estimateTemplates";
  */
 
 export const estimatesTable = pgTable("estimates", {
+  reminderAnchorAt: timestamp("reminder_anchor_at", {withTimezone:true}),
   id: serial("id").primaryKey(),
   tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   customerId: integer("customer_id").references(() => customersTable.id),

@@ -5,8 +5,16 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { ExpenseInventoryReceipt } from './expenseInventoryReceipt';
 
 export interface CreateExpenseInput {
+  /**
+     * @minLength 8
+     * @maxLength 128
+     */
+  requestId?: string;
+  /** @maxItems 100 */
+  inventoryReceipts?: ExpenseInventoryReceipt[];
   vendorId?: number;
   date: string;
   amount: number;

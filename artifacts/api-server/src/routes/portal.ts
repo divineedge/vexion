@@ -1769,6 +1769,8 @@ router.patch("/portal/plans/:id", requirePortalAuth, async (req: any, res): Prom
 router.post("/portal/invoices/:id/pay-session", requirePortalAuth, async (req: any, res): Promise<void> => {
   const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
   const invoiceId = parseInt(req.params.id, 10);
+  if (req.body.saveCard !== undefined && typeof req.body.saveCard !== "boolean") {res.status(400).json({error:"Invalid save-card choice"});return;}
+  const saveCard = req.body.saveCard === true;
   const { returnUrl } = req.body as { returnUrl?: string };
 
   if (!returnUrl) {
@@ -1816,8 +1818,13 @@ router.post("/portal/invoices/:id/pay-session", requirePortalAuth, async (req: a
     : `${returnUrl}?payment=success`;
 
   try {
+    const [payer] = await db.select().from(customersTable).where(and(eq(customersTable.id,portalCustomerId),eq(customersTable.tenantId,portalTenantId)));
+    if (!payer) {res.status(404).json({error:"Customer not found"});return;}
+    const {ensureStripeCustomer} = await import("../lib/stripe");
+    const stripeCustomerId = await ensureStripeCustomer(payer.id,payer.name,payer.email,payer.stripeCustomerId);
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
+      customer: stripeCustomerId,
       payment_method_types: ["card"],
       line_items: [
         {
@@ -1837,8 +1844,10 @@ router.post("/portal/invoices/:id/pay-session", requirePortalAuth, async (req: a
       metadata: {
         invoiceId: String(invoiceId),
         tenantId: String(portalTenantId),
+        saveCard: saveCard ? "true" : "false",
       },
       payment_intent_data: {
+        ...(saveCard ? {setup_future_usage: "off_session" as const} : {}),
         metadata: {
           invoiceId: String(invoiceId),
           tenantId: String(portalTenantId),
@@ -1917,9 +1926,24 @@ router.post("/portal/stripe-webhook", async (req: any, res): Promise<void> => {
             and(
               eq(invoicesTable.id, invoiceId),
               eq(invoicesTable.tenantId, tenantId),
+              sql`${invoicesTable.status}<>'paid'`,
             ),
           );
         logger.info({ invoiceId, tenantId }, "Invoice marked paid via Stripe webhook");
+        // Save only after an authenticated Stripe success and explicit checkout consent.
+        if (session.metadata?.saveCard === "true" && typeof session.payment_intent === "string") {
+          const [paidInvoice]=await db.select().from(invoicesTable).where(and(eq(invoicesTable.id,invoiceId),eq(invoicesTable.tenantId,tenantId)));
+          const [payer]=paidInvoice ? await db.select().from(customersTable).where(and(eq(customersTable.id,paidInvoice.customerId),eq(customersTable.tenantId,tenantId))) : [];
+          const intent=await stripe.paymentIntents.retrieve(session.payment_intent);
+          const pmId=typeof intent.payment_method==="string"?intent.payment_method:intent.payment_method?.id;
+          if(payer?.stripeCustomerId && intent.customer===payer.stripeCustomerId && pmId){
+            const method=await stripe.paymentMethods.retrieve(pmId);
+            const owner=typeof method.customer==="string"?method.customer:method.customer?.id;
+            if(owner===payer.stripeCustomerId && method.card)await db.update(customersTable).set({
+              stripeDefaultPaymentMethodId:pmId,cardExpiresAt:new Date(Date.UTC(method.card.exp_year,method.card.exp_month,0)).toISOString().slice(0,10),cardExpiryReminderSentAt:null,
+            }).where(and(eq(customersTable.id,payer.id),eq(customersTable.tenantId,tenantId)));
+          }
+        }
 
         // Fire-and-forget: push payment record to QuickBooks if connected
         syncInvoicePaymentToQBO(tenantId, invoiceId).catch(err =>
@@ -1927,7 +1951,10 @@ router.post("/portal/stripe-webhook", async (req: any, res): Promise<void> => {
         );
       } catch (err) {
         logger.error({ err, invoiceId }, "Failed to mark invoice as paid");
-        // Still return 200 to Stripe so it doesn't retry
+        // Settlement and saved-card writes are idempotent; let Stripe retry a
+        // transient failure instead of silently losing the payment/card record.
+        res.status(500).json({error:"Payment settlement needs retry"});
+        return;
       }
     }
   }

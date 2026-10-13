@@ -905,7 +905,7 @@ router.post("/invoices/:id/send-reminder", async (req, res): Promise<void> => {
   }
 
   const legacyChannels = (row.tenant.paymentReminderChannels as string[]) ?? ["email"];
-  const channels = nextRule.channels && nextRule.channels.length > 0 ? nextRule.channels : legacyChannels;
+  const channels = nextRule.channels !== undefined ? nextRule.channels : legacyChannels;
 
   const delivered = await sendPaymentReminder({
     tenant: row.tenant,

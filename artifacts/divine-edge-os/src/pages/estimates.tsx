@@ -183,7 +183,9 @@ export default function EstimatesPage() {
   // Also open create sheet when arriving via quick-add shortcut (?action=create)
   useEffect(() => {
     const params = new URLSearchParams(search);
-    const highlight = params.get('highlight');
+    // ?estimateId=<id> (notification deep links) or legacy ?highlight=<id>.
+    // Detail is fetched by ID, so it opens regardless of the current status filter/list.
+    const highlight = params.get('estimateId') ?? params.get('highlight');
     if (highlight) {
       const numId = parseInt(highlight, 10);
       if (!Number.isNaN(numId)) setSelectedId(numId);
@@ -252,7 +254,7 @@ export default function EstimatesPage() {
   });
   const lifecycleEstimates = (estimates ?? []).filter(e => showArchivedEstimates ? !!e.archivedAt : !e.archivedAt);
   const { data: pipeline } = useGetEstimatePipeline({ query: { queryKey: getGetEstimatePipelineQueryKey() } });
-  const { data: selectedEstimate } = useGetEstimate(selectedId!, {
+  const { data: selectedEstimate, isLoading: selectedLoading, isError: selectedError, refetch: refetchSelected } = useGetEstimate(selectedId!, {
     query: { enabled: selectedId != null, queryKey: getGetEstimateQueryKey(selectedId!) },
   });
   const { data: customers } = useListCustomers({}, { query: { enabled: createOpen, queryKey: getListCustomersQueryKey({}) } });
@@ -1313,8 +1315,32 @@ export default function EstimatesPage() {
       </Sheet>
 
       {/* Estimate Detail Sheet */}
-      <Sheet open={selectedId != null} onOpenChange={open => { if (!open) setSelectedId(null); }}>
+      <Sheet open={selectedId != null} onOpenChange={open => {
+        if (open) return;
+        setSelectedId(null);
+        const qp = new URLSearchParams(window.location.search);
+        if (qp.has('estimateId') || qp.has('highlight')) {
+          qp.delete('estimateId'); qp.delete('highlight');
+          const qs = qp.toString();
+          window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
+        }
+      }}>
         <SheetContent className="w-full sm:max-w-[66vw] overflow-y-auto">
+          {!selectedEstimate && selectedId != null && (
+            selectedLoading ? (
+              <div className="space-y-4 pt-2" data-testid="estimate-detail-loading">
+                <div className="h-7 w-48 rounded-md bg-muted animate-pulse" />
+                <div className="h-40 w-full rounded-lg bg-muted animate-pulse" />
+                <div className="h-64 w-full rounded-lg bg-muted animate-pulse" />
+              </div>
+            ) : (
+              <div className="pt-10 text-center space-y-3" data-testid="estimate-detail-error">
+                <SheetTitle>Estimate #{selectedId} unavailable</SheetTitle>
+                <SheetDescription>{selectedError ? 'It may have been deleted, or you may not have access.' : 'Estimate not found.'}</SheetDescription>
+                <Button variant="outline" size="sm" onClick={() => refetchSelected()}>Retry</Button>
+              </div>
+            )
+          )}
           {selectedEstimate && (
             <>
               <SheetHeader className="pb-4">

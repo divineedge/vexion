@@ -3,6 +3,8 @@ import { db, expenseEntriesTable, vendorsTable, mediaAttachmentsTable } from "@w
 import { eq, and, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
+import { recordExpense } from "../lib/expenseInventory";
+import { CreateExpenseBody } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
@@ -12,8 +14,9 @@ async function vendorBelongsToTenant(tenantId: number, vendorId: number): Promis
 }
 
 function fmt(e: typeof expenseEntriesTable.$inferSelect, vendorName?: string | null) {
+  const { requestFingerprint: _privateFingerprint, ...publicEntry } = e;
   return {
-    ...e,
+    ...publicEntry,
     vendorName: vendorName ?? null,
     createdAt: e.createdAt.toISOString(),
     updatedAt: e.updatedAt.toISOString(),
@@ -63,21 +66,14 @@ router.post("/expenses", async (req, res): Promise<void> => {
   const userId = getUserId(req);
   if (!(await isAdminRole(tenantId, userId))) { res.status(403).json({ error: "Restricted to owner/admin roles" }); return; }
 
-  const { vendorId, date, amount, category, description, receiptUrl } = req.body;
-  if (!date || amount == null) { res.status(400).json({ error: "date and amount are required" }); return; }
-  if (vendorId && !(await vendorBelongsToTenant(tenantId, parseInt(vendorId, 10)))) {
-    res.status(400).json({ error: "Invalid vendorId" }); return;
+  const parsed = CreateExpenseBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Invalid expense or inventory receipt", details: parsed.error.flatten() }); return; }
+  try { res.status(201).json(fmt(await recordExpense(tenantId, parsed.data, userId))); }
+  catch (error) {
+    const failure = error as Error & {status?:number};
+    if (failure.status) { res.status(failure.status).json({error:failure.message}); return; }
+    throw error;
   }
-  const [e] = await db.insert(expenseEntriesTable).values({
-    tenantId,
-    vendorId: vendorId ? parseInt(vendorId, 10) : null,
-    date,
-    amount: Number(amount),
-    category: category ?? "other",
-    description: description ?? null,
-    receiptUrl: receiptUrl ?? null,
-  }).returning();
-  res.status(201).json(fmt(e));
 });
 
 router.patch("/expenses/:id", async (req, res): Promise<void> => {
@@ -86,7 +82,14 @@ router.patch("/expenses/:id", async (req, res): Promise<void> => {
   if (!(await isAdminRole(tenantId, userId))) { res.status(403).json({ error: "Restricted to owner/admin roles" }); return; }
 
   const id = parseInt(req.params.id, 10);
+  if (req.body.inventoryReceipts !== undefined || req.body.requestId !== undefined) { res.status(409).json({error:"Inventory was received when this expense was created. Use an inventory adjustment to correct stock."}); return; }
   const { vendorId, date, amount, category, description, receiptUrl } = req.body;
+  if(amount!==undefined){
+    const [existing]=await db.select().from(expenseEntriesTable).where(and(eq(expenseEntriesTable.id,id),eq(expenseEntriesTable.tenantId,tenantId)));
+    if(!existing){res.status(404).json({error:"Expense not found"});return;}
+    const received=(existing.inventoryReceipts as {quantity:number;costPrice:number}[]??[]).reduce((sum,r)=>sum+r.quantity*r.costPrice,0);
+    if(!Number.isFinite(Number(amount)) || Number(amount)<received-.005 || Number(amount)<0){res.status(400).json({error:"Expense amount cannot be less than the inventory purchase amount"});return;}
+  }
   if (vendorId && !(await vendorBelongsToTenant(tenantId, parseInt(vendorId, 10)))) {
     res.status(400).json({ error: "Invalid vendorId" }); return;
   }
@@ -109,6 +112,8 @@ router.delete("/expenses/:id", async (req, res): Promise<void> => {
   if (!(await isAdminRole(tenantId, userId))) { res.status(403).json({ error: "Restricted to owner/admin roles" }); return; }
 
   const id = parseInt(req.params.id, 10);
+  const [entry] = await db.select().from(expenseEntriesTable).where(and(eq(expenseEntriesTable.id,id),eq(expenseEntriesTable.tenantId,tenantId)));
+  if (Array.isArray(entry?.inventoryReceipts) && entry.inventoryReceipts.length) { res.status(409).json({error:"Keep this expense as the stock-receipt audit record. Correct inventory with an adjustment instead of deleting its purchase history."}); return; }
   await db.delete(expenseEntriesTable).where(and(eq(expenseEntriesTable.id, id), eq(expenseEntriesTable.tenantId, tenantId)));
   res.sendStatus(204);
 });

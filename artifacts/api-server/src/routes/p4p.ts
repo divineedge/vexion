@@ -405,7 +405,9 @@ export async function calculatePayrollSummary(db: PayrollDb, tenantId: number, {
     AND payroll_at <= ${rangeEnd.toISOString()}::timestamptz GROUP BY recipient_user_id`);
   const acquisitionBonusMap = new Map(bonuses.rows.map(row => [Number(row.recipient_user_id), Number(row.amount)]));
   const users = allUsers.filter(u => u.role === "technician" || u.role === "crew_manager"
-    || (u.role === "company_owner" && eligibility?.ownersSchedulable) || acquisitionBonusMap.has(u.id));
+    || (u.role === "company_owner" && (eligibility?.ownersSchedulable || userEarnings.has(u.id) || segmentsByUser.has(u.id)))
+    // Scheduling controls future assignment, not whether already-recorded work gets paid.
+    || acquisitionBonusMap.has(u.id));
 
   const technicians = users.map(u => {
     const stats = userEarnings.get(u.id) ?? { p4pEarnings: 0, jobCount: 0, totalRevenue: 0, totalMaterialCost: 0, netLaborRevenue: 0 };

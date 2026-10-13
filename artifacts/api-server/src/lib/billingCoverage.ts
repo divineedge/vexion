@@ -5,7 +5,12 @@ import { invoiceDocumentDefaults } from "./invoiceDocumentDefaults";
 import { datedJobInvoiceItems } from "./invoiceServiceDate";
 import { randomUUID } from "node:crypto";
 
-export async function billingCoverage(tenantId: number, recover = false) {
+type CoverageReport = {
+  jobs: {id:number;title:string;customerId:number|null;customerName:string|null;completedAt:Date|null;totalAmount:number;reason:string;needsAttention:boolean;invoiceId:number|null;canInvoice:boolean}[];
+  checkedAt:string;
+  recoveredInvoices:{jobId:number;invoiceId:number}[];
+};
+export async function billingCoverage(tenantId: number, recover = false): Promise<CoverageReport> {
   const rows = await db.select({ job: jobsTable, customerName: customersTable.name, customerArchivedAt: customersTable.archivedAt, invoice: invoicesTable })
     .from(jobsTable).leftJoin(customersTable, eq(customersTable.id, jobsTable.customerId))
     .leftJoin(invoicesTable, eq(invoicesTable.id, jobsTable.invoiceId))
@@ -14,7 +19,8 @@ export async function billingCoverage(tenantId: number, recover = false) {
   const templates = await db.select().from(recurringInvoiceTemplatesTable).where(and(eq(recurringInvoiceTemplatesTable.tenantId, tenantId), eq(recurringInvoiceTemplatesTable.isActive, true)));
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
   const result = [];
-  for (const { job, customerName, customerArchivedAt } of rows) {
+  const recoveredInvoices: {jobId:number;invoiceId:number}[] = [];
+  for (const { job, customerName, customerArchivedAt, invoice: linkedInvoice } of rows) {
     const template = templates.find(t => t.billingMode === "completed_work" && (t.customerId == null || t.customerId === job.customerId) && (t.serviceId == null || t.serviceId === job.serviceId));
     let needsAttention = true;
     let reason = customerArchivedAt ? "Archived customer has unbilled completed work: admin review required" : !job.customerId ? "Missing customer" : job.invoiceId ? "Linked invoice is void, missing, or archived" :
@@ -30,8 +36,8 @@ export async function billingCoverage(tenantId: number, recover = false) {
         reason = needsAttention ? "Billing cycle overdue: completed work still has no invoice" : "Waiting for scheduled billing cycle";
       } else if (recover) {
         try {
-          await db.transaction(async tx => {
-            const [locked] = await tx.select().from(jobsTable).where(and(eq(jobsTable.id, job.id), isNull(jobsTable.invoiceId))).for("update");
+          const recovered = await db.transaction(async tx => {
+            const [locked] = await tx.select().from(jobsTable).where(and(eq(jobsTable.id, job.id),eq(jobsTable.tenantId,tenantId), isNull(jobsTable.invoiceId))).for("update");
             if (!locked || locked.status !== "completed" || locked.holdFromBilling || !(locked.totalAmount > 0)) return;
             const [invoice] = await creditedInvoiceInsert(tx).values({
               ...await invoiceDocumentDefaults(tenantId), tenantId, customerId: locked.customerId!,
@@ -40,13 +46,19 @@ export async function billingCoverage(tenantId: number, recover = false) {
               total: Math.round(locked.totalAmount * (1 + tenant.taxRate / 100) * 100) / 100,
               lineItems: await datedJobInvoiceItems(tenantId, locked),
             }).returning();
-            await tx.update(jobsTable).set({ invoiceId: invoice.id, pendingWeeklyInvoice: false }).where(eq(jobsTable.id, locked.id));
+            await tx.update(jobsTable).set({ invoiceId: invoice.id, pendingWeeklyInvoice: false }).where(and(eq(jobsTable.id, locked.id),eq(jobsTable.tenantId,tenantId)));
+            return invoice.id;
           });
-          reason = "Recovered into a draft invoice: admin review required";
+          if (recovered) {
+            recoveredInvoices.push({jobId:job.id,invoiceId:recovered});
+            reason = "Recovered into a draft invoice: admin review required";
+          }
         } catch { reason = "Invoice generation failed: admin action required"; }
       }
     }
-    result.push({ id: job.id, title: job.title, customerId: job.customerId, customerName, completedAt: job.completedAt, totalAmount: job.totalAmount, reason, needsAttention, invoiceId: job.invoiceId });
+    const canInvoice = !customerArchivedAt && !!job.customerId && !job.planId && !job.holdFromBilling && job.totalAmount>0 && !!job.completedAt
+      && (!linkedInvoice || ["void","cancelled"].includes(linkedInvoice.status));
+    result.push({ id: job.id, title: job.title, customerId: job.customerId, customerName, completedAt: job.completedAt, totalAmount: job.totalAmount, reason, needsAttention, invoiceId: job.invoiceId,canInvoice });
     if (recover && needsAttention) {
       await db.transaction(async tx => {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(${tenantId}, ${job.id})`);
@@ -59,7 +71,8 @@ export async function billingCoverage(tenantId: number, recover = false) {
       });
     }
   }
-  return { jobs: result, checkedAt: new Date().toISOString() };
+  if (recover) return {...await billingCoverage(tenantId,false),recoveredInvoices};
+  return { jobs: result, checkedAt: new Date().toISOString(),recoveredInvoices };
 }
 
 export async function auditAllBilling() {

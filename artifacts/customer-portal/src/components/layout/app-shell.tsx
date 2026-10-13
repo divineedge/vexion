@@ -39,8 +39,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     if (!token && location !== "/" && !location.startsWith("/business/")) {
-      const slug = localStorage.getItem("portal_business_slug");
-      setLocation(slug ? `/business/${encodeURIComponent(slug)}` : "/");
+      const tenant = new URLSearchParams(window.location.search).get("tenant");
+      const slug = tenant ? (!/^\d+$/.test(tenant) ? tenant : null) : localStorage.getItem("portal_business_slug");
+      setLocation(slug ? `/business/${encodeURIComponent(slug)}?next=${encodeURIComponent(location)}` : tenant ? `/?tenant=${encodeURIComponent(tenant)}&next=${encodeURIComponent(location)}` : "/");
     }
   }, [token, location, setLocation]);
 

@@ -1377,7 +1377,7 @@ export default function CustomerDetailPage() {
                         {/* Link button */}
                         <div className="shrink-0 flex items-center">
                           {item.kind === 'job' && (
-                            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setLocation(`/jobs/${item.id}`)}>
+                            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setLocation(`/schedule?jobId=${item.id}`)}>
                               <ChevronRight className="w-3.5 h-3.5" />
                             </Button>
                           )}
@@ -1650,7 +1650,7 @@ export default function CustomerDetailPage() {
                           size="sm"
                           variant="ghost"
                           className="h-7 px-2 text-xs"
-                          onClick={() => setLocation(`/jobs/${f.jobId}`)}
+                          onClick={() => setLocation(`/schedule?jobId=${f.jobId}`)}
                         >
                           View Job <ChevronRight className="w-3 h-3 ml-0.5" />
                         </Button>
@@ -2039,7 +2039,29 @@ export default function CustomerDetailPage() {
 
           <div className="space-y-4 pb-6">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Street Address <span className="text-destructive">*</span></label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-sm font-medium">Street Address <span className="text-destructive">*</span></label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs gap-1"
+                  data-testid="button-use-billing-address"
+                  disabled={!customer.billingAddress?.trim()}
+                  title={customer.billingAddress?.trim() ? 'Copy the customer billing address into this property' : 'No billing street address on file'}
+                  onClick={() => setPropForm(f => ({
+                    ...f,
+                    address: customer.billingAddress?.trim() ?? '',
+                    city: customer.billingCity ?? '',
+                    state: customer.billingState ?? '',
+                    zip: customer.billingZip ?? '',
+                    lat: null,
+                    lng: null,
+                  }))}
+                >
+                  <Home className="w-3.5 h-3.5" /> Use billing address
+                </Button>
+              </div>
               <AddressAutocomplete
                 placeholder="123 Main St"
                 value={propForm.address}

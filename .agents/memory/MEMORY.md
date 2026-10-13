@@ -70,3 +70,5 @@
 - [Billing email recovery](billing-email-recovery.md) — uncertain sends require provider verification; missing receipts never justify automatic redelivery
 - [Payroll history boundary](payroll-history-boundary.md) — rates take effect when saved; approvals are immutable and corrections separate; legacy rates are baselines, not reconstructed history.
 - [Startup schema locks](startup-schema-locks.md) — start cross-table background scans after startup trigger/schema installation to avoid read/schema-lock deadlocks.
+- [Pricing review policy](pricing-review-policy.md) — separate Budget-guided historical pricing advice; configurable matrix threshold, never automatic price rewrites.
+- [Inventory receiving policy](inventory-receiving-policy.md) — atomic, retry-safe vendor receiving; preserve markup, legacy stock, and audit records; avoid duplicate costs.

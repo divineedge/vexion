@@ -146,7 +146,7 @@ function PaymentPolicyCardInner({ scope, id, canEdit, title }: Props) {
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Full prepayment before scheduling</label>
+                <label className="text-sm font-medium">Require prepayment before scheduling</label>
                 <Select value={companyVal(boolToVal(draft.requirePrepay))} onValueChange={v => setDraft(d => ({ ...d, requirePrepay: valToBool(v) }))} disabled={disabled}>
                   <SelectTrigger data-testid={`select-require-prepay-${scope}`}><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -156,6 +156,7 @@ function PaymentPolicyCardInner({ scope, id, canEdit, title }: Props) {
                   </SelectContent>
                 </Select>
                 {!isCompany && <p className="text-xs text-muted-foreground">If the company requires prepayment, it cannot be waived here.</p>}
+                {scope === 'customer' && <p className="text-xs text-muted-foreground">Required means full payment for every future scheduled service—not just the current estimate or invoice. Useful for new customers or past payment problems.</p>}
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Require saved card</label>

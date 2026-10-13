@@ -1,5 +1,9 @@
 import { usePortalGetInvoice } from "@workspace/api-client-react";
-import { useParams, useLocation } from "wouter";
+import { useParams, useSearch } from "wouter";
+import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { PayInvoiceAction } from "@/components/PayInvoiceAction";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,7 +16,22 @@ import { Link } from "wouter";
 export default function InvoiceDetail() {
   const params = useParams<{ id: string }>();
   const invoiceId = parseInt(params.id ?? "0", 10);
-  const { data: invoice, isLoading, isError } = usePortalGetInvoice(invoiceId);
+  const { data: invoice, isLoading, isError, refetch } = usePortalGetInvoice(invoiceId);
+  const search = useSearch();
+  const queryClient = useQueryClient();
+
+  // Stripe redirect-back: refresh invoice + saved payment method, then clean URL
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    if (params.get("payment") !== "success") return;
+    toast.success("Payment received! This invoice will update shortly.", { description: "Saved cards can be managed from your Profile." });
+    queryClient.invalidateQueries();
+    const t = setTimeout(() => { refetch(); queryClient.invalidateQueries({ queryKey: ["portal-payment-method"] }); }, 4000);
+    params.delete("payment");
+    const qs = params.toString();
+    window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
+    return () => clearTimeout(t);
+  }, [search, refetch, queryClient]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -237,9 +256,13 @@ export default function InvoiceDetail() {
                   : "Please arrange payment at your earliest convenience."}
               </p>
             </div>
-            <Button size="lg" className="w-full sm:w-auto shrink-0">
-              Pay Now — {formatCurrency((invoice as any).balanceDue ?? invoice.total)}
-            </Button>
+            <PayInvoiceAction
+              invoiceId={invoice.id}
+              returnPath={`invoices/${invoice.id}`}
+              size="lg"
+              className="w-full sm:w-72 shrink-0"
+              label={`Pay Now — ${formatCurrency((invoice as any).balanceDue ?? invoice.total)}`}
+            />
           </CardContent>
         </Card>
       )}

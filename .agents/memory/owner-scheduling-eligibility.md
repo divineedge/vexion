@@ -14,3 +14,9 @@ Include owners in P4P and job-efficiency reports when owner field-work availabil
 **Why:** The user explicitly extended owner availability to these reports and reported that time-only work was hiding base pay and the owner's efficiency.
 
 **How to apply:** Keep base pay from effective master-clock time separate from revenue-dependent P4P earnings. A missing rate means unconfigured, not zero pay.
+
+Turning off owner field-work availability must not remove the owner's already recorded work from payroll or change approved payroll history.
+
+**Why:** Scheduling eligibility controls future assignments, not whether recorded work deserves compensation.
+
+**How to apply:** Include owners with historical clock/job earnings in the relevant pay period regardless of the current scheduling toggle; never reconstruct or overwrite approved snapshots.

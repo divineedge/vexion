@@ -412,7 +412,10 @@ router.get("/reports/pl-statement", async (req, res): Promise<void> => {
     const fuelCost = fuelAggRows[0] ? Number(fuelAggRows[0].total) : 0;
 
     const expenseAggRows = (await db.execute(sql`
-      SELECT COALESCE(SUM(amount), 0)::float AS total FROM expense_entries
+      -- Stock purchases remain in the cash expense ledger. Do not also count
+      -- them as operating expense when consumed materials are already in COGS.
+      SELECT COALESCE(SUM(GREATEST(0,amount-COALESCE((SELECT SUM((r->>'quantity')::numeric*(r->>'costPrice')::numeric)
+        FROM jsonb_array_elements(COALESCE(inventory_receipts,'[]'::jsonb)) r),0))), 0)::float AS total FROM expense_entries
       WHERE tenant_id = ${tenantId} AND date >= ${startDate.toISOString().slice(0, 10)} AND date <= ${endDate.toISOString().slice(0, 10)}
     `)).rows as { total: number }[];
     const operatingExpenses = expenseAggRows[0] ? Number(expenseAggRows[0].total) : 0;
@@ -423,7 +426,8 @@ router.get("/reports/pl-statement", async (req, res): Promise<void> => {
 
     // Expense breakdown by category for the operating expenses section
     const expenseByCategory = (await db.execute(sql`
-      SELECT category, COALESCE(SUM(amount), 0)::float AS total FROM expense_entries
+      SELECT category, COALESCE(SUM(GREATEST(0,amount-COALESCE((SELECT SUM((r->>'quantity')::numeric*(r->>'costPrice')::numeric)
+        FROM jsonb_array_elements(COALESCE(inventory_receipts,'[]'::jsonb)) r),0))), 0)::float AS total FROM expense_entries
       WHERE tenant_id = ${tenantId} AND date >= ${startDate.toISOString().slice(0, 10)} AND date <= ${endDate.toISOString().slice(0, 10)}
       GROUP BY category ORDER BY total DESC
     `)).rows as { category: string; total: number }[];

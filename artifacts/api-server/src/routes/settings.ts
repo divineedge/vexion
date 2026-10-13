@@ -137,7 +137,7 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
       (tenant.paymentReminderSchedule as { offsetDays: number; label: string; channels?: string[] }[]) ?? []
     ).map(rule => ({
       ...rule,
-      channels: rule.channels && rule.channels.length > 0 ? rule.channels : ((tenant.paymentReminderChannels as string[]) ?? ["email"]),
+      channels: rule.channels !== undefined ? rule.channels : ((tenant.paymentReminderChannels as string[]) ?? ["email"]),
     })),
     paymentReminderChannels: (tenant.paymentReminderChannels as string[]) ?? ["email"],
     stopServiceRuleEnabled: tenant.stopServiceRuleEnabled ?? false,

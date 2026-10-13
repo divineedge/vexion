@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { DeliveryHistory } from '@/components/billing/DeliveryHistory';
+import { PaymentPolicyCard } from '@/components/billing/PaymentPolicyCard';
 import { BillingEmailDeliveries } from '@/components/financials/BillingEmailDeliveries';
 import { SendDocumentDialog } from '@/components/shared/SendDocumentDialog';
 import {
@@ -599,7 +600,7 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
   const { data: job } = useGetJob((invoice as any)?.jobId ?? 0, {
     query: { queryKey: getGetJobQueryKey((invoice as any)?.jobId ?? 0), enabled: !!(invoice as any)?.jobId },
   });
-  const { user } = useAuth();
+  const { user, canManageOffice } = useAuth();
   const { data: tenantSettings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
   const [termsDraft, setTermsDraft] = useState('');
   const [layoutDraft, setLayoutDraft] = useState('clean');
@@ -798,6 +799,16 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
           <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
         ) : !invoice ? null : (
           <div className="space-y-5 pb-6">
+            {canManageOffice && invoice.customerId > 0 && (
+              <details className="rounded-lg border p-3" data-testid="invoice-customer-payment-rules">
+                <summary className="cursor-pointer text-sm font-medium">Customer prepayment and deposit rules</summary>
+                <p className="mt-2 mb-3 text-xs text-muted-foreground">
+                  Require payment before future services for this customer, or change their deposit requirement.
+                  Available for paid and overdue invoices too. This does not change this invoice, its balance, or its payment history.
+                </p>
+                <PaymentPolicyCard scope="customer" id={invoice.customerId} canEdit={!!canManageOffice} title="Customer payment requirements" />
+              </details>
+            )}
             {/* Status + Actions */}
             <div className="flex flex-wrap items-center gap-2">
               <Badge className={`${STATUS_COLORS[(invoice as any).status] ?? ''} border text-xs px-2 py-0.5 capitalize`}>
@@ -1168,6 +1179,12 @@ export default function FinancialsPage() {
   const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
   const [editInvoiceId, setEditInvoiceId] = useState<number | null>(null);
   const [autoOpenSendForId, setAutoOpenSendForId] = useState<number | null>(null);
+  // Deep link support: /invoices?invoiceId=123 opens that invoice's detail sheet.
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get('invoiceId');
+    const n = raw ? Number(raw) : NaN;
+    if (Number.isInteger(n) && n > 0) setEditInvoiceId(n);
+  }, []);
   const [templateSheetOpen, setTemplateSheetOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<RecurringInvoiceTemplate | null>(null);
   const [deleteTemplateId, setDeleteTemplateId] = useState<{ id: number; name: string } | null>(null);

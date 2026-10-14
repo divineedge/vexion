@@ -22,7 +22,7 @@ router.use(['/settings/kpis','/dashboard/kpis'], requireVerifiedStaff, async (re
 });
 router.get('/settings/kpis', async(req,res) => {
   const result = await db.execute(sql`SELECT settings FROM tenant_kpi_settings WHERE tenant_id=${getTenantId(req)}`);
-  res.json(GetKpiDashboardSettingsResponse.parse(result.rows[0]?.settings ?? defaultKpiSettings));
+  res.json(GetKpiDashboardSettingsResponse.parse({...defaultKpiSettings,...(result.rows[0]?.settings as object ?? {})}));
 });
 router.patch('/settings/kpis', async(req,res) => {
   const parsed=kpiSettingsInput.safeParse(req.body);

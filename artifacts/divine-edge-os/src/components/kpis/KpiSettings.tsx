@@ -8,9 +8,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
+import { KPI_DATE_PRESETS, validateKpiRange } from '@/lib/kpiDates';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { KPI_CATALOG, DEFAULT_KPIS, loadKpiSettings, saveKpiSettings, type KpiId, type KpiSettings as KpiSettingsT } from '@/lib/kpiApi';
 
 const order = (ids: KpiId[]) => KPI_CATALOG.map(k => k.id).filter(id => ids.includes(id));
+type Ext = KpiSettingsT & { defaultDateRange?: string | null; customFrom?: string | null; customTo?: string | null };
 const same = (a: KpiId[], b: KpiId[]) => order(a).join() === order(b).join();
 
 export function KpiSettings() {
@@ -20,20 +24,27 @@ export function KpiSettings() {
   const q = useQuery({ queryKey: key, queryFn: loadKpiSettings, enabled: user?.tenantId != null, staleTime: 60_000, refetchOnMount: true, refetchOnWindowFocus: true });
   const [main, setMain] = useState<KpiId[]>([]);
   const [detail, setDetail] = useState<KpiId[]>([]);
+  const [range, setRange] = useState<NonNullable<KpiSettingsT['defaultDateRange']>>('year_to_date');
+  const [cFrom, setCFrom] = useState('');
+  const [cTo, setCTo] = useState('');
   const [error, setError] = useState<string | null>(null);
   const initRef = useRef(false);
 
+  const hydrateRange = (d: Ext) => { setRange((d.defaultDateRange ?? 'year_to_date') as typeof range); setCFrom(d.customFrom ?? ''); setCTo(d.customTo ?? ''); };
   useEffect(() => {
-    if (q.data && !initRef.current) { initRef.current = true; setMain(q.data.mainKpis); setDetail(q.data.detailKpis); }
+    if (q.data && !initRef.current) { initRef.current = true; setMain(q.data.mainKpis); setDetail(q.data.detailKpis); hydrateRange(q.data as Ext); }
   }, [q.data]);
 
   const save = useMutation({
-    mutationFn: (s: KpiSettingsT) => saveKpiSettings(s),
-    onSuccess: saved => { qc.setQueryData(key, saved); setMain(saved.mainKpis); setDetail(saved.detailKpis); setError(null); toast.success('KPI settings saved'); },
+    mutationFn: (s: Ext) => saveKpiSettings(s as KpiSettingsT),
+    onSuccess: saved => { qc.setQueryData(key, saved); setMain(saved.mainKpis); setDetail(saved.detailKpis); hydrateRange(saved as Ext); setError(null); qc.invalidateQueries({ queryKey: ['kpi-report', user?.tenantId] }); toast.success('KPI settings saved'); },
     onError: (e: Error) => { setError(e?.message || 'Could not save KPI settings'); toast.error('Could not save KPI settings'); },
   });
 
-  const dirty = !!q.data && (!same(main, q.data.mainKpis) || !same(detail, q.data.detailKpis));
+  const saved = q.data as Ext | undefined;
+  const rangeDirty = !!saved && (range !== (saved.defaultDateRange ?? 'year_to_date') || (range === 'custom' && (cFrom !== (saved.customFrom ?? '') || cTo !== (saved.customTo ?? ''))));
+  const dirty = !!saved && (!same(main, saved.mainKpis) || !same(detail, saved.detailKpis) || rangeDirty);
+  const customError = range === 'custom' ? (!cFrom || !cTo ? 'Enter both custom start and end dates.' : validateKpiRange(cFrom, cTo)) : null;
   const toggleMain = (id: KpiId) => {
     if (main.includes(id)) setMain(main.filter(x => x !== id));
     else { setMain([...main, id]); if (!detail.includes(id)) setDetail([...detail, id]); }
@@ -56,13 +67,13 @@ export function KpiSettings() {
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="flex items-center gap-2">Dashboard KPIs {dirty && <Badge variant="outline" className="border-amber-300 text-amber-700" data-testid="status-kpi-unsaved">Unsaved changes</Badge>}</CardTitle>
-            <CardDescription>Main metrics appear as cards on the Dashboard. Detail metrics can be opened for formula, warnings and supporting records. A main metric is always included in details.</CardDescription>
+            <CardTitle className="flex items-center gap-2">KPI Dashboard {dirty && <Badge variant="outline" className="border-amber-300 text-amber-700" data-testid="status-kpi-unsaved">Unsaved changes</Badge>}</CardTitle>
+            <CardDescription>These settings control the dedicated KPI Dashboard page; no KPIs appear on the main Dashboard. KPI dashboard metrics show as cards. Detailed view metrics can be opened for formula, warnings and supporting records; every KPI dashboard metric is included in the detailed view.</CardDescription>
           </div>
           <div className="flex gap-2">
-            <Button size="sm" variant="ghost" onClick={() => { setMain([...DEFAULT_KPIS]); setDetail([...DEFAULT_KPIS]); }} data-testid="button-kpi-defaults"><RotateCcw className="w-4 h-4 mr-1" />Defaults</Button>
-            <Button size="sm" variant="outline" disabled={!dirty || save.isPending} onClick={() => { setMain(q.data!.mainKpis); setDetail(q.data!.detailKpis); setError(null); }} data-testid="button-kpi-discard">Discard</Button>
-            <Button size="sm" disabled={!dirty || save.isPending} onClick={() => save.mutate({ mainKpis: order(main), detailKpis: order(Array.from(new Set([...detail, ...main]))) })} data-testid="button-kpi-save">
+            <Button size="sm" variant="ghost" onClick={() => { setMain([...DEFAULT_KPIS]); setDetail([...DEFAULT_KPIS]); setRange('year_to_date'); }} data-testid="button-kpi-defaults"><RotateCcw className="w-4 h-4 mr-1" />Defaults</Button>
+            <Button size="sm" variant="outline" disabled={!dirty || save.isPending} onClick={() => { setMain(q.data!.mainKpis); setDetail(q.data!.detailKpis); hydrateRange(q.data as Ext); setError(null); }} data-testid="button-kpi-discard">Discard</Button>
+            <Button size="sm" disabled={!dirty || save.isPending || !!customError} onClick={() => save.mutate({ mainKpis: order(main), detailKpis: order(Array.from(new Set([...detail, ...main]))), defaultDateRange: range, customFrom: range === 'custom' ? cFrom : null, customTo: range === 'custom' ? cTo : null })} data-testid="button-kpi-save">
               {save.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Save
             </Button>
           </div>
@@ -70,8 +81,23 @@ export function KpiSettings() {
         {error && <p className="text-sm text-red-600 flex items-center gap-1" data-testid="text-kpi-save-error"><AlertTriangle className="w-4 h-4" />{error}</p>}
       </CardHeader>
       <CardContent>
+        <div className="rounded-md border p-3 mb-5 space-y-2" data-testid="section-kpi-default-range">
+          <p className="text-sm font-medium">Default date range</p>
+          <p className="text-xs text-muted-foreground">Used when the KPI Dashboard opens, based on the company timezone. People can still change the range while viewing.</p>
+          <div className="flex flex-wrap items-end gap-2">
+            <Select value={range} onValueChange={v => setRange(v as typeof range)}>
+              <SelectTrigger className="w-[200px] h-9" data-testid="select-kpi-default-range"><SelectValue /></SelectTrigger>
+              <SelectContent>{KPI_DATE_PRESETS.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}</SelectContent>
+            </Select>
+            {range === 'custom' && <>
+              <div><label className="text-[11px] text-muted-foreground block">Start</label><Input type="date" className="h-9 w-[150px]" value={cFrom} onChange={e => setCFrom(e.target.value)} data-testid="input-kpi-custom-from" /></div>
+              <div><label className="text-[11px] text-muted-foreground block">End</label><Input type="date" className="h-9 w-[150px]" value={cTo} onChange={e => setCTo(e.target.value)} data-testid="input-kpi-custom-to" /></div>
+            </>}
+          </div>
+          {customError && <p className="text-xs text-red-600" data-testid="text-kpi-custom-error">{customError}</p>}
+        </div>
         <div className="grid grid-cols-[1fr_auto_auto] gap-x-6 text-xs font-medium text-muted-foreground border-b pb-2">
-          <span>Metric</span><span className="w-14 text-center">Main</span><span className="w-14 text-center">Detail</span>
+          <span>Metric</span><span className="w-20 text-center">KPI dashboard</span><span className="w-20 text-center">Detailed view</span>
         </div>
         <div className="divide-y">
           {KPI_CATALOG.map(k => (
@@ -80,12 +106,12 @@ export function KpiSettings() {
                 <p className="text-sm font-medium">{k.name}{DEFAULT_KPIS.includes(k.id) && <span className="ml-2 text-[10px] uppercase tracking-wide text-muted-foreground">Recommended</span>}</p>
                 <p className="text-xs text-muted-foreground">{k.description}</p>
               </div>
-              <div className="w-14 flex justify-center"><Checkbox checked={main.includes(k.id)} onCheckedChange={() => toggleMain(k.id)} aria-label={`Show ${k.name} on dashboard`} data-testid={`checkbox-kpi-main-${k.id}`} /></div>
-              <div className="w-14 flex justify-center"><Checkbox checked={detail.includes(k.id)} onCheckedChange={() => toggleDetail(k.id)} aria-label={`Enable ${k.name} details`} data-testid={`checkbox-kpi-detail-${k.id}`} /></div>
+              <div className="w-20 flex justify-center"><Checkbox checked={main.includes(k.id)} onCheckedChange={() => toggleMain(k.id)} aria-label={`Show ${k.name} on KPI dashboard`} data-testid={`checkbox-kpi-main-${k.id}`} /></div>
+              <div className="w-20 flex justify-center"><Checkbox checked={detail.includes(k.id)} onCheckedChange={() => toggleDetail(k.id)} aria-label={`Enable ${k.name} detailed view`} data-testid={`checkbox-kpi-detail-${k.id}`} /></div>
             </div>
           ))}
         </div>
-        <p className="text-xs text-muted-foreground mt-3">{main.length} main · {detail.length} detail. Leaving both empty hides the KPI section.</p>
+        <p className="text-xs text-muted-foreground mt-3">{main.length} on KPI dashboard · {detail.length} in detailed view. Both may be left empty.</p>
       </CardContent>
     </Card>
   );

@@ -9140,6 +9140,11 @@ components:
       properties:
         mainKpis: { type: array, items: { $ref: "#/components/schemas/KpiKey" } }
         detailKpis: { type: array, items: { $ref: "#/components/schemas/KpiKey" } }
+        defaultDateRange:
+          type: string
+          enum: [today, week_to_date, month_to_date, year_to_date, last_30_days, previous_year, custom]
+        customFrom: { type: ["string", "null"], pattern: '^\d{4}-\d{2}-\d{2}$' }
+        customTo: { type: ["string", "null"], pattern: '^\d{4}-\d{2}-\d{2}$' }
     KpiDashboardJob:
       type: object
       required: [id, title, customerId, customerName, serviceId, crewId, crewName, status, scheduledDate, completedDate, total, minutes, budgetMinutes, openTimers, materialSell, materialCost, laborCost, fuelCost, materialsInvalid]

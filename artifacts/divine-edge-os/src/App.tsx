@@ -8,6 +8,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import LoginPage from '@/pages/login';
 import SignupPage from '@/pages/signup';
 import DashboardPage from '@/pages/dashboard';
+import KpisPage from '@/pages/kpis';
 import CustomersPage from '@/pages/customers';
 import CustomerDetailPage from '@/pages/customer-detail';
 import PropertiesPage from '@/pages/properties';
@@ -82,6 +83,7 @@ function ProtectedRoutes() {
         <Route path="/inventory" component={InventoryPage} />
         <Route path="/financials" component={FinancialsPage} />
         <Route path="/invoices" component={FinancialsPage} />
+        <Route path="/kpis" component={KpisPage} />
         <Route path="/reports" component={ReportsPage} />
         <Route path="/time-tracking" component={TimeTrackingPage} />
         <Route path="/blueprints/:id" component={BlueprintCanvasPage} />

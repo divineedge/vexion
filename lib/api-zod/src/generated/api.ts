@@ -15190,20 +15190,41 @@ export const DownloadFormEvidenceParams = zod.object({
 export const DownloadFormEvidenceResponse = zod.unknown()
 
 
+export const getKpiDashboardSettingsResponseCustomFromRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getKpiDashboardSettingsResponseCustomToRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
+
 export const GetKpiDashboardSettingsResponse = zod.object({
   "mainKpis": zod.array(zod.enum(['revenue_hour', 'efficiency', 'margin', 'underpriced', 'unbilled', 'overdue', 'cash', 'acceptance', 'callbacks', 'retention', 'schedule', 'productive', 'customer_spend'])),
-  "detailKpis": zod.array(zod.enum(['revenue_hour', 'efficiency', 'margin', 'underpriced', 'unbilled', 'overdue', 'cash', 'acceptance', 'callbacks', 'retention', 'schedule', 'productive', 'customer_spend']))
+  "detailKpis": zod.array(zod.enum(['revenue_hour', 'efficiency', 'margin', 'underpriced', 'unbilled', 'overdue', 'cash', 'acceptance', 'callbacks', 'retention', 'schedule', 'productive', 'customer_spend'])),
+  "defaultDateRange": zod.enum(['today', 'week_to_date', 'month_to_date', 'year_to_date', 'last_30_days', 'previous_year', 'custom']).optional(),
+  "customFrom": zod.string().regex(getKpiDashboardSettingsResponseCustomFromRegExp).nullish(),
+  "customTo": zod.string().regex(getKpiDashboardSettingsResponseCustomToRegExp).nullish()
 })
+
+
+export const updateKpiDashboardSettingsBodyCustomFromRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const updateKpiDashboardSettingsBodyCustomToRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 
 
 export const UpdateKpiDashboardSettingsBody = zod.object({
   "mainKpis": zod.array(zod.enum(['revenue_hour', 'efficiency', 'margin', 'underpriced', 'unbilled', 'overdue', 'cash', 'acceptance', 'callbacks', 'retention', 'schedule', 'productive', 'customer_spend'])),
-  "detailKpis": zod.array(zod.enum(['revenue_hour', 'efficiency', 'margin', 'underpriced', 'unbilled', 'overdue', 'cash', 'acceptance', 'callbacks', 'retention', 'schedule', 'productive', 'customer_spend']))
+  "detailKpis": zod.array(zod.enum(['revenue_hour', 'efficiency', 'margin', 'underpriced', 'unbilled', 'overdue', 'cash', 'acceptance', 'callbacks', 'retention', 'schedule', 'productive', 'customer_spend'])),
+  "defaultDateRange": zod.enum(['today', 'week_to_date', 'month_to_date', 'year_to_date', 'last_30_days', 'previous_year', 'custom']).optional(),
+  "customFrom": zod.string().regex(updateKpiDashboardSettingsBodyCustomFromRegExp).nullish(),
+  "customTo": zod.string().regex(updateKpiDashboardSettingsBodyCustomToRegExp).nullish()
 })
+
+export const updateKpiDashboardSettingsResponseCustomFromRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const updateKpiDashboardSettingsResponseCustomToRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
 
 export const UpdateKpiDashboardSettingsResponse = zod.object({
   "mainKpis": zod.array(zod.enum(['revenue_hour', 'efficiency', 'margin', 'underpriced', 'unbilled', 'overdue', 'cash', 'acceptance', 'callbacks', 'retention', 'schedule', 'productive', 'customer_spend'])),
-  "detailKpis": zod.array(zod.enum(['revenue_hour', 'efficiency', 'margin', 'underpriced', 'unbilled', 'overdue', 'cash', 'acceptance', 'callbacks', 'retention', 'schedule', 'productive', 'customer_spend']))
+  "detailKpis": zod.array(zod.enum(['revenue_hour', 'efficiency', 'margin', 'underpriced', 'unbilled', 'overdue', 'cash', 'acceptance', 'callbacks', 'retention', 'schedule', 'productive', 'customer_spend'])),
+  "defaultDateRange": zod.enum(['today', 'week_to_date', 'month_to_date', 'year_to_date', 'last_30_days', 'previous_year', 'custom']).optional(),
+  "customFrom": zod.string().regex(updateKpiDashboardSettingsResponseCustomFromRegExp).nullish(),
+  "customTo": zod.string().regex(updateKpiDashboardSettingsResponseCustomToRegExp).nullish()
 })
 
 

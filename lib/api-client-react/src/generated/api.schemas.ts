@@ -24,9 +24,33 @@ export const KpiKey = {
   customer_spend: 'customer_spend',
 } as const;
 
+export type KpiDashboardSettingsDefaultDateRange = typeof KpiDashboardSettingsDefaultDateRange[keyof typeof KpiDashboardSettingsDefaultDateRange];
+
+
+export const KpiDashboardSettingsDefaultDateRange = {
+  today: 'today',
+  week_to_date: 'week_to_date',
+  month_to_date: 'month_to_date',
+  year_to_date: 'year_to_date',
+  last_30_days: 'last_30_days',
+  previous_year: 'previous_year',
+  custom: 'custom',
+} as const;
+
 export interface KpiDashboardSettings {
   mainKpis: KpiKey[];
   detailKpis: KpiKey[];
+  defaultDateRange?: KpiDashboardSettingsDefaultDateRange;
+  /**
+     * @nullable
+     * @pattern ^\d{4}-\d{2}-\d{2}$
+     */
+  customFrom?: string | null;
+  /**
+     * @nullable
+     * @pattern ^\d{4}-\d{2}-\d{2}$
+     */
+  customTo?: string | null;
 }
 
 export type KpiDashboardJobWorkersItem = {

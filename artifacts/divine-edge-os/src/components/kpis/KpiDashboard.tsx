@@ -1,16 +1,16 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'wouter';
-import { format as fmtDate } from 'date-fns';
+import { useGetTenantSettings, getGetTenantSettingsQueryKey } from '@workspace/api-client-react';
 import { AlertTriangle, CalendarRange, ChevronLeft, ChevronRight, Info, RefreshCw, Settings2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { loadKpiReport, loadKpiSettings, KPI_CATALOG, type KpiId, type KpiMetric } from '@/lib/kpiApi';
 import { buildKpiMetrics } from '@/lib/kpiMetrics';
+import { getKpiDefaultRange, validateKpiRange } from '@/lib/kpiDates';
 
 const PAGE_SIZE = 25;
 const MAX_YEARS = 10;
@@ -22,24 +22,28 @@ export function formatKpiValue(m: Pick<KpiMetric, 'value' | 'format'>): string {
   return m.value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
-function rangeError(from: string, to: string): string | null {
-  if (!from || !to) return 'Choose both a start and end date.';
-  if (from > to) return 'Start date must be on or before end date.';
-  const f = new Date(`${from}T00:00:00`);
-  const limit = new Date(f); limit.setFullYear(f.getFullYear() + MAX_YEARS);
-  if (new Date(`${to}T00:00:00`) > limit) return `Date range can span at most ${MAX_YEARS} years.`;
-  return null;
+const rangeError = (from: string, to: string): string | null =>
+  !from || !to ? 'Choose both a start and end date.' : validateKpiRange(from, to);
+
+export function todayInZone(tz?: string | null): string {
+  if(!tz) return '';
+  try { return new Date().toLocaleDateString('en-CA', { timeZone: tz }); }
+  catch { return ''; }
 }
 
 export function KpiDashboard() {
   const { user } = useAuth();
   const tenantId = user?.tenantId;
-  const today = fmtDate(new Date(), 'yyyy-MM-dd');
-  const thisYear = new Date().getFullYear();
-  const [from, setFrom] = useState(`${thisYear}-01-01`);
-  const [to, setTo] = useState(today);
-  const [draftFrom, setDraftFrom] = useState(from);
-  const [draftTo, setDraftTo] = useState(to);
+  const { data: tenant, isLoading: tenantLoading, isError: tenantError, refetch: refetchTenant } = useGetTenantSettings({ query: { queryKey: [...getGetTenantSettingsQueryKey(), tenantId], enabled: tenantId != null } });
+  const tz = tenant?.timezone ?? null;
+  const today = todayInZone(tz);
+  const timezoneError = tenantError || (!tenantLoading && !today);
+  const thisYear = Number(today.slice(0, 4));
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [draftFrom, setDraftFrom] = useState('');
+  const [draftTo, setDraftTo] = useState('');
+  const userAdjusted = useRef(false);
   const [selectedId, setSelectedId] = useState<KpiId | null>(null);
   const [page, setPage] = useState(0);
   const draftError = rangeError(draftFrom, draftTo);
@@ -53,9 +57,18 @@ export function KpiDashboard() {
   const reportQ = useQuery({
     queryKey: ['kpi-report', tenantId, from, to],
     queryFn: () => loadKpiReport(from, to),
-    enabled: tenantId != null && !rangeError(from, to),
+    enabled: tenantId != null && !!from && !!to && !rangeError(from, to),
     staleTime: 60_000, refetchOnMount: true, refetchOnWindowFocus: true,
   });
+
+  const sd = settingsQ.data as (typeof settingsQ.data & { defaultDateRange?: string | null; customFrom?: string | null; customTo?: string | null }) | undefined;
+  const defaultKey = sd ? `${sd.defaultDateRange ?? 'year_to_date'}|${sd.customFrom ?? ''}|${sd.customTo ?? ''}|${today}` : null;
+  useEffect(() => {
+    if (!sd || tenantLoading || !today || userAdjusted.current) return;
+    const r = getKpiDefaultRange(sd, today);
+    setFrom(r.from); setTo(r.to); setDraftFrom(r.from); setDraftTo(r.to); setPage(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultKey, tenantLoading]);
 
   const metrics = useMemo<KpiMetric[]>(() => (reportQ.data ? buildKpiMetrics(reportQ.data) : []), [reportQ.data]);
   const byId = useMemo(() => new Map<KpiId, KpiMetric>(metrics.map((m: KpiMetric) => [m.id, m])), [metrics]);
@@ -68,8 +81,9 @@ export function KpiDashboard() {
   const curPage = Math.min(page, pageCount - 1);
 
   const select = (id: KpiId) => { setSelectedId(id); setPage(0); };
-  const applyRange = (f: string, t: string) => { setDraftFrom(f); setDraftTo(t); if (!rangeError(f, t)) { setFrom(f); setTo(t); setPage(0); } };
-  const years = Array.from({ length: MAX_YEARS }, (_, i) => thisYear - i);
+  const applyRange = (f: string, t: string) => { setDraftFrom(f); setDraftTo(t); if (!rangeError(f, t)) { userAdjusted.current = true; setFrom(f); setTo(t); setPage(0); } };
+  const resetRange = () => { if (!sd) return; userAdjusted.current = false; const r = getKpiDefaultRange(sd, today); setFrom(r.from); setTo(r.to); setDraftFrom(r.from); setDraftTo(r.to); setPage(0); };
+  const years = today ? Array.from({ length: MAX_YEARS }, (_, i) => thisYear - i) : [];
   const nameOf = (id: KpiId) => KPI_CATALOG.find(k => k.id === id)?.name ?? id;
 
   return (
@@ -78,7 +92,7 @@ export function KpiDashboard() {
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Company KPIs</h2>
           <p className="text-sm text-muted-foreground">
-            {from} to {to}
+            {from ? `${from} to ${to}` : 'Loading date range'}{userAdjusted.current && <> · <button type="button" className="text-primary hover:underline" onClick={resetRange} data-testid="button-kpi-reset-range">Reset to default</button></>}
             {reportQ.data && <> · {reportQ.data.timezone} · data as of {new Date(reportQ.data.asOf).toLocaleString()}</>}
           </p>
         </div>
@@ -99,6 +113,7 @@ export function KpiDashboard() {
               <CalendarRange className="w-4 h-4 mr-1" />Apply
             </Button>
           </div>
+          <Link href="/settings?tab=kpis" className="inline-flex items-center gap-1 h-8 px-2 text-sm rounded-md border hover:bg-muted" title="KPI settings" data-testid="link-kpi-settings"><Settings2 className="w-4 h-4" />Settings</Link>
           <Button size="sm" variant="ghost" onClick={() => { void settingsQ.refetch(); void reportQ.refetch(); }} disabled={reportQ.isFetching || settingsQ.isFetching} data-testid="button-kpi-refresh" title="Refresh KPIs">
             <RefreshCw className={`w-4 h-4 ${reportQ.isFetching ? 'animate-spin' : ''}`} />
           </Button>
@@ -106,21 +121,21 @@ export function KpiDashboard() {
       </div>
       {draftError && <p className="text-xs text-red-600" data-testid="text-kpi-range-error">{draftError}</p>}
 
-      {(settingsQ.isError || reportQ.isError) ? (
+      {(settingsQ.isError || reportQ.isError || timezoneError) ? (
         <Card className="border-red-200"><CardContent className="p-6 flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-2 text-sm text-red-700"><AlertTriangle className="w-4 h-4" />
-            {settingsQ.isError ? 'Could not load KPI settings.' : 'Could not load KPI data for this date range.'}
+            {timezoneError ? 'Could not load the company timezone for KPI dates.' : settingsQ.isError ? 'Could not load KPI settings.' : 'Could not load KPI data for this date range.'}
             <span className="text-muted-foreground">{String(((settingsQ.error ?? reportQ.error) as Error)?.message ?? '')}</span></div>
-          <Button size="sm" variant="outline" onClick={() => { if (settingsQ.isError) void settingsQ.refetch(); if (reportQ.isError) void reportQ.refetch(); }} data-testid="button-kpi-retry">Retry</Button>
+          <Button size="sm" variant="outline" onClick={() => { if(timezoneError) void refetchTenant(); if (settingsQ.isError) void settingsQ.refetch(); if (reportQ.isError) void reportQ.refetch(); }} data-testid="button-kpi-retry">Retry</Button>
         </CardContent></Card>
-      ) : settingsQ.isLoading || reportQ.isLoading || !settingsQ.data ? (
+      ) : settingsQ.isLoading || reportQ.isLoading || !settingsQ.data || (!from && (mainIds.length > 0 || detailIds.length > 0)) ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {Array.from({ length: 4 }).map((_, i) => <Card key={i}><CardContent className="p-6 space-y-3"><Skeleton className="h-4 w-32" /><Skeleton className="h-8 w-24" /><Skeleton className="h-3 w-40" /></CardContent></Card>)}
         </div>
       ) : mainIds.length === 0 && detailIds.length === 0 ? (
         <Card><CardContent className="p-8 text-center space-y-2">
           <p className="font-medium">No KPIs are enabled.</p>
-          <p className="text-sm text-muted-foreground">Choose dashboard and detail metrics in Settings to start tracking.</p>
+          <p className="text-sm text-muted-foreground">Choose KPI dashboard and detailed view metrics in Settings to start tracking.</p>
           <Link href="/settings?tab=kpis" className="inline-flex items-center gap-1 text-sm text-primary hover:underline" data-testid="link-kpi-settings-empty"><Settings2 className="w-4 h-4" />Open KPI settings</Link>
         </CardContent></Card>
       ) : (

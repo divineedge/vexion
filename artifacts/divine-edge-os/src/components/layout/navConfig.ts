@@ -106,6 +106,7 @@ export const adminNavSections: NavSection[] = [
     items: [
       { name: 'Estimates',  href: '/estimates',  icon: FileText },
       { name: 'Invoices',   href: '/invoices',   icon: DollarSign, permissionKey: 'pages.billing', aliases: ['/financials'], roles: ['canManageOffice'] },
+      { name: 'KPI Dashboard', href: '/kpis', icon: Gauge, permissionKey: 'pages.billing', roles: ['canManageOffice'] },
       { name: 'Reports',    href: '/reports',    icon: BarChart3,  permissionKey: 'pages.reports', roles: ['canManageOffice'] },
       { name: 'Budget',     href: '/budget',     icon: Calculator, permissionKey: 'pages.billing', roles: ['canManageOffice'] },
       { name: 'Pricing Review', href: '/pricing-review', icon: Scale, permissionKey: 'pages.billing', roles: ['canManageOffice'] },

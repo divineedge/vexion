@@ -1,4 +1,5 @@
 import { getKpiDashboardSettings, updateKpiDashboardSettings, getKpiDashboardReport } from '@workspace/api-client-react';
+import type { KpiDatePreset } from './kpiDates';
 
 export const KPI_CATALOG = [
   { id: 'revenue_hour', name: 'Revenue per person-hour', description: 'Service revenue per recorded person-hour, compared with the service division budget.' },
@@ -17,7 +18,7 @@ export const KPI_CATALOG = [
 ] as const;
 export type KpiId = typeof KPI_CATALOG[number]['id'];
 export const DEFAULT_KPIS: KpiId[] = ['revenue_hour', 'efficiency', 'margin', 'unbilled', 'overdue', 'acceptance', 'customer_spend'];
-export interface KpiSettings { mainKpis: KpiId[]; detailKpis: KpiId[] }
+export interface KpiSettings { mainKpis: KpiId[]; detailKpis: KpiId[]; defaultDateRange?:KpiDatePreset; customFrom?:string|null; customTo?:string|null }
 export interface KpiJob {
   id: number; title: string; customerId: number | null; customerName: string; serviceId: number | null;
   crewId: number | null; crewName: string; status: string; scheduledDate: string; completedDate: string | null;

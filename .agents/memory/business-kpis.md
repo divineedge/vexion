@@ -3,9 +3,9 @@ name: Business KPI preferences and spend
 description: Company-level dashboard choices and customer-spend interpretation.
 ---
 
-Businesses should choose which recommended KPIs appear on their main dashboard and which are enabled for more detail, through a dedicated KPI tab in Settings. Include average customer spend for a year or year range.
+KPIs belong on their own KPI Dashboard page, not the main Dashboard. Businesses choose the KPIs displayed there, which have detailed views, and the default date range through KPI dashboard settings. Include average customer spend for a year or year range.
 
-**Why:** The user requested all the recommended KPIs but wants each business to control its dashboard rather than being forced to display every measure.
+**Why:** The user explicitly corrected placement: “this is the kpi dashboard not the main dashboard” and “i dont want the kpis on the main dashboard.” Each business needs control over the displayed measures and date defaults.
 
 **How to apply:** Save choices per company, not per device or user. Preserve intentionally empty selections, distinguish missing data from measured zero, and keep main selections available in details. Keep owner field-work contributions in labor measures and compare budgets using identical completed-job cohorts.
 

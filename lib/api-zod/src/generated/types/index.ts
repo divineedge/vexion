@@ -384,6 +384,7 @@ export * from './kpiDashboardReportEstimatesItem';
 export * from './kpiDashboardReportReceipts';
 export * from './kpiDashboardReportUnbilledItem';
 export * from './kpiDashboardSettings';
+export * from './kpiDashboardSettingsDefaultDateRange';
 export * from './kpiKey';
 export * from './listBankTransactionsParams';
 export * from './listBlueprintsParams';

@@ -82,10 +82,15 @@ describe("rollback-only pricing, inventory and invoice recovery",()=>{
     await db.execute(sql`UPDATE tenants SET budget_data=${originalBudget == null ? null : JSON.stringify(originalBudget)}::jsonb WHERE id=${scope.tenant}`);
   });
   it("persists KPI selections per company, validates selections, and returns tenant-owned report sources",async()=>{
-    const choice={mainKpis:["customer_spend","cash"],detailKpis:["customer_spend","cash","efficiency"]};
+    await db.execute(sql`INSERT INTO tenant_kpi_settings(tenant_id,settings) VALUES(${scope.tenant},${JSON.stringify({mainKpis:[],detailKpis:["cash"]})}::jsonb)
+      ON CONFLICT(tenant_id) DO UPDATE SET settings=EXCLUDED.settings`);
+    expect((await request(app).get("/settings/kpis")).body).toEqual({mainKpis:[],detailKpis:["cash"],defaultDateRange:"year_to_date"});
+    const choice={mainKpis:["customer_spend","cash"],detailKpis:["customer_spend","cash","efficiency"],defaultDateRange:"custom",customFrom:"2025-01-01",customTo:"2026-10-14"};
     expect((await request(app).patch("/settings/kpis").send(choice)).status).toBe(200);
     expect((await request(app).get("/settings/kpis")).body).toEqual(choice);
     expect((await request(app).patch("/settings/kpis").send({mainKpis:["cash"],detailKpis:[]})).status).toBe(400);
+    expect((await request(app).patch("/settings/kpis").send({...choice,customFrom:"2026-02-30"})).status).toBe(400);
+    expect((await request(app).patch("/settings/kpis").send({...choice,customFrom:"2027-01-01"})).status).toBe(400);
     expect((await request(app).get("/settings/kpis")).body).toEqual(choice);
     const report=await request(app).get("/dashboard/kpis?from=2026-01-01&to=2026-12-31");
     expect(report.status,JSON.stringify(report.body)).toBe(200);

@@ -5,9 +5,21 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { KpiDashboardSettingsDefaultDateRange } from './kpiDashboardSettingsDefaultDateRange';
 import type { KpiKey } from './kpiKey';
 
 export interface KpiDashboardSettings {
   mainKpis: KpiKey[];
   detailKpis: KpiKey[];
+  defaultDateRange?: KpiDashboardSettingsDefaultDateRange;
+  /**
+     * @nullable
+     * @pattern ^\d{4}-\d{2}-\d{2}$
+     */
+  customFrom?: string | null;
+  /**
+     * @nullable
+     * @pattern ^\d{4}-\d{2}-\d{2}$
+     */
+  customTo?: string | null;
 }

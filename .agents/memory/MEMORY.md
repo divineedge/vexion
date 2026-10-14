@@ -74,4 +74,5 @@
 - [Pricing review policy](pricing-review-policy.md) — separate Budget-guided historical pricing advice; configurable matrix threshold, never automatic price rewrites.
 - [Inventory receiving policy](inventory-receiving-policy.md) — atomic, retry-safe vendor receiving; preserve markup, legacy stock, and audit records; avoid duplicate costs.
 - [Property invoice billing](property-invoice-billing.md) — combine a customer's properties by default; offer separate-property billing and identify each property's work.
-- [Business KPI preferences](business-kpis.md) — company-selected main/detail KPIs; spend by distinct paying customers; avoid double-counting advance payments.
+- [Business KPI preferences](business-kpis.md) — dedicated KPI page, not main Dashboard; company-selected KPIs/date defaults; spend per distinct paying customer.
+- [Orval calendar dates](orval-calendar-dates.md) — format: date coerces calendar strings into timestamps; use a pattern when YYYY-MM-DD must survive serialization.

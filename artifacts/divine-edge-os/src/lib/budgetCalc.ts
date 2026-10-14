@@ -72,6 +72,7 @@ function migrateCheckup(raw: any): CheckupData {
 export interface DivisionBudget extends OverheadLineItems {
   id: string;
   name: string;
+  serviceIds: number[];
   crewCount: number;
   workWeeksPerYear: number;
   workDaysPerWeek: number;
@@ -96,6 +97,7 @@ export function defaultDivision(name = 'Main'): DivisionBudget {
   return {
     id: crypto.randomUUID(),
     name,
+    serviceIds: [],
     crewCount: 2,
     workWeeksPerYear: 32,
     workDaysPerWeek: 5,
@@ -138,7 +140,10 @@ function migrateFlatToDivision(raw: any, name = 'Main'): DivisionBudget {
   merged.midYearCheckup = migrateCheckup(raw.midYearCheckup);
   merged.endYearCheckup = migrateCheckup(raw.endYearCheckup);
   merged.estimatedAnnualMaterialCost = Number(raw.estimatedAnnualMaterialCost) || 0;
-  merged.minimumVisitHours = Number(raw.minimumVisitHours) || 1;
+  merged.minimumVisitHours = raw.minimumVisitHours != null && Number.isFinite(Number(raw.minimumVisitHours))
+    ? Math.max(0, Number(raw.minimumVisitHours)) : 1;
+  merged.serviceIds = Array.isArray(raw.serviceIds)
+    ? [...new Set<number>(raw.serviceIds.filter((id: unknown) => typeof id === 'number' && Number.isSafeInteger(id) && id > 0))] : [];
   return merged;
 }
 

@@ -3,9 +3,10 @@ import { publicAppUrl } from "../lib/publicSite";
 import { Router, type IRouter } from "express";
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
-import { db, tenantsTable, usersTable } from "@workspace/db";
+import { db, tenantsTable, usersTable, servicesTable } from "@workspace/db";
 import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
+import { budgetServiceLinks } from "../lib/budgetServiceLinks";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -682,6 +683,19 @@ router.patch("/settings/budget", async (req, res): Promise<void> => {
   const { budgetData } = req.body;
   if (!budgetData || typeof budgetData !== 'object') {
     res.status(400).json({ error: "budgetData object is required" }); return;
+  }
+  let serviceIds: number[];
+  try {
+    serviceIds = budgetServiceLinks(budgetData);
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid service assignments' }); return;
+  }
+  if (serviceIds.length) {
+    const owned = await db.select({ id: servicesTable.id }).from(servicesTable)
+      .where(and(eq(servicesTable.tenantId, tenantId), inArray(servicesTable.id, serviceIds)));
+    if (owned.length !== serviceIds.length) {
+      res.status(400).json({ error: 'Every budget service must belong to your company' }); return;
+    }
   }
   await db.execute(sql`
     UPDATE tenants SET budget_data = ${JSON.stringify(budgetData)}::jsonb WHERE id = ${tenantId}

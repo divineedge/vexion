@@ -11,7 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { AlertTriangle, ArrowUpRight, Calculator, Info, RefreshCw, Scale } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
-import { migrateBudgetPayload, computeDivision, computeCompanyTotal } from '@/lib/budgetCalc';
+import { migrateBudgetPayload } from '@/lib/budgetCalc';
+import { pricingBudgetRate, recommendedJobPrice } from '@/lib/pricingBudget';
 
 interface PricingJob {
   id: number; title: string; customerId: number | null; customerName: string | null; propertyAddress: string | null;
@@ -42,7 +43,7 @@ export default function PricingReviewPage() {
   const [from, setFrom] = useState(iso(new Date(today.getFullYear(), 0, 1)));
   const [to, setTo] = useState(iso(today));
   const [yearSel, setYearSel] = useState<string>('');
-  const [target, setTarget] = useState<string>('company');
+  const [target, setTarget] = useState<string>('auto');
   const [serviceFilter, setServiceFilter] = useState<string>('all');
   const [threshold, setThreshold] = useState('25');
   const [minSample, setMinSample] = useState('5');
@@ -51,6 +52,9 @@ export default function PricingReviewPage() {
     queryKey: ['pricing-review', from, to],
     queryFn: () => customFetch<PricingReport>(`/api/reports/pricing-review?from=${from}&to=${to}`),
     enabled: allowed && !!from && !!to && from <= to,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
   const budgetYears = useMemo(() => {
@@ -58,19 +62,12 @@ export default function PricingReviewPage() {
     try { return migrateBudgetPayload(JSON.parse(data.budgetJson)); } catch { return []; }
   }, [data?.budgetJson]);
   const year = budgetYears.find(y => String(y.year) === yearSel) ?? budgetYears.find(y => y.year === today.getFullYear()) ?? budgetYears[0];
-  const division = target !== 'company' ? year?.divisions.find(d => d.id === target) : undefined;
-
-  const rate = useMemo(() => {
-    if (!year) return null;
-    if (target === 'company') {
-      const c = computeCompanyTotal(year);
-      return { hourly: c.combinedRequiredHourlyRate, floor: 0, label: `${year.year} company total` };
-    }
-    if (!division) return null;
-    const r = computeDivision(division);
-    return { hourly: r.requiredHourlyRate, floor: r.minimumShowUpCost, label: `${year.year} ${division.name} division` };
-  }, [year, division, target]);
-  const budgetValid = !!rate && Number.isFinite(rate.hourly) && rate.hourly > 0;
+  const perService = target === 'auto' && serviceFilter === 'all';
+  const rate = useMemo(() => pricingBudgetRate(year, serviceFilter === 'all' ? null : Number(serviceFilter), target), [year, serviceFilter, target]);
+  const budgetValid = perService ? !!year && year.divisions.some(d => {
+    const divisionRate = pricingBudgetRate(year, null, d.id);
+    return !!divisionRate && Number.isFinite(divisionRate.hourly) && divisionRate.hourly > 0;
+  }) : !!rate && Number.isFinite(rate.hourly) && rate.hourly > 0;
 
   const services = useMemo(() => {
     const m = new Map<string, string>();
@@ -81,23 +78,23 @@ export default function PricingReviewPage() {
   const rows = useMemo(() => (data?.jobs ?? [])
     .filter(j => serviceFilter === 'all' || String(j.serviceId) === serviceFilter)
     .map(j => {
+      const jobRate = pricingBudgetRate(year, j.serviceId, target);
       const reasons: Exclusion[] = [];
-      if (!budgetValid) reasons.push('budget');
+      if (!jobRate || !Number.isFinite(jobRate.hourly) || jobRate.hourly <= 0 || !Number.isFinite(jobRate.floor)) reasons.push('budget');
       if (!(j.recordedMinutes > 0)) reasons.push('no_time');
       if (j.hasOpenTimers) reasons.push('open_timer');
       if (!(j.totalAmount > 0)) reasons.push('no_price');
       if (j.materialSnapshotMissing) reasons.push('materials');
       const hours = j.recordedMinutes / 60;
       let recommended: number | null = null;
-      if (reasons.length === 0 && rate) {
-        const raw = Math.max(hours * rate.hourly, rate.floor) + (j.materialSellAmount || 0);
-        recommended = Math.round(raw * 100) / 100;
+      if (reasons.length === 0 && jobRate) {
+        recommended = recommendedJobPrice(hours, j.materialSellAmount || 0, jobRate);
       }
       const comparable = reasons.length === 0 && recommended != null;
       const underpriced = comparable && cents(j.totalAmount) < cents(recommended!);
       const shortfall = underpriced ? recommended! - j.totalAmount : 0;
-      return { j, hours, recommended, reasons, comparable, underpriced, shortfall };
-    }), [data?.jobs, serviceFilter, budgetValid, rate]);
+      return { j, hours, recommended, reasons, comparable, underpriced, shortfall, jobRate };
+    }), [data?.jobs, serviceFilter, year, target]);
 
   const thresholdN = Math.max(0, Number(threshold) || 0);
   const minSampleN = Math.max(1, Math.floor(Number(minSample) || 1));
@@ -160,7 +157,7 @@ export default function PricingReviewPage() {
           <Field label="From"><Input type="date" value={from} onChange={e => setFrom(e.target.value)} data-testid="input-from" /></Field>
           <Field label="To"><Input type="date" value={to} onChange={e => setTo(e.target.value)} data-testid="input-to" /></Field>
           <Field label="Budget year">
-            <Select value={year ? String(year.year) : ''} onValueChange={v => { setYearSel(v); setTarget('company'); }} disabled={budgetYears.length === 0}>
+            <Select value={year ? String(year.year) : ''} onValueChange={v => { setYearSel(v); setTarget('auto'); }} disabled={budgetYears.length === 0}>
               <SelectTrigger data-testid="select-budget-year"><SelectValue placeholder="No saved budget" /></SelectTrigger>
               <SelectContent>{budgetYears.map(y => <SelectItem key={y.year} value={String(y.year)}>{y.year}</SelectItem>)}</SelectContent>
             </Select>
@@ -169,6 +166,7 @@ export default function PricingReviewPage() {
             <Select value={target} onValueChange={setTarget} disabled={!year}>
               <SelectTrigger data-testid="select-target"><SelectValue /></SelectTrigger>
               <SelectContent>
+                <SelectItem value="auto">Service's budget division (automatic)</SelectItem>
                 <SelectItem value="company">Company total</SelectItem>
                 {(year?.divisions ?? []).map(d => <SelectItem key={d.id} value={d.id}>Division: {d.name}</SelectItem>)}
               </SelectContent>
@@ -210,8 +208,8 @@ export default function PricingReviewPage() {
           )}
 
           <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-            <Stat label="Required hourly rate" value={budgetValid ? money(rate!.hourly) : 'Not available'} hint={rate?.label ?? 'No budget target'} />
-            <Stat label={target === 'company' ? 'Minimum floor' : 'Minimum show-up floor'} value={budgetValid ? (rate!.floor > 0 ? money(rate!.floor) : 'None') : '—'} hint={target === 'company' ? 'Company rate applies no floor' : 'From division minimum visit hours'} />
+            <Stat label="Required hourly rate" value={perService && budgetValid ? 'By service' : budgetValid && rate ? money(rate.hourly) : 'Not available'} hint={perService ? 'Each job uses its service division; unassigned uses company' : rate?.label ?? 'No budget target'} />
+            <Stat label="Minimum show-up floor" value={perService && budgetValid ? 'By service' : budgetValid && rate ? (rate.floor > 0 ? money(rate.floor) : 'None') : '—'} hint={perService ? 'Applied separately to each job before materials' : 'From the selected budget minimum visit hours'} />
             <Stat label="Comparable jobs" value={`${comparableCount} of ${rows.length}`} hint={`${rows.length - comparableCount} excluded`} />
             <Stat label="Underpriced" value={String(underCount)} hint={comparableCount ? `${((underCount / comparableCount) * 100).toFixed(1)}% of comparable` : 'No comparable jobs'} />
           </div>
@@ -257,7 +255,7 @@ export default function PricingReviewPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Completed jobs</CardTitle>
-              <CardDescription>Recommended = total person-hours x required hourly rate + recorded material sell amount{target !== 'company' ? ', never below the division minimum show-up cost' : ''}.</CardDescription>
+              <CardDescription>Recommended = the greater of labor hours × budget hourly target or the budget minimum show-up cost, plus recorded material selling prices.</CardDescription>
             </CardHeader>
             <CardContent className="p-0 overflow-x-auto">
               {rows.length === 0 ? (
@@ -265,12 +263,12 @@ export default function PricingReviewPage() {
               ) : (
                 <Table>
                   <TableHeader><TableRow>
-                    <TableHead>Job</TableHead><TableHead>Service</TableHead><TableHead>Completed</TableHead>
+                    <TableHead>Job</TableHead><TableHead>Service</TableHead><TableHead>Budget used</TableHead><TableHead>Completed</TableHead>
                     <TableHead className="text-right">Person-hours</TableHead><TableHead className="text-right">Materials (sell)</TableHead>
                     <TableHead className="text-right">Charged</TableHead><TableHead className="text-right">Recommended</TableHead><TableHead>Status</TableHead>
                   </TableRow></TableHeader>
                   <TableBody>
-                    {rows.map(({ j, hours, recommended, reasons, underpriced, shortfall }) => (
+                    {rows.map(({ j, hours, recommended, reasons, underpriced, shortfall, jobRate }) => (
                       <TableRow key={j.id} data-testid={`row-job-${j.id}`}>
                         <TableCell>
                           <Link href={`/schedule?jobId=${j.id}`} className="font-medium hover:underline inline-flex items-center gap-1" data-testid={`link-job-${j.id}`}>
@@ -279,6 +277,9 @@ export default function PricingReviewPage() {
                           <p className="text-xs text-muted-foreground truncate max-w-[220px]">{j.customerName ?? 'No customer'}{j.propertyAddress ? ` · ${j.propertyAddress}` : ''}</p>
                         </TableCell>
                         <TableCell className="text-sm">{j.serviceName ?? '—'}{j.pricingType === 'matrix' && <Badge variant="secondary" className="ml-1.5 font-normal">matrix</Badge>}</TableCell>
+                        <TableCell className="text-xs" data-testid={`text-job-budget-${j.id}`}>
+                          {jobRate ? <>{jobRate.label}<span className="block text-muted-foreground">{money(jobRate.hourly)}/person-hour · minimum {money(jobRate.floor)}</span></> : 'No valid budget assignment'}
+                        </TableCell>
                         <TableCell className="text-sm">{new Date(j.completedAt).toLocaleDateString()}</TableCell>
                         <TableCell className="text-right tabular-nums">{hours.toFixed(2)}</TableCell>
                         <TableCell className="text-right tabular-nums">{j.materialSnapshotMissing ? 'Invalid' : money(j.materialSellAmount || 0)}</TableCell>
@@ -304,7 +305,7 @@ export default function PricingReviewPage() {
           <Card className="bg-muted/30">
             <CardContent className="p-4 text-xs text-muted-foreground space-y-1.5">
               <p className="font-medium text-foreground flex items-center gap-1.5"><Info className="w-3.5 h-3.5" /> How this was calculated</p>
-              <p>Budget: {rate ? rate.label : 'none selected'}. Historical prices are each job's recorded total. Person-hours sum closed time entries for every worker on the job.</p>
+              <p>Budget: {perService ? 'automatic by service assignment for the selected year; unassigned services use the company budget' : rate ? rate.label : 'none selected'}. Historical prices are each job's recorded total. Person-hours sum closed time entries for every worker on the job.</p>
               <p>Exclusions: {(Object.keys(exclusionCounts) as Exclusion[]).map(k => `${EXCLUSION_LABEL[k]} (${exclusionCounts[k]})`).join(', ')}.
                 {data.missingCompletionDates > 0 && ` ${data.missingCompletionDates} completed job${data.missingCompletionDates > 1 ? 's' : ''} had no completion date and could not be placed in the period.`}</p>
               <p>A job counts as underpriced when its charged amount is below the recommended price, compared in rounded cents. This page is advisory: no service, matrix, or job price is changed automatically.</p>

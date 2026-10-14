@@ -6,7 +6,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import {
   Save, Loader2, ShieldAlert, CheckCircle2, Plus, X, Pencil, Building2, Printer,
 } from 'lucide-react';
-import { customFetch } from '@workspace/api-client-react';
+import { customFetch, useListServices, getListServicesQueryKey } from '@workspace/api-client-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import {
   BudgetYear, DivisionBudget, defaultBudgetYear, defaultDivision,
   migrateBudgetPayload, computeDivision,
@@ -25,6 +27,10 @@ export default function BudgetPage() {
   const [divisionSaving, setDivisionSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const { data: serviceData, isLoading: servicesLoading, isError: servicesError, refetch: reloadServices } = useListServices(
+    undefined, { query: { queryKey: getListServicesQueryKey(), enabled: canManageOffice } },
+  );
 
   useEffect(() => {
     customFetch<{ budgetData: unknown }>('/api/settings/budget')
@@ -43,10 +49,7 @@ export default function BudgetPage() {
         }
       })
       .catch(() => {
-        const fresh = defaultBudgetYear();
-        setYears([fresh]);
-        setCurrentYear(fresh.year);
-        setActiveTab(fresh.divisions[0].id);
+        setLoadError(true);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -182,6 +185,12 @@ export default function BudgetPage() {
   if (loading) {
     return <div className="flex items-center justify-center py-24"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
   }
+  if (loadError) {
+    return <Card><CardContent className="p-6 space-y-3">
+      <p>Budget could not be loaded. Your saved budget has not been replaced.</p>
+      <Button onClick={() => window.location.reload()}>Reload Budget</Button>
+    </CardContent></Card>;
+  }
 
   const activeDivision = year.divisions.find(d => d.id === activeTab) ?? null;
   const previousDivision = previousYear?.divisions.find(d => d.name === activeDivision?.name) ?? null;
@@ -298,12 +307,39 @@ export default function BudgetPage() {
           onCompanyCheckupChange={(which, c) => updateYear(y => ({ ...y, [which]: c }))}
         />
       ) : activeDivision ? (
+        <>
+        <Card data-testid="card-budget-services">
+          <CardHeader>
+            <CardTitle className="text-base">Services in {activeDivision.name}</CardTitle>
+            <CardDescription>Pricing Review uses this division's hourly target and minimum for these services. Each service can belong to one division per year. Click Save Budget to save assignments.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {servicesLoading ? <p className="text-sm text-muted-foreground">Loading services…</p>
+              : servicesError ? <Button variant="outline" onClick={() => reloadServices()}>Retry loading services</Button>
+              : !serviceData?.length ? <p className="text-sm text-muted-foreground">No services yet. Add services in the service catalog first.</p>
+              : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {serviceData.map(service => {
+                  const other = year.divisions.find(d => d.id !== activeDivision.id && d.serviceIds.includes(service.id));
+                  const checked = activeDivision.serviceIds.includes(service.id);
+                  return <label key={service.id} className={`flex items-start gap-2 text-sm ${other ? 'text-muted-foreground' : ''}`}>
+                    <Checkbox data-testid={`checkbox-budget-service-${service.id}`} checked={checked} disabled={(!!other && !checked) || saving || divisionSaving}
+                      onCheckedChange={value => updateDivision(activeDivision.id, {
+                        ...activeDivision, serviceIds: value === true ? [...activeDivision.serviceIds, service.id]
+                          : activeDivision.serviceIds.filter(id => id !== service.id),
+                      })} />
+                    <span>{service.name}{other && <span className="block text-xs">{checked ? `Also assigned to ${other.name}; unlink from one division.` : `Assigned to ${other.name}; unlink there first.`}</span>}</span>
+                  </label>;
+                })}
+              </div>}
+          </CardContent>
+        </Card>
         <DivisionPanel
           division={activeDivision}
           onChange={updated => updateDivision(activeDivision.id, updated)}
           previousResults={previousDivision ? computeDivision(previousDivision) : null}
           previousYear={previousDivision ? previousYear!.year : undefined}
         />
+        </>
       ) : null}
     </div>
   );

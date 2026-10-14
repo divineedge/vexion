@@ -29,6 +29,7 @@ import {sql} from "drizzle-orm";
 import sharing from "./documentSharing";
 import invoices from "./invoices";
 import estimates from "./estimates";
+import settings from "./settings";
 import { propertiesTable, servicesTable } from "@workspace/db";
 import { recurringInvoiceTemplatesTable } from "@workspace/db";
 import { generateDueTemplate } from "../lib/billingScheduler";
@@ -36,7 +37,7 @@ import { generateDueTemplate } from "../lib/billingScheduler";
 describe("rollback-only pricing, inventory and invoice recovery",()=>{
   let client:any,serial=0,customer:number,item:number,warehouse:number,job:number,otherTenant:number;
   const app=express();
-  app.use(express.json({verify:(req,_res,buffer)=>{(req as any).rawBody=buffer;}}),expenses,pricing,safety,policies,reminderSettings,portal,sharing,invoices,estimates);
+  app.use(express.json({verify:(req,_res,buffer)=>{(req as any).rawBody=buffer;}}),expenses,pricing,safety,policies,reminderSettings,portal,sharing,invoices,estimates,settings);
   beforeAll(async()=>{
     client=await pool.connect();await client.query("BEGIN");
     const raw=drizzle(client);
@@ -58,6 +59,24 @@ describe("rollback-only pricing, inventory and invoice recovery",()=>{
     item=(await db.insert(inventoryItemsTable).values({tenantId:scope.tenant,name:"QA supplies",sku:"QA-ONE",quantity:10,unitPrice:10,markedUpPrice:15}).returning())[0].id;
     job=(await db.insert(jobsTable).values({tenantId:scope.tenant,customerId:customer,title:"QA completed job",status:"completed",scheduledAt:new Date(),completedAt:new Date(),totalAmount:40,jobParts:[{total:15}]}).returning())[0].id;
     await db.insert(subTimersTable).values({tenantId:scope.tenant,userId:scope.user,type:"job",label:"QA work",jobId:job,elapsedSeconds:3600,isActive:false,stoppedAt:new Date()});
+  });
+  it("persists division service links and minimums for pricing review, rejecting foreign and duplicate assignments", async()=>{
+    const originalBudget=(await request(app).get("/settings/budget")).body.budgetData;
+    const service=(await db.insert(servicesTable).values({tenantId:scope.tenant,name:"Budget-linked service"}).returning())[0];
+    const foreign=(await db.insert(servicesTable).values({tenantId:otherTenant,name:"Foreign budget service"}).returning())[0];
+    const budgetData=[{year:2026,divisions:[{id:"budget-lawn",name:"Lawn",serviceIds:[service.id],minimumVisitHours:1.5}],overheadOverrides:{fuelMaintenance:500}}];
+    expect((await request(app).patch("/settings/budget").send({budgetData})).status).toBe(200);
+    const saved=await request(app).get("/settings/budget");
+    expect(saved.body.budgetData).toEqual(budgetData);
+    const report=await request(app).get("/reports/pricing-review?from=2026-01-01&to=2026-12-31");
+    expect(report.status).toBe(200);
+    expect(JSON.parse(report.body.budgetJson)).toEqual(budgetData);
+    const bad=[{...budgetData[0],divisions:[{...budgetData[0].divisions[0],serviceIds:[foreign.id]}]}];
+    expect((await request(app).patch("/settings/budget").send({budgetData:bad})).status).toBe(400);
+    const duplicate=[{...budgetData[0],divisions:[...budgetData[0].divisions,{id:"second",serviceIds:[service.id]}]}];
+    expect((await request(app).patch("/settings/budget").send({budgetData:duplicate})).status).toBe(400);
+    expect((await request(app).get("/settings/budget")).body.budgetData).toEqual(budgetData);
+    await db.execute(sql`UPDATE tenants SET budget_data=${originalBudget == null ? null : JSON.stringify(originalBudget)}::jsonb WHERE id=${scope.tenant}`);
   });
   afterAll(async()=>{vi.unstubAllEnvs();scope.connection=null;if(client){await client.query("ROLLBACK");client.release();}});
   it("receives once, preserves old stock and markup, and rolls back invalid receipts",async()=>{

@@ -30,6 +30,8 @@ import sharing from "./documentSharing";
 import invoices from "./invoices";
 import estimates from "./estimates";
 import settings from "./settings";
+import kpis from "./kpis";
+import { installKpiSchema } from "../lib/kpiSettings";
 import { propertiesTable, servicesTable } from "@workspace/db";
 import { recurringInvoiceTemplatesTable } from "@workspace/db";
 import { generateDueTemplate } from "../lib/billingScheduler";
@@ -37,7 +39,7 @@ import { generateDueTemplate } from "../lib/billingScheduler";
 describe("rollback-only pricing, inventory and invoice recovery",()=>{
   let client:any,serial=0,customer:number,item:number,warehouse:number,job:number,otherTenant:number;
   const app=express();
-  app.use(express.json({verify:(req,_res,buffer)=>{(req as any).rawBody=buffer;}}),expenses,pricing,safety,policies,reminderSettings,portal,sharing,invoices,estimates,settings);
+  app.use(express.json({verify:(req,_res,buffer)=>{(req as any).rawBody=buffer;}}),expenses,pricing,safety,policies,reminderSettings,portal,sharing,invoices,estimates,settings,kpis);
   beforeAll(async()=>{
     client=await pool.connect();await client.query("BEGIN");
     const raw=drizzle(client);
@@ -51,6 +53,7 @@ describe("rollback-only pricing, inventory and invoice recovery",()=>{
       const value=(target as any)[key];return typeof value==="function"?value.bind(target):value;
     }});
     scope.connection=connection;
+    await installKpiSchema();
     scope.tenant=(await db.insert(tenantsTable).values({name:"Rollback money QA",timezone:"UTC",taxRate:0}).returning())[0].id;
     otherTenant=(await db.insert(tenantsTable).values({name:"Rollback other QA",timezone:"UTC"}).returning())[0].id;
     scope.user=(await db.insert(usersTable).values({tenantId:scope.tenant,name:"QA owner",email:`${randomUUID()}@example.invalid`,role:"company_owner"}).returning())[0].id;
@@ -77,6 +80,38 @@ describe("rollback-only pricing, inventory and invoice recovery",()=>{
     expect((await request(app).patch("/settings/budget").send({budgetData:duplicate})).status).toBe(400);
     expect((await request(app).get("/settings/budget")).body.budgetData).toEqual(budgetData);
     await db.execute(sql`UPDATE tenants SET budget_data=${originalBudget == null ? null : JSON.stringify(originalBudget)}::jsonb WHERE id=${scope.tenant}`);
+  });
+  it("persists KPI selections per company, validates selections, and returns tenant-owned report sources",async()=>{
+    const choice={mainKpis:["customer_spend","cash"],detailKpis:["customer_spend","cash","efficiency"]};
+    expect((await request(app).patch("/settings/kpis").send(choice)).status).toBe(200);
+    expect((await request(app).get("/settings/kpis")).body).toEqual(choice);
+    expect((await request(app).patch("/settings/kpis").send({mainKpis:["cash"],detailKpis:[]})).status).toBe(400);
+    expect((await request(app).get("/settings/kpis")).body).toEqual(choice);
+    const report=await request(app).get("/dashboard/kpis?from=2026-01-01&to=2026-12-31");
+    expect(report.status,JSON.stringify(report.body)).toBe(200);
+    expect(report.body.jobs.some((j:{id:number})=>j.id===job)).toBe(true);
+    expect(report.body.jobs.every((j:{customerId:number})=>j.customerId===customer)).toBe(true);
+    expect((await request(app).get("/dashboard/kpis?from=2026-02-30&to=2026-12-31")).status).toBe(400);
+    const ownerUser=scope.user;
+    const tech=(await db.insert(usersTable).values({tenantId:scope.tenant,name:"KPI technician",role:"technician",email:`${randomUUID()}@example.invalid`}).returning())[0];
+    scope.user=tech.id;
+    expect((await request(app).get("/settings/kpis")).status).toBe(403);
+    expect((await request(app).get("/dashboard/kpis?from=2026-01-01&to=2026-12-31")).status).toBe(403);
+    scope.user=ownerUser;
+    const manager=(await db.insert(usersTable).values({tenantId:scope.tenant,name:"KPI office manager",role:"office_manager",email:`${randomUUID()}@example.invalid`}).returning())[0];
+    await db.update(tenantsTable).set({rolePermissions:{office_manager:{"financials.costData":false}}}).where(eq(tenantsTable.id,scope.tenant));
+    scope.user=manager.id;
+    expect((await request(app).get("/dashboard/kpis?from=2026-01-01&to=2026-12-31")).status).toBe(403);
+    scope.user=ownerUser;
+    await db.update(tenantsTable).set({rolePermissions:{}}).where(eq(tenantsTable.id,scope.tenant));
+    // Keep later notification fixtures' single-office-recipient assumption intact.
+    await db.update(usersTable).set({role:"technician"}).where(eq(usersTable.id,manager.id));
+    const originalTenant=scope.tenant;
+    const otherOwner=(await db.insert(usersTable).values({tenantId:otherTenant,name:"Other KPI owner",role:"company_owner",email:`${randomUUID()}@example.invalid`}).returning())[0];
+    scope.tenant=otherTenant;scope.user=otherOwner.id;
+    expect((await request(app).get("/settings/kpis")).body.mainKpis).toContain("revenue_hour");
+    scope.tenant=originalTenant;scope.user=ownerUser;
+    expect((await request(app).get("/settings/kpis")).body).toEqual(choice);
   });
   afterAll(async()=>{vi.unstubAllEnvs();scope.connection=null;if(client){await client.query("ROLLBACK");client.release();}});
   it("receives once, preserves old stock and markup, and rolls back invalid receipts",async()=>{

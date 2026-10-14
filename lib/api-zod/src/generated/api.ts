@@ -15190,3 +15190,109 @@ export const DownloadFormEvidenceParams = zod.object({
 export const DownloadFormEvidenceResponse = zod.unknown()
 
 
+export const GetKpiDashboardSettingsResponse = zod.object({
+  "mainKpis": zod.array(zod.enum(['revenue_hour', 'efficiency', 'margin', 'underpriced', 'unbilled', 'overdue', 'cash', 'acceptance', 'callbacks', 'retention', 'schedule', 'productive', 'customer_spend'])),
+  "detailKpis": zod.array(zod.enum(['revenue_hour', 'efficiency', 'margin', 'underpriced', 'unbilled', 'overdue', 'cash', 'acceptance', 'callbacks', 'retention', 'schedule', 'productive', 'customer_spend']))
+})
+
+
+export const UpdateKpiDashboardSettingsBody = zod.object({
+  "mainKpis": zod.array(zod.enum(['revenue_hour', 'efficiency', 'margin', 'underpriced', 'unbilled', 'overdue', 'cash', 'acceptance', 'callbacks', 'retention', 'schedule', 'productive', 'customer_spend'])),
+  "detailKpis": zod.array(zod.enum(['revenue_hour', 'efficiency', 'margin', 'underpriced', 'unbilled', 'overdue', 'cash', 'acceptance', 'callbacks', 'retention', 'schedule', 'productive', 'customer_spend']))
+})
+
+export const UpdateKpiDashboardSettingsResponse = zod.object({
+  "mainKpis": zod.array(zod.enum(['revenue_hour', 'efficiency', 'margin', 'underpriced', 'unbilled', 'overdue', 'cash', 'acceptance', 'callbacks', 'retention', 'schedule', 'productive', 'customer_spend'])),
+  "detailKpis": zod.array(zod.enum(['revenue_hour', 'efficiency', 'margin', 'underpriced', 'unbilled', 'overdue', 'cash', 'acceptance', 'callbacks', 'retention', 'schedule', 'productive', 'customer_spend']))
+})
+
+
+export const GetKpiDashboardReportQueryParams = zod.object({
+  "from": zod.coerce.string(),
+  "to": zod.coerce.string()
+})
+
+export const GetKpiDashboardReportResponse = zod.object({
+  "from": zod.string(),
+  "to": zod.string(),
+  "timezone": zod.string(),
+  "asOf": zod.string(),
+  "budgetJson": zod.string().nullable(),
+  "jobs": zod.array(zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "customerId": zod.number().nullable(),
+  "customerName": zod.string(),
+  "serviceId": zod.number().nullable(),
+  "crewId": zod.number().nullable(),
+  "crewName": zod.string(),
+  "status": zod.string(),
+  "scheduledDate": zod.string(),
+  "completedDate": zod.string().nullable(),
+  "total": zod.number(),
+  "minutes": zod.number(),
+  "budgetMinutes": zod.number(),
+  "openTimers": zod.boolean(),
+  "materialSell": zod.number(),
+  "materialCost": zod.number().nullable(),
+  "laborCost": zod.number().nullable(),
+  "fuelCost": zod.number(),
+  "materialsInvalid": zod.boolean(),
+  "workers": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "minutes": zod.number()
+})).optional()
+})),
+  "invoices": zod.array(zod.object({
+  "id": zod.number(),
+  "number": zod.string(),
+  "customerId": zod.number(),
+  "customerName": zod.string(),
+  "status": zod.string(),
+  "total": zod.number(),
+  "balance": zod.number(),
+  "paidDate": zod.string().nullable(),
+  "dueDate": zod.string().nullable(),
+  "cash": zod.number()
+})),
+  "estimates": zod.array(zod.object({
+  "id": zod.number(),
+  "customerName": zod.string(),
+  "total": zod.number(),
+  "status": zod.string(),
+  "reason": zod.string().nullable()
+})),
+  "callbacks": zod.array(zod.object({
+  "id": zod.number(),
+  "jobId": zod.number(),
+  "title": zod.string(),
+  "reason": zod.string(),
+  "crewName": zod.string()
+})),
+  "previousCustomers": zod.array(zod.number()),
+  "unbilled": zod.array(zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "customerName": zod.string().nullable(),
+  "totalAmount": zod.number(),
+  "reason": zod.string(),
+  "needsAttention": zod.boolean(),
+  "canInvoice": zod.boolean()
+})),
+  "clock": zod.object({
+  "paidMinutes": zod.number(),
+  "jobMinutes": zod.number(),
+  "openEntries": zod.number(),
+  "other": zod.array(zod.object({
+  "type": zod.string(),
+  "minutes": zod.number()
+}))
+}),
+  "receipts": zod.object({
+  "deposits": zod.number(),
+  "prepayments": zod.number()
+})
+})
+
+

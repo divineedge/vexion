@@ -9087,8 +9087,173 @@ paths:
               schema:
                 type: string
                 format: binary
+  /settings/kpis:
+    get:
+      operationId: getKpiDashboardSettings
+      tags: [settings]
+      responses:
+        "200":
+          description: Company KPI selections
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KpiDashboardSettings" }
+        "403": { description: Office permission required }
+    patch:
+      operationId: updateKpiDashboardSettings
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KpiDashboardSettings" }
+      responses:
+        "200":
+          description: Saved company KPI selections
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KpiDashboardSettings" }
+        "400": { description: Invalid or inconsistent KPI selections }
+        "403": { description: Office permission required }
+  /dashboard/kpis:
+    get:
+      operationId: getKpiDashboardReport
+      tags: [dashboard]
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string } }
+        - { name: to, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Tenant-calendar KPI sources and current financial backlog
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KpiDashboardReport" }
+        "400": { description: Invalid date range }
+        "403": { description: Financial office permission required }
 components:
   schemas:
+    KpiKey:
+      type: string
+      enum: [revenue_hour, efficiency, margin, underpriced, unbilled, overdue, cash, acceptance, callbacks, retention, schedule, productive, customer_spend]
+    KpiDashboardSettings:
+      type: object
+      required: [mainKpis, detailKpis]
+      properties:
+        mainKpis: { type: array, items: { $ref: "#/components/schemas/KpiKey" } }
+        detailKpis: { type: array, items: { $ref: "#/components/schemas/KpiKey" } }
+    KpiDashboardJob:
+      type: object
+      required: [id, title, customerId, customerName, serviceId, crewId, crewName, status, scheduledDate, completedDate, total, minutes, budgetMinutes, openTimers, materialSell, materialCost, laborCost, fuelCost, materialsInvalid]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        customerId: { type: integer, nullable: true }
+        customerName: { type: string }
+        serviceId: { type: integer, nullable: true }
+        crewId: { type: integer, nullable: true }
+        crewName: { type: string }
+        status: { type: string }
+        scheduledDate: { type: string }
+        completedDate: { type: string, nullable: true }
+        total: { type: number }
+        minutes: { type: number }
+        budgetMinutes: { type: number }
+        openTimers: { type: boolean }
+        materialSell: { type: number }
+        materialCost: { type: number, nullable: true }
+        laborCost: { type: number, nullable: true }
+        fuelCost: { type: number }
+        materialsInvalid: { type: boolean }
+        workers:
+          type: array
+          items:
+            type: object
+            required: [id, name, minutes]
+            properties:
+              id: { type: integer }
+              name: { type: string }
+              minutes: { type: number }
+    KpiDashboardInvoice:
+      type: object
+      required: [id, number, customerId, customerName, status, total, balance, paidDate, dueDate, cash]
+      properties:
+        id: { type: integer }
+        number: { type: string }
+        customerId: { type: integer }
+        customerName: { type: string }
+        status: { type: string }
+        total: { type: number }
+        balance: { type: number }
+        paidDate: { type: string, nullable: true }
+        dueDate: { type: string, nullable: true }
+        cash: { type: number }
+    KpiDashboardReport:
+      type: object
+      required: [from, to, timezone, asOf, budgetJson, jobs, invoices, estimates, callbacks, previousCustomers, unbilled, clock, receipts]
+      properties:
+        from: { type: string }
+        to: { type: string }
+        timezone: { type: string }
+        asOf: { type: string }
+        budgetJson: { type: string, nullable: true }
+        jobs: { type: array, items: { $ref: "#/components/schemas/KpiDashboardJob" } }
+        invoices: { type: array, items: { $ref: "#/components/schemas/KpiDashboardInvoice" } }
+        estimates:
+          type: array
+          items:
+            type: object
+            required: [id, customerName, total, status, reason]
+            properties:
+              id: { type: integer }
+              customerName: { type: string }
+              total: { type: number }
+              status: { type: string }
+              reason: { type: string, nullable: true }
+        callbacks:
+          type: array
+          items:
+            type: object
+            required: [id, jobId, title, reason, crewName]
+            properties:
+              id: { type: integer }
+              jobId: { type: integer }
+              title: { type: string }
+              reason: { type: string }
+              crewName: { type: string }
+        previousCustomers: { type: array, items: { type: integer } }
+        unbilled:
+          type: array
+          items:
+            type: object
+            required: [id, title, customerName, totalAmount, reason, needsAttention, canInvoice]
+            properties:
+              id: { type: integer }
+              title: { type: string }
+              customerName: { type: string, nullable: true }
+              totalAmount: { type: number }
+              reason: { type: string }
+              needsAttention: { type: boolean }
+              canInvoice: { type: boolean }
+        clock:
+          type: object
+          required: [paidMinutes, jobMinutes, other, openEntries]
+          properties:
+            paidMinutes: { type: number }
+            jobMinutes: { type: number }
+            openEntries: { type: integer }
+            other:
+              type: array
+              items:
+                type: object
+                required: [type, minutes]
+                properties:
+                  type: { type: string }
+                  minutes: { type: number }
+        receipts:
+          type: object
+          required: [deposits, prepayments]
+          properties:
+            deposits: { type: number }
+            prepayments: { type: number }
     FormEvidenceUploadInput:
       type: object
       required: [scope, scopeId, fieldId, fileName, mimeType]

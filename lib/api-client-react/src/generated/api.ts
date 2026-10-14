@@ -172,6 +172,7 @@ import type {
   GetJobChemicalWeather200,
   GetJobMessageUnreadCount200,
   GetJobProfitabilityReportParams,
+  GetKpiDashboardReportParams,
   GetPaymentPolicy200,
   GetPlStatementReportParams,
   GetPricingHistoryReportParams,
@@ -220,6 +221,8 @@ import type {
   JobRouteAssignment,
   JobRouteUpdate,
   JobUpdate,
+  KpiDashboardReport,
+  KpiDashboardSettings,
   ListBankTransactionsParams,
   ListBlueprintsParams,
   ListBulkFuelTanksParams,
@@ -33654,6 +33657,220 @@ export function useDownloadFormEvidence<TData = Awaited<ReturnType<typeof downlo
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getDownloadFormEvidenceQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetKpiDashboardSettingsUrl = () => {
+
+
+
+
+  return `/api/settings/kpis`
+}
+
+export const getKpiDashboardSettings = async ( options?: RequestInit): Promise<KpiDashboardSettings> => {
+
+  return customFetch<KpiDashboardSettings>(getGetKpiDashboardSettingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetKpiDashboardSettingsQueryKey = () => {
+    return [
+    `/api/settings/kpis`
+    ] as const;
+    }
+
+
+export const getGetKpiDashboardSettingsQueryOptions = <TData = Awaited<ReturnType<typeof getKpiDashboardSettings>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKpiDashboardSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetKpiDashboardSettingsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getKpiDashboardSettings>>> = ({ signal }) => getKpiDashboardSettings({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getKpiDashboardSettings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetKpiDashboardSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getKpiDashboardSettings>>>
+export type GetKpiDashboardSettingsQueryError = ErrorType<void>
+
+
+
+export function useGetKpiDashboardSettings<TData = Awaited<ReturnType<typeof getKpiDashboardSettings>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKpiDashboardSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetKpiDashboardSettingsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateKpiDashboardSettingsUrl = () => {
+
+
+
+
+  return `/api/settings/kpis`
+}
+
+export const updateKpiDashboardSettings = async (kpiDashboardSettings: KpiDashboardSettings, options?: RequestInit): Promise<KpiDashboardSettings> => {
+
+  return customFetch<KpiDashboardSettings>(getUpdateKpiDashboardSettingsUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(kpiDashboardSettings)
+  }
+);}
+
+
+
+
+
+export const getUpdateKpiDashboardSettingsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateKpiDashboardSettings>>, TError,{data: BodyType<KpiDashboardSettings>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateKpiDashboardSettings>>, TError,{data: BodyType<KpiDashboardSettings>}, TContext> => {
+
+const mutationKey = ['updateKpiDashboardSettings'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateKpiDashboardSettings>>, {data: BodyType<KpiDashboardSettings>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateKpiDashboardSettings(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateKpiDashboardSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateKpiDashboardSettings>>>
+    export type UpdateKpiDashboardSettingsMutationBody = BodyType<KpiDashboardSettings>
+    export type UpdateKpiDashboardSettingsMutationError = ErrorType<void>
+
+    export const useUpdateKpiDashboardSettings = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateKpiDashboardSettings>>, TError,{data: BodyType<KpiDashboardSettings>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateKpiDashboardSettings>>,
+        TError,
+        {data: BodyType<KpiDashboardSettings>},
+        TContext
+      > => {
+      return useMutation(getUpdateKpiDashboardSettingsMutationOptions(options));
+    }
+
+export const getGetKpiDashboardReportUrl = (params: GetKpiDashboardReportParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dashboard/kpis?${stringifiedParams}` : `/api/dashboard/kpis`
+}
+
+export const getKpiDashboardReport = async (params: GetKpiDashboardReportParams, options?: RequestInit): Promise<KpiDashboardReport> => {
+
+  return customFetch<KpiDashboardReport>(getGetKpiDashboardReportUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetKpiDashboardReportQueryKey = (params?: GetKpiDashboardReportParams,) => {
+    return [
+    `/api/dashboard/kpis`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetKpiDashboardReportQueryOptions = <TData = Awaited<ReturnType<typeof getKpiDashboardReport>>, TError = ErrorType<void>>(params: GetKpiDashboardReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKpiDashboardReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetKpiDashboardReportQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getKpiDashboardReport>>> = ({ signal }) => getKpiDashboardReport(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getKpiDashboardReport>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetKpiDashboardReportQueryResult = NonNullable<Awaited<ReturnType<typeof getKpiDashboardReport>>>
+export type GetKpiDashboardReportQueryError = ErrorType<void>
+
+
+
+export function useGetKpiDashboardReport<TData = Awaited<ReturnType<typeof getKpiDashboardReport>>, TError = ErrorType<void>>(
+ params: GetKpiDashboardReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKpiDashboardReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetKpiDashboardReportQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

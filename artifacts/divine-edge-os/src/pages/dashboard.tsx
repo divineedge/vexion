@@ -18,12 +18,14 @@ import { Link } from 'wouter';
 import { useListJobs, getListJobsQueryKey } from '@workspace/api-client-react';
 import { useLocation } from 'wouter';
 import { format as fmtDate } from 'date-fns';
+import { KpiDashboard } from '@/components/kpis/KpiDashboard';
 
 interface EfficiencyResponse { companyEfficiencyRate: number | null; companyCallbackRatio: number; technicians: { hasWarning: boolean }[] }
 interface RoasEntry { name: string; roas: number | null }
 
 export default function DashboardPage() {
-  const { user, isTechnician } = useAuth();
+  const { user, isTechnician, canManageOffice, can } = useAuth();
+  const showKpis = !isTechnician && canManageOffice && can('pages.billing') && can('financials.costData') && can('financials.jobPrices') && can('financials.invoiceAmounts');
   const [, setLocation] = useLocation();
   const todayStr = fmtDate(new Date(), 'yyyy-MM-dd');
   const { data: myTodayJobs } = useListJobs(
@@ -91,6 +93,7 @@ export default function DashboardPage() {
         )}
       </div>
 
+      {showKpis ? <KpiDashboard /> : (<>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard title="Total Customers" value={summary?.totalCustomers} icon={Users} />
         <MetricCard title="Active Jobs" value={summary?.activeJobs} icon={Briefcase} />
@@ -135,7 +138,9 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      </>)}
+
+      {!showKpis && <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Revenue Trend (Last 30 Days)</CardTitle>
@@ -211,6 +216,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
+      }
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-6">
           {isTechnician && (

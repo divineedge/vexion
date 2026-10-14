@@ -74,3 +74,4 @@
 - [Pricing review policy](pricing-review-policy.md) — separate Budget-guided historical pricing advice; configurable matrix threshold, never automatic price rewrites.
 - [Inventory receiving policy](inventory-receiving-policy.md) — atomic, retry-safe vendor receiving; preserve markup, legacy stock, and audit records; avoid duplicate costs.
 - [Property invoice billing](property-invoice-billing.md) — combine a customer's properties by default; offer separate-property billing and identify each property's work.
+- [Business KPI preferences](business-kpis.md) — company-selected main/detail KPIs; spend by distinct paying customers; avoid double-counting advance payments.

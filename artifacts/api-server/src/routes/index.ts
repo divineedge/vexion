@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import kpisRouter from "./kpis";
 import type { Request, Response, NextFunction } from "express";
 import { SchedulingPaymentError } from "../lib/paymentPolicy";
 import healthRouter from "./health";
@@ -81,6 +82,7 @@ import externalOAuthRouter from "./externalOAuth";
 import { requireVerifiedStaff } from "../lib/verifiedStaff";
 
 const router: IRouter = Router();
+router.use(kpisRouter);
 
 router.use(healthRouter);
 router.use(pricingReviewRouter);

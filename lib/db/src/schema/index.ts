@@ -63,3 +63,4 @@ export * from "./staffNotificationDevices";
 export * from "./externalAccess";
 export * from "./formEvidence";
 export * from "./documentReminders";
+export * from "./kpiSettings";

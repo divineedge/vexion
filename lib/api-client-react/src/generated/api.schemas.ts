@@ -5,6 +5,131 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+export type KpiKey = typeof KpiKey[keyof typeof KpiKey];
+
+
+export const KpiKey = {
+  revenue_hour: 'revenue_hour',
+  efficiency: 'efficiency',
+  margin: 'margin',
+  underpriced: 'underpriced',
+  unbilled: 'unbilled',
+  overdue: 'overdue',
+  cash: 'cash',
+  acceptance: 'acceptance',
+  callbacks: 'callbacks',
+  retention: 'retention',
+  schedule: 'schedule',
+  productive: 'productive',
+  customer_spend: 'customer_spend',
+} as const;
+
+export interface KpiDashboardSettings {
+  mainKpis: KpiKey[];
+  detailKpis: KpiKey[];
+}
+
+export type KpiDashboardJobWorkersItem = {
+  id: number;
+  name: string;
+  minutes: number;
+};
+
+export interface KpiDashboardJob {
+  id: number;
+  title: string;
+  customerId: number | null;
+  customerName: string;
+  serviceId: number | null;
+  crewId: number | null;
+  crewName: string;
+  status: string;
+  scheduledDate: string;
+  completedDate: string | null;
+  total: number;
+  minutes: number;
+  budgetMinutes: number;
+  openTimers: boolean;
+  materialSell: number;
+  materialCost: number | null;
+  laborCost: number | null;
+  fuelCost: number;
+  materialsInvalid: boolean;
+  workers?: KpiDashboardJobWorkersItem[];
+}
+
+export interface KpiDashboardInvoice {
+  id: number;
+  number: string;
+  customerId: number;
+  customerName: string;
+  status: string;
+  total: number;
+  balance: number;
+  paidDate: string | null;
+  dueDate: string | null;
+  cash: number;
+}
+
+export type KpiDashboardReportEstimatesItem = {
+  id: number;
+  customerName: string;
+  total: number;
+  status: string;
+  reason: string | null;
+};
+
+export type KpiDashboardReportCallbacksItem = {
+  id: number;
+  jobId: number;
+  title: string;
+  reason: string;
+  crewName: string;
+};
+
+export type KpiDashboardReportUnbilledItem = {
+  id: number;
+  title: string;
+  customerName: string | null;
+  totalAmount: number;
+  reason: string;
+  needsAttention: boolean;
+  canInvoice: boolean;
+};
+
+export type KpiDashboardReportClockOtherItem = {
+  type: string;
+  minutes: number;
+};
+
+export type KpiDashboardReportClock = {
+  paidMinutes: number;
+  jobMinutes: number;
+  openEntries: number;
+  other: KpiDashboardReportClockOtherItem[];
+};
+
+export type KpiDashboardReportReceipts = {
+  deposits: number;
+  prepayments: number;
+};
+
+export interface KpiDashboardReport {
+  from: string;
+  to: string;
+  timezone: string;
+  asOf: string;
+  budgetJson: string | null;
+  jobs: KpiDashboardJob[];
+  invoices: KpiDashboardInvoice[];
+  estimates: KpiDashboardReportEstimatesItem[];
+  callbacks: KpiDashboardReportCallbacksItem[];
+  previousCustomers: number[];
+  unbilled: KpiDashboardReportUnbilledItem[];
+  clock: KpiDashboardReportClock;
+  receipts: KpiDashboardReportReceipts;
+}
+
 export type FormEvidenceUploadInputScope = typeof FormEvidenceUploadInputScope[keyof typeof FormEvidenceUploadInputScope];
 
 
@@ -7788,5 +7913,10 @@ export type GetEfficiencyJobs200 = {
   rangeStart?: string;
   rangeEnd?: string;
   jobs?: GetEfficiencyJobs200JobsItem[];
+};
+
+export type GetKpiDashboardReportParams = {
+from: string;
+to: string;
 };
 

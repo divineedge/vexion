@@ -57,9 +57,11 @@ import DeclineReasonsSettings from '@/components/settings/DeclineReasonsSettings
 import { AddressAutocomplete, type AddressSuggestion } from '@/components/shared/AddressAutocomplete';
 import ExternalAccessSettings from '@/components/settings/ExternalAccessSettings';
 import GrowthProgramsSettings from '@/components/settings/GrowthProgramsSettings';
+import { KpiSettings } from '@/components/kpis/KpiSettings';
 
 export default function SettingsPage() {
-  const { isSuperAdmin, isOwner, user, canManageOffice } = useAuth();
+  const { isSuperAdmin, isOwner, user, canManageOffice, can } = useAuth();
+  const canKpis = canManageOffice && can('pages.billing');
   const qc = useQueryClient();
   const [, setLocation] = useLocation();
 
@@ -581,6 +583,7 @@ export default function SettingsPage() {
           <TabsTrigger value="tags"><Tag className="w-4 h-4 mr-2" />Tags</TabsTrigger>
           <TabsTrigger value="reviews"><StarIcon className="w-4 h-4 mr-2" />Reviews</TabsTrigger>
           <TabsTrigger value="followups"><PhoneMissedIcon className="w-4 h-4 mr-2" />Follow-Ups</TabsTrigger>
+          {canKpis && <TabsTrigger value="kpis" data-testid="tab-kpis"><TrendingUp className="w-4 h-4 mr-2" />KPIs</TabsTrigger>}
           {canManageOffice && <TabsTrigger value="growth" data-testid="tab-growth"><TrendingUp className="w-4 h-4 mr-2" />Growth Programs</TabsTrigger>}
           <p className="w-full text-[11px] font-semibold uppercase tracking-wide text-muted-foreground px-2 pt-3 first:pt-1">Billing & estimates</p>
           <TabsTrigger value="invoicing"><CreditCard className="w-4 h-4 mr-2" />Invoicing</TabsTrigger>
@@ -2564,6 +2567,7 @@ export default function SettingsPage() {
         </TabsContent>
 
         {/* ── Reviews ── */}
+        {canKpis && <TabsContent value="kpis" className="space-y-6 focus-visible:outline-none"><KpiSettings /></TabsContent>}
         {canManageOffice && <TabsContent value="growth" className="space-y-6 focus-visible:outline-none"><GrowthProgramsSettings /></TabsContent>}
         <TabsContent value="reviews" className="space-y-6 focus-visible:outline-none">
           <Card>

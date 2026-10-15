@@ -3,7 +3,7 @@ import { db, tenantsTable, usersTable, jobsTable, customersTable, propertiesTabl
 import { and, eq, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
-import { acquisitionSettings, processAcquisitionRewards } from "../lib/acquisitionRewards";
+import { acquisitionSettings, defaultAcquisitionSettings, processAcquisitionRewards } from "../lib/acquisitionRewards";
 import { publicAppUrl } from "../lib/publicSite";
 const router = Router();
 router.use("/marketing/acquisition", async(req,res,next) => {
@@ -14,18 +14,38 @@ router.get("/marketing/acquisition/settings", async(req,res) => {
   res.json({settings:acquisitionSettings(tenant?.acquisitionSettings)});
 });
 router.patch("/marketing/acquisition/settings", async(req,res) => {
-  const input = req.body.settings ?? req.body;
-  for (const field of ["doorHangersEnabled","employeeRewardsEnabled","customerReferralsEnabled","quoteWidgetEnabled"]) {
-    if (typeof input[field]!=="boolean") {res.status(400).json({error:`${field} must be true or false`});return;}
+  const body = req.body;
+  const input = body && Object.prototype.hasOwnProperty.call(body,"settings") ? body.settings : body;
+  if (!input || typeof input!=="object" || Array.isArray(input)) {
+    res.status(400).json({error:"Settings must be an object"});return;
   }
-  for (const prefix of ["employee","referral"]) {
-    if (!["fixed","percent"].includes(input[`${prefix}RewardType`]) || typeof input[`${prefix}RewardValue`]!=="number" ||
-      !Number.isFinite(input[`${prefix}RewardValue`]) || input[`${prefix}RewardValue`]<0 ||
-      input[`${prefix}RewardValue`]>(input[`${prefix}RewardType`]==="percent"?100:100000)) {res.status(400).json({error:"Invalid reward amount"});return;}
+  if (Object.keys(input).some(key=>!Object.prototype.hasOwnProperty.call(defaultAcquisitionSettings,key))) {
+    res.status(400).json({error:"Unknown growth program setting"});return;
   }
-  const settings=acquisitionSettings(input);
-  await db.execute(sql`UPDATE tenants SET acquisition_settings=${JSON.stringify(settings)}::jsonb WHERE id=${getTenantId(req)}`);
-  res.json({settings});
+  // Autosave sends changed fields only. Lock and merge with the latest company
+  // settings so separate edits never reset other programs or their reward values.
+  const saved=await db.transaction(async tx=>{
+    const tenantId=getTenantId(req);
+    const [tenant]=await tx.select().from(tenantsTable).where(eq(tenantsTable.id,tenantId)).for("update");
+    if (!tenant) {res.status(404).json({error:"Company not found"});return;}
+    const merged={...acquisitionSettings(tenant.acquisitionSettings),...input};
+    for (const field of ["doorHangersEnabled","employeeRewardsEnabled","customerReferralsEnabled","quoteWidgetEnabled"]) {
+      if (typeof merged[field]!=="boolean") {res.status(400).json({error:`${field} must be true or false`});return;}
+    }
+    for (const prefix of ["employee","referral"]) {
+      if (!["fixed","percent"].includes(merged[`${prefix}RewardType`]) || typeof merged[`${prefix}RewardValue`]!=="number" ||
+        !Number.isFinite(merged[`${prefix}RewardValue`]) || merged[`${prefix}RewardValue`]<0 ||
+        merged[`${prefix}RewardValue`]>(merged[`${prefix}RewardType`]==="percent"?100:100000)) {
+        res.status(400).json({error:"Invalid reward amount"});return;
+      }
+    }
+    if (merged.trigger!=="first_paid_invoice") {res.status(400).json({error:"Unsupported reward trigger"});return;}
+    const settings=acquisitionSettings(merged);
+    await tx.execute(sql`UPDATE tenants SET acquisition_settings=${JSON.stringify(settings)}::jsonb WHERE id=${tenantId}`);
+    // Respond only after the transaction commits successfully.
+    return settings;
+  });
+  if(saved)res.json({settings:saved});
 });
 router.get("/marketing/acquisition/rewards",async(req,res)=>{
   const tenantId=getTenantId(req); await processAcquisitionRewards(tenantId);

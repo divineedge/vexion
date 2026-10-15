@@ -1,5 +1,6 @@
 import VendorExpenseLedger from '@/components/financials/VendorExpenseLedger';
 import { useAuth } from '@/contexts/AuthContext';
+import VendorExpenseDefaults from '@/components/financials/VendorExpenseDefaults';
 
 export default function VendorsPage() {
   const { user } = useAuth();
@@ -11,6 +12,7 @@ export default function VendorsPage() {
           <p className="text-muted-foreground mt-1">Suppliers you buy from and the expenses you pay them. Kept separate from customer invoices.</p>
         </div>
       </div>
+      {user?.role !== 'technician' && <VendorExpenseDefaults />}
       <VendorExpenseLedger canEdit={user?.role !== 'technician'} />
     </div>
   );

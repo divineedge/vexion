@@ -13990,6 +13990,89 @@ export const RenameExpenseCategoryResponse = zod.object({
 })
 
 
+export const getVendorExpenseDefaultsResponseCompanySalesTaxPctMin = 0;
+export const getVendorExpenseDefaultsResponseCompanySalesTaxPctMax = 100;
+
+export const getVendorExpenseDefaultsResponseCompanyShippingAmountMin = 0;
+
+export const getVendorExpenseDefaultsResponseVendorsItemSettingsSalesTaxPctMin = 0;
+export const getVendorExpenseDefaultsResponseVendorsItemSettingsSalesTaxPctMax = 100;
+
+export const getVendorExpenseDefaultsResponseVendorsItemSettingsShippingAmountMin = 0;
+export const getVendorExpenseDefaultsResponseVendorsItemSettingsShippingAmountMax = 1000000000;
+
+
+
+export const GetVendorExpenseDefaultsResponse = zod.object({
+  "company": zod.object({
+  "salesTaxPct": zod.number().min(getVendorExpenseDefaultsResponseCompanySalesTaxPctMin).max(getVendorExpenseDefaultsResponseCompanySalesTaxPctMax),
+  "shippingAmount": zod.number().min(getVendorExpenseDefaultsResponseCompanyShippingAmountMin),
+  "capitalizeSalesTax": zod.boolean(),
+  "capitalizeShipping": zod.boolean()
+}),
+  "vendors": zod.array(zod.object({
+  "vendorId": zod.number(),
+  "settings": zod.object({
+  "salesTaxPct": zod.number().min(getVendorExpenseDefaultsResponseVendorsItemSettingsSalesTaxPctMin).max(getVendorExpenseDefaultsResponseVendorsItemSettingsSalesTaxPctMax).nullish(),
+  "shippingAmount": zod.number().min(getVendorExpenseDefaultsResponseVendorsItemSettingsShippingAmountMin).max(getVendorExpenseDefaultsResponseVendorsItemSettingsShippingAmountMax).nullish(),
+  "capitalizeSalesTax": zod.boolean().nullish(),
+  "capitalizeShipping": zod.boolean().nullish()
+})
+}))
+})
+
+
+export const UpdateVendorExpenseDefaultsParams = zod.object({
+  "scope": zod.coerce.string().describe('company or a vendor ID belonging to the current company')
+})
+
+export const updateVendorExpenseDefaultsBodySalesTaxPctMin = 0;
+export const updateVendorExpenseDefaultsBodySalesTaxPctMax = 100;
+
+export const updateVendorExpenseDefaultsBodyShippingAmountMin = 0;
+export const updateVendorExpenseDefaultsBodyShippingAmountMax = 1000000000;
+
+
+
+export const UpdateVendorExpenseDefaultsBody = zod.object({
+  "salesTaxPct": zod.number().min(updateVendorExpenseDefaultsBodySalesTaxPctMin).max(updateVendorExpenseDefaultsBodySalesTaxPctMax).nullish(),
+  "shippingAmount": zod.number().min(updateVendorExpenseDefaultsBodyShippingAmountMin).max(updateVendorExpenseDefaultsBodyShippingAmountMax).nullish(),
+  "capitalizeSalesTax": zod.boolean().nullish(),
+  "capitalizeShipping": zod.boolean().nullish()
+})
+
+export const updateVendorExpenseDefaultsResponseCompanySalesTaxPctMin = 0;
+export const updateVendorExpenseDefaultsResponseCompanySalesTaxPctMax = 100;
+
+export const updateVendorExpenseDefaultsResponseCompanyShippingAmountMin = 0;
+
+export const updateVendorExpenseDefaultsResponseVendorsItemSettingsSalesTaxPctMin = 0;
+export const updateVendorExpenseDefaultsResponseVendorsItemSettingsSalesTaxPctMax = 100;
+
+export const updateVendorExpenseDefaultsResponseVendorsItemSettingsShippingAmountMin = 0;
+export const updateVendorExpenseDefaultsResponseVendorsItemSettingsShippingAmountMax = 1000000000;
+
+
+
+export const UpdateVendorExpenseDefaultsResponse = zod.object({
+  "company": zod.object({
+  "salesTaxPct": zod.number().min(updateVendorExpenseDefaultsResponseCompanySalesTaxPctMin).max(updateVendorExpenseDefaultsResponseCompanySalesTaxPctMax),
+  "shippingAmount": zod.number().min(updateVendorExpenseDefaultsResponseCompanyShippingAmountMin),
+  "capitalizeSalesTax": zod.boolean(),
+  "capitalizeShipping": zod.boolean()
+}),
+  "vendors": zod.array(zod.object({
+  "vendorId": zod.number(),
+  "settings": zod.object({
+  "salesTaxPct": zod.number().min(updateVendorExpenseDefaultsResponseVendorsItemSettingsSalesTaxPctMin).max(updateVendorExpenseDefaultsResponseVendorsItemSettingsSalesTaxPctMax).nullish(),
+  "shippingAmount": zod.number().min(updateVendorExpenseDefaultsResponseVendorsItemSettingsShippingAmountMin).max(updateVendorExpenseDefaultsResponseVendorsItemSettingsShippingAmountMax).nullish(),
+  "capitalizeSalesTax": zod.boolean().nullish(),
+  "capitalizeShipping": zod.boolean().nullish()
+})
+}))
+})
+
+
 /**
  * @summary List vendors
  */

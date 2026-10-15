@@ -446,6 +446,8 @@ import type {
   UserInput,
   UserUpdate,
   Vendor,
+  VendorExpenseDefaultsConfig,
+  VendorExpenseDefaultsInput,
   Visit
 } from './api.schemas';
 
@@ -30265,6 +30267,143 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getRenameExpenseCategoryMutationOptions(options));
+    }
+
+export const getGetVendorExpenseDefaultsUrl = () => {
+
+
+
+
+  return `/api/vendor-expense-defaults`
+}
+
+export const getVendorExpenseDefaults = async ( options?: RequestInit): Promise<VendorExpenseDefaultsConfig> => {
+
+  return customFetch<VendorExpenseDefaultsConfig>(getGetVendorExpenseDefaultsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetVendorExpenseDefaultsQueryKey = () => {
+    return [
+    `/api/vendor-expense-defaults`
+    ] as const;
+    }
+
+
+export const getGetVendorExpenseDefaultsQueryOptions = <TData = Awaited<ReturnType<typeof getVendorExpenseDefaults>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVendorExpenseDefaults>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetVendorExpenseDefaultsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVendorExpenseDefaults>>> = ({ signal }) => getVendorExpenseDefaults({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVendorExpenseDefaults>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetVendorExpenseDefaultsQueryResult = NonNullable<Awaited<ReturnType<typeof getVendorExpenseDefaults>>>
+export type GetVendorExpenseDefaultsQueryError = ErrorType<unknown>
+
+
+
+export function useGetVendorExpenseDefaults<TData = Awaited<ReturnType<typeof getVendorExpenseDefaults>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVendorExpenseDefaults>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetVendorExpenseDefaultsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateVendorExpenseDefaultsUrl = (scope: string,) => {
+
+
+
+
+  return `/api/vendor-expense-defaults/${scope}`
+}
+
+export const updateVendorExpenseDefaults = async (scope: string,
+    vendorExpenseDefaultsInput: VendorExpenseDefaultsInput, options?: RequestInit): Promise<VendorExpenseDefaultsConfig> => {
+
+  return customFetch<VendorExpenseDefaultsConfig>(getUpdateVendorExpenseDefaultsUrl(scope),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(vendorExpenseDefaultsInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateVendorExpenseDefaultsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVendorExpenseDefaults>>, TError,{scope: string;data: BodyType<VendorExpenseDefaultsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateVendorExpenseDefaults>>, TError,{scope: string;data: BodyType<VendorExpenseDefaultsInput>}, TContext> => {
+
+const mutationKey = ['updateVendorExpenseDefaults'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateVendorExpenseDefaults>>, {scope: string;data: BodyType<VendorExpenseDefaultsInput>}> = (props) => {
+          const {scope,data} = props ?? {};
+
+          return  updateVendorExpenseDefaults(scope,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateVendorExpenseDefaultsMutationResult = NonNullable<Awaited<ReturnType<typeof updateVendorExpenseDefaults>>>
+    export type UpdateVendorExpenseDefaultsMutationBody = BodyType<VendorExpenseDefaultsInput>
+    export type UpdateVendorExpenseDefaultsMutationError = ErrorType<void>
+
+    export const useUpdateVendorExpenseDefaults = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVendorExpenseDefaults>>, TError,{scope: string;data: BodyType<VendorExpenseDefaultsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateVendorExpenseDefaults>>,
+        TError,
+        {scope: string;data: BodyType<VendorExpenseDefaultsInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateVendorExpenseDefaultsMutationOptions(options));
     }
 
 export const getListVendorsUrl = () => {

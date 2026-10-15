@@ -6976,6 +6976,47 @@ export interface ExpenseCategoryInput {
   name: string;
 }
 
+export interface VendorExpenseDefaultValues {
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  salesTaxPct: number;
+  /** @minimum 0 */
+  shippingAmount: number;
+  capitalizeSalesTax: boolean;
+  capitalizeShipping: boolean;
+}
+
+export interface VendorExpenseDefaultsInput {
+  /**
+     * @minimum 0
+     * @maximum 100
+     * @nullable
+     */
+  salesTaxPct?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 1000000000
+     * @nullable
+     */
+  shippingAmount?: number | null;
+  /** @nullable */
+  capitalizeSalesTax?: boolean | null;
+  /** @nullable */
+  capitalizeShipping?: boolean | null;
+}
+
+export interface VendorExpenseDefaultOverride {
+  vendorId: number;
+  settings: VendorExpenseDefaultsInput;
+}
+
+export interface VendorExpenseDefaultsConfig {
+  company: VendorExpenseDefaultValues;
+  vendors: VendorExpenseDefaultOverride[];
+}
+
 export interface Vendor {
   id: number;
   tenantId: number;

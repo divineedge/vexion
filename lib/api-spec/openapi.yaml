@@ -8130,6 +8130,45 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/ExpenseCategory"}
+  /vendor-expense-defaults:
+    get:
+      operationId: getVendorExpenseDefaults
+      responses:
+        "200":
+          description: Company defaults and vendor overrides for new expenses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorExpenseDefaultsConfig"
+  /vendor-expense-defaults/{scope}:
+    patch:
+      operationId: updateVendorExpenseDefaults
+      parameters:
+        - name: scope
+          in: path
+          required: true
+          schema:
+            type: string
+          description: company or a vendor ID belonging to the current company
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VendorExpenseDefaultsInput"
+      responses:
+        "200":
+          description: Updated defaults; null vendor fields inherit company defaults
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorExpenseDefaultsConfig"
+        "400":
+          description: Invalid default values
+        "403":
+          description: Restricted to authorized administrators
+        "404":
+          description: Vendor not found in this company
   /vendors:
     get:
       operationId: listVendors
@@ -17145,6 +17184,55 @@ components:
       required: [name]
       properties:
         name: {type: string, minLength: 1, maxLength: 100}
+    VendorExpenseDefaultValues:
+      type: object
+      required: [salesTaxPct, shippingAmount, capitalizeSalesTax, capitalizeShipping]
+      properties:
+        salesTaxPct:
+          type: number
+          minimum: 0
+          maximum: 100
+        shippingAmount:
+          type: number
+          minimum: 0
+        capitalizeSalesTax:
+          type: boolean
+        capitalizeShipping:
+          type: boolean
+    VendorExpenseDefaultsInput:
+      type: object
+      minProperties: 1
+      properties:
+        salesTaxPct:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 100
+        shippingAmount:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 1000000000
+        capitalizeSalesTax:
+          type: [boolean, "null"]
+        capitalizeShipping:
+          type: [boolean, "null"]
+    VendorExpenseDefaultOverride:
+      type: object
+      required: [vendorId, settings]
+      properties:
+        vendorId:
+          type: integer
+        settings:
+          $ref: "#/components/schemas/VendorExpenseDefaultsInput"
+    VendorExpenseDefaultsConfig:
+      type: object
+      required: [company, vendors]
+      properties:
+        company:
+          $ref: "#/components/schemas/VendorExpenseDefaultValues"
+        vendors:
+          type: array
+          items:
+            $ref: "#/components/schemas/VendorExpenseDefaultOverride"
     Vendor:
       type: object
       required: [id, tenantId, name, createdAt, updatedAt]

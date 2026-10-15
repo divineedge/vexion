@@ -6,8 +6,10 @@ import {z} from 'zod';
 import {listVendorCategories} from '../lib/vendorCategories';
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
+import vendorExpenseDefaultsRouter from './vendorExpenseDefaults';
 
 const router: IRouter = Router();
+router.use(vendorExpenseDefaultsRouter);
 const vendorFields=z.object({name:z.string().trim().min(1).max(200),category:z.string().max(200).optional(),contact:z.string().max(2000).optional(),contactName:z.string().trim().max(200).optional(),officePhone:z.string().trim().max(80).optional(),contactPhone:z.string().trim().max(80).optional(),notes:z.string().max(20000).optional()});
 
 router.use('/expense-categories',async(req,res,next)=>{

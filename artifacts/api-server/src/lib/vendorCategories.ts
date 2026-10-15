@@ -1,10 +1,12 @@
 import {db,expenseCategoriesTable,vendorsTable,expenseEntriesTable} from '@workspace/db';
 import {eq,sql} from 'drizzle-orm';
 import type {HrDb} from './hrAccess';
+import { installVendorExpenseDefaultsSchema } from './vendorExpenseDefaults';
 
 export const DEFAULT_EXPENSE_CATEGORIES=['supplies','fuel','equipment','insurance','payroll','rent','utilities','marketing','other'];
 export const categoryLabel=(key:string)=>key.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 export async function installVendorCategoriesSchema(){
+ await installVendorExpenseDefaultsSchema();
  await db.execute(sql`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS contact_phone text`);
  await db.execute(sql`ALTER TABLE expense_entries ADD COLUMN IF NOT EXISTS shipping_amount real NOT NULL DEFAULT 0,ADD COLUMN IF NOT EXISTS capitalize_shipping boolean NOT NULL DEFAULT false`);
  await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS portal_show_measurements boolean NOT NULL DEFAULT true`);

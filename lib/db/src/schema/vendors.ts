@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real, boolean, index, jsonb, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, doublePrecision, boolean, index, jsonb, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -24,6 +24,18 @@ export const vendorsTable = pgTable("vendors", {
 export const insertVendorSchema = createInsertSchema(vendorsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type Vendor = typeof vendorsTable.$inferSelect;
+
+// vendorId 0 is the company default. Null vendor values inherit company values.
+export const vendorExpenseDefaultsTable = pgTable("vendor_expense_defaults", {
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  vendorId: integer("vendor_id").notNull().default(0),
+  salesTaxPct: doublePrecision("sales_tax_pct"),
+  shippingAmount: doublePrecision("shipping_amount"),
+  capitalizeSalesTax: boolean("capitalize_sales_tax"),
+  capitalizeShipping: boolean("capitalize_shipping"),
+}, t => [primaryKey({ columns: [t.tenantId, t.vendorId] })]);
+export const insertVendorExpenseDefaultsSchema = createInsertSchema(vendorExpenseDefaultsTable);
+export type VendorExpenseDefaults = typeof vendorExpenseDefaultsTable.$inferSelect;
 
 // Stable keys preserve financial classifications when display names are edited.
 export const expenseCategoriesTable = pgTable("expense_categories", {

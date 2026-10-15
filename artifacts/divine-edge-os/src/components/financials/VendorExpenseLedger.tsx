@@ -9,9 +9,13 @@ import {
   getGetFinancialsSummaryQueryKey,
   customFetch,
   useListExpenseCategories,
+  useGetVendorExpenseDefaults,
+  getGetVendorExpenseDefaultsQueryKey,
 } from '@workspace/api-client-react';
 import type { Vendor, ExpenseEntry, InventoryItem, InventoryLocation,ExpenseCategory } from '@workspace/api-client-react';
 import ExpenseCategoryManager from './ExpenseCategoryManager';
+import type { VendorExpenseDefaultsConfig } from '@workspace/api-client-react';
+import { resolveVendorExpenseDefaults } from '@/lib/vendorExpenseDefaults';
 import { useAllExpenseCategories } from '@/lib/expenseCategories';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -60,6 +64,7 @@ async function openReceipt(objectPath: string) {
 export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
   const { data: vendors = [] } = useListVendors({ query: { queryKey: getListVendorsQueryKey() } });
+  const expenseDefaults = useGetVendorExpenseDefaults({ query: { queryKey: getGetVendorExpenseDefaultsQueryKey(), enabled: canEdit } });
   const { data: expenses = [] } = useListExpenses({}, { query: { queryKey: getListExpensesQueryKey({}) } });
   const categoryQuery=useListExpenseCategories();
   const categories=categoryQuery.data??[];
@@ -134,6 +139,7 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
   return (
     <div className="space-y-6">
       {categoryQuery.isError&&<Button variant="outline" onClick={()=>categoryQuery.refetch()}>Could not load categories. Retry</Button>}
+      {canEdit && expenseDefaults.isError && <div role="alert" className="text-sm text-destructive">Expense defaults could not be loaded. <Button variant="outline" size="sm" onClick={() => expenseDefaults.refetch()}>Retry</Button></div>}
       {/* This month summary */}
       <Card>
         <CardHeader>
@@ -236,7 +242,7 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
             />
             <Button size="sm" variant="outline" className="gap-2" title="Download expenses as CSV" onClick={exportExpensesCsv}><Download className="w-4 h-4" /> Export CSV</Button>
             {canEdit && (
-              <Button size="sm" className="gap-2" title="Log a new vendor expense" onClick={() => { setEditingExpense(null); setCreateRequestId(crypto.randomUUID()); setExpenseSheetOpen(true); }}>
+              <Button size="sm" className="gap-2" title="Log a new vendor expense" disabled={!expenseDefaults.data || expenseDefaults.isError} onClick={() => { setEditingExpense(null); setCreateRequestId(crypto.randomUUID()); setExpenseSheetOpen(true); }}>
                 <Plus className="w-4 h-4" /> Log Expense
               </Button>
             )}
@@ -338,6 +344,7 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
           <ExpenseForm
             key={editingExpense ? `e-${editingExpense.id}` : createRequestId}
             editing={editingExpense}
+            defaults={expenseDefaults.data}
             vendors={vendors}
             categories={categories}
             categoryName={categoryName}
@@ -481,8 +488,9 @@ function VendorForm({ editing, categories,onSubmit }: { editing: Vendor | null;c
   );
 }
 
-function ExpenseForm({ editing, vendors,categories,categoryName, inventoryItems, inventoryLocations, onSubmit }: {
+function ExpenseForm({ editing, defaults, vendors,categories,categoryName, inventoryItems, inventoryLocations, onSubmit }: {
   editing: ExpenseEntry | null;
+  defaults?: VendorExpenseDefaultsConfig;
   vendors: Vendor[];
   categories:ExpenseCategory[];
   categoryName:(key:string)=>string;
@@ -505,10 +513,11 @@ function ExpenseForm({ editing, vendors,categories,categoryName, inventoryItems,
   const ex = editing as (ExpenseEntry & { subtotal?: number | null; salesTaxPct?: number | null; capitalizeSalesTax?: boolean | null; salesTaxAmount?: number | null; shippingAmount?: number | null; capitalizeShipping?: boolean | null }) | null;
   // Subtotal is pre-tax; legacy expenses without a subtotal treat amount as the subtotal (no double tax).
   const [amount, setAmount] = useState(ex ? String(ex.subtotal ?? ex.amount) : '');
-  const [taxPct, setTaxPct] = useState(ex?.salesTaxPct != null ? String(ex.salesTaxPct) : '0');
-  const [capitalizeTax, setCapitalizeTax] = useState(!!ex?.capitalizeSalesTax);
-  const [shipping, setShipping] = useState(ex?.shippingAmount != null ? String(ex.shippingAmount) : '0');
-  const [capitalizeShipping, setCapitalizeShipping] = useState(!!ex?.capitalizeShipping);
+  const initialDefaults = defaults ? resolveVendorExpenseDefaults(defaults) : undefined;
+  const [taxPct, setTaxPct] = useState(String(ex ? ex.salesTaxPct ?? 0 : initialDefaults?.salesTaxPct ?? 0));
+  const [capitalizeTax, setCapitalizeTax] = useState(ex ? !!ex.capitalizeSalesTax : initialDefaults?.capitalizeSalesTax ?? false);
+  const [shipping, setShipping] = useState(String(ex ? ex.shippingAmount ?? 0 : initialDefaults?.shippingAmount ?? 0));
+  const [capitalizeShipping, setCapitalizeShipping] = useState(ex ? !!ex.capitalizeShipping : initialDefaults?.capitalizeShipping ?? false);
   const financialLocked = savedReceipts.length > 0;
   const subCents = Math.round((parseFloat(amount) || 0) * 100);
   const rate = Math.min(100, Math.max(0, parseFloat(taxPct) || 0));
@@ -553,7 +562,7 @@ function ExpenseForm({ editing, vendors,categories,categoryName, inventoryItems,
     if (!Number.isFinite(pct) || pct < 0 || pct > 100) { toast.error('Sales tax rate must be between 0 and 100'); return; }
     const shipVal = Number(shipping || 0);
     if (!Number.isFinite(shipVal) || shipVal < 0) { toast.error('Shipping must be 0 or more'); return; }
-    if (!financialLocked && capitalizeShipping && shipVal > 0 && !editing && receipts.length === 0) { toast.error('Add at least one received supply to allocate shipping to'); return; }
+    if (!financialLocked && capitalizeShipping && shipVal > 0 && !editing && receipts.length === 0) { toast.error('Add a received supply, or turn off including delivery in supply costs for this expense'); return; }
     const rows: ReceiptRowInput[] = [];
     if (!editing) {
       for (const [i, r] of receipts.entries()) {
@@ -607,11 +616,16 @@ function ExpenseForm({ editing, vendors,categories,categoryName, inventoryItems,
         <Select value={vendorId||'__none__'} onValueChange={v=>{
           const next=v==='__none__'?'':v;setVendorId(next);
           setCategory(vendors.find(v=>String(v.id)===next)?.category||'other');
+          if (!editing && defaults) {
+            const values = resolveVendorExpenseDefaults(defaults, next ? Number(next) : null);
+            setTaxPct(String(values.salesTaxPct)); setShipping(String(values.shippingAmount));
+            setCapitalizeTax(values.capitalizeSalesTax); setCapitalizeShipping(values.capitalizeShipping);
+          }
         }}>
           <SelectTrigger title="Choose the vendor first"><SelectValue placeholder="Choose a vendor or No vendor"/></SelectTrigger>
           <SelectContent><SelectItem value="__none__">No vendor / manual expense</SelectItem>{vendors.map(v=><SelectItem key={v.id} value={String(v.id)}>{v.name}</SelectItem>)}</SelectContent>
         </Select>
-        <p className="text-xs text-muted-foreground">Selecting a vendor fills its category. You can change the category for this expense below.</p>
+        <p className="text-xs text-muted-foreground">{editing ? 'Changing the vendor does not change this expense’s recorded tax or delivery.' : 'Selecting a vendor fills its category and tax/delivery defaults. You can adjust these for this expense.'}</p>
       </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Date</label>

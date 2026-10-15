@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import kpisRouter from "./kpis";
+import jobEconomicsRouter from "./jobEconomics";
 import websiteIntakeRouter,{publicWebsiteIntakeRouter} from "./websiteIntake";
 import type { Request, Response, NextFunction } from "express";
 import { SchedulingPaymentError } from "../lib/paymentPolicy";
@@ -84,6 +85,7 @@ import { requireVerifiedStaff } from "../lib/verifiedStaff";
 
 const router: IRouter = Router();
 router.use(kpisRouter);
+router.use(jobEconomicsRouter);
 
 router.use(healthRouter);
 router.use(pricingReviewRouter);

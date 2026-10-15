@@ -172,6 +172,7 @@ import type {
   GetGmailAuthorizeUrl200,
   GetInventorySalesReportParams,
   GetJobChemicalWeather200,
+  GetJobEconomicsReportParams,
   GetJobMessageUnreadCount200,
   GetJobProfitabilityReportParams,
   GetKpiDashboardReportParams,
@@ -213,12 +214,16 @@ import type {
   InvoiceTemplate,
   InvoiceUpdate,
   Job,
+  JobCostVoidInput,
+  JobEconomicsReport,
   JobEquipmentUse,
   JobEquipmentUseInput,
   JobInput,
   JobMessage,
   JobMessageInput,
   JobMessageUnreadSummaryItem,
+  JobOtherCost,
+  JobOtherCostInput,
   JobPart,
   JobPartInput,
   JobProfitabilityReport,
@@ -35278,5 +35283,217 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getDecideP4pDamageReportMutationOptions(options));
+    }
+
+export const getGetJobEconomicsReportUrl = (params: GetJobEconomicsReportParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reports/job-economics?${stringifiedParams}` : `/api/reports/job-economics`
+}
+
+export const getJobEconomicsReport = async (params: GetJobEconomicsReportParams, options?: RequestInit): Promise<JobEconomicsReport> => {
+
+  return customFetch<JobEconomicsReport>(getGetJobEconomicsReportUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetJobEconomicsReportQueryKey = (params?: GetJobEconomicsReportParams,) => {
+    return [
+    `/api/reports/job-economics`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetJobEconomicsReportQueryOptions = <TData = Awaited<ReturnType<typeof getJobEconomicsReport>>, TError = ErrorType<unknown>>(params: GetJobEconomicsReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJobEconomicsReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetJobEconomicsReportQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getJobEconomicsReport>>> = ({ signal }) => getJobEconomicsReport(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getJobEconomicsReport>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetJobEconomicsReportQueryResult = NonNullable<Awaited<ReturnType<typeof getJobEconomicsReport>>>
+export type GetJobEconomicsReportQueryError = ErrorType<unknown>
+
+
+
+export function useGetJobEconomicsReport<TData = Awaited<ReturnType<typeof getJobEconomicsReport>>, TError = ErrorType<unknown>>(
+ params: GetJobEconomicsReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJobEconomicsReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetJobEconomicsReportQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateJobOtherCostUrl = (jobId: number,) => {
+
+
+
+
+  return `/api/reports/job-economics/${jobId}/costs`
+}
+
+export const createJobOtherCost = async (jobId: number,
+    jobOtherCostInput: JobOtherCostInput, options?: RequestInit): Promise<JobOtherCost> => {
+
+  return customFetch<JobOtherCost>(getCreateJobOtherCostUrl(jobId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(jobOtherCostInput)
+  }
+);}
+
+
+
+
+
+export const getCreateJobOtherCostMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createJobOtherCost>>, TError,{jobId: number;data: BodyType<JobOtherCostInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createJobOtherCost>>, TError,{jobId: number;data: BodyType<JobOtherCostInput>}, TContext> => {
+
+const mutationKey = ['createJobOtherCost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createJobOtherCost>>, {jobId: number;data: BodyType<JobOtherCostInput>}> = (props) => {
+          const {jobId,data} = props ?? {};
+
+          return  createJobOtherCost(jobId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateJobOtherCostMutationResult = NonNullable<Awaited<ReturnType<typeof createJobOtherCost>>>
+    export type CreateJobOtherCostMutationBody = BodyType<JobOtherCostInput>
+    export type CreateJobOtherCostMutationError = ErrorType<unknown>
+
+    export const useCreateJobOtherCost = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createJobOtherCost>>, TError,{jobId: number;data: BodyType<JobOtherCostInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createJobOtherCost>>,
+        TError,
+        {jobId: number;data: BodyType<JobOtherCostInput>},
+        TContext
+      > => {
+      return useMutation(getCreateJobOtherCostMutationOptions(options));
+    }
+
+export const getVoidJobOtherCostUrl = (jobId: number,
+    costId: number,) => {
+
+
+
+
+  return `/api/reports/job-economics/${jobId}/costs/${costId}/void`
+}
+
+export const voidJobOtherCost = async (jobId: number,
+    costId: number,
+    jobCostVoidInput: JobCostVoidInput, options?: RequestInit): Promise<JobOtherCost> => {
+
+  return customFetch<JobOtherCost>(getVoidJobOtherCostUrl(jobId,costId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(jobCostVoidInput)
+  }
+);}
+
+
+
+
+
+export const getVoidJobOtherCostMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof voidJobOtherCost>>, TError,{jobId: number;costId: number;data: BodyType<JobCostVoidInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof voidJobOtherCost>>, TError,{jobId: number;costId: number;data: BodyType<JobCostVoidInput>}, TContext> => {
+
+const mutationKey = ['voidJobOtherCost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof voidJobOtherCost>>, {jobId: number;costId: number;data: BodyType<JobCostVoidInput>}> = (props) => {
+          const {jobId,costId,data} = props ?? {};
+
+          return  voidJobOtherCost(jobId,costId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VoidJobOtherCostMutationResult = NonNullable<Awaited<ReturnType<typeof voidJobOtherCost>>>
+    export type VoidJobOtherCostMutationBody = BodyType<JobCostVoidInput>
+    export type VoidJobOtherCostMutationError = ErrorType<unknown>
+
+    export const useVoidJobOtherCost = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof voidJobOtherCost>>, TError,{jobId: number;costId: number;data: BodyType<JobCostVoidInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof voidJobOtherCost>>,
+        TError,
+        {jobId: number;costId: number;data: BodyType<JobCostVoidInput>},
+        TContext
+      > => {
+      return useMutation(getVoidJobOtherCostMutationOptions(options));
     }
 

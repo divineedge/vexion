@@ -68,3 +68,4 @@ export * from "./documentReminders";
 export * from "./kpiSettings";
 export * from "./websiteIntake";
 export * from "./p4pDamage";
+export * from "./jobEconomics";

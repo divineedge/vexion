@@ -75,7 +75,7 @@
 - [Pricing review policy](pricing-review-policy.md) — separate Budget-guided historical pricing advice; configurable matrix threshold, never automatic price rewrites.
 - [Inventory receiving policy](inventory-receiving-policy.md) — atomic receiving, highest-cost-first stock, frozen job costs, optional tax/shipping, and preserved selling markup.
 - [Property invoice billing](property-invoice-billing.md) — combine a customer's properties by default; offer separate-property billing and identify each property's work.
-- [Business KPI preferences](business-kpis.md) — dedicated KPI page, not main Dashboard; company-selected KPIs/date defaults; spend per distinct paying customer.
+- [Business KPI preferences](business-kpis.md) — dedicated KPI page; company defaults; service/matrix measurement and job-cost reports; honest historical cost coverage.
 - [Orval calendar dates](orval-calendar-dates.md) — format: date coerces calendar strings into timestamps; use a pattern when YYYY-MM-DD must survive serialization.
 - [Website intake review](website-intake-policy.md) — customizable conditional forms; quote inquiries stay outside CRM until staff review, with measurement-dependent preliminary estimates.
 - [Drizzle JSON object compatibility](drizzle-json-object-compatibility.md) — normalize null-prototype maps before ORM writes; allowlist keys to preserve safety.

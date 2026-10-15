@@ -16397,3 +16397,143 @@ export const DecideP4pDamageReportResponse = zod.object({
 })
 
 
+export const GetJobEconomicsReportQueryParams = zod.object({
+  "from": zod.coerce.string(),
+  "to": zod.coerce.string(),
+  "customerId": zod.coerce.number().optional(),
+  "serviceId": zod.coerce.number().optional()
+})
+
+export const GetJobEconomicsReportResponse = zod.object({
+  "from": zod.string(),
+  "to": zod.string(),
+  "timezone": zod.string(),
+  "generatedAt": zod.string(),
+  "jobs": zod.array(zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "customerId": zod.number().nullable(),
+  "customerName": zod.string(),
+  "propertyAddress": zod.string().nullable(),
+  "serviceId": zod.number().nullable(),
+  "serviceName": zod.string(),
+  "serviceIds": zod.array(zod.number()),
+  "completedDate": zod.string(),
+  "pricingMode": zod.string(),
+  "matrixLabel": zod.string(),
+  "measurement": zod.number().nullable(),
+  "measurementUnit": zod.union([zod.literal('sqft'),zod.literal('linear_ft'),zod.literal(null)]).nullable(),
+  "measurementSource": zod.enum(['snapshot', 'current_property', 'missing', 'not_applicable']),
+  "revenue": zod.number(),
+  "budgetRevenue": zod.number().nullable(),
+  "budgetMinutes": zod.number().nullable(),
+  "budgetMaterialCost": zod.number().nullable(),
+  "budgetLaborCost": zod.number().nullable(),
+  "baselineSource": zod.string(),
+  "estimateId": zod.number().nullable(),
+  "minutes": zod.number(),
+  "hasOpenTimers": zod.boolean(),
+  "laborCost": zod.number().nullable(),
+  "materialCost": zod.number().nullable(),
+  "fuelCost": zod.number(),
+  "otherCost": zod.number(),
+  "knownCost": zod.number(),
+  "totalCost": zod.number().nullable(),
+  "profit": zod.number().nullable(),
+  "marginPct": zod.number().nullable(),
+  "multiService": zod.boolean(),
+  "materials": zod.array(zod.object({
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitCost": zod.number().nullable(),
+  "cost": zod.number().nullable(),
+  "source": zod.string()
+})),
+  "workers": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "minutes": zod.number(),
+  "cost": zod.number().nullable()
+})),
+  "otherCosts": zod.array(zod.object({
+  "id": zod.number(),
+  "description": zod.string(),
+  "amount": zod.number(),
+  "expenseId": zod.number().nullable(),
+  "createdAt": zod.string(),
+  "createdByName": zod.string(),
+  "voidedAt": zod.string().nullable(),
+  "voidReason": zod.string().nullable()
+})),
+  "issues": zod.array(zod.string())
+})),
+  "customers": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string()
+})),
+  "services": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string()
+})),
+  "notes": zod.array(zod.string())
+})
+
+
+export const CreateJobOtherCostParams = zod.object({
+  "jobId": zod.coerce.number()
+})
+
+export const createJobOtherCostBodyDescriptionMax = 300;
+
+export const createJobOtherCostBodyAmountExclusiveMin = 0;
+export const createJobOtherCostBodyAmountMax = 1000000;
+
+export const createJobOtherCostBodyRequestIdMin = 8;
+export const createJobOtherCostBodyRequestIdMax = 100;
+
+
+
+export const CreateJobOtherCostBody = zod.object({
+  "description": zod.string().min(1).max(createJobOtherCostBodyDescriptionMax),
+  "amount": zod.number().gt(createJobOtherCostBodyAmountExclusiveMin).max(createJobOtherCostBodyAmountMax),
+  "requestId": zod.string().min(createJobOtherCostBodyRequestIdMin).max(createJobOtherCostBodyRequestIdMax),
+  "expenseId": zod.number().nullish()
+})
+
+export const CreateJobOtherCostResponse = zod.object({
+  "id": zod.number(),
+  "description": zod.string(),
+  "amount": zod.number(),
+  "expenseId": zod.number().nullable(),
+  "createdAt": zod.string(),
+  "createdByName": zod.string(),
+  "voidedAt": zod.string().nullable(),
+  "voidReason": zod.string().nullable()
+})
+
+
+export const VoidJobOtherCostParams = zod.object({
+  "jobId": zod.coerce.number(),
+  "costId": zod.coerce.number()
+})
+
+export const voidJobOtherCostBodyReasonMax = 1000;
+
+
+
+export const VoidJobOtherCostBody = zod.object({
+  "reason": zod.string().min(1).max(voidJobOtherCostBodyReasonMax)
+})
+
+export const VoidJobOtherCostResponse = zod.object({
+  "id": zod.number(),
+  "description": zod.string(),
+  "amount": zod.number(),
+  "expenseId": zod.number().nullable(),
+  "createdAt": zod.string(),
+  "createdByName": zod.string(),
+  "voidedAt": zod.string().nullable(),
+  "voidReason": zod.string().nullable()
+})
+
+

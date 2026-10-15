@@ -9278,8 +9278,158 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/P4pDamageReport' }
+  /reports/job-economics:
+    get:
+      operationId: getJobEconomicsReport
+      tags: [Reports]
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string } }
+        - { name: to, in: query, required: true, schema: { type: string } }
+        - { name: customerId, in: query, schema: { type: integer } }
+        - { name: serviceId, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Completed job economics with recorded-cost coverage
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobEconomicsReport" }
+  /reports/job-economics/{jobId}/costs:
+    post:
+      operationId: createJobOtherCost
+      tags: [Reports]
+      parameters:
+        - { name: jobId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JobOtherCostInput" }
+      responses:
+        "201":
+          description: Recorded additional job cost allocation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobOtherCost" }
+  /reports/job-economics/{jobId}/costs/{costId}/void:
+    post:
+      operationId: voidJobOtherCost
+      tags: [Reports]
+      parameters:
+        - { name: jobId, in: path, required: true, schema: { type: integer } }
+        - { name: costId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JobCostVoidInput" }
+      responses:
+        "200":
+          description: Voided allocation retained in audit history
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobOtherCost" }
 components:
   schemas:
+    JobCostVoidInput:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+    JobOtherCostInput:
+      type: object
+      required: [description, amount, requestId]
+      properties:
+        description: { type: string, minLength: 1, maxLength: 300 }
+        amount: { type: number, exclusiveMinimum: 0, maximum: 1000000 }
+        requestId: { type: string, minLength: 8, maxLength: 100 }
+        expenseId: { type: ["integer", "null"] }
+    JobOtherCost:
+      type: object
+      required: [id, description, amount, createdAt, createdByName, voidedAt, voidReason, expenseId]
+      properties:
+        id: { type: integer }
+        description: { type: string }
+        amount: { type: number }
+        expenseId: { type: ["integer", "null"] }
+        createdAt: { type: string }
+        createdByName: { type: string }
+        voidedAt: { type: ["string", "null"] }
+        voidReason: { type: ["string", "null"] }
+    JobEconomicsMaterial:
+      type: object
+      required: [name, quantity, unitCost, cost, source]
+      properties:
+        name: { type: string }
+        quantity: { type: number }
+        unitCost: { type: ["number", "null"] }
+        cost: { type: ["number", "null"] }
+        source: { type: string }
+    JobEconomicsWorker:
+      type: object
+      required: [id, name, minutes, cost]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        minutes: { type: number }
+        cost: { type: ["number", "null"] }
+    JobEconomicsChoice:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+    JobEconomicsJob:
+      type: object
+      required: [id, title, customerId, customerName, propertyAddress, serviceId, serviceName, serviceIds, completedDate, pricingMode, matrixLabel, measurement, measurementUnit, measurementSource, revenue, budgetRevenue, budgetMinutes, budgetMaterialCost, budgetLaborCost, baselineSource, estimateId, minutes, hasOpenTimers, laborCost, materialCost, fuelCost, otherCost, knownCost, totalCost, profit, marginPct, materials, workers, otherCosts, issues, multiService]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        customerId: { type: ["integer", "null"] }
+        customerName: { type: string }
+        propertyAddress: { type: ["string", "null"] }
+        serviceId: { type: ["integer", "null"] }
+        serviceName: { type: string }
+        serviceIds: { type: array, items: { type: integer } }
+        completedDate: { type: string }
+        pricingMode: { type: string }
+        matrixLabel: { type: string }
+        measurement: { type: ["number", "null"] }
+        measurementUnit: { type: ["string", "null"], enum: [sqft, linear_ft, null] }
+        measurementSource: { type: string, enum: [snapshot, current_property, missing, not_applicable] }
+        revenue: { type: number }
+        budgetRevenue: { type: ["number", "null"] }
+        budgetMinutes: { type: ["number", "null"] }
+        budgetMaterialCost: { type: ["number", "null"] }
+        budgetLaborCost: { type: ["number", "null"] }
+        baselineSource: { type: string }
+        estimateId: { type: ["integer", "null"] }
+        minutes: { type: number }
+        hasOpenTimers: { type: boolean }
+        laborCost: { type: ["number", "null"] }
+        materialCost: { type: ["number", "null"] }
+        fuelCost: { type: number }
+        otherCost: { type: number }
+        knownCost: { type: number }
+        totalCost: { type: ["number", "null"] }
+        profit: { type: ["number", "null"] }
+        marginPct: { type: ["number", "null"] }
+        multiService: { type: boolean }
+        materials: { type: array, items: { $ref: "#/components/schemas/JobEconomicsMaterial" } }
+        workers: { type: array, items: { $ref: "#/components/schemas/JobEconomicsWorker" } }
+        otherCosts: { type: array, items: { $ref: "#/components/schemas/JobOtherCost" } }
+        issues: { type: array, items: { type: string } }
+    JobEconomicsReport:
+      type: object
+      required: [from, to, timezone, generatedAt, jobs, customers, services, notes]
+      properties:
+        from: { type: string }
+        to: { type: string }
+        timezone: { type: string }
+        generatedAt: { type: string }
+        jobs: { type: array, items: { $ref: "#/components/schemas/JobEconomicsJob" } }
+        customers: { type: array, items: { $ref: "#/components/schemas/JobEconomicsChoice" } }
+        services: { type: array, items: { $ref: "#/components/schemas/JobEconomicsChoice" } }
+        notes: { type: array, items: { type: string } }
     P4pDamageAllocation:
       type: object
       required: [userId, amount]

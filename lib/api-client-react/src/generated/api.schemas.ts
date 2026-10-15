@@ -5,6 +5,157 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+export interface JobCostVoidInput {
+  /**
+     * @minLength 1
+     * @maxLength 1000
+     */
+  reason: string;
+}
+
+export interface JobOtherCostInput {
+  /**
+     * @minLength 1
+     * @maxLength 300
+     */
+  description: string;
+  /**
+     * @maximum 1000000
+     * @exclusiveMinimum 0
+     */
+  amount: number;
+  /**
+     * @minLength 8
+     * @maxLength 100
+     */
+  requestId: string;
+  /** @nullable */
+  expenseId?: number | null;
+}
+
+export interface JobOtherCost {
+  id: number;
+  description: string;
+  amount: number;
+  /** @nullable */
+  expenseId: number | null;
+  createdAt: string;
+  createdByName: string;
+  /** @nullable */
+  voidedAt: string | null;
+  /** @nullable */
+  voidReason: string | null;
+}
+
+export interface JobEconomicsMaterial {
+  name: string;
+  quantity: number;
+  /** @nullable */
+  unitCost: number | null;
+  /** @nullable */
+  cost: number | null;
+  source: string;
+}
+
+export interface JobEconomicsWorker {
+  id: number;
+  name: string;
+  minutes: number;
+  /** @nullable */
+  cost: number | null;
+}
+
+export interface JobEconomicsChoice {
+  id: number;
+  name: string;
+}
+
+/**
+ * @nullable
+ */
+export type JobEconomicsJobMeasurementUnit = typeof JobEconomicsJobMeasurementUnit[keyof typeof JobEconomicsJobMeasurementUnit] | null;
+
+
+export const JobEconomicsJobMeasurementUnit = {
+  sqft: 'sqft',
+  linear_ft: 'linear_ft',
+} as const;
+
+export type JobEconomicsJobMeasurementSource = typeof JobEconomicsJobMeasurementSource[keyof typeof JobEconomicsJobMeasurementSource];
+
+
+export const JobEconomicsJobMeasurementSource = {
+  snapshot: 'snapshot',
+  current_property: 'current_property',
+  missing: 'missing',
+  not_applicable: 'not_applicable',
+} as const;
+
+export interface JobEconomicsJob {
+  id: number;
+  title: string;
+  /** @nullable */
+  customerId: number | null;
+  customerName: string;
+  /** @nullable */
+  propertyAddress: string | null;
+  /** @nullable */
+  serviceId: number | null;
+  serviceName: string;
+  serviceIds: number[];
+  completedDate: string;
+  pricingMode: string;
+  matrixLabel: string;
+  /** @nullable */
+  measurement: number | null;
+  /** @nullable */
+  measurementUnit: JobEconomicsJobMeasurementUnit;
+  measurementSource: JobEconomicsJobMeasurementSource;
+  revenue: number;
+  /** @nullable */
+  budgetRevenue: number | null;
+  /** @nullable */
+  budgetMinutes: number | null;
+  /** @nullable */
+  budgetMaterialCost: number | null;
+  /** @nullable */
+  budgetLaborCost: number | null;
+  baselineSource: string;
+  /** @nullable */
+  estimateId: number | null;
+  minutes: number;
+  hasOpenTimers: boolean;
+  /** @nullable */
+  laborCost: number | null;
+  /** @nullable */
+  materialCost: number | null;
+  fuelCost: number;
+  otherCost: number;
+  knownCost: number;
+  /** @nullable */
+  totalCost: number | null;
+  /** @nullable */
+  profit: number | null;
+  /** @nullable */
+  marginPct: number | null;
+  multiService: boolean;
+  materials: JobEconomicsMaterial[];
+  workers: JobEconomicsWorker[];
+  otherCosts: JobOtherCost[];
+  issues: string[];
+}
+
+export interface JobEconomicsReport {
+  from: string;
+  to: string;
+  timezone: string;
+  generatedAt: string;
+  jobs: JobEconomicsJob[];
+  customers: JobEconomicsChoice[];
+  services: JobEconomicsChoice[];
+  notes: string[];
+}
+
 export interface P4pDamageAllocation {
   userId: number;
   employeeName?: string;
@@ -9586,5 +9737,12 @@ export type GetEfficiencyJobs200 = {
 export type GetKpiDashboardReportParams = {
 from: string;
 to: string;
+};
+
+export type GetJobEconomicsReportParams = {
+from: string;
+to: string;
+customerId?: number;
+serviceId?: number;
 };
 

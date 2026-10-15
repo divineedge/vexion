@@ -11,6 +11,7 @@ import {installVendorCategoriesSchema} from './lib/vendorCategories';
 import {installCustomerMergeSchema} from './lib/customerMerge';
 import {installInventoryCostSchema} from './lib/inventoryCosting';
 import { installP4pDamageSchema } from "./lib/p4pDamage";
+import { installJobEconomicsSchema } from "./lib/jobEconomicsSchema";
 
 // drizzle push handles tables but not rate-capture/immutability triggers.
 // Install the idempotent migration before this build begins serving requests.
@@ -30,6 +31,7 @@ await installVendorCategoriesSchema();
 await installInventoryCostSchema();
 await installCustomerMergeSchema();
 await installP4pDamageSchema();
+await installJobEconomicsSchema();
 startEstimateReminderScheduler();
 
 if (!rawPort) {

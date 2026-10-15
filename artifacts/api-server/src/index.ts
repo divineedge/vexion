@@ -10,6 +10,7 @@ import { installWebsiteIntakeSchema } from "./lib/websiteFlow";
 import {installVendorCategoriesSchema} from './lib/vendorCategories';
 import {installCustomerMergeSchema} from './lib/customerMerge';
 import {installInventoryCostSchema} from './lib/inventoryCosting';
+import { installP4pDamageSchema } from "./lib/p4pDamage";
 
 // drizzle push handles tables but not rate-capture/immutability triggers.
 // Install the idempotent migration before this build begins serving requests.
@@ -28,6 +29,7 @@ await installWebsiteIntakeSchema();
 await installVendorCategoriesSchema();
 await installInventoryCostSchema();
 await installCustomerMergeSchema();
+await installP4pDamageSchema();
 startEstimateReminderScheduler();
 
 if (!rawPort) {

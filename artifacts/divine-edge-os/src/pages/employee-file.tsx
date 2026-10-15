@@ -19,6 +19,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { P4pDamageReports } from '@/components/p4p-damage-reports';
 import { EmpFormFields, displayEmpAnswer } from '@/components/hr/EmpFormFields';
 import {
   useHrMeta, useHrEmployee, useAccountSetup, useHrAudit, useSaveProfile, useAddHistory, useShareHistory, useAcknowledgeHistory,
@@ -624,6 +625,7 @@ export default function EmployeeFilePage() {
           <TabsTrigger value="history">Records ({data.history.length})</TabsTrigger>
           <TabsTrigger value="forms">Forms ({data.assignments.length})</TabsTrigger>
           <TabsTrigger value="documents">Documents ({data.documents.length})</TabsTrigger>
+          {data.canManage && <TabsTrigger value="damage">P4P damage</TabsTrigger>}
           {data.canManage && <TabsTrigger value="activity">Time & GPS</TabsTrigger>}
           {data.canManage && <TabsTrigger value="audit">Audit log</TabsTrigger>}
         </TabsList>
@@ -631,6 +633,7 @@ export default function EmployeeFilePage() {
         <TabsContent value="history" className="mt-4"><HistoryList id={id} data={data} isSelf={isSelf} onAdd={() => openAdd()} /></TabsContent>
         <TabsContent value="forms" className="mt-4"><FormsTab id={id} data={data} isSelf={isSelf} /></TabsContent>
         <TabsContent value="documents" className="mt-4"><DocumentsTab id={id} data={data} /></TabsContent>
+        {data.canManage && <TabsContent value="damage" className="mt-4"><P4pDamageReports employeeId={id} readOnly /></TabsContent>}
         {data.canManage && <TabsContent value="activity" className="mt-4"><ActivityTab id={id} onUseEvidence={ev => { openAdd(ev); }} /></TabsContent>}
         {data.canManage && <TabsContent value="audit" className="mt-4"><AuditTab id={id} /></TabsContent>}
       </Tabs>

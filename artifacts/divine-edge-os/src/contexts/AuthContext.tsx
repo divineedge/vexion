@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { logout as revokeStaffSession, setDefaultHeaders } from '@workspace/api-client-react';
 import type { User } from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { buildEffectivePermissions, type PermissionKey } from '@/hooks/usePermissions';
 
 const SESSION_TOKEN_KEY = 'divine_edge_session_token';
@@ -45,6 +46,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(() => {
     try {
       const stored = localStorage.getItem('divine_edge_user');
@@ -65,6 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = (u: User, sessionToken?: string) => {
+    if (user?.id !== u.id || user?.role !== u.role) queryClient.clear();
     setUser(u);
     localStorage.setItem('divine_edge_user', JSON.stringify(u));
     if (sessionToken) localStorage.setItem(SESSION_TOKEN_KEY, sessionToken);
@@ -75,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Start server-side revocation while the session header is still configured.
     // Keep this API synchronous for existing navigation/click-handler contracts.
     void revokeStaffSession().catch(() => undefined);
+    queryClient.clear();
     setUser(null);
     setTenantPermissionsState(null);
     localStorage.removeItem('divine_edge_user');

@@ -7,12 +7,25 @@ import { eq, sql } from "drizzle-orm";
 // Every HTTP request uses one rollback-only connection. This exercises real
 // SQL, rate triggers, schema validation, and routing without leaving payroll
 // records in the development database or disabling immutable-record guards.
-const holder = vi.hoisted(() => ({ connection: null as any }));
+const holder = vi.hoisted(() => ({ connection: null as any, savepoint: 0 }));
 vi.mock("@workspace/db", async importOriginal => {
   const original = await importOriginal<typeof import("@workspace/db")>();
   return { ...original, db: new Proxy(original.db, {
     get(target, key) {
-      if (key === "transaction" && holder.connection) return (fn: any) => fn(holder.connection);
+      if (key === "transaction" && holder.connection) return async (fn: any) => {
+        const connection = holder.connection;
+        const name = `payroll_fixture_${++holder.savepoint}`;
+        await connection.execute(sql.raw(`SAVEPOINT ${name}`));
+        try {
+          const result = await fn(connection);
+          await connection.execute(sql.raw(`RELEASE SAVEPOINT ${name}`));
+          return result;
+        } catch (error) {
+          await connection.execute(sql.raw(`ROLLBACK TO SAVEPOINT ${name}`));
+          await connection.execute(sql.raw(`RELEASE SAVEPOINT ${name}`));
+          throw error;
+        }
+      };
       const current = holder.connection ?? target;
       const value = current[key];
       return typeof value === "function" ? value.bind(current) : value;
@@ -22,7 +35,7 @@ vi.mock("@workspace/db", async importOriginal => {
 import { db, pool, tenantsTable, usersTable, servicesTable, jobsTable, timeEntriesTable, payrollRatesTable } from "@workspace/db";
 import p4pRouter from "./p4p";
 
-describe.skipIf(!process.env.DATABASE_URL)("final payroll snapshots", () => {
+describe.skipIf(!(process.env.DATABASE_URL || process.env.PGHOST))("final payroll snapshots", () => {
   const connect = () => pool.connect();
   let client: Awaited<ReturnType<typeof connect>>;
   let tenant: number, owner: number, tech: number, foreign: number, foreignOwner: number, service: number, period: number;
@@ -208,5 +221,147 @@ describe.skipIf(!process.env.DATABASE_URL)("final payroll snapshots", () => {
     expect(ownerRow).toBeTruthy();
     expect(ownerRow.clockHours).toBe(2);
     expect((await request(app).get(`/api/p4p/payroll/periods/${period}`)).body.snapshot).toEqual(original);
+  });
+
+  it("requires damage review, manually allocates employees, protects guarantees and freezes the report with payroll", async () => {
+    const [employeeRecord] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, tech));
+    const damageRange = { dateFrom: "2020-01-08", dateTo: "2020-01-08" };
+    await rate("hourly", tech, 10, "2020-01-08T00:00:00Z");
+    await rate("hourly", owner, 10, "2020-01-08T00:00:00Z");
+    for (const userId of [tech, owner]) {
+      await db.insert(timeEntriesTable).values({
+        tenantId: tenant, userId, isMasterClock: true, clockedInAt: new Date("2020-01-08T10:00:00Z"), clockedOutAt: new Date("2020-01-08T14:00:00Z"),
+      });
+      await db.insert(jobsTable).values({
+        tenantId: tenant, title: "Damage payroll fixture", assigneeId: userId, serviceId: service,
+        status: "completed", totalAmount: 1000, scheduledAt: new Date("2020-01-08T10:00:00Z"), completedAt: new Date("2020-01-08T14:00:00Z"),
+      });
+    }
+    const body = {
+      title: "Verified damage", description: "Human-reviewed fixture incident", occurredOn: "2020-01-08", payrollDate: "2020-01-08",
+      allocations: [{ userId: tech, amount: 20 }, { userId: owner, amount: 5 }],
+    };
+    const created = await request(app).post("/api/p4p/damage-reports").send(body);
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    expect(created.body.status).toBe("pending");
+    expect(created.body.allocations[0].employeeName).toBe(employeeRecord.name);
+    const reportId = created.body.id;
+    const first = await request(app).post("/api/p4p/payroll/preview").send(damageRange);
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    expect(first.body.snapshot.summary.technicians.find((t: any) => t.userId === tech).damageDeduction).toBe(0);
+    const pending = await request(app).post("/api/p4p/payroll/periods").send({ ...damageRange, digest: first.body.digest });
+    expect(pending.status).toBe(409);
+    expect(pending.body.error).toContain("pending damage");
+    const edited = await request(app).patch(`/api/p4p/damage-reports/${reportId}`).send({
+      ...body, allocations: [{ userId: tech, amount: 40 }, { userId: owner, amount: 500 }],
+    });
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+    expect(edited.body.allocations.map((a: any) => a.amount)).toEqual([40, 500]);
+    const approved = await request(app).post(`/api/p4p/damage-reports/${reportId}/decision`).send({ action: "approve", reason: "Reviewed responsibility and amounts" });
+    expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+    expect(approved.body.approvedByName).toBe("company_owner");
+    expect(approved.body.decisionReason).toBe("Reviewed responsibility and amounts");
+    expect((await request(app).post(`/api/p4p/damage-reports/${reportId}/decision`).send({ action: "approve", reason: "Duplicate attempt" })).status).toBe(409);
+    expect((await request(app).patch(`/api/p4p/damage-reports/${reportId}`).send(body)).status).toBe(409);
+    // A preview made before approval cannot silently finalize altered pay.
+    expect((await request(app).post("/api/p4p/payroll/periods").send({ ...damageRange, digest: first.body.digest })).status).toBe(409);
+    const preview = await request(app).post("/api/p4p/payroll/preview").send(damageRange);
+    const technician = preview.body.snapshot.summary.technicians.find((t: any) => t.userId === tech);
+    const ownerRow = preview.body.snapshot.summary.technicians.find((t: any) => t.userId === owner);
+    expect(technician).toMatchObject({ p4pBeforeDamage: 250, damageDeduction: 40, p4pEarnings: 210, basePay: 40, grossPay: 210, damagePayReduction: 40, damageReportIds: [reportId] });
+    expect(ownerRow).toMatchObject({ p4pBeforeDamage: 250, damageDeduction: 500, p4pEarnings: 0, basePay: 40, grossPay: 40, damagePayReduction: 210 });
+    const ownSummary = await request(app).get("/api/p4p/summary?dateFrom=2020-01-08&dateTo=2020-01-08").set("x-test-tech", "1");
+    expect(ownSummary.status, JSON.stringify(ownSummary.body)).toBe(200);
+    expect(ownSummary.body.technicians).toHaveLength(1);
+    expect(ownSummary.body.technicians[0]).toMatchObject({ userId: tech, p4pEarnings: 210 });
+    const ownReports = await request(app).get("/api/p4p/damage-reports").set("x-test-tech", "1");
+    expect(ownReports.body.find((r: any) => r.id === reportId).allocations).toEqual([{ userId: tech, employeeName: employeeRecord.name, amount: 40 }]);
+    expect((await request(app).get("/api/p4p/damage-reports").set("x-test-foreign", "1")).body).toEqual([]);
+    const outside = await request(app).get("/api/p4p/summary?dateFrom=2020-01-09&dateTo=2020-01-09");
+    expect(outside.body.technicians.find((t: any) => t.userId === tech).damageDeduction).toBe(0);
+    const finalized = await request(app).post("/api/p4p/payroll/periods").send({ ...damageRange, digest: preview.body.digest });
+    expect(finalized.status, JSON.stringify(finalized.body)).toBe(201);
+    const stored = (await request(app).get("/api/p4p/damage-reports")).body.find((r: any) => r.id === reportId);
+    expect(stored.payrollPeriodId).toBe(finalized.body.id);
+    expect((await request(app).post(`/api/p4p/damage-reports/${reportId}/decision`).send({ action: "void", reason: "Must use payroll correction" })).status).toBe(409);
+    await client.query("SAVEPOINT damage_immutable");
+    await expect(client.query("UPDATE p4p_damage_reports SET title='Attempt' WHERE id=$1", [reportId])).rejects.toThrow("immutable");
+    await client.query("ROLLBACK TO SAVEPOINT damage_immutable");
+    await client.query("RELEASE SAVEPOINT damage_immutable");
+    const reloaded = await request(app).get(`/api/p4p/payroll/periods/${finalized.body.id}`);
+    expect(reloaded.body.snapshot).toEqual(finalized.body.snapshot);
+    expect((await request(app).get(`/api/p4p/payroll/periods/${period}`)).body.snapshot).toEqual(original);
+  });
+
+  it("rejects invalid allocations and unauthorized writes, and records voids without deductions", async () => {
+    const body = { title: "Void fixture", description: "Reviewed fixture", occurredOn: "2020-01-10", payrollDate: "2020-01-10", allocations: [{ userId: tech, amount: 12.34 }] };
+    for (const patch of [
+      { allocations: [{ userId: foreignOwner, amount: 1 }] },
+      { allocations: [{ userId: tech, amount: 1 }, { userId: tech, amount: 2 }] },
+      { allocations: [{ userId: tech, amount: -1 }] },
+      { allocations: [{ userId: tech, amount: 1.001 }] },
+      { occurredOn: "2020-02-30" },
+    ]) expect((await request(app).post("/api/p4p/damage-reports").send({ ...body, ...patch })).status).toBe(400);
+    expect((await request(app).post("/api/p4p/damage-reports").set("x-test-tech", "1").send(body)).status).toBe(403);
+    const created = await request(app).post("/api/p4p/damage-reports").send(body);
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const id = created.body.id;
+    expect((await request(app).post(`/api/p4p/damage-reports/${id}/decision`).set("x-test-foreign", "1").send({ action: "approve", reason: "Foreign" })).status).toBe(404);
+    expect((await request(app).post(`/api/p4p/damage-reports/${id}/decision`).send({ action: "approve", reason: "" })).status).toBe(400);
+    expect((await request(app).post(`/api/p4p/damage-reports/${id}/decision`).send({ action: "approve", reason: "Reviewed" })).status).toBe(200);
+    const voided = await request(app).post(`/api/p4p/damage-reports/${id}/decision`).send({ action: "void", reason: "Not employee-caused" });
+    expect(voided.status).toBe(200);
+    expect(voided.body).toMatchObject({ status: "void", voidReason: "Not employee-caused", approvedByName: "company_owner", voidedByName: "company_owner" });
+    const summary = await request(app).get("/api/p4p/summary?dateFrom=2020-01-10&dateTo=2020-01-10");
+    expect(summary.body.technicians.find((t: any) => t.userId === tech).damageDeduction).toBe(0);
+    const closed = await request(app).post("/api/p4p/damage-reports").send({ ...body, payrollDate: range.dateFrom });
+    expect((await request(app).post(`/api/p4p/damage-reports/${closed.body.id}/decision`).send({ action: "approve", reason: "Too late" })).status).toBe(409);
+  });
+
+  it("does not allow P4P-only authorization to bypass an unknown hourly guarantee for damage deductions", async () => {
+    await rate("hourly", tech, null, "2020-01-11T00:00:00Z");
+    await db.insert(timeEntriesTable).values({
+      tenantId: tenant, userId: tech, isMasterClock: true, clockedInAt: new Date("2020-01-11T10:00:00Z"), clockedOutAt: new Date("2020-01-11T12:00:00Z"),
+    });
+    const created = await request(app).post("/api/p4p/damage-reports").send({
+      title: "Unknown guarantee", description: "Fixture", occurredOn: "2020-01-11", payrollDate: "2020-01-11", allocations: [{ userId: tech, amount: 5 }],
+    });
+    expect(created.status).toBe(201);
+    expect((await request(app).post(`/api/p4p/damage-reports/${created.body.id}/decision`).send({ action: "approve", reason: "Reviewed" })).status).toBe(200);
+    const unknownRange = { dateFrom: "2020-01-11", dateTo: "2020-01-11" };
+    const preview = await request(app).post("/api/p4p/payroll/preview").send(unknownRange);
+    expect(preview.status, JSON.stringify(preview.body)).toBe(200);
+    const result = await request(app).post("/api/p4p/payroll/periods").send({ ...unknownRange, digest: preview.body.digest, p4pOnlyReason: "Cannot waive guarantee protection" });
+    expect(result.status).toBe(400);
+    expect(result.body.error).toContain("hourly guarantee is unknown");
+  });
+  it("matches damage dates, job earnings and clock guarantees in company time across daylight saving", async () => {
+    await db.update(tenantsTable).set({ timezone: "America/Denver" }).where(eq(tenantsTable.id, tenant));
+    await rate("hourly", tech, 10, "2020-03-01T00:00:00Z");
+    await db.insert(timeEntriesTable).values({
+      tenantId: tenant, userId: tech, isMasterClock: true,
+      clockedInAt: new Date("2020-03-08T07:00:00Z"), clockedOutAt: new Date("2020-03-09T06:00:00Z"),
+    });
+    for (const [completedAt, totalAmount] of [["2020-03-08T06:59:00Z", 7000], ["2020-03-09T05:00:00Z", 1000]] as const) {
+      await db.insert(jobsTable).values({
+        tenantId: tenant, title: "Tenant day boundary", assigneeId: tech, serviceId: service,
+        status: "completed", totalAmount, scheduledAt: new Date(completedAt), completedAt: new Date(completedAt),
+      });
+    }
+    const created = await request(app).post("/api/p4p/damage-reports").send({
+      title: "DST date allocation", description: "Fixture", occurredOn: "2020-03-08", payrollDate: "2020-03-08", allocations: [{ userId: tech, amount: 20 }],
+    });
+    expect(created.status).toBe(201);
+    expect((await request(app).post(`/api/p4p/damage-reports/${created.body.id}/decision`).send({ action: "approve", reason: "Company calendar day" })).status).toBe(200);
+    const live = await request(app).get("/api/p4p/summary?dateFrom=2020-03-08&dateTo=2020-03-08");
+    expect(live.status, JSON.stringify(live.body)).toBe(200);
+    const employee = live.body.technicians.find((t: any) => t.userId === tech);
+    expect(employee).toMatchObject({
+      clockHours: 23, basePay: 230, p4pBeforeDamage: 250, damageDeduction: 20, p4pEarnings: 230,
+      grossPay: 230, damagePayReduction: 20, damageReportIds: [created.body.id],
+    });
+    const preview = await request(app).post("/api/p4p/payroll/preview").send({ dateFrom: "2020-03-08", dateTo: "2020-03-08" });
+    expect(preview.status, JSON.stringify(preview.body)).toBe(200);
+    expect(preview.body.snapshot.summary.technicians.find((t: any) => t.userId === tech)).toEqual(employee);
   });
 });

@@ -65,9 +65,13 @@ export function PayrollApprovals({ onBack }: { onBack: () => void }) {
   const changeRange = (setter: (value: string) => void, value: string) => {
     setter(value); setPreview(null); review.reset(); approve.reset();
   };
-  const originalTotal = data?.summary.technicians.reduce((sum, t) => sum + (t.grossPay ?? t.p4pEarnings), 0) ?? 0;
+  const knownGross = (t: { userId: number; grossPay: number | null; p4pEarnings: number; acquisitionBonusPay?: number }) =>
+    t.grossPay ?? (data?.p4pOnlyApproval?.employeeIds.includes(t.userId) ? t.p4pEarnings + (t.acquisitionBonusPay ?? 0) : null);
+  const originalTotal = data?.summary.technicians.some(t => knownGross(t) == null) ? null
+    : data?.summary.technicians.reduce((sum, t) => sum + (knownGross(t) ?? 0), 0) ?? 0;
   const adjustmentTotal = adjustments.reduce((cents, a) => cents + Math.round(a.amount * 100), 0) / 100;
   const missingGuarantee = data?.summary.technicians.filter(t => t.clockHours > 0 && t.basePay == null) ?? [];
+  const missingDamageGuarantee = data?.summary.technicians.filter(t => (t.damageDeduction ?? 0) > 0 && t.basePay == null) ?? [];
 
   return <div className="space-y-6">
     <div className="flex items-center justify-between gap-4">
@@ -103,18 +107,24 @@ export function PayrollApprovals({ onBack }: { onBack: () => void }) {
         {saved && <p className="text-sm">Approved by {saved.approvedByName} · {new Date(saved.approvedAt).toLocaleString()}</p>}
       </CardHeader><CardContent className="space-y-4">
         <div className="overflow-x-auto"><Table>
-          <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Hours at each rate</TableHead><TableHead>Base guarantee</TableHead><TableHead>P4P</TableHead><TableHead>Original gross</TableHead><TableHead>Adjustments</TableHead><TableHead>Adjusted gross</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Hours at each rate</TableHead><TableHead>Base guarantee</TableHead><TableHead>P4P before damage</TableHead><TableHead>Approved damage</TableHead><TableHead>Net P4P</TableHead><TableHead>Damage pay impact</TableHead><TableHead>Original gross</TableHead><TableHead>Adjustments</TableHead><TableHead>Adjusted gross</TableHead></TableRow></TableHeader>
           <TableBody>{data.summary.technicians.map(t => {
             const delta = adjustments.filter(a => a.userId === t.userId).reduce((cents, a) => cents + Math.round(a.amount * 100), 0) / 100;
-            const gross = t.grossPay ?? t.p4pEarnings;
+             const gross = knownGross(t);
             return <TableRow key={t.userId}><TableCell>{t.name}</TableCell>
               <TableCell>{t.rateSegments.length ? t.rateSegments.map((s, i) => <div key={i}>{s.hours.toFixed(2)}h × {s.rate == null ? "Not configured" : `${money(s.rate)}/hr`}</div>) : `0h · ${t.baseHourlyRate == null ? "No base rate" : money(t.baseHourlyRate) + "/hr"}`}</TableCell>
-              <TableCell>{t.basePay == null ? (t.clockHours > 0 ? "Missing historical rate — P4P only" : "Not configured") : money(t.basePay)}</TableCell><TableCell>{money(t.p4pEarnings)}</TableCell>
-              <TableCell>{money(gross)}</TableCell><TableCell>{money(delta)}</TableCell><TableCell className="font-bold">{money(gross + delta)}</TableCell>
+              <TableCell>{t.basePay == null ? (t.clockHours > 0 ? "Missing historical rate — P4P only" : "Not configured") : money(t.basePay)}</TableCell><TableCell>{money(t.p4pBeforeDamage ?? t.p4pEarnings)}</TableCell>
+              <TableCell data-testid={`text-snapshot-damage-${t.userId}`}>{(t.damageDeduction ?? 0) > 0 ? <span className="text-rose-700">−{money(t.damageDeduction ?? 0)}</span> : "—"}
+                {t.damageReportIds?.length ? <div className="text-xs text-muted-foreground">Report{t.damageReportIds.length > 1 ? "s" : ""} {t.damageReportIds.map(id => `#${id}`).join(", ")}</div> : null}</TableCell>
+              <TableCell className="font-medium">{money(t.p4pEarnings)}</TableCell>
+              <TableCell>{!(t.damageDeduction ?? 0) ? "—" : t.damagePayReduction == null ? <span className="text-amber-700">Not configured</span> : t.damagePayReduction > 0 ? money(t.damagePayReduction) : "Hourly floor protected"}</TableCell>
+              <TableCell>{gross == null ? "Not configured" : money(gross)}</TableCell><TableCell>{money(delta)}</TableCell><TableCell className="font-bold">{gross == null ? "Not configured" : money(gross + delta)}</TableCell>
             </TableRow>;
           })}</TableBody>
         </Table></div>
-        <p className="font-semibold">Original total: {money(originalTotal)} · Adjustments: {money(adjustmentTotal)} · Adjusted total: {money(originalTotal + adjustmentTotal)}</p>
+        {data.summary.technicians.some(t => t.damageReportIds?.length) && <p className="text-xs text-muted-foreground">Damage report numbers match the P4P Damage Reports section on the live estimates screen, where each report keeps its approval and void audit trail. Approving a damage report is not final payroll approval; only this screen locks payroll. Deductions are capped at this period's P4P and unused amounts do not carry forward.</p>}
+        {!saved && missingDamageGuarantee.length > 0 && <div role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive">Approved damage applies to employees with no known hourly guarantee ({missingDamageGuarantee.map(t => t.name).join(", ")}). This period cannot be finalized, even with a P4P-only reason. Resolve missing rate history or void the damage report first. Saving a current rate does not backdate historical pay.</div>}
+        <p className="font-semibold">Original total: {originalTotal == null ? "Not configured" : money(originalTotal)} · Adjustments: {money(adjustmentTotal)} · Adjusted total: {originalTotal == null ? "Not configured" : money(originalTotal + adjustmentTotal)}</p>
         {data.p4pOnlyApproval && <div className="rounded-md border border-amber-400 p-3 text-sm">
           <p className="font-semibold">P4P-only approval — no complete historical hourly guarantee</p>
           <p>Employees: {data.summary.technicians.filter(t => data.p4pOnlyApproval?.employeeIds.includes(t.userId)).map(t => t.name).join(", ")}</p>
@@ -122,14 +132,14 @@ export function PayrollApprovals({ onBack }: { onBack: () => void }) {
           <p>Authorized by {saved?.approvedByName} at {saved ? new Date(saved.approvedAt).toLocaleString() : ""}. Original hourly rates remain unconfigured; later corrections require an audited adjustment.</p>
         </div>}
         {!saved && canApprove && preview && <div className="space-y-2">
-          {missingGuarantee.length > 0 && <div className="rounded-md border border-amber-400 p-3 space-y-2">
+          {missingGuarantee.length > 0 && missingDamageGuarantee.length === 0 && <div className="rounded-md border border-amber-400 p-3 space-y-2">
             <p className="font-semibold">Explicit P4P-only approval required</p>
             <p className="text-sm">Historical hourly rates are missing for {missingGuarantee.map(t => t.name).join(", ")}. Their proposed gross is P4P earnings only, which may be $0. Saving a current hourly rate will not backdate it. Approve only if this pay basis is appropriate; any later correction must be an audited adjustment.</p>
             <Label htmlFor="p4p-only-reason">Why is P4P-only pay appropriate for these employees?</Label>
             <Input id="p4p-only-reason" required maxLength={2000} value={p4pOnlyReason} disabled={busy} onChange={e => setP4pOnlyReason(e.target.value)} />
           </div>}
           <p className="text-sm">Approval permanently locks these values. Later corrections must be entered as separate, audited adjustments.</p>
-          <Button disabled={busy || !data.summary.technicians.length || (missingGuarantee.length > 0 && !p4pOnlyReason.trim())} onClick={() => approve.mutate()}>{approve.isPending ? "Finalizing…" : "Approve and lock payroll"}</Button>
+          <Button disabled={busy || !data.summary.technicians.length || missingDamageGuarantee.length > 0 || (missingGuarantee.length > 0 && !p4pOnlyReason.trim())} onClick={() => approve.mutate()}>{approve.isPending ? "Finalizing…" : "Approve and lock payroll"}</Button>
         </div>}
       </CardContent></Card>
       <details className="rounded-lg border p-4"><summary className="cursor-pointer font-medium">Recorded job breakdown ({data.jobs.length})</summary>

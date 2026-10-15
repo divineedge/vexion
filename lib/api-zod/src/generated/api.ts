@@ -15695,6 +15695,10 @@ export const PreviewFinalPayrollResponse = zod.object({
   "basePay": zod.number().nullable(),
   "grossPay": zod.number().nullable(),
   "acquisitionBonusPay": zod.number().optional(),
+  "p4pBeforeDamage": zod.number().optional(),
+  "damageDeduction": zod.number().optional(),
+  "damagePayReduction": zod.number().nullish(),
+  "damageReportIds": zod.array(zod.number()).optional(),
   "p4pEarnings": zod.number(),
   "jobCount": zod.number(),
   "totalRevenue": zod.number(),
@@ -15799,6 +15803,10 @@ export const ApproveFinalPayrollResponse = zod.object({
   "basePay": zod.number().nullable(),
   "grossPay": zod.number().nullable(),
   "acquisitionBonusPay": zod.number().optional(),
+  "p4pBeforeDamage": zod.number().optional(),
+  "damageDeduction": zod.number().optional(),
+  "damagePayReduction": zod.number().nullish(),
+  "damageReportIds": zod.array(zod.number()).optional(),
   "p4pEarnings": zod.number(),
   "jobCount": zod.number(),
   "totalRevenue": zod.number(),
@@ -15894,6 +15902,10 @@ export const GetFinalPayrollResponse = zod.object({
   "basePay": zod.number().nullable(),
   "grossPay": zod.number().nullable(),
   "acquisitionBonusPay": zod.number().optional(),
+  "p4pBeforeDamage": zod.number().optional(),
+  "damageDeduction": zod.number().optional(),
+  "damagePayReduction": zod.number().nullish(),
+  "damageReportIds": zod.array(zod.number()).optional(),
   "p4pEarnings": zod.number(),
   "jobCount": zod.number(),
   "totalRevenue": zod.number(),
@@ -16234,6 +16246,154 @@ export const GetKpiDashboardReportResponse = zod.object({
   "deposits": zod.number(),
   "prepayments": zod.number()
 })
+})
+
+
+export const ListP4pDamageReportsResponseItem = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "occurredOn": zod.string(),
+  "payrollDate": zod.string(),
+  "jobId": zod.number().nullable(),
+  "allocations": zod.array(zod.object({
+  "userId": zod.number(),
+  "employeeName": zod.string().optional(),
+  "amount": zod.number()
+})),
+  "status": zod.enum(['pending', 'approved', 'void']),
+  "createdByName": zod.string(),
+  "createdAt": zod.string(),
+  "approvedByName": zod.string().nullable(),
+  "approvedAt": zod.string().nullable(),
+  "decisionReason": zod.string().nullable(),
+  "voidedByName": zod.string().nullable(),
+  "voidedAt": zod.string().nullable(),
+  "voidReason": zod.string().nullable(),
+  "payrollPeriodId": zod.number().nullable()
+})
+export const ListP4pDamageReportsResponse = zod.array(ListP4pDamageReportsResponseItem)
+
+
+export const createP4pDamageReportBodyOccurredOnRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const createP4pDamageReportBodyPayrollDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
+
+export const CreateP4pDamageReportBody = zod.object({
+  "title": zod.string(),
+  "description": zod.string(),
+  "occurredOn": zod.string().regex(createP4pDamageReportBodyOccurredOnRegExp),
+  "payrollDate": zod.string().regex(createP4pDamageReportBodyPayrollDateRegExp),
+  "jobId": zod.number().nullish(),
+  "allocations": zod.array(zod.object({
+  "userId": zod.number(),
+  "employeeName": zod.string().optional(),
+  "amount": zod.number()
+}))
+})
+
+export const CreateP4pDamageReportResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "occurredOn": zod.string(),
+  "payrollDate": zod.string(),
+  "jobId": zod.number().nullable(),
+  "allocations": zod.array(zod.object({
+  "userId": zod.number(),
+  "employeeName": zod.string().optional(),
+  "amount": zod.number()
+})),
+  "status": zod.enum(['pending', 'approved', 'void']),
+  "createdByName": zod.string(),
+  "createdAt": zod.string(),
+  "approvedByName": zod.string().nullable(),
+  "approvedAt": zod.string().nullable(),
+  "decisionReason": zod.string().nullable(),
+  "voidedByName": zod.string().nullable(),
+  "voidedAt": zod.string().nullable(),
+  "voidReason": zod.string().nullable(),
+  "payrollPeriodId": zod.number().nullable()
+})
+
+
+export const UpdateP4pDamageReportParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const updateP4pDamageReportBodyOccurredOnRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const updateP4pDamageReportBodyPayrollDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
+
+export const UpdateP4pDamageReportBody = zod.object({
+  "title": zod.string(),
+  "description": zod.string(),
+  "occurredOn": zod.string().regex(updateP4pDamageReportBodyOccurredOnRegExp),
+  "payrollDate": zod.string().regex(updateP4pDamageReportBodyPayrollDateRegExp),
+  "jobId": zod.number().nullish(),
+  "allocations": zod.array(zod.object({
+  "userId": zod.number(),
+  "employeeName": zod.string().optional(),
+  "amount": zod.number()
+}))
+})
+
+export const UpdateP4pDamageReportResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "occurredOn": zod.string(),
+  "payrollDate": zod.string(),
+  "jobId": zod.number().nullable(),
+  "allocations": zod.array(zod.object({
+  "userId": zod.number(),
+  "employeeName": zod.string().optional(),
+  "amount": zod.number()
+})),
+  "status": zod.enum(['pending', 'approved', 'void']),
+  "createdByName": zod.string(),
+  "createdAt": zod.string(),
+  "approvedByName": zod.string().nullable(),
+  "approvedAt": zod.string().nullable(),
+  "decisionReason": zod.string().nullable(),
+  "voidedByName": zod.string().nullable(),
+  "voidedAt": zod.string().nullable(),
+  "voidReason": zod.string().nullable(),
+  "payrollPeriodId": zod.number().nullable()
+})
+
+
+export const DecideP4pDamageReportParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DecideP4pDamageReportBody = zod.object({
+  "action": zod.enum(['approve', 'void']),
+  "reason": zod.string()
+})
+
+export const DecideP4pDamageReportResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "occurredOn": zod.string(),
+  "payrollDate": zod.string(),
+  "jobId": zod.number().nullable(),
+  "allocations": zod.array(zod.object({
+  "userId": zod.number(),
+  "employeeName": zod.string().optional(),
+  "amount": zod.number()
+})),
+  "status": zod.enum(['pending', 'approved', 'void']),
+  "createdByName": zod.string(),
+  "createdAt": zod.string(),
+  "approvedByName": zod.string().nullable(),
+  "approvedAt": zod.string().nullable(),
+  "decisionReason": zod.string().nullable(),
+  "voidedByName": zod.string().nullable(),
+  "voidedAt": zod.string().nullable(),
+  "voidReason": zod.string().nullable(),
+  "payrollPeriodId": zod.number().nullable()
 })
 
 

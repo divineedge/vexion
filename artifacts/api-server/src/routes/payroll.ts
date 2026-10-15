@@ -91,9 +91,15 @@ payrollRouter.post("/p4p/payroll/periods", async (req, res): Promise<void> => {
         AND range_end >= ${range.rangeStart}::timestamptz
       `);
       if (overlapping.rows.length) throw Object.assign(new Error("This range overlaps finalized payroll. Use an audited adjustment instead."), { status: 409 });
+      const pendingDamage = await tx.execute(sql`SELECT id FROM p4p_damage_reports WHERE tenant_id=${tenantId}
+        AND status='pending' AND payroll_date BETWEEN ${range.dateFrom}::date AND ${range.dateTo}::date LIMIT 1`);
+      if (pendingDamage.rows.length) throw Object.assign(new Error("Review pending damage reports for this period before finalizing payroll. Approve or void them in P4P damage reports."), { status: 409 });
       const data = await snapshot(tx, tenantId, range);
       if (digest(data) !== req.body.digest) throw Object.assign(new Error("Payroll changed since review. Preview it again before approving."), { status: 409 });
       const missingGuarantee = data.summary.technicians.filter(t => t.clockHours > 0 && t.basePay == null);
+      if (data.summary.technicians.some(t => t.damageDeduction > 0 && t.basePay == null)) {
+        throw Object.assign(new Error("Damage deductions cannot be finalized while an employee's hourly guarantee is unknown. Resolve the rate history or void the report; P4P-only authorization does not waive this protection."), { status: 400 });
+      }
       const reason = parsed.data.p4pOnlyReason?.trim();
       if (missingGuarantee.length && !reason) {
         throw Object.assign(new Error("Historical hourly rates are missing. To approve P4P-only pay for the flagged employees, provide an explicit reason."), { status: 400 });
@@ -108,6 +114,12 @@ payrollRouter.post("/p4p/payroll/periods", async (req, res): Promise<void> => {
         tenantId, rangeStart: new Date(range.rangeStart), rangeEnd: new Date(range.rangeEnd),
         approvedBy: res.locals.payrollActor.id, approvedByName: res.locals.payrollActor.name, snapshot: approvedSnapshot,
       }).returning();
+      const damageIds = [...new Set(data.summary.technicians.flatMap(t => t.damageReportIds))];
+      if (damageIds.length) {
+        await tx.execute(sql`UPDATE p4p_damage_reports SET payroll_period_id=${saved.id}
+          WHERE tenant_id=${tenantId} AND status='approved' AND payroll_period_id IS NULL
+          AND id IN (${sql.join(damageIds.map(id => sql`${id}`), sql`, `)})`);
+      }
       return saved;
     }, { isolationLevel: "serializable" });
     res.status(201).json(ApproveFinalPayrollResponse.parse(period));

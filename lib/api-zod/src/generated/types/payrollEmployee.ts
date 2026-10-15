@@ -19,6 +19,11 @@ export interface PayrollEmployee {
   /** @nullable */
   grossPay: number | null;
   acquisitionBonusPay?: number;
+  p4pBeforeDamage?: number;
+  damageDeduction?: number;
+  /** @nullable */
+  damagePayReduction?: number | null;
+  damageReportIds?: number[];
   p4pEarnings: number;
   jobCount: number;
   totalRevenue: number;

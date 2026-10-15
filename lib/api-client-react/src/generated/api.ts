@@ -274,6 +274,9 @@ import type {
   MediaAttachment,
   MergeCustomer200,
   MergeCustomerBody,
+  P4pDamageDecision,
+  P4pDamageInput,
+  P4pDamageReport,
   PauseSeriesInput,
   PaymentPolicy,
   PayrollAdjustment,
@@ -35008,4 +35011,272 @@ export function useGetKpiDashboardReport<TData = Awaited<ReturnType<typeof getKp
 
 
 
+
+export const getListP4pDamageReportsUrl = () => {
+
+
+
+
+  return `/api/p4p/damage-reports`
+}
+
+export const listP4pDamageReports = async ( options?: RequestInit): Promise<P4pDamageReport[]> => {
+
+  return customFetch<P4pDamageReport[]>(getListP4pDamageReportsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListP4pDamageReportsQueryKey = () => {
+    return [
+    `/api/p4p/damage-reports`
+    ] as const;
+    }
+
+
+export const getListP4pDamageReportsQueryOptions = <TData = Awaited<ReturnType<typeof listP4pDamageReports>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listP4pDamageReports>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListP4pDamageReportsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listP4pDamageReports>>> = ({ signal }) => listP4pDamageReports({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listP4pDamageReports>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListP4pDamageReportsQueryResult = NonNullable<Awaited<ReturnType<typeof listP4pDamageReports>>>
+export type ListP4pDamageReportsQueryError = ErrorType<unknown>
+
+
+
+export function useListP4pDamageReports<TData = Awaited<ReturnType<typeof listP4pDamageReports>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listP4pDamageReports>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListP4pDamageReportsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateP4pDamageReportUrl = () => {
+
+
+
+
+  return `/api/p4p/damage-reports`
+}
+
+export const createP4pDamageReport = async (p4pDamageInput: P4pDamageInput, options?: RequestInit): Promise<P4pDamageReport> => {
+
+  return customFetch<P4pDamageReport>(getCreateP4pDamageReportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(p4pDamageInput)
+  }
+);}
+
+
+
+
+
+export const getCreateP4pDamageReportMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createP4pDamageReport>>, TError,{data: BodyType<P4pDamageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createP4pDamageReport>>, TError,{data: BodyType<P4pDamageInput>}, TContext> => {
+
+const mutationKey = ['createP4pDamageReport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createP4pDamageReport>>, {data: BodyType<P4pDamageInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createP4pDamageReport(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateP4pDamageReportMutationResult = NonNullable<Awaited<ReturnType<typeof createP4pDamageReport>>>
+    export type CreateP4pDamageReportMutationBody = BodyType<P4pDamageInput>
+    export type CreateP4pDamageReportMutationError = ErrorType<unknown>
+
+    export const useCreateP4pDamageReport = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createP4pDamageReport>>, TError,{data: BodyType<P4pDamageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createP4pDamageReport>>,
+        TError,
+        {data: BodyType<P4pDamageInput>},
+        TContext
+      > => {
+      return useMutation(getCreateP4pDamageReportMutationOptions(options));
+    }
+
+export const getUpdateP4pDamageReportUrl = (id: number,) => {
+
+
+
+
+  return `/api/p4p/damage-reports/${id}`
+}
+
+export const updateP4pDamageReport = async (id: number,
+    p4pDamageInput: P4pDamageInput, options?: RequestInit): Promise<P4pDamageReport> => {
+
+  return customFetch<P4pDamageReport>(getUpdateP4pDamageReportUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(p4pDamageInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateP4pDamageReportMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateP4pDamageReport>>, TError,{id: number;data: BodyType<P4pDamageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateP4pDamageReport>>, TError,{id: number;data: BodyType<P4pDamageInput>}, TContext> => {
+
+const mutationKey = ['updateP4pDamageReport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateP4pDamageReport>>, {id: number;data: BodyType<P4pDamageInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateP4pDamageReport(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateP4pDamageReportMutationResult = NonNullable<Awaited<ReturnType<typeof updateP4pDamageReport>>>
+    export type UpdateP4pDamageReportMutationBody = BodyType<P4pDamageInput>
+    export type UpdateP4pDamageReportMutationError = ErrorType<unknown>
+
+    export const useUpdateP4pDamageReport = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateP4pDamageReport>>, TError,{id: number;data: BodyType<P4pDamageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateP4pDamageReport>>,
+        TError,
+        {id: number;data: BodyType<P4pDamageInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateP4pDamageReportMutationOptions(options));
+    }
+
+export const getDecideP4pDamageReportUrl = (id: number,) => {
+
+
+
+
+  return `/api/p4p/damage-reports/${id}/decision`
+}
+
+export const decideP4pDamageReport = async (id: number,
+    p4pDamageDecision: P4pDamageDecision, options?: RequestInit): Promise<P4pDamageReport> => {
+
+  return customFetch<P4pDamageReport>(getDecideP4pDamageReportUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(p4pDamageDecision)
+  }
+);}
+
+
+
+
+
+export const getDecideP4pDamageReportMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof decideP4pDamageReport>>, TError,{id: number;data: BodyType<P4pDamageDecision>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof decideP4pDamageReport>>, TError,{id: number;data: BodyType<P4pDamageDecision>}, TContext> => {
+
+const mutationKey = ['decideP4pDamageReport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof decideP4pDamageReport>>, {id: number;data: BodyType<P4pDamageDecision>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  decideP4pDamageReport(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DecideP4pDamageReportMutationResult = NonNullable<Awaited<ReturnType<typeof decideP4pDamageReport>>>
+    export type DecideP4pDamageReportMutationBody = BodyType<P4pDamageDecision>
+    export type DecideP4pDamageReportMutationError = ErrorType<unknown>
+
+    export const useDecideP4pDamageReport = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof decideP4pDamageReport>>, TError,{id: number;data: BodyType<P4pDamageDecision>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof decideP4pDamageReport>>,
+        TError,
+        {id: number;data: BodyType<P4pDamageDecision>},
+        TContext
+      > => {
+      return useMutation(getDecideP4pDamageReportMutationOptions(options));
+    }
 

@@ -5,6 +5,74 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+export interface P4pDamageAllocation {
+  userId: number;
+  employeeName?: string;
+  amount: number;
+}
+
+export interface P4pDamageInput {
+  title: string;
+  description: string;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  occurredOn: string;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  payrollDate: string;
+  /** @nullable */
+  jobId?: number | null;
+  allocations: P4pDamageAllocation[];
+}
+
+export type P4pDamageDecisionAction = typeof P4pDamageDecisionAction[keyof typeof P4pDamageDecisionAction];
+
+
+export const P4pDamageDecisionAction = {
+  approve: 'approve',
+  void: 'void',
+} as const;
+
+export interface P4pDamageDecision {
+  action: P4pDamageDecisionAction;
+  reason: string;
+}
+
+export type P4pDamageReportStatus = typeof P4pDamageReportStatus[keyof typeof P4pDamageReportStatus];
+
+
+export const P4pDamageReportStatus = {
+  pending: 'pending',
+  approved: 'approved',
+  void: 'void',
+} as const;
+
+export interface P4pDamageReport {
+  id: number;
+  title: string;
+  description: string;
+  occurredOn: string;
+  payrollDate: string;
+  /** @nullable */
+  jobId: number | null;
+  allocations: P4pDamageAllocation[];
+  status: P4pDamageReportStatus;
+  createdByName: string;
+  createdAt: string;
+  /** @nullable */
+  approvedByName: string | null;
+  /** @nullable */
+  approvedAt: string | null;
+  /** @nullable */
+  decisionReason: string | null;
+  /** @nullable */
+  voidedByName: string | null;
+  /** @nullable */
+  voidedAt: string | null;
+  /** @nullable */
+  voidReason: string | null;
+  /** @nullable */
+  payrollPeriodId: number | null;
+}
+
 export type KpiKey = typeof KpiKey[keyof typeof KpiKey];
 
 
@@ -294,6 +362,11 @@ export interface PayrollEmployee {
   /** @nullable */
   grossPay: number | null;
   acquisitionBonusPay?: number;
+  p4pBeforeDamage?: number;
+  damageDeduction?: number;
+  /** @nullable */
+  damagePayReduction?: number | null;
+  damageReportIds?: number[];
   p4pEarnings: number;
   jobCount: number;
   totalRevenue: number;

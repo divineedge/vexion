@@ -70,6 +70,7 @@
 - [Document and scheduling preferences](document-and-scheduling-preferences.md) — adjacent document navigation, shared recurring rules, wording snapshots, and explicit rescheduling-fee choices
 - [Billing email recovery](billing-email-recovery.md) — uncertain sends require provider verification; missing receipts never justify automatic redelivery
 - [Payroll history boundary](payroll-history-boundary.md) — rates take effect when saved; approvals are immutable and corrections separate; legacy rates are baselines, not reconstructed history.
+- [P4P damage responsibility](p4p-damage-policy.md) — manual employee allocations reduce approved period P4P only; protect hourly guarantees and immutable finalized pay.
 - [Startup schema locks](startup-schema-locks.md) — start cross-table background scans after startup trigger/schema installation to avoid read/schema-lock deadlocks.
 - [Pricing review policy](pricing-review-policy.md) — separate Budget-guided historical pricing advice; configurable matrix threshold, never automatic price rewrites.
 - [Inventory receiving policy](inventory-receiving-policy.md) — atomic receiving, highest-cost-first stock, frozen job costs, optional tax/shipping, and preserved selling markup.

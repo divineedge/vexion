@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { PayrollApprovals } from '@/components/payroll-approvals';
+import { P4pDamageReports } from '@/components/p4p-damage-reports';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { customFetch, useGetTenantSettings } from '@workspace/api-client-react';
@@ -32,6 +33,30 @@ interface TechSummary {
   grossPay?: number | null;
   /** Earned acquisition rewards (first paid invoice), separate from P4P; included in grossPay. */
   acquisitionBonusPay?: number | null;
+  /** P4P before approved damage deductions. p4pEarnings is NET P4P. */
+  p4pBeforeDamage?: number;
+  /** Approved damage allocated to this payroll period; net P4P cannot be negative. */
+  damageDeduction?: number;
+  /** Actual gross pay reduction after hourly guarantee protection; null = guarantee unknown. */
+  damagePayReduction?: number | null;
+  damageReportIds?: number[];
+}
+
+function exportSummaryCsv(rows: TechSummary[], period: string) {
+  const n = (v: number | null | undefined) => (v == null ? '' : v.toFixed(2));
+  const cell = (v: unknown) => { let x = String(v ?? ''); if (/^[=+\-@\t\r]/.test(x) && !/^-?\d+(\.\d+)?$/.test(x)) x = `'${x}`; return `"${x.replace(/"/g, '""')}"`; };
+  const lines = [
+    ['Employee', 'Jobs', 'Net Labor', 'P4P Before Damage', 'Approved Damage Deduction', 'Net P4P', 'Base Pay', 'Acquisition Bonus', 'Gross Pay', 'Actual Pay Reduction'].map(cell).join(','),
+    ...rows.map(t => [t.name, t.jobCount, n(t.netLaborRevenue), n(t.p4pBeforeDamage ?? t.p4pEarnings), n(t.damageDeduction ?? 0), n(t.p4pEarnings), t.basePay == null ? 'Not configured' : n(t.basePay), n(t.acquisitionBonusPay ?? 0), t.grossPay == null ? 'Not configured' : n(t.grossPay), t.damagePayReduction === null ? 'Not configured' : n(t.damagePayReduction ?? 0)].map(cell).join(',')),
+  ];
+  const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+  const a = document.createElement('a'); a.href = url; a.download = `p4p-summary-${period}.csv`; a.click(); URL.revokeObjectURL(url);
+}
+
+function damageReductionText(t: TechSummary) {
+  if (!(t.damageDeduction ?? 0)) return '—';
+  if (t.damagePayReduction == null) return 'Not configured';
+  return t.damagePayReduction > 0 ? fmt(t.damagePayReduction) : 'Hourly protected';
 }
 
 interface TechSplitRow {
@@ -351,7 +376,7 @@ export default function PayrollPage() {
   const { data: tenantSettings } = useGetTenantSettings();
   const dailyTaskHourlyRate: number = tenantSettings?.dailyTaskHourlyRate ?? 0;
 
-  // Technicians cannot call /p4p/summary (403); their stats come via /p4p/jobs
+  // The summary API scopes technicians to their own server-calculated pay.
   // Admin: daily task hours per technician for the same period
   const { dateFrom, dateTo } = period === 'custom' && customDateFrom && customDateTo
     ? { dateFrom: customDateFrom, dateTo: customDateTo }
@@ -362,10 +387,10 @@ export default function PayrollPage() {
     : `period=${period}`;
 
   const { data: summary, isLoading: summaryLoading } = useQuery<SummaryResponse>({
-    queryKey: ['p4p-summary', period, dateFrom, dateTo],
+    queryKey: ['p4p-summary', user?.id, user?.role, period, dateFrom, dateTo],
     queryFn: () => customFetch<SummaryResponse>(`/api/p4p/summary?${periodQuery}`),
-    enabled: !isTechnician,
     retry: false,
+    refetchInterval: 30000,
   });
 
   const viewUserId = isTechnician ? user?.id : (selectedTechId ?? undefined);
@@ -582,9 +607,12 @@ export default function PayrollPage() {
             { label: 'Base Hourly', value: myStats ? (myStats.baseHourlyRate == null ? 'Not configured' : `${fmt(myStats.baseHourlyRate)}/hr`) : '—', accent: '' },
             { label: 'Clock Hours', value: myStats?.clockHours != null ? `${myStats.clockHours.toFixed(2)}h` : '—', accent: '' },
             { label: 'Base Guaranteed Pay', value: myStats ? (myStats.basePay == null ? 'Not configured' : fmt(myStats.basePay)) : '—', accent: '' },
-            { label: 'P4P Earnings', value: myStats ? fmt(myStats.p4pEarnings) : '—', accent: 'text-emerald-700' },
+            { label: 'P4P Before Damage', value: myStats ? fmt(myStats.p4pBeforeDamage ?? myStats.p4pEarnings) : '—', accent: '' },
+            { label: 'Approved Damage Deduction', value: myStats ? ((myStats.damageDeduction ?? 0) > 0 ? `−${fmt(myStats.damageDeduction ?? 0)}` : fmt(0)) : '—', accent: 'text-rose-700' },
+            { label: 'Net P4P Earnings', value: myStats ? fmt(myStats.p4pEarnings) : '—', accent: 'text-emerald-700' },
+            { label: 'Actual Pay Reduction', value: myStats ? damageReductionText(myStats) : '—', accent: myStats?.damagePayReduction == null && (myStats?.damageDeduction ?? 0) > 0 ? 'text-amber-700' : '', sub: myStats && (myStats.damageDeduction ?? 0) > 0 ? 'After hourly guarantee protection' : undefined },
             { label: 'Acquisition Bonus (earned, separate)', value: myStats ? fmt(myStats.acquisitionBonusPay ?? 0) : '—', accent: 'text-violet-700' },
-            { label: 'Gross Pay (greater of + bonus)', value: myStats ? (myStats.grossPay == null ? fmt(myStats.p4pEarnings) : fmt(myStats.grossPay)) : '—', accent: 'text-primary' },
+            { label: 'Gross Pay (greater of + bonus)', value: myStats ? (myStats.grossPay == null ? 'Not configured' : fmt(myStats.grossPay)) : '—', accent: 'text-primary' },
             { label: 'Net Labor Revenue', value: myStats ? fmt(myStats.netLaborRevenue) : '—', accent: '' },
             { label: 'Customer Sell-Price Materials Deducted', value: myStats ? fmt(myStats.totalMaterialCost) : '—', accent: 'text-amber-600' },
             { label: 'Jobs Counted', value: myStats?.jobCount ?? '—', accent: '' },
@@ -612,7 +640,10 @@ export default function PayrollPage() {
       {!isTechnician && !selectedTechId && (summary?.technicians.length ?? 0) > 0 && (
         <Card>
           <CardHeader className="pb-3">
+            <div className="flex items-start justify-between gap-4">
             <CardTitle className="text-base">Technician P4P Summary</CardTitle>
+            <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={() => exportSummaryCsv(summary?.technicians ?? [], period)} data-testid="button-export-p4p-csv"><Download className="w-3.5 h-3.5" /> Export CSV</Button>
+            </div>
             <CardDescription>
               Click a technician row to drill into their job-level breakdown. Gross pay is the <strong>greater of</strong> the hourly guarantee (base rate × clock hours) or P4P earnings, not the sum.
               P4P earnings only build from completed jobs with a price; staff with no completed priced jobs show $0 P4P and are paid their base guarantee. Daily Task Hours are compliance/admin time, not revenue-generating.
@@ -627,7 +658,8 @@ export default function PayrollPage() {
                   <TableHead className="text-right">Gross Revenue</TableHead>
                   <TableHead className="text-right">Customer Sell-Price Materials</TableHead>
                   <TableHead className="text-right">Net Labor</TableHead>
-                  <TableHead className="text-right">P4P Earnings</TableHead>
+                  <TableHead className="text-right" title="Before damage, approved deduction, net P4P">P4P (net)</TableHead>
+                  <TableHead className="text-right" title="Actual gross pay reduction after hourly guarantee protection">Damage Pay Impact</TableHead>
                   <TableHead className="text-right">Base Rate</TableHead>
                   <TableHead className="text-right">Clock Hrs</TableHead>
                   <TableHead className="text-right">Base Pay</TableHead>
@@ -643,7 +675,7 @@ export default function PayrollPage() {
               </TableHeader>
               <TableBody>
                 {summaryLoading ? (
-                  <TableRow><TableCell colSpan={12} className="py-8 text-center text-muted-foreground">Loading...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={13} className="py-8 text-center text-muted-foreground">Loading...</TableCell></TableRow>
                 ) : (
                   summary?.technicians.map(t => {
                     const taskData = taskHoursMap.get(t.userId);
@@ -666,7 +698,9 @@ export default function PayrollPage() {
                           <span className={`font-bold ${t.p4pEarnings > 0 ? 'text-emerald-700' : 'text-muted-foreground'}`} title={`P4P earnings: ${fmt(t.p4pEarnings)}`}>
                             {fmt(t.p4pEarnings)}
                           </span>
+                          {(t.damageDeduction ?? 0) > 0 && <span className="block text-[10px] text-muted-foreground tabular-nums" data-testid={`text-damage-${t.userId}`}>{fmt(t.p4pBeforeDamage ?? 0)} − <span className="text-rose-700">{fmt(t.damageDeduction ?? 0)}</span> damage</span>}
                         </TableCell>
+                        <TableCell className={`text-right text-sm ${t.damagePayReduction == null && (t.damageDeduction ?? 0) > 0 ? 'text-amber-700' : ''}`}>{damageReductionText(t)}</TableCell>
                         <TableCell className="text-right text-sm">
                           {t.baseHourlyRate == null ? <span className="text-xs text-amber-700" title="No hourly rate set for this user (Team settings)">Not configured</span> : `${fmt(t.baseHourlyRate)}/hr`}
                         </TableCell>
@@ -738,7 +772,7 @@ export default function PayrollPage() {
               </CardTitle>
               <CardDescription>
                 Formula per job: (Customer Total − Customer Sell-Price Materials) × Service P4P% = Earnings.
-                Material amounts are recorded sell-price snapshots, deducted once; expand a row for details and multi-tech splits.
+                Material amounts are recorded sell-price snapshots, deducted once; expand a row for details and multi-tech splits. Job earnings are before payroll-period damage deductions; net P4P and hourly protection appear in the employee summary.
               </CardDescription>
             </div>
             {!isTechnician && selectedTechId && (
@@ -803,6 +837,8 @@ export default function PayrollPage() {
           </CardContent>
         </Card>
       )}
+
+      <P4pDamageReports />
 
       {/* If nothing is selected (admin) and no techs, show empty state */}
       {!isTechnician && !selectedTechId && !summaryLoading && (summary?.technicians.length ?? 0) === 0 && (

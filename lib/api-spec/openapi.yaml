@@ -9222,8 +9222,112 @@ paths:
               schema: { $ref: "#/components/schemas/KpiDashboardReport" }
         "400": { description: Invalid date range }
         "403": { description: Financial office permission required }
+  /p4p/damage-reports:
+    get:
+      operationId: listP4pDamageReports
+      responses:
+        "200":
+          description: Damage reports; payroll administrators see all, other staff see only their allocations.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/P4pDamageReport' }
+    post:
+      operationId: createP4pDamageReport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/P4pDamageInput' }
+      responses:
+        "201":
+          description: Pending report created; no deduction until approved.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/P4pDamageReport' }
+  /p4p/damage-reports/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    patch:
+      operationId: updateP4pDamageReport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/P4pDamageInput' }
+      responses:
+        "200":
+          description: Pending report updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/P4pDamageReport' }
+  /p4p/damage-reports/{id}/decision:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      operationId: decideP4pDamageReport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/P4pDamageDecision' }
+      responses:
+        "200":
+          description: Approved or voided with audit details.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/P4pDamageReport' }
 components:
   schemas:
+    P4pDamageAllocation:
+      type: object
+      required: [userId, amount]
+      properties:
+        userId: { type: integer }
+        employeeName: { type: string }
+        amount: { type: number }
+    P4pDamageInput:
+      type: object
+      required: [title, description, occurredOn, payrollDate, allocations]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        occurredOn: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+        payrollDate: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+        jobId: { type: [integer, 'null'] }
+        allocations:
+          type: array
+          items: { $ref: '#/components/schemas/P4pDamageAllocation' }
+    P4pDamageDecision:
+      type: object
+      required: [action, reason]
+      properties:
+        action: { type: string, enum: [approve, void] }
+        reason: { type: string }
+    P4pDamageReport:
+      type: object
+      required: [id, title, description, occurredOn, payrollDate, allocations, status, jobId, createdByName, createdAt, approvedByName, approvedAt, decisionReason, voidedByName, voidedAt, voidReason, payrollPeriodId]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        description: { type: string }
+        occurredOn: { type: string }
+        payrollDate: { type: string }
+        jobId: { type: [integer, 'null'] }
+        allocations:
+          type: array
+          items: { $ref: '#/components/schemas/P4pDamageAllocation' }
+        status: { type: string, enum: [pending, approved, void] }
+        createdByName: { type: string }
+        createdAt: { type: string }
+        approvedByName: { type: [string, 'null'] }
+        approvedAt: { type: [string, 'null'] }
+        decisionReason: { type: [string, 'null'] }
+        voidedByName: { type: [string, 'null'] }
+        voidedAt: { type: [string, 'null'] }
+        voidReason: { type: [string, 'null'] }
+        payrollPeriodId: { type: [integer, 'null'] }
     KpiKey:
       type: string
       enum: [revenue_hour, efficiency, margin, underpriced, unbilled, overdue, cash, acceptance, callbacks, retention, schedule, productive, customer_spend]
@@ -9515,6 +9619,12 @@ components:
         basePay: { type: [number, 'null'] }
         grossPay: { type: [number, 'null'] }
         acquisitionBonusPay: { type: number }
+        p4pBeforeDamage: { type: number }
+        damageDeduction: { type: number }
+        damagePayReduction: { type: [number, 'null'] }
+        damageReportIds:
+          type: array
+          items: { type: integer }
         p4pEarnings: { type: number }
         jobCount: { type: integer }
         totalRevenue: { type: number }

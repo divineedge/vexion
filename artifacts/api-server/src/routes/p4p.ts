@@ -17,11 +17,15 @@ import { Router, type IRouter } from "express";
 import { db, jobsTable, blueprintsTable, tenantsTable, subTimersTable, usersTable } from "@workspace/db";
 import { eq, and, gte, lte, sql, inArray } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
-import { startOfDay, endOfDay, startOfWeek, endOfWeek, subDays } from "date-fns";
+import { subDays } from "date-fns";
+import { zonedDayBounds } from "./timeTracking";
 import { payrollRouter } from "./payroll";
+import { p4pDamageRouter } from "./p4pDamage";
+import { calculateDamagePay } from "../lib/p4pDamage";
 
 const router: IRouter = Router();
 router.use(payrollRouter);
+router.use(p4pDamageRouter);
 export type PayrollDb = Pick<typeof db, "select" | "execute">;
 export type PayrollRange = { rangeStart: Date; rangeEnd: Date };
 
@@ -44,25 +48,36 @@ export function calculateP4pAmounts(
   };
 }
 
-function getPeriodRange(period: string): { rangeStart: Date; rangeEnd: Date } {
+function getPeriodRange(period: string, timezone: string): { rangeStart: Date; rangeEnd: Date } {
   const now = new Date();
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  let from = day;
+  let through = day;
   switch (period) {
     case "today":
-      return { rangeStart: startOfDay(now), rangeEnd: endOfDay(now) };
-    case "week":
-      return { rangeStart: startOfWeek(now, { weekStartsOn: 1 }), rangeEnd: endOfWeek(now, { weekStartsOn: 1 }) };
+      break;
+    case "week": {
+      const monday = new Date(`${day}T12:00:00Z`);
+      monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
+      from = monday.toISOString().slice(0, 10);
+      monday.setUTCDate(monday.getUTCDate() + 6);
+      through = monday.toISOString().slice(0, 10);
+      break;
+    }
     case "month":
-      return {
-        rangeStart: new Date(now.getFullYear(), now.getMonth(), 1),
-        rangeEnd: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59),
-      };
+      from = day.slice(0, 7) + "-01";
+      through = new Date(Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)), 0, 12)).toISOString().slice(0, 10);
+      break;
     case "30d":
     default:
       return { rangeStart: subDays(now, 30), rangeEnd: now };
   }
+  return { rangeStart: zonedDayBounds(from, timezone)!.start, rangeEnd: new Date(+zonedDayBounds(through, timezone)!.end - 1) };
 }
 
-function requestRange(query: Record<string, unknown>): PayrollRange {
+async function requestRange(query: Record<string, unknown>, tenantId: number): Promise<PayrollRange> {
+  const [tenant] = await db.select({ timezone: tenantsTable.timezone }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  const timezone = tenant?.timezone ?? "UTC";
   if (query.dateFrom || query.dateTo) {
     const from = String(query.dateFrom);
     const to = String(query.dateTo);
@@ -73,9 +88,9 @@ function requestRange(query: Record<string, unknown>): PayrollRange {
       || rangeStart.toISOString().slice(0, 10) !== from || rangeEnd.toISOString().slice(0, 10) !== to) {
       throw Object.assign(new Error("Invalid payroll date range"), { status: 400 });
     }
-    return { rangeStart, rangeEnd };
+    return { rangeStart: zonedDayBounds(from, timezone)!.start, rangeEnd: new Date(+zonedDayBounds(to, timezone)!.end - 1) };
   }
-  return getPeriodRange(String(query.period ?? "30d"));
+  return getPeriodRange(String(query.period ?? "30d"), timezone);
 }
 
 // ── role helper ──────────────────────────────────────────────────────────────
@@ -96,7 +111,7 @@ router.get("/p4p/jobs", async (req, res): Promise<void> => {
   // Technicians may only view their own data; managers can filter by any userId or see all.
   const { period = "30d", userId: rawUserId } = req.query as Record<string, string>;
   const userId = isTech ? String(callerUserId) : rawUserId;
-  const range = requestRange(req.query);
+  const range = await requestRange(req.query, tenantId);
   res.json(await calculatePayrollJobs(db, tenantId, range, userId));
 });
 
@@ -259,16 +274,16 @@ router.get("/p4p/summary", async (req, res): Promise<void> => {
   const callerRole = await getCallerRole(tenantId, callerUserId);
   const isTech = !MANAGER_ROLES.has(callerRole);
 
-  // Technicians may only fetch their own summary (redirect to /p4p/jobs with userId filter)
-  // The summary endpoint returns all-tech aggregates — block technicians at the source.
-  if (isTech) { res.status(403).json({ error: "Access restricted to manager roles" }); return; }
+  // Employees need the same server-calculated net P4P and hourly protection as
+  // payroll administrators. Non-managers may receive only their own row.
 
   const { period = "30d" } = req.query as Record<string, string>;
 
   // Reuse jobs endpoint logic via a sub-call is messy; re-derive here for clarity.
-  const range = requestRange(req.query);
+  const range = await requestRange(req.query, tenantId);
   await processAcquisitionRewards(tenantId);
-  res.json(await calculatePayrollSummary(db, tenantId, range, period));
+  const summary = await calculatePayrollSummary(db, tenantId, range, period);
+  res.json(isTech ? { ...summary, technicians: summary.technicians.filter(t => t.userId === callerUserId) } : summary);
 });
 
 export async function calculatePayrollSummary(db: PayrollDb, tenantId: number, { rangeStart, rangeEnd }: PayrollRange, period = "custom") {
@@ -404,10 +419,28 @@ export async function calculatePayrollSummary(db: PayrollDb, tenantId: number, {
     WHERE tenant_id=${tenantId} AND kind='employee_bonus' AND payroll_at >= ${rangeStart.toISOString()}::timestamptz
     AND payroll_at <= ${rangeEnd.toISOString()}::timestamptz GROUP BY recipient_user_id`);
   const acquisitionBonusMap = new Map(bonuses.rows.map(row => [Number(row.recipient_user_id), Number(row.amount)]));
+  const damageRows = await db.execute(sql`
+    SELECT r.id, r.allocations FROM p4p_damage_reports r
+    JOIN tenants t ON t.id=r.tenant_id
+    WHERE r.tenant_id=${tenantId} AND r.status='approved'
+      AND r.payroll_date BETWEEN
+        (${rangeStart.toISOString()}::timestamptz AT TIME ZONE COALESCE(t.timezone,'UTC'))::date
+        AND (${rangeEnd.toISOString()}::timestamptz AT TIME ZONE COALESCE(t.timezone,'UTC'))::date
+    ORDER BY r.id
+  `);
+  const damages = new Map<number, { amount: number; reportIds: number[] }>();
+  for (const row of damageRows.rows) {
+    for (const a of row.allocations as Array<{ userId: number; amount: number }>) {
+      const previous = damages.get(a.userId) ?? { amount: 0, reportIds: [] };
+      previous.amount += Math.round(a.amount * 100) / 100;
+      previous.reportIds.push(Number(row.id));
+      damages.set(a.userId, previous);
+    }
+  }
   const users = allUsers.filter(u => u.role === "technician" || u.role === "crew_manager"
     || (u.role === "company_owner" && (eligibility?.ownersSchedulable || userEarnings.has(u.id) || segmentsByUser.has(u.id)))
     // Scheduling controls future assignment, not whether already-recorded work gets paid.
-    || acquisitionBonusMap.has(u.id));
+    || acquisitionBonusMap.has(u.id) || damages.has(u.id));
 
   const technicians = users.map(u => {
     const stats = userEarnings.get(u.id) ?? { p4pEarnings: 0, jobCount: 0, totalRevenue: 0, totalMaterialCost: 0, netLaborRevenue: 0 };
@@ -424,8 +457,8 @@ export async function calculatePayrollSummary(db: PayrollDb, tenantId: number, {
       clockHours: Math.round(clockHours * 100) / 100,
       basePay: basePay == null ? null : Math.round(basePay * 100) / 100,
       acquisitionBonusPay: acquisitionBonusMap.get(u.id) ?? 0,
-      grossPay: basePay == null ? null : Math.round((Math.max(basePay, stats.p4pEarnings) + (acquisitionBonusMap.get(u.id) ?? 0)) * 100) / 100,
-      p4pEarnings: Math.round(stats.p4pEarnings * 100) / 100,
+      ...calculateDamagePay(stats.p4pEarnings, basePay, damages.get(u.id)?.amount ?? 0, acquisitionBonusMap.get(u.id) ?? 0),
+      damageReportIds: damages.get(u.id)?.reportIds ?? [],
       jobCount: stats.jobCount,
       totalRevenue: Math.round(stats.totalRevenue * 100) / 100,
       totalMaterialCost: Math.round(stats.totalMaterialCost * 100) / 100,

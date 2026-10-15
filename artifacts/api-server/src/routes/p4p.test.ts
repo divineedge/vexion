@@ -2,13 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 // p4p.ts also exports its Express router, so mock its database dependency while
 // testing the calculation in isolation.
-vi.mock("@workspace/db", () => ({
+vi.mock("@workspace/db", async importOriginal => ({
+  ...await importOriginal<typeof import("@workspace/db")>(),
   db: { select: vi.fn(), execute: vi.fn() },
-  jobsTable: {},
-  blueprintsTable: {},
-  tenantsTable: {},
-  subTimersTable: {},
-  usersTable: {},
 }));
 
 import { calculateP4pAmounts } from "./p4p";

@@ -30,5 +30,9 @@ export type ListWebsiteIntakeSubmissions200SubmissionsItem = {
   applicationId?: number | null;
   /** @nullable */
   reviewNotes?: string | null;
+  /** @nullable */
+  reviewedBy?: number | null;
+  /** @nullable */
+  reviewedAt?: string | null;
   reviewData?: ListWebsiteIntakeSubmissions200SubmissionsItemReviewData;
 };

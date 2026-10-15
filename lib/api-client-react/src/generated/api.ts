@@ -186,6 +186,8 @@ import type {
   GetRoutesDashboardParams,
   GetSalesTaxReportParams,
   GetTodayScheduleParams,
+  GetWebsiteCustomerChoices200,
+  GetWebsiteCustomerChoicesParams,
   GetWebsiteIntakeForm200,
   HealthStatus,
   ImportBankTransactionInput,
@@ -436,6 +438,33 @@ import type {
 import { customFetch } from '../custom-fetch';
 import type { ErrorType , BodyType } from '../custom-fetch';
 
+// https://stackoverflow.com/questions/49579094/typescript-conditional-types-filter-out-readonly-properties-pick-only-requir/49579497#49579497
+type IfEquals<X, Y, A = X, B = never> = (<T>() => T extends X ? 1 : 2) extends <
+T,
+>() => T extends Y ? 1 : 2
+? A
+: B;
+
+type WritableKeys<T> = {
+[P in keyof T]-?: IfEquals<
+  { [Q in P]: T[P] },
+  { -readonly [Q in P]: T[P] },
+  P
+>;
+}[keyof T];
+
+type UnionToIntersection<U> =
+  (U extends any ? (k: U)=>void : never) extends ((k: infer I)=>void) ? I : never;
+type DistributeReadOnlyOverUnions<T> = T extends any ? NonReadonly<T> : never;
+
+type Writable<T> = Pick<T, WritableKeys<T>>;
+type NonReadonly<T> = [T] extends [UnionToIntersection<T>] ? {
+  [P in keyof Writable<T>]: T[P] extends object
+    ? NonReadonly<NonNullable<T[P]>>
+    : T[P];
+} : DistributeReadOnlyOverUnions<T>;
+
+
 type AwaitedInput<T> = PromiseLike<T> | T;
 
       type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
@@ -684,7 +713,7 @@ export const getReviewWebsiteIntakeSubmissionUrl = (id: number,) => {
 }
 
 export const reviewWebsiteIntakeSubmission = async (id: number,
-    reviewWebsiteIntakeSubmissionBody: ReviewWebsiteIntakeSubmissionBody, options?: RequestInit): Promise<ReviewWebsiteIntakeSubmission200> => {
+    reviewWebsiteIntakeSubmissionBody: NonReadonly<ReviewWebsiteIntakeSubmissionBody>, options?: RequestInit): Promise<ReviewWebsiteIntakeSubmission200> => {
 
   return customFetch<ReviewWebsiteIntakeSubmission200>(getReviewWebsiteIntakeSubmissionUrl(id),
   {
@@ -700,8 +729,8 @@ export const reviewWebsiteIntakeSubmission = async (id: number,
 
 
 export const getReviewWebsiteIntakeSubmissionMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewWebsiteIntakeSubmission>>, TError,{id: number;data: BodyType<ReviewWebsiteIntakeSubmissionBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof reviewWebsiteIntakeSubmission>>, TError,{id: number;data: BodyType<ReviewWebsiteIntakeSubmissionBody>}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewWebsiteIntakeSubmission>>, TError,{id: number;data: BodyType<NonReadonly<ReviewWebsiteIntakeSubmissionBody>>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reviewWebsiteIntakeSubmission>>, TError,{id: number;data: BodyType<NonReadonly<ReviewWebsiteIntakeSubmissionBody>>}, TContext> => {
 
 const mutationKey = ['reviewWebsiteIntakeSubmission'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -713,7 +742,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reviewWebsiteIntakeSubmission>>, {id: number;data: BodyType<ReviewWebsiteIntakeSubmissionBody>}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reviewWebsiteIntakeSubmission>>, {id: number;data: BodyType<NonReadonly<ReviewWebsiteIntakeSubmissionBody>>}> = (props) => {
           const {id,data} = props ?? {};
 
           return  reviewWebsiteIntakeSubmission(id,data,requestOptions)
@@ -727,19 +756,102 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type ReviewWebsiteIntakeSubmissionMutationResult = NonNullable<Awaited<ReturnType<typeof reviewWebsiteIntakeSubmission>>>
-    export type ReviewWebsiteIntakeSubmissionMutationBody = BodyType<ReviewWebsiteIntakeSubmissionBody>
+    export type ReviewWebsiteIntakeSubmissionMutationBody = BodyType<NonReadonly<ReviewWebsiteIntakeSubmissionBody>>
     export type ReviewWebsiteIntakeSubmissionMutationError = ErrorType<unknown>
 
     export const useReviewWebsiteIntakeSubmission = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewWebsiteIntakeSubmission>>, TError,{id: number;data: BodyType<ReviewWebsiteIntakeSubmissionBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewWebsiteIntakeSubmission>>, TError,{id: number;data: BodyType<NonReadonly<ReviewWebsiteIntakeSubmissionBody>>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof reviewWebsiteIntakeSubmission>>,
         TError,
-        {id: number;data: BodyType<ReviewWebsiteIntakeSubmissionBody>},
+        {id: number;data: BodyType<NonReadonly<ReviewWebsiteIntakeSubmissionBody>>},
         TContext
       > => {
       return useMutation(getReviewWebsiteIntakeSubmissionMutationOptions(options));
     }
+
+export const getGetWebsiteCustomerChoicesUrl = (id: number,
+    params?: GetWebsiteCustomerChoicesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/website-intake/submissions/${id}/customer-choices?${stringifiedParams}` : `/api/website-intake/submissions/${id}/customer-choices`
+}
+
+export const getWebsiteCustomerChoices = async (id: number,
+    params?: GetWebsiteCustomerChoicesParams, options?: RequestInit): Promise<GetWebsiteCustomerChoices200> => {
+
+  return customFetch<GetWebsiteCustomerChoices200>(getGetWebsiteCustomerChoicesUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWebsiteCustomerChoicesQueryKey = (id: number,
+    params?: GetWebsiteCustomerChoicesParams,) => {
+    return [
+    `/api/website-intake/submissions/${id}/customer-choices`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetWebsiteCustomerChoicesQueryOptions = <TData = Awaited<ReturnType<typeof getWebsiteCustomerChoices>>, TError = ErrorType<void>>(id: number,
+    params?: GetWebsiteCustomerChoicesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebsiteCustomerChoices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWebsiteCustomerChoicesQueryKey(id,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWebsiteCustomerChoices>>> = ({ signal }) => getWebsiteCustomerChoices(id,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWebsiteCustomerChoices>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWebsiteCustomerChoicesQueryResult = NonNullable<Awaited<ReturnType<typeof getWebsiteCustomerChoices>>>
+export type GetWebsiteCustomerChoicesQueryError = ErrorType<void>
+
+
+
+export function useGetWebsiteCustomerChoices<TData = Awaited<ReturnType<typeof getWebsiteCustomerChoices>>, TError = ErrorType<void>>(
+ id: number,
+    params?: GetWebsiteCustomerChoicesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebsiteCustomerChoices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWebsiteCustomerChoicesQueryOptions(id,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getDownloadWebsiteIntakeFileUrl = (id: number,
     fileId: string,) => {

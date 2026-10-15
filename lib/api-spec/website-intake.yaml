@@ -30,6 +30,21 @@ inboxPath:
               properties:
                 submissions: {type: array, items: {$ref: "#/schemas/Submission"}}
                 nextCursor: {type: [integer, "null"]}
+
+customerChoicesPath:
+  get:
+    operationId: getWebsiteCustomerChoices
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: integer, minimum: 1}}
+      - {name: search, in: query, schema: {type: string, maxLength: 200}}
+      - {name: name, in: query, schema: {type: string, maxLength: 200}}
+      - {name: email, in: query, schema: {type: string, maxLength: 254}}
+      - {name: phone, in: query, schema: {type: string, maxLength: 80}}
+      - {name: address, in: query, schema: {type: string, maxLength: 500}}
+    responses:
+      "200": {description: Active tenant-owned customers and properties; matches require human confirmation, content: {application/json: {schema: {$ref: "#/schemas/CustomerChoices"}}}}
+      "403": {description: Office customer and estimate access required}
+      "404": {description: Quote inquiry not found}
 reviewPath:
   post:
     operationId: reviewWebsiteIntakeSubmission
@@ -227,11 +242,45 @@ schemas:
     required: [action]
     properties:
       action: {type: string, enum: [approve, decline, review]}
+      customerId: {type: integer, minimum: 1}
+      propertyId: {type: integer, minimum: 1}
+      confirmCustomerChoice: {type: boolean}
+      customerChoice: {type: [string, "null"], enum: [existing, created, null], readOnly: true}
+      propertyChoice: {type: [string, "null"], enum: [existing, created, null], readOnly: true}
       notes: {type: string}
       customer: {$ref: "#/schemas/CustomerCorrection"}
       createEstimate: {type: boolean}
       areaSqft: {type: number}
       lengthFt: {type: number}
+  CustomerChoice:
+    type: object
+    required: [id, name, email, phone, address, reasons]
+    properties:
+      id: {type: integer}
+      name: {type: string}
+      email: {type: string}
+      phone: {type: string}
+      address: {type: [string, "null"]}
+      reasons: {type: array, items: {type: string}}
+  PropertyChoice:
+    type: object
+    required: [id, customerId, address, city, state, zip]
+    properties:
+      id: {type: integer}
+      customerId: {type: integer}
+      address: {type: string}
+      city: {type: [string, "null"]}
+      state: {type: [string, "null"]}
+      zip: {type: [string, "null"]}
+  CustomerChoices:
+    type: object
+    required: [possibleMatches, customers, properties, matchesTruncated, hasMore]
+    properties:
+      possibleMatches: {type: array, items: {$ref: "#/schemas/CustomerChoice"}}
+      customers: {type: array, items: {$ref: "#/schemas/CustomerChoice"}}
+      properties: {type: array, items: {$ref: "#/schemas/PropertyChoice"}}
+      matchesTruncated: {type: boolean}
+      hasMore: {type: boolean}
   Submission:
     type: object
     required: [id, kind, status, snapshot, payload, preview, createdAt]
@@ -271,4 +320,6 @@ schemas:
       estimateId: {type: [integer, "null"]}
       applicationId: {type: [integer, "null"]}
       reviewNotes: {type: [string, "null"]}
+      reviewedBy: {type: [integer, "null"]}
+      reviewedAt: {type: [string, "null"]}
       reviewData: {anyOf: [{$ref: "#/schemas/Review"}, {type: "null"}]}

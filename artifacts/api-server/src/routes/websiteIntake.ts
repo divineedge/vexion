@@ -11,6 +11,8 @@ import {checkPermission} from '../lib/rolePermissions';
 import {requireHr,HrError,hrAudit} from '../lib/hrAccess';
 import {websiteFlowSchema,getWebsiteForm,type FlowKind} from '../lib/websiteFlow';
 import {publicWebsiteConfig,receiveWebsiteSubmission,reviewWebsiteSubmission,reviewInput,staffSubmission} from '../lib/websiteIntake';
+import {websiteCustomerChoices} from '../lib/websiteCustomerChoices';
+import {GetWebsiteCustomerChoicesParams,GetWebsiteCustomerChoicesQueryParams,GetWebsiteCustomerChoicesResponse} from '@workspace/api-zod';
 export const publicWebsiteIntakeRouter=Router();
 const attempts=new Map<string,{until:number;count:number}>();
 publicWebsiteIntakeRouter.use('/public-intake',(req,res,next)=>{
@@ -72,9 +74,12 @@ router.get('/website-intake/forms/:kind/history',async(req,res)=>{
    AND (${before}::integer IS NULL OR id<${before}) ORDER BY id DESC LIMIT 21`);
  const rows=await db.select().from(websiteIntakeSubmissionsTable).where(and(eq(websiteIntakeSubmissionsTable.tenantId,getTenantId(req)),eq(websiteIntakeSubmissionsTable.kind,kind),before?lt(websiteIntakeSubmissionsTable.id,before):undefined)).orderBy(desc(websiteIntakeSubmissionsTable.id)).limit(101);
  const submissions=rows.slice(0,100).map(staffSubmission);
- res.json({submissions,nextCursor:rows.length>100?submissions.at(-1)!.id:null});
-});
-router.post('/website-intake/submissions/:id/review',async(req,res)=>{
+
+ const {id}=GetWebsiteCustomerChoicesParams.extend({id:z.coerce.number().int().positive()}).parse(req.params);
+
+ const {search,...corrections}=GetWebsiteCustomerChoicesQueryParams.parse(req.query);
+
+ const {search,...corrections}=GetWebsiteCustomerChoicesQueryParams.parse(req.query);
  const id=z.coerce.number().int().positive().parse(req.params.id);
  const [row]=await db.select().from(websiteIntakeSubmissionsTable).where(and(eq(websiteIntakeSubmissionsTable.tenantId,getTenantId(req)),eq(websiteIntakeSubmissionsTable.id,id)));
  if(!row)throw new HrError('Submission not found',404);await access(req,row.kind as FlowKind);
@@ -107,3 +112,5 @@ function uploadErrors(error:unknown,_req:Request,res:Response,next:NextFunction)
 }
 router.use(errors);publicWebsiteIntakeRouter.use(uploadErrors);publicWebsiteIntakeRouter.use(errors);
 export default router;
+
+ const {search,...corrections}=GetWebsiteCustomerChoicesQueryParams.parse(req.query);

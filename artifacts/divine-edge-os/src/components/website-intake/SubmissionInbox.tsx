@@ -15,6 +15,7 @@ import { customFetch } from '@workspace/api-client-react';
 import { loadWebsiteSubmissions, reviewWebsiteSubmission, visibleFlow, APPROXIMATE_SIZE_TERMS, type WebsiteSubmission, type ReviewInput } from '@/lib/websiteIntake';
 import { DrawMap, PinMap } from './IntakeMaps';
 import { displayAnswer, measureValue, type Measurement } from './FlowRenderer';
+import CustomerLinkPicker, { type CustomerLinkChoice } from './CustomerLinkPicker';
 
 type Kind = 'quote' | 'hiring';
 const fmt = (s?: string | null) => { try { return s ? format(new Date(s), 'MMM d, yyyy h:mm a') : '—'; } catch { return '—'; } };
@@ -91,24 +92,38 @@ function ReviewSheet({ kind, sub, onClose }: { kind: Kind; sub: WebsiteSubmissio
   const [area, setArea] = useState('');
   const [length, setLength] = useState('');
   const [err, setErr] = useState<string | null>(null);
+  const [linkChoice, setLinkChoice] = useState<CustomerLinkChoice>({ confirmCustomerChoice: false });
+  const [choiceReady, setChoiceReady] = useState(false);
+  const customerCorrections = useMemo(() => {
+    if (!sub) return undefined;
+    const customer = Object.fromEntries(Object.entries(cust).filter(([, v]) => v.trim()));
+    return Object.keys(customer).length ? { ...customer, name: cust.name.trim() || originalName(sub) } as ReviewInput['customer'] : undefined;
+  }, [cust, sub]);
   useEffect(() => {
     setNotes(sub?.reviewNotes ?? ''); setErr(null); setArea(''); setLength('');
     setCust({ name: '', email: '', phone: '', address: '', city: '', state: '', zip: '' });
     setCreateEstimate(!!sub?.preview?.items?.length);
+    setLinkChoice({ confirmCustomerChoice: false }); setChoiceReady(false);
   }, [sub?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const m = useMutation({
     mutationFn: (action: 'approve' | 'decline' | 'review') => {
-      const customer = Object.fromEntries(Object.entries(cust).filter(([, v]) => v.trim()));
       return reviewWebsiteSubmission(sub!.id, {
         action, notes,
         ...(kind === 'quote' && action === 'approve' ? {
-          customer: Object.keys(customer).length ? ({ ...customer, name: cust.name.trim() || originalName(sub!) } as ReviewInput['customer']) : undefined, createEstimate: createEstimate && canEstimate,
+          ...linkChoice,
+          customer: !linkChoice.customerId ? customerCorrections : undefined, createEstimate: createEstimate && canEstimate,
           areaSqft: area ? Number(area) : undefined, lengthFt: length ? Number(length) : undefined,
         } : {}),
       });
     },
-    onSuccess: () => { toast.success('Review saved'); setErr(null); qc.invalidateQueries({ queryKey: ['website-submissions', kind] }); },
+    onSuccess: () => {
+      toast.success('Review saved'); setErr(null);
+      qc.invalidateQueries({ queryKey: ['website-submissions', kind] });
+      for (const path of ['/api/customers', '/api/properties', '/api/estimates']) {
+        qc.invalidateQueries({ predicate: query => typeof query.queryKey[0] === 'string' && query.queryKey[0].startsWith(path) });
+      }
+    },
     onError: e => setErr(errMsg(e, 'Could not save this review.')),
   });
 
@@ -118,7 +133,7 @@ function ReviewSheet({ kind, sub, onClose }: { kind: Kind; sub: WebsiteSubmissio
   const visibleIds = useMemo(() => snap ? new Set(visibleFlow(snap, answers).steps.map(s => s.id)) : new Set<string>(), [snap, answers]);
   const lat = typeof answers.lat === 'number' ? answers.lat : null, lng = typeof answers.lng === 'number' ? answers.lng : null;
   const canEstimate = !!sub?.preview?.items?.length || Number(area) > 0 || Number(length) > 0;
-  const decided = sub?.status === 'approved' || sub?.status === 'declined';
+  const decided = !!sub && sub.status !== 'pending';
 
   return (
     <Sheet open={!!sub} onOpenChange={o => !o && onClose()}>
@@ -188,14 +203,22 @@ function ReviewSheet({ kind, sub, onClose }: { kind: Kind; sub: WebsiteSubmissio
 
             <section className="space-y-3 rounded-xl border bg-muted/30 p-4">
               <h3 className="text-sm font-semibold">Review</h3>
+              {decided && <p className="text-xs text-muted-foreground" data-testid="review-choice-audit">
+                {sub.reviewData?.customerChoice === 'existing' ? 'Linked an existing customer' : sub.customerId ? 'Created a new customer' : 'No CRM customer created'}
+                {sub.propertyId ? ` · ${sub.reviewData?.propertyChoice === 'existing' ? 'reused existing' : 'created new'} property #${sub.propertyId}` : ''}
+                {sub.reviewedBy ? ` · staff #${sub.reviewedBy}` : ''} · {fmt(sub.reviewedAt)}
+              </p>}
               {kind === 'quote' && !decided && (<>
-                <p className="text-xs text-muted-foreground">Fill in anything missing. These corrections are used for the CRM record only; the customer's original answers stay untouched.</p>
+                <CustomerLinkPicker key={sub.id} id={sub.id} address={typeof answers.address === 'string' ? answers.address : ''} corrections={customerCorrections} onChange={setLinkChoice} onReady={setChoiceReady} />
+                {!linkChoice.customerId && <><p className="text-xs text-muted-foreground">Fill in anything missing. These corrections are used for new records only; the customer's original answers stay untouched.</p>
                 <div className="grid grid-cols-2 gap-2">
                   {(Object.keys(cust) as (keyof typeof cust)[]).map(k => (
                     <Input key={k} placeholder={k === 'name' ? `name (blank keeps "${originalName(sub)}")` : k} className={`capitalize ${k === 'address' || k === 'name' ? 'col-span-2' : ''}`} value={cust[k]} onChange={e => setCust(c => ({ ...c, [k]: e.target.value }))} data-testid={`input-correct-${k}`} />
                   ))}
-                  <Input type="number" placeholder="Verified sq ft" value={area} onChange={e => setArea(e.target.value)} data-testid="input-correct-area" />
-                  <Input type="number" placeholder="Verified linear ft" value={length} onChange={e => setLength(e.target.value)} data-testid="input-correct-length" />
+                </div></>}
+                <div className="grid grid-cols-2 gap-2">
+                  <Input type="number" placeholder="Verified sq ft (estimate)" value={area} onChange={e => setArea(e.target.value)} data-testid="input-correct-area" />
+                  <Input type="number" placeholder="Verified linear ft (estimate)" value={length} onChange={e => setLength(e.target.value)} data-testid="input-correct-length" />
                 </div>
                 <label className={`flex items-start gap-2 text-sm ${canEstimate ? '' : 'opacity-50'}`}>
                   <Checkbox checked={createEstimate && canEstimate} disabled={!canEstimate} onCheckedChange={v => setCreateEstimate(v === true)} data-testid="checkbox-create-estimate" />
@@ -203,11 +226,11 @@ function ReviewSheet({ kind, sub, onClose }: { kind: Kind; sub: WebsiteSubmissio
                 </label>
               </>)}
               {kind === 'hiring' && <p className="text-xs text-muted-foreground">Marking reviewed does not hire anyone. Stage changes and hires happen on the Hiring page.</p>}
-              <Textarea rows={3} placeholder="Reviewer notes" value={notes} onChange={e => setNotes(e.target.value)} data-testid="input-review-notes" />
+              <Textarea rows={3} placeholder="Reviewer notes" value={notes} readOnly={decided} onChange={e => setNotes(e.target.value)} data-testid="input-review-notes" />
               {err && <p className="text-sm text-destructive flex gap-1.5" data-testid="text-review-error"><AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />{err}</p>}
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" className="gap-1.5" disabled={m.isPending} onClick={() => m.mutate('review')} data-testid="button-mark-reviewed"><Eye className="w-4 h-4" />Mark reviewed</Button>
-                {kind === 'quote' && !decided && <Button className="gap-1.5" disabled={m.isPending} onClick={() => m.mutate('approve')} data-testid="button-approve"><CheckCircle2 className="w-4 h-4" />Approve and add to CRM</Button>}
+                {!decided && <Button variant="outline" className="gap-1.5" disabled={m.isPending} onClick={() => m.mutate('review')} data-testid="button-mark-reviewed"><Eye className="w-4 h-4" />Mark reviewed</Button>}
+                {kind === 'quote' && !decided && <Button className="gap-1.5" disabled={m.isPending || !choiceReady} onClick={() => m.mutate('approve')} data-testid="button-approve"><CheckCircle2 className="w-4 h-4" />{linkChoice.customerId ? 'Approve and link customer' : 'Approve and add to CRM'}</Button>}
                 {!decided && <Button variant="ghost" className="gap-1.5 text-destructive" disabled={m.isPending} onClick={() => m.mutate('decline')} data-testid="button-decline"><XCircle className="w-4 h-4" />Decline</Button>}
               </div>
             </section>

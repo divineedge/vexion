@@ -31,3 +31,9 @@ Preserve the server-calculated submitted price when approving unchanged measurem
 **Why:** Approving a submission should not silently replace the price the visitor saw merely because catalog pricing changed while it waited for review.
 
 **How to apply:** Retain submitted prices and measurements as evidence; record staff corrections separately.
+
+Staff may link a quote inquiry to an existing customer and property after confirming possible duplicates. Never automatically merge by email, and preserve the original submission and the staff choice.
+
+**Why:** The user requested linking existing records without duplicate customers or automatic email-based merging.
+
+**How to apply:** Keep tenant boundaries and human confirmation on both the picker and approval path. Check duplicates against the effective identity being saved, including staff corrections, not just the original answers. Linked records keep their existing details, preferences, acquisition history, and verified measurements.

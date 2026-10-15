@@ -7,9 +7,20 @@
  */
 import type { ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataAction } from './listWebsiteIntakeSubmissions200SubmissionsItemReviewDataAction';
 import type { ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataCustomer } from './listWebsiteIntakeSubmissions200SubmissionsItemReviewDataCustomer';
+import type { ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataCustomerChoice } from './listWebsiteIntakeSubmissions200SubmissionsItemReviewDataCustomerChoice';
+import type { ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataPropertyChoice } from './listWebsiteIntakeSubmissions200SubmissionsItemReviewDataPropertyChoice';
 
 export type ListWebsiteIntakeSubmissions200SubmissionsItemReviewData = {
   action: ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataAction;
+  /** @minimum 1 */
+  customerId?: number;
+  /** @minimum 1 */
+  propertyId?: number;
+  confirmCustomerChoice?: boolean;
+  /** @nullable */
+  readonly customerChoice?: ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataCustomerChoice;
+  /** @nullable */
+  readonly propertyChoice?: ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataPropertyChoice;
   notes?: string;
   customer?: ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataCustomer;
   createEstimate?: boolean;

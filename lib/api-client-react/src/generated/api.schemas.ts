@@ -8024,6 +8024,28 @@ export const ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataAction = {
   review: 'review',
 } as const;
 
+/**
+ * @nullable
+ */
+export type ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataCustomerChoice = typeof ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataCustomerChoice[keyof typeof ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataCustomerChoice] | null;
+
+
+export const ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataCustomerChoice = {
+  existing: 'existing',
+  created: 'created',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataPropertyChoice = typeof ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataPropertyChoice[keyof typeof ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataPropertyChoice] | null;
+
+
+export const ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataPropertyChoice = {
+  existing: 'existing',
+  created: 'created',
+} as const;
+
 export type ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataCustomer = {
   name: string;
   email?: string;
@@ -8036,6 +8058,15 @@ export type ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataCustomer = {
 
 export type ListWebsiteIntakeSubmissions200SubmissionsItemReviewData = {
   action: ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataAction;
+  /** @minimum 1 */
+  customerId?: number;
+  /** @minimum 1 */
+  propertyId?: number;
+  confirmCustomerChoice?: boolean;
+  /** @nullable */
+  readonly customerChoice?: ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataCustomerChoice;
+  /** @nullable */
+  readonly propertyChoice?: ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataPropertyChoice;
   notes?: string;
   customer?: ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataCustomer;
   createEstimate?: boolean;
@@ -8062,6 +8093,10 @@ export type ListWebsiteIntakeSubmissions200SubmissionsItem = {
   applicationId?: number | null;
   /** @nullable */
   reviewNotes?: string | null;
+  /** @nullable */
+  reviewedBy?: number | null;
+  /** @nullable */
+  reviewedAt?: string | null;
   reviewData?: ListWebsiteIntakeSubmissions200SubmissionsItemReviewData;
 };
 
@@ -8080,6 +8115,28 @@ export const ReviewWebsiteIntakeSubmissionBodyAction = {
   review: 'review',
 } as const;
 
+/**
+ * @nullable
+ */
+export type ReviewWebsiteIntakeSubmissionBodyCustomerChoice = typeof ReviewWebsiteIntakeSubmissionBodyCustomerChoice[keyof typeof ReviewWebsiteIntakeSubmissionBodyCustomerChoice] | null;
+
+
+export const ReviewWebsiteIntakeSubmissionBodyCustomerChoice = {
+  existing: 'existing',
+  created: 'created',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ReviewWebsiteIntakeSubmissionBodyPropertyChoice = typeof ReviewWebsiteIntakeSubmissionBodyPropertyChoice[keyof typeof ReviewWebsiteIntakeSubmissionBodyPropertyChoice] | null;
+
+
+export const ReviewWebsiteIntakeSubmissionBodyPropertyChoice = {
+  existing: 'existing',
+  created: 'created',
+} as const;
+
 export type ReviewWebsiteIntakeSubmissionBodyCustomer = {
   name: string;
   email?: string;
@@ -8092,6 +8149,15 @@ export type ReviewWebsiteIntakeSubmissionBodyCustomer = {
 
 export type ReviewWebsiteIntakeSubmissionBody = {
   action: ReviewWebsiteIntakeSubmissionBodyAction;
+  /** @minimum 1 */
+  customerId?: number;
+  /** @minimum 1 */
+  propertyId?: number;
+  confirmCustomerChoice?: boolean;
+  /** @nullable */
+  readonly customerChoice?: ReviewWebsiteIntakeSubmissionBodyCustomerChoice;
+  /** @nullable */
+  readonly propertyChoice?: ReviewWebsiteIntakeSubmissionBodyPropertyChoice;
   notes?: string;
   customer?: ReviewWebsiteIntakeSubmissionBodyCustomer;
   createEstimate?: boolean;
@@ -8302,6 +8368,28 @@ export const ReviewWebsiteIntakeSubmission200ReviewDataAction = {
   review: 'review',
 } as const;
 
+/**
+ * @nullable
+ */
+export type ReviewWebsiteIntakeSubmission200ReviewDataCustomerChoice = typeof ReviewWebsiteIntakeSubmission200ReviewDataCustomerChoice[keyof typeof ReviewWebsiteIntakeSubmission200ReviewDataCustomerChoice] | null;
+
+
+export const ReviewWebsiteIntakeSubmission200ReviewDataCustomerChoice = {
+  existing: 'existing',
+  created: 'created',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ReviewWebsiteIntakeSubmission200ReviewDataPropertyChoice = typeof ReviewWebsiteIntakeSubmission200ReviewDataPropertyChoice[keyof typeof ReviewWebsiteIntakeSubmission200ReviewDataPropertyChoice] | null;
+
+
+export const ReviewWebsiteIntakeSubmission200ReviewDataPropertyChoice = {
+  existing: 'existing',
+  created: 'created',
+} as const;
+
 export type ReviewWebsiteIntakeSubmission200ReviewDataCustomer = {
   name: string;
   email?: string;
@@ -8314,6 +8402,15 @@ export type ReviewWebsiteIntakeSubmission200ReviewDataCustomer = {
 
 export type ReviewWebsiteIntakeSubmission200ReviewData = {
   action: ReviewWebsiteIntakeSubmission200ReviewDataAction;
+  /** @minimum 1 */
+  customerId?: number;
+  /** @minimum 1 */
+  propertyId?: number;
+  confirmCustomerChoice?: boolean;
+  /** @nullable */
+  readonly customerChoice?: ReviewWebsiteIntakeSubmission200ReviewDataCustomerChoice;
+  /** @nullable */
+  readonly propertyChoice?: ReviewWebsiteIntakeSubmission200ReviewDataPropertyChoice;
   notes?: string;
   customer?: ReviewWebsiteIntakeSubmission200ReviewDataCustomer;
   createEstimate?: boolean;
@@ -8340,7 +8437,74 @@ export type ReviewWebsiteIntakeSubmission200 = {
   applicationId?: number | null;
   /** @nullable */
   reviewNotes?: string | null;
+  /** @nullable */
+  reviewedBy?: number | null;
+  /** @nullable */
+  reviewedAt?: string | null;
   reviewData?: ReviewWebsiteIntakeSubmission200ReviewData;
+};
+
+export type GetWebsiteCustomerChoicesParams = {
+/**
+ * @maxLength 200
+ */
+search?: string;
+/**
+ * @maxLength 200
+ */
+name?: string;
+/**
+ * @maxLength 254
+ */
+email?: string;
+/**
+ * @maxLength 80
+ */
+phone?: string;
+/**
+ * @maxLength 500
+ */
+address?: string;
+};
+
+export type GetWebsiteCustomerChoices200PossibleMatchesItem = {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  /** @nullable */
+  address: string | null;
+  reasons: string[];
+};
+
+export type GetWebsiteCustomerChoices200CustomersItem = {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  /** @nullable */
+  address: string | null;
+  reasons: string[];
+};
+
+export type GetWebsiteCustomerChoices200PropertiesItem = {
+  id: number;
+  customerId: number;
+  address: string;
+  /** @nullable */
+  city: string | null;
+  /** @nullable */
+  state: string | null;
+  /** @nullable */
+  zip: string | null;
+};
+
+export type GetWebsiteCustomerChoices200 = {
+  possibleMatches: GetWebsiteCustomerChoices200PossibleMatchesItem[];
+  customers: GetWebsiteCustomerChoices200CustomersItem[];
+  properties: GetWebsiteCustomerChoices200PropertiesItem[];
+  matchesTruncated: boolean;
+  hasMore: boolean;
 };
 
 export type GetPublicWebsiteIntakeConfigParams = {
@@ -9256,4 +9420,3 @@ export type GetKpiDashboardReportParams = {
 from: string;
 to: string;
 };
-

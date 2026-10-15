@@ -69,6 +69,8 @@ paths:
     $ref: "./website-intake.yaml#/inboxPath"
   /website-intake/submissions/{id}/review:
     $ref: "./website-intake.yaml#/reviewPath"
+  /website-intake/submissions/{id}/customer-choices:
+    $ref: "./website-intake.yaml#/customerChoicesPath"
   /website-intake/submissions/{id}/files/{fileId}:
     get:
       operationId: downloadWebsiteIntakeFile

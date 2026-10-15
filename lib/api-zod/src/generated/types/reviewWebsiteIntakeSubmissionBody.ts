@@ -7,9 +7,20 @@
  */
 import type { ReviewWebsiteIntakeSubmissionBodyAction } from './reviewWebsiteIntakeSubmissionBodyAction';
 import type { ReviewWebsiteIntakeSubmissionBodyCustomer } from './reviewWebsiteIntakeSubmissionBodyCustomer';
+import type { ReviewWebsiteIntakeSubmissionBodyCustomerChoice } from './reviewWebsiteIntakeSubmissionBodyCustomerChoice';
+import type { ReviewWebsiteIntakeSubmissionBodyPropertyChoice } from './reviewWebsiteIntakeSubmissionBodyPropertyChoice';
 
 export type ReviewWebsiteIntakeSubmissionBody = {
   action: ReviewWebsiteIntakeSubmissionBodyAction;
+  /** @minimum 1 */
+  customerId?: number;
+  /** @minimum 1 */
+  propertyId?: number;
+  confirmCustomerChoice?: boolean;
+  /** @nullable */
+  readonly customerChoice?: ReviewWebsiteIntakeSubmissionBodyCustomerChoice;
+  /** @nullable */
+  readonly propertyChoice?: ReviewWebsiteIntakeSubmissionBodyPropertyChoice;
   notes?: string;
   customer?: ReviewWebsiteIntakeSubmissionBodyCustomer;
   createEstimate?: boolean;

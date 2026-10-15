@@ -30,5 +30,9 @@ export type ReviewWebsiteIntakeSubmission200 = {
   applicationId?: number | null;
   /** @nullable */
   reviewNotes?: string | null;
+  /** @nullable */
+  reviewedBy?: number | null;
+  /** @nullable */
+  reviewedAt?: string | null;
   reviewData?: ReviewWebsiteIntakeSubmission200ReviewData;
 };

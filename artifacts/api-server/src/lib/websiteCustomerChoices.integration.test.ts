@@ -45,6 +45,110 @@ async function seed(tx: HrDb) {
 }
 
 describe.skipIf(!process.env.DATABASE_URL)('website inquiry customer choices', () => {
+  it('labels common address variations without confusing distinct properties', async () => fixture(async (f, tx) => {
+    const addressReason = 'Similar property address (formatting or abbreviation)';
+    const lookup = async (address: string) => (await websiteCustomerChoices(f.tenant.id, f.submission.id, '', tx, {
+      name: '', email: '', phone: '', address,
+    })).possibleMatches;
+    for (const [stored, submitted] of [
+      ['10 Existing St', '10 Existing Street'],
+      ['10 Existing Street', '  10   EXISTING St.  '],
+      ['10 Existing Avenue', '10 Existing Ave'],
+      ['10 Existing Road', '10 Existing Rd.'],
+      ['10 Existing Drive', '10 Existing Dr'],
+      ['10 Existing Boulevard', '10 Existing Blvd'],
+      ['10 Existing Lane', '10 Existing Ln'],
+      ['10 Existing Court', '10 Existing Ct'],
+      ['10 Existing Circle', '10 Existing Cir'],
+      ['10 Existing Place', '10 Existing Pl'],
+      ['10 Existing Terrace', '10 Existing Ter'],
+      ['10 Existing Parkway', '10 Existing Pkwy'],
+      ['10 Existing Highway', '10 Existing Hwy'],
+      ['10 Existing Street Apt 2', '10 Existing St. Apt 2'],
+      ['10 Existing Street, Denver, CO 80202', '10 Existing St., Denver CO 80202'],
+    ]) {
+      await tx.update(propertiesTable).set({ address: stored }).where(eq(propertiesTable.id, f.property.id));
+      expect(await lookup(submitted), `${stored} / ${submitted}`).toEqual([
+        expect.objectContaining({ id: f.customer.id, reasons: [addressReason] }),
+      ]);
+    }
+    await tx.update(propertiesTable).set({ address: '10 Existing Street Apt 2' }).where(eq(propertiesTable.id, f.property.id));
+    for (const address of ['11 Existing St Apt 2', '10 Existing St Apt 3', '10 Existing St', '10 Existing Rd Apt 2',
+      '10 Existington St Apt 2', '10 Existing St Apt 02', '10 Existing St Apt 2, Other City']) {
+      expect(await lookup(address), address).toEqual([]);
+    }
+    await tx.update(propertiesTable).set({ address: '10 Street Road' }).where(eq(propertiesTable.id, f.property.id));
+    expect(await lookup('10 St Road')).toEqual([]);
+    for (const [stored, different] of [
+      ['10.5 Existing Street', '105 Existing St'],
+      ['10 Existing Street Unit 2.1', '10 Existing St Unit 21'],
+      ['10-12 Existing Street', '1012 Existing St'],
+      ['10 North Existing Street', '10 South Existing St'],
+    ]) {
+      await tx.update(propertiesTable).set({ address: stored }).where(eq(propertiesTable.id, f.property.id));
+      expect(await lookup(different)).toEqual([]);
+    }
+    expect((await websiteCustomerChoices(f.tenant.id, f.submission.id, '', tx, {
+      name: 'Returning Customers', email: '', phone: '', address: '',
+    })).possibleMatches).toEqual([]);
+    await tx.update(customersTable).set({ physicalAddress: '90 Separate Street' }).where(eq(customersTable.id, f.customer.id));
+    expect(await lookup('90 Separate St.')).toEqual([expect.objectContaining({ id: f.customer.id, reasons: [addressReason] })]);
+    // Neither foreign nor archived properties/customers may supply evidence.
+    await tx.update(propertiesTable).set({ address: '50 Hidden Street' })
+      .where(eq(propertiesTable.id, f.wrongTenant.id));
+    await tx.update(propertiesTable).set({ address: '50 Hidden Street' })
+      .where(eq(propertiesTable.id, f.archivedProperty.id));
+    await tx.update(customersTable).set({ physicalAddress: '50 Hidden Street' })
+      .where(eq(customersTable.id, f.archived.id));
+    expect(await lookup('50 Hidden St.')).toEqual([]);
+    expect(await lookup(' . , ')).toEqual([]);
+  }));
+
+  it('recognizes explicit phone country codes without matching unrelated numbers or extensions', async () => fixture(async (f, tx) => {
+    const lookup = async (phone: string) => (await websiteCustomerChoices(f.tenant.id, f.submission.id, '', tx, {
+      name: '', email: '', address: '', phone,
+    })).possibleMatches;
+    for (const [stored, submitted] of [
+      ['(303) 555-0123', '+1 (303) 555-0123'],
+      ['+1 303-555-0123', '3035550123'],
+      ['1-303-555-0123', '001 303 555 0123'],
+      ['+44 20 7946 0958', '0044 20 7946 0958'],
+    ]) {
+      await tx.update(customersTable).set({ phone: stored }).where(eq(customersTable.id, f.customer.id));
+      expect(await lookup(submitted)).toEqual([expect.objectContaining({
+        id: f.customer.id, reasons: ['Similar phone (country code variation)'],
+      })]);
+    }
+    await tx.update(customersTable).set({ phone: '3035550123' }).where(eq(customersTable.id, f.customer.id));
+    for (const number of ['+44 3035550123', '+1 3035550124', '5550123', '+1 3035550123 ext 4', '', '()']) {
+      expect(await lookup(number), number).toEqual([]);
+    }
+    await tx.update(customersTable).set({ phone: '5558889999' }).where(eq(customersTable.id, f.foreign.id));
+    await tx.update(customersTable).set({ phone: '5558889999' }).where(eq(customersTable.id, f.archived.id));
+    expect(await lookup('+1 5558889999')).toEqual([]);
+  }));
+
+  it('requires explicit confirmation for normalized-only evidence and leaves source records untouched', async () => fixture(async (f, tx) => {
+    const customer = { name: 'Different Inquiry', email: '', phone: '+1 3035550123', address: '10 Existing Street' };
+    const choices = await websiteCustomerChoices(f.tenant.id, f.submission.id, '', tx, customer);
+    expect(choices.possibleMatches).toEqual([expect.objectContaining({
+      id: f.customer.id, reasons: ['Similar phone (country code variation)', 'Similar property address (formatting or abbreviation)'],
+    })]);
+    for (const selection of [{}, { customerId: f.customer.id, propertyId: f.property.id }]) {
+      await expect(reviewWebsiteSubmission(f.tenant.id, f.user.id, f.submission.id, {
+        action: 'approve', ...selection, ...(selection.customerId ? {} : { customer }),
+      }, tx)).rejects.toThrow(/Confirm|Possible existing/);
+    }
+    const [pending] = await tx.select().from(websiteIntakeSubmissionsTable).where(eq(websiteIntakeSubmissionsTable.id, f.submission.id));
+    expect(pending).toMatchObject({ status: 'pending', customerId: null, payload: f.submission.payload });
+    const saved = await reviewWebsiteSubmission(f.tenant.id, f.user.id, f.submission.id, {
+      action: 'approve', customer, confirmCustomerChoice: true,
+    }, tx);
+    expect(saved.customerId).not.toBe(f.customer.id);
+    const [original] = await tx.select().from(customersTable).where(eq(customersTable.id, f.customer.id));
+    expect(original).toEqual(f.customer);
+  }));
+
   it('suggests all duplicate identities without choosing one and scopes literal searches/properties to the tenant', async () => fixture(async (f, tx) => {
     const choices = await websiteCustomerChoices(f.tenant.id, f.submission.id, 'existing st', tx);
     expect(choices.possibleMatches.map(c => c.id)).toEqual(expect.arrayContaining([f.customer.id, f.sameEmail.id]));

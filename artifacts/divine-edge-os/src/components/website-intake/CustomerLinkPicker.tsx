@@ -52,7 +52,7 @@ export default function CustomerLinkPicker({ id, address, corrections, onChange,
   return (
     <section className="space-y-3" aria-label="Customer and property choice">
       <h4 className="text-sm font-semibold">Customer and property</h4>
-      <p className="text-xs text-muted-foreground">Matches are suggestions only. Email addresses never link records automatically.</p>
+      <p className="text-xs text-muted-foreground">Matches are suggestions only, including address abbreviations and phone country-code variations. Review each reason and confirm your choice; records are never linked or merged automatically.</p>
       {q.data && q.data.possibleMatches.length > 0 && <div className="space-y-2 rounded border border-amber-400 p-3" data-testid="possible-duplicates">
         <p className="text-sm font-medium">Possible existing customers — confirm before approving</p>
         {q.data.possibleMatches.map(card)}

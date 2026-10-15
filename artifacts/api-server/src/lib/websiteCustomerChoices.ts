@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { HrDb } from './hrAccess';
 import { HrError } from './hrAccess';
 import type { Answers } from './websiteFlow';
+import { addressComparisonKey, phoneComparisonKey } from './websiteCustomerNormalization';
 
 const text = (value: unknown) => typeof value === 'string' ? value.trim().toLowerCase() : '';
 const phone = (value: unknown) => text(value).replace(/\D/g, '');
@@ -17,16 +18,29 @@ export async function websiteCustomerChoices(tenantId: number, id: number, searc
   if (!submission) throw new HrError('Quote inquiry not found', 404);
   const a = { ...(submission.payload as { answers: Answers }).answers, ...corrections };
   const email = text(a.email), name = text(a.name), number = phone(a.phone), address = text(a.address);
+  const addressKey = addressComparisonKey(sql`${address}`);
+  const numberKey = phoneComparisonKey(sql`${number}`);
+  const sameAddress = sql`(
+    lower(trim(${customersTable.physicalAddress})) = ${address} OR EXISTS (
+      SELECT 1 FROM properties p WHERE p.tenant_id = ${tenantId}
+      AND p.customer_id = customers.id AND p.archived_at IS NULL
+      AND lower(trim(p.address)) = ${address}
+    ))`;
+  const similarAddress = sql`(
+    ${addressComparisonKey(sql`${customersTable.physicalAddress}`)} = ${addressKey} OR EXISTS (
+      SELECT 1 FROM properties p WHERE p.tenant_id = ${tenantId}
+      AND p.customer_id = customers.id AND p.archived_at IS NULL
+      AND ${addressComparisonKey(sql`p.address`)} = ${addressKey}
+    ))`;
   const reasons = sql<string[]>`array_remove(ARRAY[
     CASE WHEN ${email} <> '' AND lower(trim(${customersTable.email})) = ${email} THEN 'Same email' END,
-    CASE WHEN ${number} <> '' AND regexp_replace(${customersTable.phone}, '[^0-9]', '', 'g') = ${number} THEN 'Same phone' END,
+    CASE WHEN ${number} <> '' AND regexp_replace(${customersTable.phone}, '[^0-9]', '', 'g') = ${number} THEN 'Same phone'
+      WHEN ${numberKey} <> '' AND ${phoneComparisonKey(sql`${customersTable.phone}`)} = ${numberKey}
+      THEN 'Similar phone (country code variation)' END,
     CASE WHEN ${name} <> '' AND lower(trim(${customersTable.name})) = ${name} THEN 'Same name' END,
-    CASE WHEN ${address} <> '' AND (
-      lower(trim(${customersTable.physicalAddress})) = ${address} OR EXISTS (
-        SELECT 1 FROM properties p WHERE p.tenant_id = ${tenantId}
-        AND p.customer_id = customers.id AND p.archived_at IS NULL
-        AND lower(trim(p.address)) = ${address}
-      )) THEN 'Same property address' END
+    CASE WHEN ${address} <> '' AND ${sameAddress} THEN 'Same property address'
+      WHEN ${addressKey} <> '' AND ${similarAddress}
+      THEN 'Similar property address (formatting or abbreviation)' END
   ], NULL)`;
   const base = and(eq(customersTable.tenantId, tenantId), isNull(customersTable.archivedAt));
   const fields = {

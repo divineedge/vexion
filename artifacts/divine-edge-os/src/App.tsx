@@ -30,7 +30,8 @@ import ServicesPage from '@/pages/services';
 import ChemicalsPage from '@/pages/chemicals';
 import EquipmentPage from '@/pages/equipment';
 import QuotePublicPage from '@/pages/quote-public';
-import QuoteWidgetPage from '@/pages/quote-widget';
+import { PublicQuoteForm, PublicCareersForm } from '@/pages/public-site-form';
+import WebsiteFormsPage from '@/pages/website-forms';
 import EstimatesPage from '@/pages/estimates';
 import VendorsPage from '@/pages/vendors';
 import FormsPage from '@/pages/forms';
@@ -49,7 +50,6 @@ import TaskBundlesPage from '@/pages/task-bundles';
 import EmployeesPage from '@/pages/employees';
 import EmployeeFilePage from '@/pages/employee-file';
 import HrHiringPage from '@/pages/hr-hiring';
-import CareersPage from '@/pages/careers';
 import PortalInboxPage from '@/pages/portal-inbox';
 import BudgetPage from '@/pages/budget';
 import PricingReviewPage from '@/pages/pricing-review';
@@ -113,6 +113,7 @@ function ProtectedRoutes() {
         <Route path="/employees" component={EmployeesPage} />
         <Route path="/my-record" component={EmployeeFilePage} />
         <Route path="/hiring" component={HrHiringPage} />
+        <Route path="/website-forms" component={WebsiteFormsPage} />
         <Route path="/team/:id">{(p: { id: string }) => <Redirect to={`/employees/${p.id}`} />}</Route>
         <Route path="/portal-inbox/:customerId" component={PortalInboxPage} />
         <Route path="/portal-inbox" component={PortalInboxPage} />
@@ -130,12 +131,12 @@ function Router() {
     <Switch>
       {/* Public routes — no auth required */}
       <Route path="/quote/:token" component={QuotePublicPage} />
-      <Route path="/widget/quote" component={QuoteWidgetPage} />
-      <Route path="/quote-widget" component={QuoteWidgetPage} />
+      <Route path="/widget/quote" component={PublicQuoteForm} />
+      <Route path="/quote-widget" component={PublicQuoteForm} />
       <Route path="/estimate/:token" component={EstimatePublicPage} />
       <Route path="/invoice/:token" component={InvoicePublicPage} />
       <Route path="/review/:token" component={ReviewPublicPage} />
-      <Route path="/careers/:slug" component={CareersPage} />
+      <Route path="/careers/:slug" component={PublicCareersForm} />
       <Route path="/login" component={LoginPage} />
       <Route path="/signup" component={SignupPage} />
       <Route path="/" component={HomeRoute} />

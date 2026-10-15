@@ -176,12 +176,15 @@ import type {
   GetPaymentPolicy200,
   GetPlStatementReportParams,
   GetPricingHistoryReportParams,
+  GetPublicWebsiteIntakeConfig200,
+  GetPublicWebsiteIntakeConfigParams,
   GetQuickBooksAuthorizeUrl200,
   GetRepairLogSummaryParams,
   GetRouteDayDetailParams,
   GetRoutesDashboardParams,
   GetSalesTaxReportParams,
   GetTodayScheduleParams,
+  GetWebsiteIntakeForm200,
   HealthStatus,
   ImportBankTransactionInput,
   IntegrationDetail,
@@ -255,6 +258,8 @@ import type {
   ListTasksParams,
   ListTimeEntriesParams,
   ListVisitsParams,
+  ListWebsiteIntakeSubmissions200,
+  ListWebsiteIntakeSubmissionsParams,
   LocationStockAdjustInput,
   LocationStockEntry,
   LoginInput,
@@ -339,6 +344,8 @@ import type {
   ReviewEquipmentInspectionBody,
   ReviewRequest,
   ReviewRequestUpdate,
+  ReviewWebsiteIntakeSubmission200,
+  ReviewWebsiteIntakeSubmissionBody,
   ReviewsSummary,
   RouteDashboardEntry,
   RouteDayDetail,
@@ -348,6 +355,8 @@ import type {
   RunRecurringTemplateNowInput,
   SalesTaxReport,
   SavePaymentPolicy200,
+  SaveWebsiteIntakeForm200,
+  SaveWebsiteIntakeFormBody,
   ScheduleItem,
   SendBroadcastInput,
   SendInvoiceReminder200,
@@ -382,6 +391,9 @@ import type {
   SubTimer,
   SubTimerAdjustInput,
   SubTimerInput,
+  SubmitPublicWebsiteIntake201,
+  SubmitPublicWebsiteIntakeBodyOne,
+  SubmitPublicWebsiteIntakeBodyTwo,
   SubmitReviewFeedbackInput,
   SubmitReviewRatingInput,
   SuggestedPartWithStock,
@@ -445,6 +457,430 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getGetWebsiteIntakeFormUrl = (kind: 'quote' | 'hiring',) => {
+
+
+
+
+  return `/api/website-intake/forms/${kind}`
+}
+
+export const getWebsiteIntakeForm = async (kind: 'quote' | 'hiring', options?: RequestInit): Promise<GetWebsiteIntakeForm200> => {
+
+  return customFetch<GetWebsiteIntakeForm200>(getGetWebsiteIntakeFormUrl(kind),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWebsiteIntakeFormQueryKey = (kind: 'quote' | 'hiring',) => {
+    return [
+    `/api/website-intake/forms/${kind}`
+    ] as const;
+    }
+
+
+export const getGetWebsiteIntakeFormQueryOptions = <TData = Awaited<ReturnType<typeof getWebsiteIntakeForm>>, TError = ErrorType<unknown>>(kind: 'quote' | 'hiring', options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebsiteIntakeForm>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWebsiteIntakeFormQueryKey(kind);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWebsiteIntakeForm>>> = ({ signal }) => getWebsiteIntakeForm(kind, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: kind !== null && kind !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWebsiteIntakeForm>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWebsiteIntakeFormQueryResult = NonNullable<Awaited<ReturnType<typeof getWebsiteIntakeForm>>>
+export type GetWebsiteIntakeFormQueryError = ErrorType<unknown>
+
+
+
+export function useGetWebsiteIntakeForm<TData = Awaited<ReturnType<typeof getWebsiteIntakeForm>>, TError = ErrorType<unknown>>(
+ kind: 'quote' | 'hiring', options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebsiteIntakeForm>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWebsiteIntakeFormQueryOptions(kind,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSaveWebsiteIntakeFormUrl = (kind: 'quote' | 'hiring',) => {
+
+
+
+
+  return `/api/website-intake/forms/${kind}`
+}
+
+export const saveWebsiteIntakeForm = async (kind: 'quote' | 'hiring',
+    saveWebsiteIntakeFormBody: SaveWebsiteIntakeFormBody, options?: RequestInit): Promise<SaveWebsiteIntakeForm200> => {
+
+  return customFetch<SaveWebsiteIntakeForm200>(getSaveWebsiteIntakeFormUrl(kind),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(saveWebsiteIntakeFormBody)
+  }
+);}
+
+
+
+
+
+export const getSaveWebsiteIntakeFormMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveWebsiteIntakeForm>>, TError,{kind: 'quote' | 'hiring';data: BodyType<SaveWebsiteIntakeFormBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveWebsiteIntakeForm>>, TError,{kind: 'quote' | 'hiring';data: BodyType<SaveWebsiteIntakeFormBody>}, TContext> => {
+
+const mutationKey = ['saveWebsiteIntakeForm'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveWebsiteIntakeForm>>, {kind: 'quote' | 'hiring';data: BodyType<SaveWebsiteIntakeFormBody>}> = (props) => {
+          const {kind,data} = props ?? {};
+
+          return  saveWebsiteIntakeForm(kind,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveWebsiteIntakeFormMutationResult = NonNullable<Awaited<ReturnType<typeof saveWebsiteIntakeForm>>>
+    export type SaveWebsiteIntakeFormMutationBody = BodyType<SaveWebsiteIntakeFormBody>
+    export type SaveWebsiteIntakeFormMutationError = ErrorType<void>
+
+    export const useSaveWebsiteIntakeForm = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveWebsiteIntakeForm>>, TError,{kind: 'quote' | 'hiring';data: BodyType<SaveWebsiteIntakeFormBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof saveWebsiteIntakeForm>>,
+        TError,
+        {kind: 'quote' | 'hiring';data: BodyType<SaveWebsiteIntakeFormBody>},
+        TContext
+      > => {
+      return useMutation(getSaveWebsiteIntakeFormMutationOptions(options));
+    }
+
+export const getListWebsiteIntakeSubmissionsUrl = (params: ListWebsiteIntakeSubmissionsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/website-intake/submissions?${stringifiedParams}` : `/api/website-intake/submissions`
+}
+
+export const listWebsiteIntakeSubmissions = async (params: ListWebsiteIntakeSubmissionsParams, options?: RequestInit): Promise<ListWebsiteIntakeSubmissions200> => {
+
+  return customFetch<ListWebsiteIntakeSubmissions200>(getListWebsiteIntakeSubmissionsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListWebsiteIntakeSubmissionsQueryKey = (params?: ListWebsiteIntakeSubmissionsParams,) => {
+    return [
+    `/api/website-intake/submissions`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListWebsiteIntakeSubmissionsQueryOptions = <TData = Awaited<ReturnType<typeof listWebsiteIntakeSubmissions>>, TError = ErrorType<unknown>>(params: ListWebsiteIntakeSubmissionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listWebsiteIntakeSubmissions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListWebsiteIntakeSubmissionsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listWebsiteIntakeSubmissions>>> = ({ signal }) => listWebsiteIntakeSubmissions(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listWebsiteIntakeSubmissions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListWebsiteIntakeSubmissionsQueryResult = NonNullable<Awaited<ReturnType<typeof listWebsiteIntakeSubmissions>>>
+export type ListWebsiteIntakeSubmissionsQueryError = ErrorType<unknown>
+
+
+
+export function useListWebsiteIntakeSubmissions<TData = Awaited<ReturnType<typeof listWebsiteIntakeSubmissions>>, TError = ErrorType<unknown>>(
+ params: ListWebsiteIntakeSubmissionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listWebsiteIntakeSubmissions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListWebsiteIntakeSubmissionsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getReviewWebsiteIntakeSubmissionUrl = (id: number,) => {
+
+
+
+
+  return `/api/website-intake/submissions/${id}/review`
+}
+
+export const reviewWebsiteIntakeSubmission = async (id: number,
+    reviewWebsiteIntakeSubmissionBody: ReviewWebsiteIntakeSubmissionBody, options?: RequestInit): Promise<ReviewWebsiteIntakeSubmission200> => {
+
+  return customFetch<ReviewWebsiteIntakeSubmission200>(getReviewWebsiteIntakeSubmissionUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reviewWebsiteIntakeSubmissionBody)
+  }
+);}
+
+
+
+
+
+export const getReviewWebsiteIntakeSubmissionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewWebsiteIntakeSubmission>>, TError,{id: number;data: BodyType<ReviewWebsiteIntakeSubmissionBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reviewWebsiteIntakeSubmission>>, TError,{id: number;data: BodyType<ReviewWebsiteIntakeSubmissionBody>}, TContext> => {
+
+const mutationKey = ['reviewWebsiteIntakeSubmission'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reviewWebsiteIntakeSubmission>>, {id: number;data: BodyType<ReviewWebsiteIntakeSubmissionBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  reviewWebsiteIntakeSubmission(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReviewWebsiteIntakeSubmissionMutationResult = NonNullable<Awaited<ReturnType<typeof reviewWebsiteIntakeSubmission>>>
+    export type ReviewWebsiteIntakeSubmissionMutationBody = BodyType<ReviewWebsiteIntakeSubmissionBody>
+    export type ReviewWebsiteIntakeSubmissionMutationError = ErrorType<unknown>
+
+    export const useReviewWebsiteIntakeSubmission = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewWebsiteIntakeSubmission>>, TError,{id: number;data: BodyType<ReviewWebsiteIntakeSubmissionBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reviewWebsiteIntakeSubmission>>,
+        TError,
+        {id: number;data: BodyType<ReviewWebsiteIntakeSubmissionBody>},
+        TContext
+      > => {
+      return useMutation(getReviewWebsiteIntakeSubmissionMutationOptions(options));
+    }
+
+export const getGetPublicWebsiteIntakeConfigUrl = (params: GetPublicWebsiteIntakeConfigParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/public-intake/config?${stringifiedParams}` : `/api/public-intake/config`
+}
+
+export const getPublicWebsiteIntakeConfig = async (params: GetPublicWebsiteIntakeConfigParams, options?: RequestInit): Promise<GetPublicWebsiteIntakeConfig200> => {
+
+  return customFetch<GetPublicWebsiteIntakeConfig200>(getGetPublicWebsiteIntakeConfigUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPublicWebsiteIntakeConfigQueryKey = (params?: GetPublicWebsiteIntakeConfigParams,) => {
+    return [
+    `/api/public-intake/config`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetPublicWebsiteIntakeConfigQueryOptions = <TData = Awaited<ReturnType<typeof getPublicWebsiteIntakeConfig>>, TError = ErrorType<unknown>>(params: GetPublicWebsiteIntakeConfigParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPublicWebsiteIntakeConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPublicWebsiteIntakeConfigQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPublicWebsiteIntakeConfig>>> = ({ signal }) => getPublicWebsiteIntakeConfig(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPublicWebsiteIntakeConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPublicWebsiteIntakeConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getPublicWebsiteIntakeConfig>>>
+export type GetPublicWebsiteIntakeConfigQueryError = ErrorType<unknown>
+
+
+
+export function useGetPublicWebsiteIntakeConfig<TData = Awaited<ReturnType<typeof getPublicWebsiteIntakeConfig>>, TError = ErrorType<unknown>>(
+ params: GetPublicWebsiteIntakeConfigParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPublicWebsiteIntakeConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPublicWebsiteIntakeConfigQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSubmitPublicWebsiteIntakeUrl = () => {
+
+
+
+
+  return `/api/public-intake/submit`
+}
+
+export const submitPublicWebsiteIntake = async (submitPublicWebsiteIntakeBody: SubmitPublicWebsiteIntakeBodyOne | SubmitPublicWebsiteIntakeBodyTwo, options?: RequestInit): Promise<SubmitPublicWebsiteIntake201> => {
+
+  return customFetch<SubmitPublicWebsiteIntake201>(getSubmitPublicWebsiteIntakeUrl(),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: JSON.stringify(submitPublicWebsiteIntakeBody)
+  }
+);}
+
+
+
+
+
+export const getSubmitPublicWebsiteIntakeMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitPublicWebsiteIntake>>, TError,{data: BodyType<SubmitPublicWebsiteIntakeBodyOne | SubmitPublicWebsiteIntakeBodyTwo>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitPublicWebsiteIntake>>, TError,{data: BodyType<SubmitPublicWebsiteIntakeBodyOne | SubmitPublicWebsiteIntakeBodyTwo>}, TContext> => {
+
+const mutationKey = ['submitPublicWebsiteIntake'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitPublicWebsiteIntake>>, {data: BodyType<SubmitPublicWebsiteIntakeBodyOne | SubmitPublicWebsiteIntakeBodyTwo>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  submitPublicWebsiteIntake(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitPublicWebsiteIntakeMutationResult = NonNullable<Awaited<ReturnType<typeof submitPublicWebsiteIntake>>>
+    export type SubmitPublicWebsiteIntakeMutationBody = BodyType<SubmitPublicWebsiteIntakeBodyOne | SubmitPublicWebsiteIntakeBodyTwo>
+    export type SubmitPublicWebsiteIntakeMutationError = ErrorType<unknown>
+
+    export const useSubmitPublicWebsiteIntake = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitPublicWebsiteIntake>>, TError,{data: BodyType<SubmitPublicWebsiteIntakeBodyOne | SubmitPublicWebsiteIntakeBodyTwo>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof submitPublicWebsiteIntake>>,
+        TError,
+        {data: BodyType<SubmitPublicWebsiteIntakeBodyOne | SubmitPublicWebsiteIntakeBodyTwo>},
+        TContext
+      > => {
+      return useMutation(getSubmitPublicWebsiteIntakeMutationOptions(options));
+    }
 
 export const getListJobRequestsUrl = () => {
 

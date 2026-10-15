@@ -7256,6 +7256,1155 @@ export interface ExternalAccessAuditRow {
   createdAt: string;
 }
 
+export type GetWebsiteIntakeForm200DefinitionStepsItemKind = typeof GetWebsiteIntakeForm200DefinitionStepsItemKind[keyof typeof GetWebsiteIntakeForm200DefinitionStepsItemKind];
+
+
+export const GetWebsiteIntakeForm200DefinitionStepsItemKind = {
+  questions: 'questions',
+  property: 'property',
+  measurement: 'measurement',
+} as const;
+
+export type GetWebsiteIntakeForm200DefinitionStepsItemMeasurementMode = typeof GetWebsiteIntakeForm200DefinitionStepsItemMeasurementMode[keyof typeof GetWebsiteIntakeForm200DefinitionStepsItemMeasurementMode];
+
+
+export const GetWebsiteIntakeForm200DefinitionStepsItemMeasurementMode = {
+  area: 'area',
+  linear: 'linear',
+} as const;
+
+export type GetWebsiteIntakeForm200DefinitionStepsItemConditionOperator = typeof GetWebsiteIntakeForm200DefinitionStepsItemConditionOperator[keyof typeof GetWebsiteIntakeForm200DefinitionStepsItemConditionOperator];
+
+
+export const GetWebsiteIntakeForm200DefinitionStepsItemConditionOperator = {
+  equals: 'equals',
+  not_equals: 'not_equals',
+  contains: 'contains',
+  answered: 'answered',
+} as const;
+
+export type GetWebsiteIntakeForm200DefinitionStepsItemCondition = {
+  field: string;
+  operator: GetWebsiteIntakeForm200DefinitionStepsItemConditionOperator;
+  value: string;
+} | null;
+
+export type GetWebsiteIntakeForm200DefinitionStepsItemQuestionsItemType = typeof GetWebsiteIntakeForm200DefinitionStepsItemQuestionsItemType[keyof typeof GetWebsiteIntakeForm200DefinitionStepsItemQuestionsItemType];
+
+
+export const GetWebsiteIntakeForm200DefinitionStepsItemQuestionsItemType = {
+  text: 'text',
+  textarea: 'textarea',
+  email: 'email',
+  phone: 'phone',
+  number: 'number',
+  date: 'date',
+  select: 'select',
+  multiselect: 'multiselect',
+  checkbox: 'checkbox',
+} as const;
+
+export type GetWebsiteIntakeForm200DefinitionStepsItemQuestionsItemConditionOperator = typeof GetWebsiteIntakeForm200DefinitionStepsItemQuestionsItemConditionOperator[keyof typeof GetWebsiteIntakeForm200DefinitionStepsItemQuestionsItemConditionOperator];
+
+
+export const GetWebsiteIntakeForm200DefinitionStepsItemQuestionsItemConditionOperator = {
+  equals: 'equals',
+  not_equals: 'not_equals',
+  contains: 'contains',
+  answered: 'answered',
+} as const;
+
+export type GetWebsiteIntakeForm200DefinitionStepsItemQuestionsItemCondition = {
+  field: string;
+  operator: GetWebsiteIntakeForm200DefinitionStepsItemQuestionsItemConditionOperator;
+  value: string;
+} | null;
+
+export type GetWebsiteIntakeForm200DefinitionStepsItemQuestionsItem = {
+  id: string;
+  label: string;
+  type: GetWebsiteIntakeForm200DefinitionStepsItemQuestionsItemType;
+  required: boolean;
+  options: string[];
+  condition?: GetWebsiteIntakeForm200DefinitionStepsItemQuestionsItemCondition;
+};
+
+export type GetWebsiteIntakeForm200DefinitionStepsItem = {
+  id: string;
+  title: string;
+  kind: GetWebsiteIntakeForm200DefinitionStepsItemKind;
+  required: boolean;
+  measurementMode: GetWebsiteIntakeForm200DefinitionStepsItemMeasurementMode;
+  allowPinMove: boolean;
+  condition?: GetWebsiteIntakeForm200DefinitionStepsItemCondition;
+  questions: GetWebsiteIntakeForm200DefinitionStepsItemQuestionsItem[];
+};
+
+export type GetWebsiteIntakeForm200Definition = {
+  title: string;
+  intro: string;
+  privacyNotice: string;
+  successMessage: string;
+  steps: GetWebsiteIntakeForm200DefinitionStepsItem[];
+};
+
+export type GetWebsiteIntakeForm200PublishedStepsItemKind = typeof GetWebsiteIntakeForm200PublishedStepsItemKind[keyof typeof GetWebsiteIntakeForm200PublishedStepsItemKind];
+
+
+export const GetWebsiteIntakeForm200PublishedStepsItemKind = {
+  questions: 'questions',
+  property: 'property',
+  measurement: 'measurement',
+} as const;
+
+export type GetWebsiteIntakeForm200PublishedStepsItemMeasurementMode = typeof GetWebsiteIntakeForm200PublishedStepsItemMeasurementMode[keyof typeof GetWebsiteIntakeForm200PublishedStepsItemMeasurementMode];
+
+
+export const GetWebsiteIntakeForm200PublishedStepsItemMeasurementMode = {
+  area: 'area',
+  linear: 'linear',
+} as const;
+
+export type GetWebsiteIntakeForm200PublishedStepsItemConditionOperator = typeof GetWebsiteIntakeForm200PublishedStepsItemConditionOperator[keyof typeof GetWebsiteIntakeForm200PublishedStepsItemConditionOperator];
+
+
+export const GetWebsiteIntakeForm200PublishedStepsItemConditionOperator = {
+  equals: 'equals',
+  not_equals: 'not_equals',
+  contains: 'contains',
+  answered: 'answered',
+} as const;
+
+export type GetWebsiteIntakeForm200PublishedStepsItemCondition = {
+  field: string;
+  operator: GetWebsiteIntakeForm200PublishedStepsItemConditionOperator;
+  value: string;
+} | null;
+
+export type GetWebsiteIntakeForm200PublishedStepsItemQuestionsItemType = typeof GetWebsiteIntakeForm200PublishedStepsItemQuestionsItemType[keyof typeof GetWebsiteIntakeForm200PublishedStepsItemQuestionsItemType];
+
+
+export const GetWebsiteIntakeForm200PublishedStepsItemQuestionsItemType = {
+  text: 'text',
+  textarea: 'textarea',
+  email: 'email',
+  phone: 'phone',
+  number: 'number',
+  date: 'date',
+  select: 'select',
+  multiselect: 'multiselect',
+  checkbox: 'checkbox',
+} as const;
+
+export type GetWebsiteIntakeForm200PublishedStepsItemQuestionsItemConditionOperator = typeof GetWebsiteIntakeForm200PublishedStepsItemQuestionsItemConditionOperator[keyof typeof GetWebsiteIntakeForm200PublishedStepsItemQuestionsItemConditionOperator];
+
+
+export const GetWebsiteIntakeForm200PublishedStepsItemQuestionsItemConditionOperator = {
+  equals: 'equals',
+  not_equals: 'not_equals',
+  contains: 'contains',
+  answered: 'answered',
+} as const;
+
+export type GetWebsiteIntakeForm200PublishedStepsItemQuestionsItemCondition = {
+  field: string;
+  operator: GetWebsiteIntakeForm200PublishedStepsItemQuestionsItemConditionOperator;
+  value: string;
+} | null;
+
+export type GetWebsiteIntakeForm200PublishedStepsItemQuestionsItem = {
+  id: string;
+  label: string;
+  type: GetWebsiteIntakeForm200PublishedStepsItemQuestionsItemType;
+  required: boolean;
+  options: string[];
+  condition?: GetWebsiteIntakeForm200PublishedStepsItemQuestionsItemCondition;
+};
+
+export type GetWebsiteIntakeForm200PublishedStepsItem = {
+  id: string;
+  title: string;
+  kind: GetWebsiteIntakeForm200PublishedStepsItemKind;
+  required: boolean;
+  measurementMode: GetWebsiteIntakeForm200PublishedStepsItemMeasurementMode;
+  allowPinMove: boolean;
+  condition?: GetWebsiteIntakeForm200PublishedStepsItemCondition;
+  questions: GetWebsiteIntakeForm200PublishedStepsItemQuestionsItem[];
+};
+
+export type GetWebsiteIntakeForm200Published = {
+  title: string;
+  intro: string;
+  privacyNotice: string;
+  successMessage: string;
+  steps: GetWebsiteIntakeForm200PublishedStepsItem[];
+} | null;
+
+export type GetWebsiteIntakeForm200 = {
+  definition: GetWebsiteIntakeForm200Definition;
+  published: GetWebsiteIntakeForm200Published;
+  revision: number;
+};
+
+export type SaveWebsiteIntakeFormBodyDefinitionStepsItemKind = typeof SaveWebsiteIntakeFormBodyDefinitionStepsItemKind[keyof typeof SaveWebsiteIntakeFormBodyDefinitionStepsItemKind];
+
+
+export const SaveWebsiteIntakeFormBodyDefinitionStepsItemKind = {
+  questions: 'questions',
+  property: 'property',
+  measurement: 'measurement',
+} as const;
+
+export type SaveWebsiteIntakeFormBodyDefinitionStepsItemMeasurementMode = typeof SaveWebsiteIntakeFormBodyDefinitionStepsItemMeasurementMode[keyof typeof SaveWebsiteIntakeFormBodyDefinitionStepsItemMeasurementMode];
+
+
+export const SaveWebsiteIntakeFormBodyDefinitionStepsItemMeasurementMode = {
+  area: 'area',
+  linear: 'linear',
+} as const;
+
+export type SaveWebsiteIntakeFormBodyDefinitionStepsItemConditionOperator = typeof SaveWebsiteIntakeFormBodyDefinitionStepsItemConditionOperator[keyof typeof SaveWebsiteIntakeFormBodyDefinitionStepsItemConditionOperator];
+
+
+export const SaveWebsiteIntakeFormBodyDefinitionStepsItemConditionOperator = {
+  equals: 'equals',
+  not_equals: 'not_equals',
+  contains: 'contains',
+  answered: 'answered',
+} as const;
+
+export type SaveWebsiteIntakeFormBodyDefinitionStepsItemCondition = {
+  field: string;
+  operator: SaveWebsiteIntakeFormBodyDefinitionStepsItemConditionOperator;
+  value: string;
+} | null;
+
+export type SaveWebsiteIntakeFormBodyDefinitionStepsItemQuestionsItemType = typeof SaveWebsiteIntakeFormBodyDefinitionStepsItemQuestionsItemType[keyof typeof SaveWebsiteIntakeFormBodyDefinitionStepsItemQuestionsItemType];
+
+
+export const SaveWebsiteIntakeFormBodyDefinitionStepsItemQuestionsItemType = {
+  text: 'text',
+  textarea: 'textarea',
+  email: 'email',
+  phone: 'phone',
+  number: 'number',
+  date: 'date',
+  select: 'select',
+  multiselect: 'multiselect',
+  checkbox: 'checkbox',
+} as const;
+
+export type SaveWebsiteIntakeFormBodyDefinitionStepsItemQuestionsItemConditionOperator = typeof SaveWebsiteIntakeFormBodyDefinitionStepsItemQuestionsItemConditionOperator[keyof typeof SaveWebsiteIntakeFormBodyDefinitionStepsItemQuestionsItemConditionOperator];
+
+
+export const SaveWebsiteIntakeFormBodyDefinitionStepsItemQuestionsItemConditionOperator = {
+  equals: 'equals',
+  not_equals: 'not_equals',
+  contains: 'contains',
+  answered: 'answered',
+} as const;
+
+export type SaveWebsiteIntakeFormBodyDefinitionStepsItemQuestionsItemCondition = {
+  field: string;
+  operator: SaveWebsiteIntakeFormBodyDefinitionStepsItemQuestionsItemConditionOperator;
+  value: string;
+} | null;
+
+export type SaveWebsiteIntakeFormBodyDefinitionStepsItemQuestionsItem = {
+  id: string;
+  label: string;
+  type: SaveWebsiteIntakeFormBodyDefinitionStepsItemQuestionsItemType;
+  required: boolean;
+  options: string[];
+  condition?: SaveWebsiteIntakeFormBodyDefinitionStepsItemQuestionsItemCondition;
+};
+
+export type SaveWebsiteIntakeFormBodyDefinitionStepsItem = {
+  id: string;
+  title: string;
+  kind: SaveWebsiteIntakeFormBodyDefinitionStepsItemKind;
+  required: boolean;
+  measurementMode: SaveWebsiteIntakeFormBodyDefinitionStepsItemMeasurementMode;
+  allowPinMove: boolean;
+  condition?: SaveWebsiteIntakeFormBodyDefinitionStepsItemCondition;
+  questions: SaveWebsiteIntakeFormBodyDefinitionStepsItemQuestionsItem[];
+};
+
+export type SaveWebsiteIntakeFormBodyDefinition = {
+  title: string;
+  intro: string;
+  privacyNotice: string;
+  successMessage: string;
+  steps: SaveWebsiteIntakeFormBodyDefinitionStepsItem[];
+};
+
+export type SaveWebsiteIntakeFormBody = {
+  definition: SaveWebsiteIntakeFormBodyDefinition;
+  revision: number;
+  publish: boolean;
+};
+
+export type SaveWebsiteIntakeForm200DefinitionStepsItemKind = typeof SaveWebsiteIntakeForm200DefinitionStepsItemKind[keyof typeof SaveWebsiteIntakeForm200DefinitionStepsItemKind];
+
+
+export const SaveWebsiteIntakeForm200DefinitionStepsItemKind = {
+  questions: 'questions',
+  property: 'property',
+  measurement: 'measurement',
+} as const;
+
+export type SaveWebsiteIntakeForm200DefinitionStepsItemMeasurementMode = typeof SaveWebsiteIntakeForm200DefinitionStepsItemMeasurementMode[keyof typeof SaveWebsiteIntakeForm200DefinitionStepsItemMeasurementMode];
+
+
+export const SaveWebsiteIntakeForm200DefinitionStepsItemMeasurementMode = {
+  area: 'area',
+  linear: 'linear',
+} as const;
+
+export type SaveWebsiteIntakeForm200DefinitionStepsItemConditionOperator = typeof SaveWebsiteIntakeForm200DefinitionStepsItemConditionOperator[keyof typeof SaveWebsiteIntakeForm200DefinitionStepsItemConditionOperator];
+
+
+export const SaveWebsiteIntakeForm200DefinitionStepsItemConditionOperator = {
+  equals: 'equals',
+  not_equals: 'not_equals',
+  contains: 'contains',
+  answered: 'answered',
+} as const;
+
+export type SaveWebsiteIntakeForm200DefinitionStepsItemCondition = {
+  field: string;
+  operator: SaveWebsiteIntakeForm200DefinitionStepsItemConditionOperator;
+  value: string;
+} | null;
+
+export type SaveWebsiteIntakeForm200DefinitionStepsItemQuestionsItemType = typeof SaveWebsiteIntakeForm200DefinitionStepsItemQuestionsItemType[keyof typeof SaveWebsiteIntakeForm200DefinitionStepsItemQuestionsItemType];
+
+
+export const SaveWebsiteIntakeForm200DefinitionStepsItemQuestionsItemType = {
+  text: 'text',
+  textarea: 'textarea',
+  email: 'email',
+  phone: 'phone',
+  number: 'number',
+  date: 'date',
+  select: 'select',
+  multiselect: 'multiselect',
+  checkbox: 'checkbox',
+} as const;
+
+export type SaveWebsiteIntakeForm200DefinitionStepsItemQuestionsItemConditionOperator = typeof SaveWebsiteIntakeForm200DefinitionStepsItemQuestionsItemConditionOperator[keyof typeof SaveWebsiteIntakeForm200DefinitionStepsItemQuestionsItemConditionOperator];
+
+
+export const SaveWebsiteIntakeForm200DefinitionStepsItemQuestionsItemConditionOperator = {
+  equals: 'equals',
+  not_equals: 'not_equals',
+  contains: 'contains',
+  answered: 'answered',
+} as const;
+
+export type SaveWebsiteIntakeForm200DefinitionStepsItemQuestionsItemCondition = {
+  field: string;
+  operator: SaveWebsiteIntakeForm200DefinitionStepsItemQuestionsItemConditionOperator;
+  value: string;
+} | null;
+
+export type SaveWebsiteIntakeForm200DefinitionStepsItemQuestionsItem = {
+  id: string;
+  label: string;
+  type: SaveWebsiteIntakeForm200DefinitionStepsItemQuestionsItemType;
+  required: boolean;
+  options: string[];
+  condition?: SaveWebsiteIntakeForm200DefinitionStepsItemQuestionsItemCondition;
+};
+
+export type SaveWebsiteIntakeForm200DefinitionStepsItem = {
+  id: string;
+  title: string;
+  kind: SaveWebsiteIntakeForm200DefinitionStepsItemKind;
+  required: boolean;
+  measurementMode: SaveWebsiteIntakeForm200DefinitionStepsItemMeasurementMode;
+  allowPinMove: boolean;
+  condition?: SaveWebsiteIntakeForm200DefinitionStepsItemCondition;
+  questions: SaveWebsiteIntakeForm200DefinitionStepsItemQuestionsItem[];
+};
+
+export type SaveWebsiteIntakeForm200Definition = {
+  title: string;
+  intro: string;
+  privacyNotice: string;
+  successMessage: string;
+  steps: SaveWebsiteIntakeForm200DefinitionStepsItem[];
+};
+
+export type SaveWebsiteIntakeForm200PublishedStepsItemKind = typeof SaveWebsiteIntakeForm200PublishedStepsItemKind[keyof typeof SaveWebsiteIntakeForm200PublishedStepsItemKind];
+
+
+export const SaveWebsiteIntakeForm200PublishedStepsItemKind = {
+  questions: 'questions',
+  property: 'property',
+  measurement: 'measurement',
+} as const;
+
+export type SaveWebsiteIntakeForm200PublishedStepsItemMeasurementMode = typeof SaveWebsiteIntakeForm200PublishedStepsItemMeasurementMode[keyof typeof SaveWebsiteIntakeForm200PublishedStepsItemMeasurementMode];
+
+
+export const SaveWebsiteIntakeForm200PublishedStepsItemMeasurementMode = {
+  area: 'area',
+  linear: 'linear',
+} as const;
+
+export type SaveWebsiteIntakeForm200PublishedStepsItemConditionOperator = typeof SaveWebsiteIntakeForm200PublishedStepsItemConditionOperator[keyof typeof SaveWebsiteIntakeForm200PublishedStepsItemConditionOperator];
+
+
+export const SaveWebsiteIntakeForm200PublishedStepsItemConditionOperator = {
+  equals: 'equals',
+  not_equals: 'not_equals',
+  contains: 'contains',
+  answered: 'answered',
+} as const;
+
+export type SaveWebsiteIntakeForm200PublishedStepsItemCondition = {
+  field: string;
+  operator: SaveWebsiteIntakeForm200PublishedStepsItemConditionOperator;
+  value: string;
+} | null;
+
+export type SaveWebsiteIntakeForm200PublishedStepsItemQuestionsItemType = typeof SaveWebsiteIntakeForm200PublishedStepsItemQuestionsItemType[keyof typeof SaveWebsiteIntakeForm200PublishedStepsItemQuestionsItemType];
+
+
+export const SaveWebsiteIntakeForm200PublishedStepsItemQuestionsItemType = {
+  text: 'text',
+  textarea: 'textarea',
+  email: 'email',
+  phone: 'phone',
+  number: 'number',
+  date: 'date',
+  select: 'select',
+  multiselect: 'multiselect',
+  checkbox: 'checkbox',
+} as const;
+
+export type SaveWebsiteIntakeForm200PublishedStepsItemQuestionsItemConditionOperator = typeof SaveWebsiteIntakeForm200PublishedStepsItemQuestionsItemConditionOperator[keyof typeof SaveWebsiteIntakeForm200PublishedStepsItemQuestionsItemConditionOperator];
+
+
+export const SaveWebsiteIntakeForm200PublishedStepsItemQuestionsItemConditionOperator = {
+  equals: 'equals',
+  not_equals: 'not_equals',
+  contains: 'contains',
+  answered: 'answered',
+} as const;
+
+export type SaveWebsiteIntakeForm200PublishedStepsItemQuestionsItemCondition = {
+  field: string;
+  operator: SaveWebsiteIntakeForm200PublishedStepsItemQuestionsItemConditionOperator;
+  value: string;
+} | null;
+
+export type SaveWebsiteIntakeForm200PublishedStepsItemQuestionsItem = {
+  id: string;
+  label: string;
+  type: SaveWebsiteIntakeForm200PublishedStepsItemQuestionsItemType;
+  required: boolean;
+  options: string[];
+  condition?: SaveWebsiteIntakeForm200PublishedStepsItemQuestionsItemCondition;
+};
+
+export type SaveWebsiteIntakeForm200PublishedStepsItem = {
+  id: string;
+  title: string;
+  kind: SaveWebsiteIntakeForm200PublishedStepsItemKind;
+  required: boolean;
+  measurementMode: SaveWebsiteIntakeForm200PublishedStepsItemMeasurementMode;
+  allowPinMove: boolean;
+  condition?: SaveWebsiteIntakeForm200PublishedStepsItemCondition;
+  questions: SaveWebsiteIntakeForm200PublishedStepsItemQuestionsItem[];
+};
+
+export type SaveWebsiteIntakeForm200Published = {
+  title: string;
+  intro: string;
+  privacyNotice: string;
+  successMessage: string;
+  steps: SaveWebsiteIntakeForm200PublishedStepsItem[];
+} | null;
+
+export type SaveWebsiteIntakeForm200 = {
+  definition: SaveWebsiteIntakeForm200Definition;
+  published: SaveWebsiteIntakeForm200Published;
+  revision: number;
+};
+
+export type ListWebsiteIntakeSubmissionsParams = {
+kind: ListWebsiteIntakeSubmissionsKind;
+/**
+ * @minimum 1
+ */
+before?: number;
+};
+
+export type ListWebsiteIntakeSubmissionsKind = typeof ListWebsiteIntakeSubmissionsKind[keyof typeof ListWebsiteIntakeSubmissionsKind];
+
+
+export const ListWebsiteIntakeSubmissionsKind = {
+  quote: 'quote',
+  hiring: 'hiring',
+} as const;
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemKind = typeof ListWebsiteIntakeSubmissions200SubmissionsItemKind[keyof typeof ListWebsiteIntakeSubmissions200SubmissionsItemKind];
+
+
+export const ListWebsiteIntakeSubmissions200SubmissionsItemKind = {
+  quote: 'quote',
+  hiring: 'hiring',
+} as const;
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemKind = typeof ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemKind[keyof typeof ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemKind];
+
+
+export const ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemKind = {
+  questions: 'questions',
+  property: 'property',
+  measurement: 'measurement',
+} as const;
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemMeasurementMode = typeof ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemMeasurementMode[keyof typeof ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemMeasurementMode];
+
+
+export const ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemMeasurementMode = {
+  area: 'area',
+  linear: 'linear',
+} as const;
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemConditionOperator = typeof ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemConditionOperator[keyof typeof ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemConditionOperator];
+
+
+export const ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemConditionOperator = {
+  equals: 'equals',
+  not_equals: 'not_equals',
+  contains: 'contains',
+  answered: 'answered',
+} as const;
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemCondition = {
+  field: string;
+  operator: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemConditionOperator;
+  value: string;
+} | null;
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemQuestionsItemType = typeof ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemQuestionsItemType[keyof typeof ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemQuestionsItemType];
+
+
+export const ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemQuestionsItemType = {
+  text: 'text',
+  textarea: 'textarea',
+  email: 'email',
+  phone: 'phone',
+  number: 'number',
+  date: 'date',
+  select: 'select',
+  multiselect: 'multiselect',
+  checkbox: 'checkbox',
+} as const;
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemQuestionsItemConditionOperator = typeof ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemQuestionsItemConditionOperator[keyof typeof ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemQuestionsItemConditionOperator];
+
+
+export const ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemQuestionsItemConditionOperator = {
+  equals: 'equals',
+  not_equals: 'not_equals',
+  contains: 'contains',
+  answered: 'answered',
+} as const;
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemQuestionsItemCondition = {
+  field: string;
+  operator: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemQuestionsItemConditionOperator;
+  value: string;
+} | null;
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemQuestionsItem = {
+  id: string;
+  label: string;
+  type: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemQuestionsItemType;
+  required: boolean;
+  options: string[];
+  condition?: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemQuestionsItemCondition;
+};
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItem = {
+  id: string;
+  title: string;
+  kind: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemKind;
+  required: boolean;
+  measurementMode: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemMeasurementMode;
+  allowPinMove: boolean;
+  condition?: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemCondition;
+  questions: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemQuestionsItem[];
+};
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemSnapshot = {
+  title: string;
+  intro: string;
+  privacyNotice: string;
+  successMessage: string;
+  steps: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItem[];
+};
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemPayloadAnswers = {
+  name?: string;
+  email?: string;
+  phone?: string;
+  lat?: number;
+  lng?: number;
+  pinConfirmed?: boolean;
+  [key: string]: unknown;
+};
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasureMode = typeof ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasureMode[keyof typeof ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasureMode];
+
+
+export const ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasureMode = {
+  area: 'area',
+  linear: 'linear',
+} as const;
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasurePointsItem = {
+  lat: number;
+  lng: number;
+};
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasure = {
+  mode: ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasureMode;
+  points: ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasurePointsItem[];
+  manual?: number;
+};
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurements = {
+  measure?: ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasure;
+  [key: string]: unknown;
+};
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemPayload = {
+  answers: ListWebsiteIntakeSubmissions200SubmissionsItemPayloadAnswers;
+  measurements: ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurements;
+  /** @nullable */
+  areaSqft?: number | null;
+  /** @nullable */
+  lengthFt?: number | null;
+  revision?: number;
+  consentAt?: string;
+  referralCode?: string;
+  doorHangerCode?: string;
+};
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemPreviewItemsItem = {
+  serviceId: number;
+  name: string;
+  price: number;
+};
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemPreview = {
+  total: number;
+  items: ListWebsiteIntakeSubmissions200SubmissionsItemPreviewItemsItem[];
+} | null;
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataAction = typeof ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataAction[keyof typeof ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataAction];
+
+
+export const ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataAction = {
+  approve: 'approve',
+  decline: 'decline',
+  review: 'review',
+} as const;
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataCustomer = {
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+};
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemReviewData = {
+  action: ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataAction;
+  notes?: string;
+  customer?: ListWebsiteIntakeSubmissions200SubmissionsItemReviewDataCustomer;
+  createEstimate?: boolean;
+  areaSqft?: number;
+  lengthFt?: number;
+} | null;
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItem = {
+  id: number;
+  kind: ListWebsiteIntakeSubmissions200SubmissionsItemKind;
+  status: string;
+  snapshot: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshot;
+  payload: ListWebsiteIntakeSubmissions200SubmissionsItemPayload;
+  preview: ListWebsiteIntakeSubmissions200SubmissionsItemPreview;
+  path?: string[];
+  createdAt: string;
+  /** @nullable */
+  customerId?: number | null;
+  /** @nullable */
+  propertyId?: number | null;
+  /** @nullable */
+  estimateId?: number | null;
+  /** @nullable */
+  applicationId?: number | null;
+  /** @nullable */
+  reviewNotes?: string | null;
+  reviewData?: ListWebsiteIntakeSubmissions200SubmissionsItemReviewData;
+};
+
+export type ListWebsiteIntakeSubmissions200 = {
+  submissions: ListWebsiteIntakeSubmissions200SubmissionsItem[];
+  /** @nullable */
+  nextCursor: number | null;
+};
+
+export type ReviewWebsiteIntakeSubmissionBodyAction = typeof ReviewWebsiteIntakeSubmissionBodyAction[keyof typeof ReviewWebsiteIntakeSubmissionBodyAction];
+
+
+export const ReviewWebsiteIntakeSubmissionBodyAction = {
+  approve: 'approve',
+  decline: 'decline',
+  review: 'review',
+} as const;
+
+export type ReviewWebsiteIntakeSubmissionBodyCustomer = {
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+};
+
+export type ReviewWebsiteIntakeSubmissionBody = {
+  action: ReviewWebsiteIntakeSubmissionBodyAction;
+  notes?: string;
+  customer?: ReviewWebsiteIntakeSubmissionBodyCustomer;
+  createEstimate?: boolean;
+  areaSqft?: number;
+  lengthFt?: number;
+};
+
+export type ReviewWebsiteIntakeSubmission200Kind = typeof ReviewWebsiteIntakeSubmission200Kind[keyof typeof ReviewWebsiteIntakeSubmission200Kind];
+
+
+export const ReviewWebsiteIntakeSubmission200Kind = {
+  quote: 'quote',
+  hiring: 'hiring',
+} as const;
+
+export type ReviewWebsiteIntakeSubmission200SnapshotStepsItemKind = typeof ReviewWebsiteIntakeSubmission200SnapshotStepsItemKind[keyof typeof ReviewWebsiteIntakeSubmission200SnapshotStepsItemKind];
+
+
+export const ReviewWebsiteIntakeSubmission200SnapshotStepsItemKind = {
+  questions: 'questions',
+  property: 'property',
+  measurement: 'measurement',
+} as const;
+
+export type ReviewWebsiteIntakeSubmission200SnapshotStepsItemMeasurementMode = typeof ReviewWebsiteIntakeSubmission200SnapshotStepsItemMeasurementMode[keyof typeof ReviewWebsiteIntakeSubmission200SnapshotStepsItemMeasurementMode];
+
+
+export const ReviewWebsiteIntakeSubmission200SnapshotStepsItemMeasurementMode = {
+  area: 'area',
+  linear: 'linear',
+} as const;
+
+export type ReviewWebsiteIntakeSubmission200SnapshotStepsItemConditionOperator = typeof ReviewWebsiteIntakeSubmission200SnapshotStepsItemConditionOperator[keyof typeof ReviewWebsiteIntakeSubmission200SnapshotStepsItemConditionOperator];
+
+
+export const ReviewWebsiteIntakeSubmission200SnapshotStepsItemConditionOperator = {
+  equals: 'equals',
+  not_equals: 'not_equals',
+  contains: 'contains',
+  answered: 'answered',
+} as const;
+
+export type ReviewWebsiteIntakeSubmission200SnapshotStepsItemCondition = {
+  field: string;
+  operator: ReviewWebsiteIntakeSubmission200SnapshotStepsItemConditionOperator;
+  value: string;
+} | null;
+
+export type ReviewWebsiteIntakeSubmission200SnapshotStepsItemQuestionsItemType = typeof ReviewWebsiteIntakeSubmission200SnapshotStepsItemQuestionsItemType[keyof typeof ReviewWebsiteIntakeSubmission200SnapshotStepsItemQuestionsItemType];
+
+
+export const ReviewWebsiteIntakeSubmission200SnapshotStepsItemQuestionsItemType = {
+  text: 'text',
+  textarea: 'textarea',
+  email: 'email',
+  phone: 'phone',
+  number: 'number',
+  date: 'date',
+  select: 'select',
+  multiselect: 'multiselect',
+  checkbox: 'checkbox',
+} as const;
+
+export type ReviewWebsiteIntakeSubmission200SnapshotStepsItemQuestionsItemConditionOperator = typeof ReviewWebsiteIntakeSubmission200SnapshotStepsItemQuestionsItemConditionOperator[keyof typeof ReviewWebsiteIntakeSubmission200SnapshotStepsItemQuestionsItemConditionOperator];
+
+
+export const ReviewWebsiteIntakeSubmission200SnapshotStepsItemQuestionsItemConditionOperator = {
+  equals: 'equals',
+  not_equals: 'not_equals',
+  contains: 'contains',
+  answered: 'answered',
+} as const;
+
+export type ReviewWebsiteIntakeSubmission200SnapshotStepsItemQuestionsItemCondition = {
+  field: string;
+  operator: ReviewWebsiteIntakeSubmission200SnapshotStepsItemQuestionsItemConditionOperator;
+  value: string;
+} | null;
+
+export type ReviewWebsiteIntakeSubmission200SnapshotStepsItemQuestionsItem = {
+  id: string;
+  label: string;
+  type: ReviewWebsiteIntakeSubmission200SnapshotStepsItemQuestionsItemType;
+  required: boolean;
+  options: string[];
+  condition?: ReviewWebsiteIntakeSubmission200SnapshotStepsItemQuestionsItemCondition;
+};
+
+export type ReviewWebsiteIntakeSubmission200SnapshotStepsItem = {
+  id: string;
+  title: string;
+  kind: ReviewWebsiteIntakeSubmission200SnapshotStepsItemKind;
+  required: boolean;
+  measurementMode: ReviewWebsiteIntakeSubmission200SnapshotStepsItemMeasurementMode;
+  allowPinMove: boolean;
+  condition?: ReviewWebsiteIntakeSubmission200SnapshotStepsItemCondition;
+  questions: ReviewWebsiteIntakeSubmission200SnapshotStepsItemQuestionsItem[];
+};
+
+export type ReviewWebsiteIntakeSubmission200Snapshot = {
+  title: string;
+  intro: string;
+  privacyNotice: string;
+  successMessage: string;
+  steps: ReviewWebsiteIntakeSubmission200SnapshotStepsItem[];
+};
+
+export type ReviewWebsiteIntakeSubmission200PayloadAnswers = {
+  name?: string;
+  email?: string;
+  phone?: string;
+  lat?: number;
+  lng?: number;
+  pinConfirmed?: boolean;
+  [key: string]: unknown;
+};
+
+export type ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasureMode = typeof ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasureMode[keyof typeof ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasureMode];
+
+
+export const ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasureMode = {
+  area: 'area',
+  linear: 'linear',
+} as const;
+
+export type ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasurePointsItem = {
+  lat: number;
+  lng: number;
+};
+
+export type ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasure = {
+  mode: ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasureMode;
+  points: ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasurePointsItem[];
+  manual?: number;
+};
+
+export type ReviewWebsiteIntakeSubmission200PayloadMeasurements = {
+  measure?: ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasure;
+  [key: string]: unknown;
+};
+
+export type ReviewWebsiteIntakeSubmission200Payload = {
+  answers: ReviewWebsiteIntakeSubmission200PayloadAnswers;
+  measurements: ReviewWebsiteIntakeSubmission200PayloadMeasurements;
+  /** @nullable */
+  areaSqft?: number | null;
+  /** @nullable */
+  lengthFt?: number | null;
+  revision?: number;
+  consentAt?: string;
+  referralCode?: string;
+  doorHangerCode?: string;
+};
+
+export type ReviewWebsiteIntakeSubmission200PreviewItemsItem = {
+  serviceId: number;
+  name: string;
+  price: number;
+};
+
+export type ReviewWebsiteIntakeSubmission200Preview = {
+  total: number;
+  items: ReviewWebsiteIntakeSubmission200PreviewItemsItem[];
+} | null;
+
+export type ReviewWebsiteIntakeSubmission200ReviewDataAction = typeof ReviewWebsiteIntakeSubmission200ReviewDataAction[keyof typeof ReviewWebsiteIntakeSubmission200ReviewDataAction];
+
+
+export const ReviewWebsiteIntakeSubmission200ReviewDataAction = {
+  approve: 'approve',
+  decline: 'decline',
+  review: 'review',
+} as const;
+
+export type ReviewWebsiteIntakeSubmission200ReviewDataCustomer = {
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+};
+
+export type ReviewWebsiteIntakeSubmission200ReviewData = {
+  action: ReviewWebsiteIntakeSubmission200ReviewDataAction;
+  notes?: string;
+  customer?: ReviewWebsiteIntakeSubmission200ReviewDataCustomer;
+  createEstimate?: boolean;
+  areaSqft?: number;
+  lengthFt?: number;
+} | null;
+
+export type ReviewWebsiteIntakeSubmission200 = {
+  id: number;
+  kind: ReviewWebsiteIntakeSubmission200Kind;
+  status: string;
+  snapshot: ReviewWebsiteIntakeSubmission200Snapshot;
+  payload: ReviewWebsiteIntakeSubmission200Payload;
+  preview: ReviewWebsiteIntakeSubmission200Preview;
+  path?: string[];
+  createdAt: string;
+  /** @nullable */
+  customerId?: number | null;
+  /** @nullable */
+  propertyId?: number | null;
+  /** @nullable */
+  estimateId?: number | null;
+  /** @nullable */
+  applicationId?: number | null;
+  /** @nullable */
+  reviewNotes?: string | null;
+  reviewData?: ReviewWebsiteIntakeSubmission200ReviewData;
+};
+
+export type GetPublicWebsiteIntakeConfigParams = {
+kind: GetPublicWebsiteIntakeConfigKind;
+tenantId?: number;
+slug?: string;
+};
+
+export type GetPublicWebsiteIntakeConfigKind = typeof GetPublicWebsiteIntakeConfigKind[keyof typeof GetPublicWebsiteIntakeConfigKind];
+
+
+export const GetPublicWebsiteIntakeConfigKind = {
+  quote: 'quote',
+  hiring: 'hiring',
+} as const;
+
+export type GetPublicWebsiteIntakeConfig200DefinitionStepsItemKind = typeof GetPublicWebsiteIntakeConfig200DefinitionStepsItemKind[keyof typeof GetPublicWebsiteIntakeConfig200DefinitionStepsItemKind];
+
+
+export const GetPublicWebsiteIntakeConfig200DefinitionStepsItemKind = {
+  questions: 'questions',
+  property: 'property',
+  measurement: 'measurement',
+} as const;
+
+export type GetPublicWebsiteIntakeConfig200DefinitionStepsItemMeasurementMode = typeof GetPublicWebsiteIntakeConfig200DefinitionStepsItemMeasurementMode[keyof typeof GetPublicWebsiteIntakeConfig200DefinitionStepsItemMeasurementMode];
+
+
+export const GetPublicWebsiteIntakeConfig200DefinitionStepsItemMeasurementMode = {
+  area: 'area',
+  linear: 'linear',
+} as const;
+
+export type GetPublicWebsiteIntakeConfig200DefinitionStepsItemConditionOperator = typeof GetPublicWebsiteIntakeConfig200DefinitionStepsItemConditionOperator[keyof typeof GetPublicWebsiteIntakeConfig200DefinitionStepsItemConditionOperator];
+
+
+export const GetPublicWebsiteIntakeConfig200DefinitionStepsItemConditionOperator = {
+  equals: 'equals',
+  not_equals: 'not_equals',
+  contains: 'contains',
+  answered: 'answered',
+} as const;
+
+export type GetPublicWebsiteIntakeConfig200DefinitionStepsItemCondition = {
+  field: string;
+  operator: GetPublicWebsiteIntakeConfig200DefinitionStepsItemConditionOperator;
+  value: string;
+} | null;
+
+export type GetPublicWebsiteIntakeConfig200DefinitionStepsItemQuestionsItemType = typeof GetPublicWebsiteIntakeConfig200DefinitionStepsItemQuestionsItemType[keyof typeof GetPublicWebsiteIntakeConfig200DefinitionStepsItemQuestionsItemType];
+
+
+export const GetPublicWebsiteIntakeConfig200DefinitionStepsItemQuestionsItemType = {
+  text: 'text',
+  textarea: 'textarea',
+  email: 'email',
+  phone: 'phone',
+  number: 'number',
+  date: 'date',
+  select: 'select',
+  multiselect: 'multiselect',
+  checkbox: 'checkbox',
+} as const;
+
+export type GetPublicWebsiteIntakeConfig200DefinitionStepsItemQuestionsItemConditionOperator = typeof GetPublicWebsiteIntakeConfig200DefinitionStepsItemQuestionsItemConditionOperator[keyof typeof GetPublicWebsiteIntakeConfig200DefinitionStepsItemQuestionsItemConditionOperator];
+
+
+export const GetPublicWebsiteIntakeConfig200DefinitionStepsItemQuestionsItemConditionOperator = {
+  equals: 'equals',
+  not_equals: 'not_equals',
+  contains: 'contains',
+  answered: 'answered',
+} as const;
+
+export type GetPublicWebsiteIntakeConfig200DefinitionStepsItemQuestionsItemCondition = {
+  field: string;
+  operator: GetPublicWebsiteIntakeConfig200DefinitionStepsItemQuestionsItemConditionOperator;
+  value: string;
+} | null;
+
+export type GetPublicWebsiteIntakeConfig200DefinitionStepsItemQuestionsItem = {
+  id: string;
+  label: string;
+  type: GetPublicWebsiteIntakeConfig200DefinitionStepsItemQuestionsItemType;
+  required: boolean;
+  options: string[];
+  condition?: GetPublicWebsiteIntakeConfig200DefinitionStepsItemQuestionsItemCondition;
+};
+
+export type GetPublicWebsiteIntakeConfig200DefinitionStepsItem = {
+  id: string;
+  title: string;
+  kind: GetPublicWebsiteIntakeConfig200DefinitionStepsItemKind;
+  required: boolean;
+  measurementMode: GetPublicWebsiteIntakeConfig200DefinitionStepsItemMeasurementMode;
+  allowPinMove: boolean;
+  condition?: GetPublicWebsiteIntakeConfig200DefinitionStepsItemCondition;
+  questions: GetPublicWebsiteIntakeConfig200DefinitionStepsItemQuestionsItem[];
+};
+
+export type GetPublicWebsiteIntakeConfig200Definition = {
+  title: string;
+  intro: string;
+  privacyNotice: string;
+  successMessage: string;
+  steps: GetPublicWebsiteIntakeConfig200DefinitionStepsItem[];
+};
+
+export type GetPublicWebsiteIntakeConfig200ServicesItem = {
+  id: number;
+  name: string;
+};
+
+export type GetPublicWebsiteIntakeConfig200PostingsItem = {
+  id: number;
+  title: string;
+};
+
+export type GetPublicWebsiteIntakeConfig200 = {
+  tenantId: number;
+  companyName: string;
+  enabled: boolean;
+  definition: GetPublicWebsiteIntakeConfig200Definition;
+  revision: number;
+  privacyNotice: string;
+  services: GetPublicWebsiteIntakeConfig200ServicesItem[];
+  postings: GetPublicWebsiteIntakeConfig200PostingsItem[];
+};
+
+export type SubmitPublicWebsiteIntakeBodyOneKind = typeof SubmitPublicWebsiteIntakeBodyOneKind[keyof typeof SubmitPublicWebsiteIntakeBodyOneKind];
+
+
+export const SubmitPublicWebsiteIntakeBodyOneKind = {
+  quote: 'quote',
+  hiring: 'hiring',
+} as const;
+
+export type SubmitPublicWebsiteIntakeBodyOneAnswers = {
+  name?: string;
+  email?: string;
+  phone?: string;
+  lat?: number;
+  lng?: number;
+  pinConfirmed?: boolean;
+  [key: string]: unknown;
+};
+
+export type SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasureMode = typeof SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasureMode[keyof typeof SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasureMode];
+
+
+export const SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasureMode = {
+  area: 'area',
+  linear: 'linear',
+} as const;
+
+export type SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasurePointsItem = {
+  lat: number;
+  lng: number;
+};
+
+export type SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasure = {
+  mode: SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasureMode;
+  points: SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasurePointsItem[];
+  manual?: number;
+};
+
+export type SubmitPublicWebsiteIntakeBodyOneMeasurements = {
+  measure?: SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasure;
+  [key: string]: unknown;
+};
+
+export type SubmitPublicWebsiteIntakeBodyOne = {
+  tenantId: number;
+  kind: SubmitPublicWebsiteIntakeBodyOneKind;
+  requestId: string;
+  revision: number;
+  answers: SubmitPublicWebsiteIntakeBodyOneAnswers;
+  measurements: SubmitPublicWebsiteIntakeBodyOneMeasurements;
+  consent: boolean;
+  referralCode?: string;
+  doorHangerCode?: string;
+};
+
+export type SubmitPublicWebsiteIntakeBodyTwo = {
+  /** JSON-encoded PublicSubmission */
+  submission: string;
+  resume?: Blob;
+};
+
+export type SubmitPublicWebsiteIntake201PreviewItemsItem = {
+  serviceId: number;
+  name: string;
+  price: number;
+};
+
+export type SubmitPublicWebsiteIntake201Preview = {
+  total: number;
+  items: SubmitPublicWebsiteIntake201PreviewItemsItem[];
+} | null;
+
+export type SubmitPublicWebsiteIntake201 = {
+  received: boolean;
+  pendingReview: boolean;
+  reference: string;
+  preview: SubmitPublicWebsiteIntake201Preview;
+};
+
 export type AmendJobRequestBody = {
   notes?: string;
   /** @minLength 1 */

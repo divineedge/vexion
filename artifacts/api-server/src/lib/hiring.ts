@@ -4,6 +4,7 @@ import { randomUUID,createHash } from "node:crypto";
 import { HrError,HrDb,boundedText,hrAudit } from "./hrAccess";
 import { validateFields,validateAnswers } from "./jobForms";
 import { hrStorage,hrFile } from "./hrFiles";
+import {validateWebsiteAnswers,type FlowDefinition} from './websiteFlow';
 export async function hiringSettings(tenantId:number,handle:HrDb=db){
  await handle.insert(hrSettingsTable).values({tenantId}).onConflictDoNothing();
  const [settings]=await handle.select().from(hrSettingsTable).where(eq(hrSettingsTable.tenantId,tenantId));return settings;
@@ -13,7 +14,7 @@ export function hiringFields(value:unknown){
  return validateFields(value);
 }
 const stable=(value:unknown):unknown=>Array.isArray(value)?value.map(stable):value&&typeof value==="object"?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,v])=>[key,stable(v)])):value;
-export async function intakeApplication(tenantId:number,actorId:number|null,input:Record<string,unknown>,source:"staff"|"website",resume?:Express.Multer.File,handle:HrDb=db){
+export async function intakeApplication(tenantId:number,actorId:number|null,input:Record<string,unknown>,source:"staff"|"website",resume?:Express.Multer.File,handle:HrDb=db,websiteFlow?:FlowDefinition){
  const requestId=typeof input.requestId==="string"?input.requestId:randomUUID();
  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId))throw new HrError("A valid application reference is required");
  const {requestId:_,...payload}=input;
@@ -29,12 +30,13 @@ export async function intakeApplication(tenantId:number,actorId:number|null,inpu
   if(postingId!==null&&(!Number.isSafeInteger(postingId)||postingId<1))throw new HrError("Choose a valid position");
   const [posting]=postingId?await tx.select().from(hrPostingsTable).where(and(eq(hrPostingsTable.tenantId,tenantId),eq(hrPostingsTable.id,postingId))):[];
   if(postingId&&(!posting||(source==="website"&&posting.status!=="open")))throw new HrError("This position is not accepting applications",400);
-  const fields=hiringFields(Array.isArray(posting?.fields)&&posting.fields.length?posting.fields:settings.applicationFields);
-  const answers=fields.length?validateAnswers(fields,input.answers??{},true):{};
-  const fullName=boundedText(input.fullName,"Full name",200,true),email=boundedText(input.email,"Email",254,true).toLowerCase(),phone=boundedText(input.phone,"Phone",80,true);
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||phone.replace(/\D/g,"").length<7||phone.replace(/\D/g,"").length>25)throw new HrError("Enter a valid email and phone number");
+   const visible=websiteFlow?validateWebsiteAnswers(websiteFlow,input.answers??{}):null;
+   const fields=visible?visible.steps.flatMap(s=>s.questions):hiringFields(Array.isArray(posting?.fields)&&posting.fields.length?posting.fields:settings.applicationFields);
+   const answers=visible?visible.answers:fields.length?validateAnswers(fields as Parameters<typeof validateAnswers>[0],input.answers??{},true):{};
+   const fullName=boundedText(input.fullName,"Full name",200,!websiteFlow),email=boundedText(input.email,"Email",254,!websiteFlow).toLowerCase(),phone=boundedText(input.phone,"Phone",80,!websiteFlow);
+   if((email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))||(phone&&(phone.replace(/\D/g,"").length<7||phone.replace(/\D/g,"").length>25)))throw new HrError("Enter a valid email and phone number");
   const [application]=await tx.insert(hrApplicationsTable).values({tenantId,postingId,requestId,payloadHash,fullName,email,phone,source,answers,fieldSnapshot:fields,
-   notes:source==="staff"?boundedText(input.notes,"Notes",20000):null,consentAt:source==="website"?new Date():null,consentSnapshot:source==="website"?settings.privacyNotice:null}).returning();
+    notes:source==="staff"?boundedText(input.notes,"Notes",20000):null,consentAt:source==="website"?new Date():null,consentSnapshot:source==="website"?(websiteFlow?.privacyNotice??settings.privacyNotice):null}).returning();
   if(resume){
    const info=hrFile(resume);newlyStored=await hrStorage.saveHrDocument(resume.buffer,info.mimeType);
    await tx.insert(hrDocumentsTable).values({tenantId,applicationId:application.id,title:"Application resume",...info,objectPath:newlyStored,uploadedBy:actorId});

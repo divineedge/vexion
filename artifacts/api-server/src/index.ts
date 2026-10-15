@@ -6,6 +6,7 @@ import { startCredentialReminderScheduler } from "./lib/hrCredentials";
 import {installDocumentReminderSchema} from "./lib/documentReminderActions";
 import {startEstimateReminderScheduler} from "./lib/estimateReminderScheduler";
 import { installKpiSchema } from "./lib/kpiSettings";
+import { installWebsiteIntakeSchema } from "./lib/websiteFlow";
 
 // drizzle push handles tables but not rate-capture/immutability triggers.
 // Install the idempotent migration before this build begins serving requests.
@@ -20,6 +21,7 @@ try {
 const rawPort = process.env["PORT"];
 await installDocumentReminderSchema();
 await installKpiSchema();
+await installWebsiteIntakeSchema();
 startEstimateReminderScheduler();
 
 if (!rawPort) {

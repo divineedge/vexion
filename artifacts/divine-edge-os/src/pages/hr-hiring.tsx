@@ -65,7 +65,10 @@ export default function HrHiringPage() {
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><Users className="w-6 h-6 text-primary" />Hiring</h1>
           <p className="text-sm text-muted-foreground">Applications, job postings, and your public careers page. Private to owner and HR.</p>
         </div>
+        <div className="flex items-center gap-2">
+        <Button asChild variant="outline" size="sm"><Link href="/website-forms?kind=hiring" data-testid="link-website-hiring-form">Website hiring form</Link></Button>
         <Badge variant="outline" className="gap-1 w-fit"><Lock className="w-3 h-3" />{meta.data?.isOwner ? 'Owner' : 'HR access'}</Badge>
+        </div>
       </div>
       <Tabs defaultValue="applications">
         <TabsList>

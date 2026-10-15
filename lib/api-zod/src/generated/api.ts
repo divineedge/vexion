@@ -8,6 +8,503 @@
 import * as zod from 'zod';
 
 
+export const GetWebsiteIntakeFormParams = zod.object({
+  "kind": zod.enum(['quote', 'hiring'])
+})
+
+export const GetWebsiteIntakeFormResponse = zod.object({
+  "definition": zod.object({
+  "title": zod.string(),
+  "intro": zod.string(),
+  "privacyNotice": zod.string(),
+  "successMessage": zod.string(),
+  "steps": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "kind": zod.enum(['questions', 'property', 'measurement']),
+  "required": zod.boolean(),
+  "measurementMode": zod.enum(['area', 'linear']),
+  "allowPinMove": zod.boolean(),
+  "condition": zod.union([zod.object({
+  "field": zod.string(),
+  "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
+  "value": zod.string()
+}),zod.null()]).optional(),
+  "questions": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "type": zod.enum(['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'multiselect', 'checkbox']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string()),
+  "condition": zod.union([zod.object({
+  "field": zod.string(),
+  "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
+  "value": zod.string()
+}),zod.null()]).optional()
+}))
+}))
+}),
+  "published": zod.union([zod.object({
+  "title": zod.string(),
+  "intro": zod.string(),
+  "privacyNotice": zod.string(),
+  "successMessage": zod.string(),
+  "steps": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "kind": zod.enum(['questions', 'property', 'measurement']),
+  "required": zod.boolean(),
+  "measurementMode": zod.enum(['area', 'linear']),
+  "allowPinMove": zod.boolean(),
+  "condition": zod.union([zod.object({
+  "field": zod.string(),
+  "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
+  "value": zod.string()
+}),zod.null()]).optional(),
+  "questions": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "type": zod.enum(['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'multiselect', 'checkbox']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string()),
+  "condition": zod.union([zod.object({
+  "field": zod.string(),
+  "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
+  "value": zod.string()
+}),zod.null()]).optional()
+}))
+}))
+}),zod.null()]),
+  "revision": zod.number()
+})
+
+
+export const SaveWebsiteIntakeFormParams = zod.object({
+  "kind": zod.enum(['quote', 'hiring'])
+})
+
+export const SaveWebsiteIntakeFormBody = zod.object({
+  "definition": zod.object({
+  "title": zod.string(),
+  "intro": zod.string(),
+  "privacyNotice": zod.string(),
+  "successMessage": zod.string(),
+  "steps": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "kind": zod.enum(['questions', 'property', 'measurement']),
+  "required": zod.boolean(),
+  "measurementMode": zod.enum(['area', 'linear']),
+  "allowPinMove": zod.boolean(),
+  "condition": zod.union([zod.object({
+  "field": zod.string(),
+  "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
+  "value": zod.string()
+}),zod.null()]).optional(),
+  "questions": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "type": zod.enum(['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'multiselect', 'checkbox']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string()),
+  "condition": zod.union([zod.object({
+  "field": zod.string(),
+  "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
+  "value": zod.string()
+}),zod.null()]).optional()
+}))
+}))
+}),
+  "revision": zod.number(),
+  "publish": zod.boolean()
+})
+
+export const SaveWebsiteIntakeFormResponse = zod.object({
+  "definition": zod.object({
+  "title": zod.string(),
+  "intro": zod.string(),
+  "privacyNotice": zod.string(),
+  "successMessage": zod.string(),
+  "steps": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "kind": zod.enum(['questions', 'property', 'measurement']),
+  "required": zod.boolean(),
+  "measurementMode": zod.enum(['area', 'linear']),
+  "allowPinMove": zod.boolean(),
+  "condition": zod.union([zod.object({
+  "field": zod.string(),
+  "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
+  "value": zod.string()
+}),zod.null()]).optional(),
+  "questions": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "type": zod.enum(['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'multiselect', 'checkbox']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string()),
+  "condition": zod.union([zod.object({
+  "field": zod.string(),
+  "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
+  "value": zod.string()
+}),zod.null()]).optional()
+}))
+}))
+}),
+  "published": zod.union([zod.object({
+  "title": zod.string(),
+  "intro": zod.string(),
+  "privacyNotice": zod.string(),
+  "successMessage": zod.string(),
+  "steps": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "kind": zod.enum(['questions', 'property', 'measurement']),
+  "required": zod.boolean(),
+  "measurementMode": zod.enum(['area', 'linear']),
+  "allowPinMove": zod.boolean(),
+  "condition": zod.union([zod.object({
+  "field": zod.string(),
+  "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
+  "value": zod.string()
+}),zod.null()]).optional(),
+  "questions": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "type": zod.enum(['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'multiselect', 'checkbox']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string()),
+  "condition": zod.union([zod.object({
+  "field": zod.string(),
+  "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
+  "value": zod.string()
+}),zod.null()]).optional()
+}))
+}))
+}),zod.null()]),
+  "revision": zod.number()
+})
+
+
+
+
+
+export const ListWebsiteIntakeSubmissionsQueryParams = zod.object({
+  "kind": zod.enum(['quote', 'hiring']),
+  "before": zod.coerce.number().min(1).optional()
+})
+
+export const ListWebsiteIntakeSubmissionsResponse = zod.object({
+  "submissions": zod.array(zod.object({
+  "id": zod.number(),
+  "kind": zod.enum(['quote', 'hiring']),
+  "status": zod.string(),
+  "snapshot": zod.object({
+  "title": zod.string(),
+  "intro": zod.string(),
+  "privacyNotice": zod.string(),
+  "successMessage": zod.string(),
+  "steps": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "kind": zod.enum(['questions', 'property', 'measurement']),
+  "required": zod.boolean(),
+  "measurementMode": zod.enum(['area', 'linear']),
+  "allowPinMove": zod.boolean(),
+  "condition": zod.union([zod.object({
+  "field": zod.string(),
+  "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
+  "value": zod.string()
+}),zod.null()]).optional(),
+  "questions": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "type": zod.enum(['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'multiselect', 'checkbox']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string()),
+  "condition": zod.union([zod.object({
+  "field": zod.string(),
+  "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
+  "value": zod.string()
+}),zod.null()]).optional()
+}))
+}))
+}),
+  "payload": zod.object({
+  "answers": zod.object({
+  "name": zod.string().optional(),
+  "email": zod.string().optional(),
+  "phone": zod.string().optional(),
+  "lat": zod.number().optional(),
+  "lng": zod.number().optional(),
+  "pinConfirmed": zod.boolean().optional()
+}),
+  "measurements": zod.object({
+  "measure": zod.object({
+  "mode": zod.enum(['area', 'linear']),
+  "points": zod.array(zod.object({
+  "lat": zod.number(),
+  "lng": zod.number()
+})),
+  "manual": zod.number().optional()
+}).optional()
+}),
+  "areaSqft": zod.number().nullish(),
+  "lengthFt": zod.number().nullish(),
+  "revision": zod.number().optional(),
+  "consentAt": zod.string().optional(),
+  "referralCode": zod.string().optional(),
+  "doorHangerCode": zod.string().optional()
+}),
+  "preview": zod.union([zod.object({
+  "total": zod.number(),
+  "items": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "name": zod.string(),
+  "price": zod.number()
+}))
+}),zod.null()]),
+  "path": zod.array(zod.string()).optional(),
+  "createdAt": zod.string(),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "estimateId": zod.number().nullish(),
+  "applicationId": zod.number().nullish(),
+  "reviewNotes": zod.string().nullish(),
+  "reviewData": zod.union([zod.object({
+  "action": zod.enum(['approve', 'decline', 'review']),
+  "notes": zod.string().optional(),
+  "customer": zod.object({
+  "name": zod.string(),
+  "email": zod.string().optional(),
+  "phone": zod.string().optional(),
+  "address": zod.string().optional(),
+  "city": zod.string().optional(),
+  "state": zod.string().optional(),
+  "zip": zod.string().optional()
+}).optional(),
+  "createEstimate": zod.boolean().optional(),
+  "areaSqft": zod.number().optional(),
+  "lengthFt": zod.number().optional()
+}),zod.null()]).optional()
+})),
+  "nextCursor": zod.number().nullable()
+})
+
+
+export const ReviewWebsiteIntakeSubmissionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ReviewWebsiteIntakeSubmissionBody = zod.object({
+  "action": zod.enum(['approve', 'decline', 'review']),
+  "notes": zod.string().optional(),
+  "customer": zod.object({
+  "name": zod.string(),
+  "email": zod.string().optional(),
+  "phone": zod.string().optional(),
+  "address": zod.string().optional(),
+  "city": zod.string().optional(),
+  "state": zod.string().optional(),
+  "zip": zod.string().optional()
+}).optional(),
+  "createEstimate": zod.boolean().optional(),
+  "areaSqft": zod.number().optional(),
+  "lengthFt": zod.number().optional()
+})
+
+export const ReviewWebsiteIntakeSubmissionResponse = zod.object({
+  "id": zod.number(),
+  "kind": zod.enum(['quote', 'hiring']),
+  "status": zod.string(),
+  "snapshot": zod.object({
+  "title": zod.string(),
+  "intro": zod.string(),
+  "privacyNotice": zod.string(),
+  "successMessage": zod.string(),
+  "steps": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "kind": zod.enum(['questions', 'property', 'measurement']),
+  "required": zod.boolean(),
+  "measurementMode": zod.enum(['area', 'linear']),
+  "allowPinMove": zod.boolean(),
+  "condition": zod.union([zod.object({
+  "field": zod.string(),
+  "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
+  "value": zod.string()
+}),zod.null()]).optional(),
+  "questions": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "type": zod.enum(['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'multiselect', 'checkbox']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string()),
+  "condition": zod.union([zod.object({
+  "field": zod.string(),
+  "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
+  "value": zod.string()
+}),zod.null()]).optional()
+}))
+}))
+}),
+  "payload": zod.object({
+  "answers": zod.object({
+  "name": zod.string().optional(),
+  "email": zod.string().optional(),
+  "phone": zod.string().optional(),
+  "lat": zod.number().optional(),
+  "lng": zod.number().optional(),
+  "pinConfirmed": zod.boolean().optional()
+}),
+  "measurements": zod.object({
+  "measure": zod.object({
+  "mode": zod.enum(['area', 'linear']),
+  "points": zod.array(zod.object({
+  "lat": zod.number(),
+  "lng": zod.number()
+})),
+  "manual": zod.number().optional()
+}).optional()
+}),
+  "areaSqft": zod.number().nullish(),
+  "lengthFt": zod.number().nullish(),
+  "revision": zod.number().optional(),
+  "consentAt": zod.string().optional(),
+  "referralCode": zod.string().optional(),
+  "doorHangerCode": zod.string().optional()
+}),
+  "preview": zod.union([zod.object({
+  "total": zod.number(),
+  "items": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "name": zod.string(),
+  "price": zod.number()
+}))
+}),zod.null()]),
+  "path": zod.array(zod.string()).optional(),
+  "createdAt": zod.string(),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "estimateId": zod.number().nullish(),
+  "applicationId": zod.number().nullish(),
+  "reviewNotes": zod.string().nullish(),
+  "reviewData": zod.union([zod.object({
+  "action": zod.enum(['approve', 'decline', 'review']),
+  "notes": zod.string().optional(),
+  "customer": zod.object({
+  "name": zod.string(),
+  "email": zod.string().optional(),
+  "phone": zod.string().optional(),
+  "address": zod.string().optional(),
+  "city": zod.string().optional(),
+  "state": zod.string().optional(),
+  "zip": zod.string().optional()
+}).optional(),
+  "createEstimate": zod.boolean().optional(),
+  "areaSqft": zod.number().optional(),
+  "lengthFt": zod.number().optional()
+}),zod.null()]).optional()
+})
+
+
+export const GetPublicWebsiteIntakeConfigQueryParams = zod.object({
+  "kind": zod.enum(['quote', 'hiring']),
+  "tenantId": zod.coerce.number().optional(),
+  "slug": zod.coerce.string().optional()
+})
+
+export const GetPublicWebsiteIntakeConfigResponse = zod.object({
+  "tenantId": zod.number(),
+  "companyName": zod.string(),
+  "enabled": zod.boolean(),
+  "definition": zod.object({
+  "title": zod.string(),
+  "intro": zod.string(),
+  "privacyNotice": zod.string(),
+  "successMessage": zod.string(),
+  "steps": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "kind": zod.enum(['questions', 'property', 'measurement']),
+  "required": zod.boolean(),
+  "measurementMode": zod.enum(['area', 'linear']),
+  "allowPinMove": zod.boolean(),
+  "condition": zod.union([zod.object({
+  "field": zod.string(),
+  "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
+  "value": zod.string()
+}),zod.null()]).optional(),
+  "questions": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "type": zod.enum(['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'multiselect', 'checkbox']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string()),
+  "condition": zod.union([zod.object({
+  "field": zod.string(),
+  "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
+  "value": zod.string()
+}),zod.null()]).optional()
+}))
+}))
+}),
+  "revision": zod.number(),
+  "privacyNotice": zod.string(),
+  "services": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string()
+})),
+  "postings": zod.array(zod.object({
+  "id": zod.number(),
+  "title": zod.string()
+}))
+})
+
+
+export const SubmitPublicWebsiteIntakeBody = zod.object({
+  "tenantId": zod.number(),
+  "kind": zod.enum(['quote', 'hiring']),
+  "requestId": zod.string(),
+  "revision": zod.number(),
+  "answers": zod.object({
+  "name": zod.string().optional(),
+  "email": zod.string().optional(),
+  "phone": zod.string().optional(),
+  "lat": zod.number().optional(),
+  "lng": zod.number().optional(),
+  "pinConfirmed": zod.boolean().optional()
+}),
+  "measurements": zod.object({
+  "measure": zod.object({
+  "mode": zod.enum(['area', 'linear']),
+  "points": zod.array(zod.object({
+  "lat": zod.number(),
+  "lng": zod.number()
+})),
+  "manual": zod.number().optional()
+}).optional()
+}),
+  "consent": zod.boolean(),
+  "referralCode": zod.string().optional(),
+  "doorHangerCode": zod.string().optional()
+})
+
+export const SubmitPublicWebsiteIntakeResponse = zod.object({
+  "received": zod.boolean(),
+  "pendingReview": zod.boolean(),
+  "reference": zod.string(),
+  "preview": zod.union([zod.object({
+  "total": zod.number(),
+  "items": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "name": zod.string(),
+  "price": zod.number()
+}))
+}),zod.null()])
+})
+
+
 /**
  * @summary List job requests visible to the authenticated staff member
  */

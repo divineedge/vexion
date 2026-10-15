@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import kpisRouter from "./kpis";
+import websiteIntakeRouter,{publicWebsiteIntakeRouter} from "./websiteIntake";
 import type { Request, Response, NextFunction } from "express";
 import { SchedulingPaymentError } from "../lib/paymentPolicy";
 import healthRouter from "./health";
@@ -90,6 +91,7 @@ router.use(estimateRemindersRouter);
 router.use(authRouter);
 router.use(publicQuotesRouter);
 router.use(widgetRouter);
+router.use(publicWebsiteIntakeRouter);
 router.use(careersRouter);
 router.use(documentDeliveriesRouter);
 router.use(portalRouter);
@@ -120,6 +122,7 @@ router.use((req, res, next) => {
 });
 
 router.use(storageRouter);
+router.use(websiteIntakeRouter);
 router.use(mediaRouter);
 router.use(dashboardRouter);
 router.use(customersRouter);

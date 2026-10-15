@@ -6,7 +6,7 @@ import {
   Megaphone, FlaskConical,
   Settings, FileText, Footprints, BarChart3, Star, Repeat, ListTodo, Calculator, Scale,
   Map, ClipboardList, PhoneMissed, PhoneIncoming, Inbox, Layers,
-  MessageSquare, Store, ClipboardCheck, IdCard, UserPlus,
+  MessageSquare, Store, ClipboardCheck, IdCard, UserPlus, Globe,
   LucideIcon,
 } from 'lucide-react';
 
@@ -137,6 +137,7 @@ export const adminNavSections: NavSection[] = [
     items: [
       { name: 'Marketing', href: '/marketing', icon: Megaphone },
       { name: 'Reviews',   href: '/reviews',   icon: Star },
+      { name: 'Website Forms', href: '/website-forms', icon: Globe },
     ],
   },
   {

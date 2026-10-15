@@ -967,6 +967,15 @@ export default function SettingsPage() {
 
         {/* ── Maps & Quotes ── */}
         <TabsContent value="measurements" className="space-y-6 focus-visible:outline-none">
+          {canManageOffice && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><MapPin className="w-5 h-5 text-primary" /> Website quick-quote form</CardTitle>
+                <CardDescription>Choose the questions, map and measurement steps visitors see, and review incoming requests.</CardDescription>
+              </CardHeader>
+              <CardContent><Button variant="outline" onClick={() => setLocation('/website-forms?kind=quote')} data-testid="button-open-quote-form">Open quote form builder</Button></CardContent>
+            </Card>
+          )}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">

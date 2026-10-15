@@ -63,6 +63,16 @@ tags:
     description: Recurring billing templates and automation
 
 paths:
+  /website-intake/forms/{kind}:
+    $ref: "./website-intake.yaml#/formPath"
+  /website-intake/submissions:
+    $ref: "./website-intake.yaml#/inboxPath"
+  /website-intake/submissions/{id}/review:
+    $ref: "./website-intake.yaml#/reviewPath"
+  /public-intake/config:
+    $ref: "./website-intake.yaml#/publicConfigPath"
+  /public-intake/submit:
+    $ref: "./website-intake.yaml#/submitPath"
   # STAFF JOB REQUESTS
   /job-requests:
     get:

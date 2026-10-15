@@ -35,11 +35,16 @@ import { installKpiSchema } from "../lib/kpiSettings";
 import { propertiesTable, servicesTable } from "@workspace/db";
 import { recurringInvoiceTemplatesTable } from "@workspace/db";
 import { generateDueTemplate } from "../lib/billingScheduler";
+import websiteIntake,{publicWebsiteIntakeRouter} from './websiteIntake';
+import {installWebsiteIntakeSchema} from '../lib/websiteFlow';
+import {websiteIntakeSubmissionsTable,hrSettingsTable,hrApplicationsTable} from '@workspace/db';
+import {defaultWebsiteFlow} from '@workspace/api-client-react/website-flow';
 
 describe("rollback-only pricing, inventory and invoice recovery",()=>{
   let client:any,serial=0,customer:number,item:number,warehouse:number,job:number,otherTenant:number;
   const app=express();
-  app.use(express.json({verify:(req,_res,buffer)=>{(req as any).rawBody=buffer;}}),expenses,pricing,safety,policies,reminderSettings,portal,sharing,invoices,estimates,settings,kpis);
+  app.use(express.json({verify:(req,_res,buffer)=>{(req as any).rawBody=buffer;}}),expenses,pricing,safety,policies,reminderSettings,portal,sharing,invoices,estimates,settings,kpis,websiteIntake,publicWebsiteIntakeRouter);
+  app.use((error:any,_req:any,res:any,_next:any)=>res.status(500).json({error:error.message,cause:error.cause?.message}));
   beforeAll(async()=>{
     client=await pool.connect();await client.query("BEGIN");
     const raw=drizzle(client);
@@ -54,6 +59,7 @@ describe("rollback-only pricing, inventory and invoice recovery",()=>{
     }});
     scope.connection=connection;
     await installKpiSchema();
+    await installWebsiteIntakeSchema();
     scope.tenant=(await db.insert(tenantsTable).values({name:"Rollback money QA",timezone:"UTC",taxRate:0}).returning())[0].id;
     otherTenant=(await db.insert(tenantsTable).values({name:"Rollback other QA",timezone:"UTC"}).returning())[0].id;
     scope.user=(await db.insert(usersTable).values({tenantId:scope.tenant,name:"QA owner",email:`${randomUUID()}@example.invalid`,role:"company_owner"}).returning())[0].id;
@@ -117,6 +123,59 @@ describe("rollback-only pricing, inventory and invoice recovery",()=>{
     expect((await request(app).get("/settings/kpis")).body.mainKpis).toContain("revenue_hour");
     scope.tenant=originalTenant;scope.user=ownerUser;
     expect((await request(app).get("/settings/kpis")).body).toEqual(choice);
+  });
+  it("holds website inquiries outside CRM, separates draft/published flows, and approves exactly once",async()=>{
+    await db.execute(sql`UPDATE tenants SET acquisition_settings='{"quoteWidgetEnabled":true}'::jsonb WHERE id=${scope.tenant}`);
+    const [service]=await db.insert(servicesTable).values({tenantId:scope.tenant,name:"Website QA service",basePrice:100,pricingMode:"flat"}).returning();
+    const startCustomers=(await db.select().from(customersTable).where(eq(customersTable.tenantId,scope.tenant))).length;
+    const flow=defaultWebsiteFlow('quote');flow.title='Public quote before edit';
+    flow.steps[0].questions.push({id:'gate',label:'Is there a locked gate?',type:'select',required:true,options:['Yes','No']},{id:'gateCode',label:'Gate code',type:'text',required:true,options:[],condition:{field:'gate',operator:'equals',value:'Yes'}});
+    expect((await request(app).put('/website-intake/forms/quote').send({definition:flow,revision:0,publish:false})).status).toBe(200);
+    expect((await request(app).get(`/public-intake/config?kind=quote&tenantId=${scope.tenant}`)).body.definition.title).not.toBe(flow.title);
+    expect((await request(app).put('/website-intake/forms/quote').send({definition:flow,revision:1,publish:true})).status).toBe(200);
+    expect((await request(app).put('/website-intake/forms/quote').send({definition:flow,revision:1,publish:true})).status).toBe(409);
+    const config=(await request(app).get(`/public-intake/config?kind=quote&tenantId=${scope.tenant}`)).body;
+    const body={tenantId:scope.tenant,kind:'quote',requestId:randomUUID(),revision:config.revision,consent:true,answers:{name:'Website QA',email:'website@example.invalid',serviceIds:[String(service.id)],address:'1 Main',city:'Denver',state:'CO',zip:'80000',lat:40.12,lng:-105.12,pinConfirmed:true,gate:'No',gateCode:'must be dropped'},measurements:{measure:{mode:'area',points:[],manual:1000}}};
+    const first=await request(app).post('/public-intake/submit').send(body);expect(first.status,JSON.stringify(first.body)).toBe(201);
+    expect(first.body.preview.total).toBe(100);
+    expect((await request(app).post('/public-intake/submit').send(body)).body.reference).toBe(first.body.reference);
+    expect((await request(app).post('/public-intake/submit').send({...body,answers:{...body.answers,name:'Changed'}})).status).toBe(409);
+    expect((await request(app).post('/public-intake/submit').send({...body,requestId:randomUUID(),answers:{...body.answers,gate:'Yes',gateCode:''}})).status).toBe(400);
+    expect((await db.select().from(customersTable).where(eq(customersTable.tenantId,scope.tenant))).length).toBe(startCustomers);
+    const inbox=(await request(app).get('/website-intake/submissions?kind=quote')).body;
+    const item=inbox.submissions.find((s:any)=>s.payload.answers.name==='Website QA');
+    expect(item.payload.answers.gateCode).toBeUndefined();expect(item.snapshot.title).toBe(flow.title);
+    await db.update(servicesTable).set({basePrice:200}).where(eq(servicesTable.id,service.id));
+    const approval=await request(app).post(`/website-intake/submissions/${item.id}/review`).send({action:'approve',createEstimate:true,customer:{name:'',phone:'3035550123'}});
+    expect(approval.status,JSON.stringify(approval.body)).toBe(200);expect(approval.body.estimateId).toBeTruthy();
+    expect((await request(app).post(`/website-intake/submissions/${item.id}/review`).send({action:'approve',createEstimate:true})).body.customerId).toBe(approval.body.customerId);
+    expect((await db.select().from(customersTable).where(eq(customersTable.tenantId,scope.tenant))).length).toBe(startCustomers+1);
+    const [property]=await db.select().from(propertiesTable).where(eq(propertiesTable.id,approval.body.propertyId));expect(property.lat).toBe(40.12);
+    const [estimate]=await db.select().from(estimatesTable).where(eq(estimatesTable.id,approval.body.estimateId));expect(estimate.status).toBe('draft');expect(estimate.total).toBe(100);
+    const noMeasure=await request(app).post('/public-intake/submit').send({...body,requestId:randomUUID(),measurements:{}});expect(noMeasure.body.preview).toBeNull();
+    const [held]=await db.select().from(websiteIntakeSubmissionsTable).where(eq(websiteIntakeSubmissionsTable.reference,noMeasure.body.reference));
+    const failed=await request(app).post(`/website-intake/submissions/${held.id}/review`).send({action:'approve',createEstimate:true});expect(failed.status).toBe(400);
+    expect((await db.select().from(customersTable).where(eq(customersTable.tenantId,scope.tenant))).length).toBe(startCustomers+1);
+    expect((await request(app).post(`/website-intake/submissions/${held.id}/review`).send({action:'approve',createEstimate:true,areaSqft:1000})).status).toBe(200);
+    const currentTenant=scope.tenant;scope.tenant=otherTenant;
+    expect((await request(app).post(`/website-intake/submissions/${held.id}/review`).send({action:'approve'})).status).toBe(404);scope.tenant=currentTenant;
+  });
+  it("keeps website hiring private and creates no employee or customer before a human hiring decision",async()=>{
+    await db.insert(hrSettingsTable).values({tenantId:scope.tenant,publicHiringEnabled:true,applicationFields:[],privacyNotice:'Hiring contact consent'}).onConflictDoUpdate({target:hrSettingsTable.tenantId,set:{publicHiringEnabled:true}});
+    const beforeUsers=(await db.select().from(usersTable).where(eq(usersTable.tenantId,scope.tenant))).length;
+    const beforeCustomers=(await db.select().from(customersTable).where(eq(customersTable.tenantId,scope.tenant))).length;
+    const config=(await request(app).get(`/public-intake/config?kind=hiring&tenantId=${scope.tenant}`)).body;
+    const response=await request(app).post('/public-intake/submit').send({tenantId:scope.tenant,kind:'hiring',requestId:randomUUID(),revision:config.revision,consent:true,answers:{name:'New applicant',email:'applicant@example.invalid'},measurements:{}});
+    expect(response.status,JSON.stringify(response.body)).toBe(201);
+    expect((await db.select().from(usersTable).where(eq(usersTable.tenantId,scope.tenant))).length).toBe(beforeUsers);
+    expect((await db.select().from(customersTable).where(eq(customersTable.tenantId,scope.tenant))).length).toBe(beforeCustomers);
+    const inbox=(await request(app).get('/website-intake/submissions?kind=hiring')).body;
+    const received=inbox.submissions.find((s:any)=>s.payload.answers.name==='New applicant');expect(received.applicationId).toBeTruthy();
+    const [application]=await db.select().from(hrApplicationsTable).where(eq(hrApplicationsTable.id,received.applicationId));expect(application.userId).toBeNull();
+    const owner=scope.user;const [manager]=await db.insert(usersTable).values({tenantId:scope.tenant,name:'Non-HR office manager',email:`${randomUUID()}@example.invalid`,role:'office_manager'}).returning();scope.user=manager.id;
+    expect((await request(app).get('/website-intake/submissions?kind=hiring')).status).toBe(403);
+    expect((await request(app).get('/website-intake/forms/hiring')).status).toBe(403);scope.user=owner;
+    await db.update(usersTable).set({role:'technician'}).where(eq(usersTable.id,manager.id));
   });
   afterAll(async()=>{vi.unstubAllEnvs();scope.connection=null;if(client){await client.query("ROLLBACK");client.release();}});
   it("receives once, preserves old stock and markup, and rolls back invalid receipts",async()=>{

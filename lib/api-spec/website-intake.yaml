@@ -1,0 +1,251 @@
+formPath:
+  parameters:
+    - {name: kind, in: path, required: true, schema: {type: string, enum: [quote, hiring]}}
+  get:
+    operationId: getWebsiteIntakeForm
+    responses:
+      "200": {description: Draft and published versions, content: {application/json: {schema: {$ref: "#/schemas/FormConfig"}}}}
+  put:
+    operationId: saveWebsiteIntakeForm
+    requestBody:
+      required: true
+      content: {application/json: {schema: {$ref: "#/schemas/FormSave"}}}
+    responses:
+      "200": {description: Saved form, content: {application/json: {schema: {$ref: "#/schemas/FormConfig"}}}}
+      "409": {description: Revision conflict; reload before saving}
+inboxPath:
+  get:
+    operationId: listWebsiteIntakeSubmissions
+    parameters:
+      - {name: kind, in: query, required: true, schema: {type: string, enum: [quote, hiring]}}
+      - {name: before, in: query, schema: {type: integer, minimum: 1}}
+    responses:
+      "200":
+        description: Tenant-owned inbox; hiring requires HR access
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [submissions, nextCursor]
+              properties:
+                submissions: {type: array, items: {$ref: "#/schemas/Submission"}}
+                nextCursor: {type: [integer, "null"]}
+reviewPath:
+  post:
+    operationId: reviewWebsiteIntakeSubmission
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+    requestBody:
+      required: true
+      content: {application/json: {schema: {$ref: "#/schemas/Review"}}}
+    responses:
+      "200": {description: Recorded decision; retries never duplicate CRM records, content: {application/json: {schema: {$ref: "#/schemas/Submission"}}}}
+publicConfigPath:
+  get:
+    operationId: getPublicWebsiteIntakeConfig
+    parameters:
+      - {name: kind, in: query, required: true, schema: {type: string, enum: [quote, hiring]}}
+      - {name: tenantId, in: query, schema: {type: integer}}
+      - {name: slug, in: query, schema: {type: string}}
+    responses:
+      "200":
+        description: Published form only, no private records
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenantId, companyName, enabled, definition, revision, services, postings, privacyNotice]
+              properties:
+                tenantId: {type: integer}
+                companyName: {type: string}
+                enabled: {type: boolean}
+                definition: {$ref: "#/schemas/FlowDefinition"}
+                revision: {type: integer}
+                privacyNotice: {type: string}
+                services:
+                  type: array
+                  items: {type: object, required: [id, name], properties: {id: {type: integer}, name: {type: string}}}
+                postings:
+                  type: array
+                  items: {type: object, required: [id, title], properties: {id: {type: integer}, title: {type: string}}}
+submitPath:
+  post:
+    operationId: submitPublicWebsiteIntake
+    requestBody:
+      required: true
+      content:
+        application/json: {schema: {$ref: "#/schemas/PublicSubmission"}}
+        multipart/form-data:
+          schema:
+            type: object
+            required: [submission]
+            properties:
+              submission: {type: string, description: JSON-encoded PublicSubmission}
+              resume: {type: string, format: binary}
+    responses:
+      "201":
+        description: Stored for human review, never creates customer CRM records
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [received, pendingReview, reference, preview]
+              properties:
+                received: {type: boolean}
+                pendingReview: {type: boolean}
+                reference: {type: string}
+                preview: {anyOf: [{$ref: "#/schemas/PricePreview"}, {type: "null"}]}
+schemas:
+  Condition:
+    type: object
+    required: [field, operator, value]
+    properties:
+      field: {type: string}
+      operator: {type: string, enum: [equals, not_equals, contains, answered]}
+      value: {type: string}
+  Question:
+    type: object
+    required: [id, label, type, required, options]
+    properties:
+      id: {type: string}
+      label: {type: string}
+      type: {type: string, enum: [text, textarea, email, phone, number, date, select, multiselect, checkbox]}
+      required: {type: boolean}
+      options: {type: array, items: {type: string}}
+      condition: {anyOf: [{$ref: "#/schemas/Condition"}, {type: "null"}]}
+  Step:
+    type: object
+    required: [id, title, kind, required, measurementMode, allowPinMove, questions]
+    properties:
+      id: {type: string}
+      title: {type: string}
+      kind: {type: string, enum: [questions, property, measurement]}
+      required: {type: boolean}
+      measurementMode: {type: string, enum: [area, linear]}
+      allowPinMove: {type: boolean}
+      condition: {anyOf: [{$ref: "#/schemas/Condition"}, {type: "null"}]}
+      questions: {type: array, items: {$ref: "#/schemas/Question"}}
+  FlowDefinition:
+    type: object
+    required: [title, intro, privacyNotice, successMessage, steps]
+    properties:
+      title: {type: string}
+      intro: {type: string}
+      privacyNotice: {type: string}
+      successMessage: {type: string}
+      steps: {type: array, items: {$ref: "#/schemas/Step"}}
+  FormConfig:
+    type: object
+    required: [definition, published, revision]
+    properties:
+      definition: {$ref: "#/schemas/FlowDefinition"}
+      published: {anyOf: [{$ref: "#/schemas/FlowDefinition"}, {type: "null"}]}
+      revision: {type: integer}
+  FormSave:
+    type: object
+    required: [definition, revision, publish]
+    properties:
+      definition: {$ref: "#/schemas/FlowDefinition"}
+      revision: {type: integer}
+      publish: {type: boolean}
+  AnswerMap:
+    type: object
+    properties:
+      name: {type: string}
+      email: {type: string}
+      phone: {type: string}
+      lat: {type: number}
+      lng: {type: number}
+      pinConfirmed: {type: boolean}
+    additionalProperties:
+      anyOf:
+        - {type: string}
+        - {type: number}
+        - {type: boolean}
+        - {type: "null"}
+        - {type: array, items: {type: string}}
+  Measurement:
+    type: object
+    required: [mode, points]
+    properties:
+      mode: {type: string, enum: [area, linear]}
+      points:
+        type: array
+        items: {type: object, required: [lat, lng], properties: {lat: {type: number}, lng: {type: number}}}
+      manual: {type: number}
+  MeasurementMap:
+    type: object
+    properties:
+      measure: {$ref: "#/schemas/Measurement"}
+    additionalProperties: {$ref: "#/schemas/Measurement"}
+  PublicSubmission:
+    type: object
+    required: [tenantId, kind, requestId, revision, answers, measurements, consent]
+    properties:
+      tenantId: {type: integer}
+      kind: {type: string, enum: [quote, hiring]}
+      requestId: {type: string}
+      revision: {type: integer}
+      answers: {$ref: "#/schemas/AnswerMap"}
+      measurements: {$ref: "#/schemas/MeasurementMap"}
+      consent: {type: boolean}
+      referralCode: {type: string}
+      doorHangerCode: {type: string}
+  PricePreview:
+    type: object
+    required: [items, total]
+    properties:
+      total: {type: number}
+      items:
+        type: array
+        items: {type: object, required: [serviceId, name, price], properties: {serviceId: {type: integer}, name: {type: string}, price: {type: number}}}
+  CustomerCorrection:
+    type: object
+    required: [name]
+    properties:
+      name: {type: string}
+      email: {type: string}
+      phone: {type: string}
+      address: {type: string}
+      city: {type: string}
+      state: {type: string}
+      zip: {type: string}
+  Review:
+    type: object
+    required: [action]
+    properties:
+      action: {type: string, enum: [approve, decline, review]}
+      notes: {type: string}
+      customer: {$ref: "#/schemas/CustomerCorrection"}
+      createEstimate: {type: boolean}
+      areaSqft: {type: number}
+      lengthFt: {type: number}
+  Submission:
+    type: object
+    required: [id, kind, status, snapshot, payload, preview, createdAt]
+    properties:
+      id: {type: integer}
+      kind: {type: string, enum: [quote, hiring]}
+      status: {type: string}
+      snapshot: {$ref: "#/schemas/FlowDefinition"}
+      payload:
+        type: object
+        required: [answers, measurements]
+        properties:
+          answers: {$ref: "#/schemas/AnswerMap"}
+          measurements: {$ref: "#/schemas/MeasurementMap"}
+          areaSqft: {type: [number, "null"]}
+          lengthFt: {type: [number, "null"]}
+          revision: {type: integer}
+          consentAt: {type: string}
+          referralCode: {type: string}
+          doorHangerCode: {type: string}
+      preview: {anyOf: [{$ref: "#/schemas/PricePreview"}, {type: "null"}]}
+      path: {type: array, items: {type: string}}
+      createdAt: {type: string}
+      customerId: {type: [integer, "null"]}
+      propertyId: {type: [integer, "null"]}
+      estimateId: {type: [integer, "null"]}
+      applicationId: {type: [integer, "null"]}
+      reviewNotes: {type: [string, "null"]}
+      reviewData: {anyOf: [{$ref: "#/schemas/Review"}, {type: "null"}]}

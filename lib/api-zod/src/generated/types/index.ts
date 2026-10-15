@@ -238,6 +238,8 @@ export * from './estimateRespondInputAction';
 export * from './estimateStatus';
 export * from './estimateTemplate';
 export * from './estimateVisitMode';
+export * from './expenseCategory';
+export * from './expenseCategoryInput';
 export * from './expenseEntry';
 export * from './expenseInventoryReceipt';
 export * from './externalAccessAuditRow';

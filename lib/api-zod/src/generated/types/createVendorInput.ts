@@ -7,8 +7,16 @@
  */
 
 export interface CreateVendorInput {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
   name: string;
   category?: string;
   contact?: string;
+  /** @maxLength 200 */
+  contactName?: string;
+  /** @maxLength 80 */
+  officePhone?: string;
   notes?: string;
 }

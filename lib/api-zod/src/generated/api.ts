@@ -13695,6 +13695,45 @@ export const DeleteInventorySupplierParams = zod.object({
 export const DeleteInventorySupplierResponse = zod.void()
 
 
+export const ListExpenseCategoriesResponseItem = zod.object({
+  "key": zod.string(),
+  "name": zod.string()
+})
+export const ListExpenseCategoriesResponse = zod.array(ListExpenseCategoriesResponseItem)
+
+
+export const createExpenseCategoryBodyNameMax = 100;
+
+
+
+export const CreateExpenseCategoryBody = zod.object({
+  "name": zod.string().min(1).max(createExpenseCategoryBodyNameMax)
+})
+
+export const CreateExpenseCategoryResponse = zod.object({
+  "key": zod.string(),
+  "name": zod.string()
+})
+
+
+export const RenameExpenseCategoryParams = zod.object({
+  "key": zod.coerce.string()
+})
+
+export const renameExpenseCategoryBodyNameMax = 100;
+
+
+
+export const RenameExpenseCategoryBody = zod.object({
+  "name": zod.string().min(1).max(renameExpenseCategoryBodyNameMax)
+})
+
+export const RenameExpenseCategoryResponse = zod.object({
+  "key": zod.string(),
+  "name": zod.string()
+})
+
+
 /**
  * @summary List vendors
  */
@@ -13704,6 +13743,8 @@ export const ListVendorsResponseItem = zod.object({
   "name": zod.string(),
   "category": zod.string().nullish(),
   "contact": zod.string().nullish(),
+  "contactName": zod.string().nullish(),
+  "officePhone": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
@@ -13714,10 +13755,20 @@ export const ListVendorsResponse = zod.array(ListVendorsResponseItem)
 /**
  * @summary Create a vendor
  */
+export const createVendorBodyNameMax = 200;
+
+export const createVendorBodyContactNameMax = 200;
+
+export const createVendorBodyOfficePhoneMax = 80;
+
+
+
 export const CreateVendorBody = zod.object({
-  "name": zod.string(),
+  "name": zod.string().min(1).max(createVendorBodyNameMax),
   "category": zod.string().optional(),
   "contact": zod.string().optional(),
+  "contactName": zod.string().max(createVendorBodyContactNameMax).optional(),
+  "officePhone": zod.string().max(createVendorBodyOfficePhoneMax).optional(),
   "notes": zod.string().optional()
 })
 
@@ -13727,6 +13778,8 @@ export const CreateVendorResponse = zod.object({
   "name": zod.string(),
   "category": zod.string().nullish(),
   "contact": zod.string().nullish(),
+  "contactName": zod.string().nullish(),
+  "officePhone": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
@@ -13746,6 +13799,8 @@ export const GetVendorResponse = zod.object({
   "name": zod.string(),
   "category": zod.string().nullish(),
   "contact": zod.string().nullish(),
+  "contactName": zod.string().nullish(),
+  "officePhone": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
@@ -13759,10 +13814,20 @@ export const UpdateVendorParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const updateVendorBodyNameMax = 200;
+
+export const updateVendorBodyContactNameMax = 200;
+
+export const updateVendorBodyOfficePhoneMax = 80;
+
+
+
 export const UpdateVendorBody = zod.object({
-  "name": zod.string(),
+  "name": zod.string().min(1).max(updateVendorBodyNameMax),
   "category": zod.string().optional(),
   "contact": zod.string().optional(),
+  "contactName": zod.string().max(updateVendorBodyContactNameMax).optional(),
+  "officePhone": zod.string().max(updateVendorBodyOfficePhoneMax).optional(),
   "notes": zod.string().optional()
 })
 
@@ -13772,6 +13837,8 @@ export const UpdateVendorResponse = zod.object({
   "name": zod.string(),
   "category": zod.string().nullish(),
   "contact": zod.string().nullish(),
+  "contactName": zod.string().nullish(),
+  "officePhone": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
@@ -13974,7 +14041,7 @@ export const CreateExpenseBody = zod.object({
   "previousSellPrice": zod.number().optional(),
   "newSellPrice": zod.number().optional()
 })).max(createExpenseBodyInventoryReceiptsMax).optional(),
-  "vendorId": zod.number().optional(),
+  "vendorId": zod.number().nullish(),
   "date": zod.string(),
   "amount": zod.number(),
   "category": zod.string().optional(),
@@ -14102,7 +14169,7 @@ export const UpdateExpenseBody = zod.object({
   "previousSellPrice": zod.number().optional(),
   "newSellPrice": zod.number().optional()
 })).max(updateExpenseBodyInventoryReceiptsMax).optional(),
-  "vendorId": zod.number().optional(),
+  "vendorId": zod.number().nullish(),
   "date": zod.string(),
   "amount": zod.number(),
   "category": zod.string().optional(),

@@ -37,13 +37,15 @@ import { recurringInvoiceTemplatesTable } from "@workspace/db";
 import { generateDueTemplate } from "../lib/billingScheduler";
 import websiteIntake,{publicWebsiteIntakeRouter} from './websiteIntake';
 import {installWebsiteIntakeSchema} from '../lib/websiteFlow';
+import vendorRoutes from './vendors';
+import {installVendorCategoriesSchema} from '../lib/vendorCategories';
 import {websiteIntakeSubmissionsTable,hrSettingsTable,hrApplicationsTable} from '@workspace/db';
 import {defaultWebsiteFlow} from '@workspace/api-client-react/website-flow';
 
 describe("rollback-only pricing, inventory and invoice recovery",()=>{
   let client:any,serial=0,customer:number,item:number,warehouse:number,job:number,otherTenant:number;
   const app=express();
-  app.use(express.json({verify:(req,_res,buffer)=>{(req as any).rawBody=buffer;}}),expenses,pricing,safety,policies,reminderSettings,portal,sharing,invoices,estimates,settings,kpis,websiteIntake,publicWebsiteIntakeRouter);
+  app.use(express.json({verify:(req,_res,buffer)=>{(req as any).rawBody=buffer;}}),expenses,pricing,safety,policies,reminderSettings,portal,sharing,invoices,estimates,settings,kpis,websiteIntake,publicWebsiteIntakeRouter,vendorRoutes);
   app.use((error:any,_req:any,res:any,_next:any)=>res.status(500).json({error:error.message,cause:error.cause?.message}));
   beforeAll(async()=>{
     client=await pool.connect();await client.query("BEGIN");
@@ -60,6 +62,7 @@ describe("rollback-only pricing, inventory and invoice recovery",()=>{
     scope.connection=connection;
     await installKpiSchema();
     await installWebsiteIntakeSchema();
+    await installVendorCategoriesSchema();
     scope.tenant=(await db.insert(tenantsTable).values({name:"Rollback money QA",timezone:"UTC",taxRate:0}).returning())[0].id;
     otherTenant=(await db.insert(tenantsTable).values({name:"Rollback other QA",timezone:"UTC"}).returning())[0].id;
     scope.user=(await db.insert(usersTable).values({tenantId:scope.tenant,name:"QA owner",email:`${randomUUID()}@example.invalid`,role:"company_owner"}).returning())[0].id;
@@ -176,6 +179,39 @@ describe("rollback-only pricing, inventory and invoice recovery",()=>{
     expect((await request(app).get('/website-intake/submissions?kind=hiring')).status).toBe(403);
     expect((await request(app).get('/website-intake/forms/hiring')).status).toBe(403);scope.user=owner;
     await db.update(usersTable).set({role:'technician'}).where(eq(usersTable.id,manager.id));
+  });
+  it('saves vendor contacts and custom categories, defaults expenses from vendors, and keeps rename history and tenant boundaries',async()=>{
+    await client.query('SAVEPOINT vendor_category_fixture');
+    const originalTenant=scope.tenant,originalUser=scope.user;
+    try{
+      const categories=await request(app).get('/expense-categories');expect(categories.status).toBe(200);expect(categories.body.some((c:any)=>c.key==='fuel')).toBe(true);
+      expect((await request(app).post('/expense-categories').send({name:'  '})).status).toBe(400);
+      const added=await request(app).post('/expense-categories').send({name:'Specialty parts'});expect(added.status,JSON.stringify(added.body)).toBe(201);
+      const key=added.body.key;
+      expect((await request(app).post('/expense-categories').send({name:'SPECIALTY PARTS'})).status).toBe(409);
+      const created=await request(app).post('/vendors').send({name:'QA vendor',category:key,contactName:'QA contact',officePhone:'303-555-0123',contact:'qa@example.invalid',notes:'Keep this'});
+      expect(created.status,JSON.stringify(created.body)).toBe(201);expect(created.body.contactName).toBe('QA contact');expect(created.body.officePhone).toBe('303-555-0123');
+      const get=await request(app).get(`/vendors/${created.body.id}`);expect(get.body.contact).toBe('qa@example.invalid');
+      const payload={vendorId:created.body.id,date:'2026-10-15',amount:42,requestId:randomUUID()};
+      const expense=await request(app).post('/expenses').send(payload);expect(expense.status,JSON.stringify(expense.body)).toBe(201);expect(expense.body.category).toBe(key);
+      expect((await request(app).post('/expenses').send(payload)).body.id).toBe(expense.body.id);
+      expect((await request(app).post('/expenses').send({...payload,category:'other'})).status).toBe(409);
+      expect((await request(app).post('/expenses').send({...payload,requestId:randomUUID(),category:'fuel'})).body.category).toBe('fuel');
+      expect((await request(app).patch(`/expense-categories/${key}`).send({name:'Repair parts'})).status).toBe(200);
+      expect((await request(app).get('/expense-categories')).body.find((c:any)=>c.key===key).name).toBe('Repair parts');
+      expect((await request(app).get(`/vendors/${created.body.id}`)).body.category).toBe(key);
+      expect((await request(app).get(`/expenses/${expense.body.id}`)).body.category).toBe(key);
+      const cleared=await request(app).patch(`/vendors/${created.body.id}`).send({contactName:'',officePhone:''});expect(cleared.status).toBe(200);expect(cleared.body.officePhone).toBe('');expect(cleared.body.contact).toBe('qa@example.invalid');
+      expect((await request(app).patch(`/vendors/${created.body.id}`).send({})).status).toBe(400);
+      const [otherOwner]=await db.insert(usersTable).values({tenantId:otherTenant,name:'Other owner',email:`${randomUUID()}@example.invalid`,role:'company_owner'}).returning();
+      scope.tenant=otherTenant;scope.user=otherOwner.id;
+      expect((await request(app).get('/expense-categories')).body.some((c:any)=>c.key===key)).toBe(false);
+      expect((await request(app).patch(`/expense-categories/${key}`).send({name:'Forbidden'})).status).toBe(404);
+      expect((await request(app).post('/vendors').send({name:'Other vendor',category:key})).status).toBe(400);
+      expect((await request(app).get(`/vendors/${created.body.id}`)).status).toBe(404);
+      await db.update(usersTable).set({role:'technician'}).where(eq(usersTable.id,otherOwner.id));
+      expect((await request(app).post('/expense-categories').send({name:'Denied'})).status).toBe(403);
+    }finally{scope.tenant=originalTenant;scope.user=originalUser;await client.query('ROLLBACK TO SAVEPOINT vendor_category_fixture');await client.query('RELEASE SAVEPOINT vendor_category_fixture');}
   });
   afterAll(async()=>{vi.unstubAllEnvs();scope.connection=null;if(client){await client.query("ROLLBACK");client.release();}});
   it("receives once, preserves old stock and markup, and rolls back invalid receipts",async()=>{

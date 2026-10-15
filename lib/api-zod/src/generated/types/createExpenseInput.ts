@@ -15,7 +15,8 @@ export interface CreateExpenseInput {
   requestId?: string;
   /** @maxItems 100 */
   inventoryReceipts?: ExpenseInventoryReceipt[];
-  vendorId?: number;
+  /** @nullable */
+  vendorId?: number | null;
   date: string;
   amount: number;
   category?: string;

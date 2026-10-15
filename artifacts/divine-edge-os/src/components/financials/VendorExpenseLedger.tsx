@@ -8,8 +8,10 @@ import {
   useListInventoryLocations, getListInventoryLocationsQueryKey,
   getGetFinancialsSummaryQueryKey,
   customFetch,
+  useListExpenseCategories,
 } from '@workspace/api-client-react';
-import type { Vendor, ExpenseEntry, InventoryItem, InventoryLocation } from '@workspace/api-client-react';
+import type { Vendor, ExpenseEntry, InventoryItem, InventoryLocation,ExpenseCategory } from '@workspace/api-client-react';
+import ExpenseCategoryManager from './ExpenseCategoryManager';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -24,7 +26,6 @@ import { Plus, Pencil, Trash2, Building2, Receipt, Download, Paperclip, External
 import { format } from 'date-fns';
 import { downloadCsv } from '@/lib/csvExport';
 
-const EXPENSE_CATEGORIES = ['supplies', 'fuel', 'equipment', 'insurance', 'payroll', 'rent', 'utilities', 'marketing', 'other'];
 
 export interface ReceiptRowInput { inventoryItemId: number; locationId?: number; quantity: number; costPrice: number; updatePrice: boolean; markupPct?: number }
 interface ReceiptDraft { key: string; itemId: string; locationId: string; quantity: string; costPrice: string; updatePrice: boolean; markupPct: string }
@@ -56,6 +57,9 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
   const { data: vendors = [] } = useListVendors({ query: { queryKey: getListVendorsQueryKey() } });
   const { data: expenses = [] } = useListExpenses({}, { query: { queryKey: getListExpensesQueryKey({}) } });
+  const categoryQuery=useListExpenseCategories();
+  const categories=categoryQuery.data??[];
+  const categoryName=(key:string)=>categories.find(c=>c.key===key)?.name??key;
 
   const [vendorSheetOpen, setVendorSheetOpen] = useState(false);
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
@@ -114,7 +118,7 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
     downloadCsv('expense-ledger.csv', expenses.map(e => ({
       date: e.date,
       vendor: e.vendorName ?? '',
-      category: e.category,
+      category: categoryName(e.category),
       amount: e.amount,
       description: e.description ?? '',
       receipt: e.receiptUrl ? 'yes' : 'no',
@@ -123,6 +127,7 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
 
   return (
     <div className="space-y-6">
+      {categoryQuery.isError&&<Button variant="outline" onClick={()=>categoryQuery.refetch()}>Could not load categories. Retry</Button>}
       {/* This month summary */}
       <Card>
         <CardHeader>
@@ -135,7 +140,7 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
             <div className="flex flex-wrap gap-2">
               {byCategory.map(([cat, amt]) => (
                 <Badge key={cat} variant="secondary" className="text-sm font-normal px-3 py-1.5">
-                  {cat}: <span className="font-semibold ml-1">${amt.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                  {categoryName(cat)}: <span className="font-semibold ml-1">${amt.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
                 </Badge>
               ))}
               <Badge className="text-sm px-3 py-1.5 bg-primary/10 text-primary border-transparent">
@@ -151,9 +156,11 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2"><Building2 className="w-4 h-4" /> Vendors</CardTitle>
           {canEdit && (
+            <div className="flex gap-2"><ExpenseCategoryManager/>
             <Button size="sm" title="Add a new vendor or supplier" className="gap-2" onClick={() => { setEditingVendor(null); setVendorSheetOpen(true); }}>
               <Plus className="w-4 h-4" /> Add Vendor
             </Button>
+            </div>
           )}
         </CardHeader>
         <CardContent className="p-0">
@@ -171,8 +178,8 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
               {vendors.map(v => (
                 <TableRow key={v.id}>
                   <TableCell className="font-medium" title={v.name}>{v.name}</TableCell>
-                  <TableCell className="text-muted-foreground" title={v.category ? `Category: ${v.category}` : undefined}>{v.category ?? '—'}</TableCell>
-                  <TableCell className="text-muted-foreground" title={v.contact ? `Contact: ${v.contact}` : undefined}>{v.contact ?? '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{v.category ? categoryName(v.category) : '—'}</TableCell>
+                  <TableCell className="text-muted-foreground"><div>{v.contactName}</div><div>{v.officePhone&&<a href={`tel:${v.officePhone}`}>{v.officePhone}</a>}</div><div>{v.contact}</div>{!v.contactName&&!v.officePhone&&!v.contact&&'—'}</TableCell>
                   <TableCell className="text-muted-foreground truncate max-w-[240px]" title={v.notes ?? undefined}>{v.notes ?? '—'}</TableCell>
                   {canEdit && (
                     <TableCell className="text-right">
@@ -253,7 +260,7 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
                 <TableRow key={e.id}>
                   <TableCell title={format(new Date(e.date), 'EEEE, MMMM d, yyyy')}>{format(new Date(e.date), 'MMM d, yyyy')}</TableCell>
                   <TableCell title={e.vendorName ?? undefined}>{e.vendorName ?? '—'}</TableCell>
-                  <TableCell><Badge variant="secondary" className="font-normal" title={`Category: ${e.category}`}>{e.category}</Badge></TableCell>
+                  <TableCell><Badge variant="secondary" className="font-normal">{categoryName(e.category)}</Badge></TableCell>
                   <TableCell className="text-muted-foreground truncate max-w-[240px]" title={e.description ?? undefined}>{e.description ?? '—'}</TableCell>
                   <TableCell className="text-right font-medium" title={`Expense amount: $${e.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}>${e.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
                   <TableCell>
@@ -297,10 +304,12 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
 
       {/* Vendor Sheet */}
       <Sheet open={vendorSheetOpen} onOpenChange={setVendorSheetOpen}>
-        <SheetContent>
+        <SheetContent className="w-full overflow-y-auto sm:w-[66.666667vw] sm:min-w-[66.666667vw] sm:max-w-[66.666667vw]">
           <SheetHeader><SheetTitle>{editingVendor ? 'Edit Vendor' : 'Add Vendor'}</SheetTitle></SheetHeader>
           <VendorForm
+            key={editingVendor?.id??'new'}
             editing={editingVendor}
+            categories={categories}
             onSubmit={async (values) => {
               if (editingVendor) {
                 await updateVendor.mutateAsync({ id: editingVendor.id, data: values });
@@ -318,12 +327,13 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
 
       {/* Expense Sheet */}
       <Sheet open={expenseSheetOpen} onOpenChange={setExpenseSheetOpen}>
-        <SheetContent className="overflow-y-auto sm:max-w-lg">
+        <SheetContent className="w-full overflow-y-auto sm:w-[66.666667vw] sm:min-w-[66.666667vw] sm:max-w-[66.666667vw]">
           <SheetHeader><SheetTitle>{editingExpense ? 'Edit Expense' : 'Log Expense'}</SheetTitle></SheetHeader>
           <ExpenseForm
             key={editingExpense ? `e-${editingExpense.id}` : createRequestId}
             editing={editingExpense}
             vendors={vendors}
+            categories={categories}
             inventoryItems={inventoryItems}
             inventoryLocations={inventoryLocations}
             onSubmit={async (values, receiptFile, removeReceipt, inventoryReceipts) => {
@@ -409,10 +419,12 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
   );
 }
 
-function VendorForm({ editing, onSubmit }: { editing: Vendor | null; onSubmit: (values: { name: string; category?: string; contact?: string; notes?: string }) => Promise<void> }) {
+function VendorForm({ editing, categories,onSubmit }: { editing: Vendor | null;categories:ExpenseCategory[]; onSubmit: (values: { name: string; category?: string; contact?: string; notes?: string;contactName?:string;officePhone?:string }) => Promise<void> }) {
   const [name, setName] = useState(editing?.name ?? '');
   const [category, setCategory] = useState(editing?.category ?? '');
   const [contact, setContact] = useState(editing?.contact ?? '');
+  const [contactName,setContactName]=useState(editing?.contactName??'');
+  const [officePhone,setOfficePhone]=useState(editing?.officePhone??'');
   const [notes, setNotes] = useState(editing?.notes ?? '');
   const [saving, setSaving] = useState(false);
 
@@ -420,7 +432,9 @@ function VendorForm({ editing, onSubmit }: { editing: Vendor | null; onSubmit: (
     if (!name.trim()) { toast.error('Vendor name is required'); return; }
     setSaving(true);
     try {
-      await onSubmit({ name: name.trim(), category: category.trim() || undefined, contact: contact.trim() || undefined, notes: notes.trim() || undefined });
+      await onSubmit({ name: name.trim(), category, contact: contact.trim(), notes: notes.trim(),contactName:contactName.trim(),officePhone:officePhone.trim() });
+    } catch(error){
+      toast.error((error as {data?:{error?:string}})?.data?.error??'Could not save vendor');
     } finally {
       setSaving(false);
     }
@@ -434,28 +448,37 @@ function VendorForm({ editing, onSubmit }: { editing: Vendor | null; onSubmit: (
       </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Category</label>
-        <Input title="Vendor business category (e.g. Supplies, Fuel, Insurance)" value={category} onChange={e => setCategory(e.target.value)} placeholder="Supplies, fuel, insurance…" />
+        <Select value={category||'__none__'} onValueChange={v=>setCategory(v==='__none__'?'':v)}>
+          <SelectTrigger title="Choose the vendor's default expense category"><SelectValue placeholder="Choose a category"/></SelectTrigger>
+          <SelectContent><SelectItem value="__none__">No default category</SelectItem>{categories.map(c=><SelectItem key={c.key} value={c.key}>{c.name}</SelectItem>)}</SelectContent>
+        </Select>
+        <ExpenseCategoryManager/>
       </div>
       <div className="space-y-1.5">
-        <label className="text-sm font-medium">Contact</label>
+        <label className="text-sm font-medium">Email / other contact details</label>
         <Input title="Vendor contact information (phone or email)" value={contact} onChange={e => setContact(e.target.value)} placeholder="Phone or email" />
       </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Notes</label>
         <Textarea title="Additional notes about this vendor (billing terms, special instructions, etc.)" value={notes} onChange={e => setNotes(e.target.value)} rows={3} />
       </div>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className="space-y-1.5"><label className="text-sm font-medium" htmlFor="vendor-contact-name">Contact name</label><Input id="vendor-contact-name" value={contactName} maxLength={200} onChange={e=>setContactName(e.target.value)} placeholder="Your contact at this vendor"/></div>
+        <div className="space-y-1.5"><label className="text-sm font-medium" htmlFor="vendor-office-phone">Office number</label><Input id="vendor-office-phone" type="tel" maxLength={80} value={officePhone} onChange={e=>setOfficePhone(e.target.value)} placeholder="Office phone number"/></div>
+      </div>
       <Button title={editing ? 'Save changes to this vendor' : 'Add this vendor to the list'} className="w-full" onClick={handleSave} disabled={saving}>{editing ? 'Save Changes' : 'Add Vendor'}</Button>
     </div>
   );
 }
 
-function ExpenseForm({ editing, vendors, inventoryItems, inventoryLocations, onSubmit }: {
+function ExpenseForm({ editing, vendors,categories, inventoryItems, inventoryLocations, onSubmit }: {
   editing: ExpenseEntry | null;
   vendors: Vendor[];
+  categories:ExpenseCategory[];
   inventoryItems: InventoryItem[];
   inventoryLocations: InventoryLocation[];
   onSubmit: (
-    values: { vendorId?: number; date: string; amount: number; category: string; description?: string },
+    values: { vendorId?: number|null; date: string; amount: number; category: string; description?: string },
     receiptFile: File | null,
     removeReceipt: boolean,
     inventoryReceipts: ReceiptRowInput[],
@@ -517,7 +540,7 @@ function ExpenseForm({ editing, vendors, inventoryItems, inventoryLocations, onS
     try {
       await onSubmit(
         {
-          vendorId: vendorId ? parseInt(vendorId, 10) : undefined,
+          vendorId: vendorId ? parseInt(vendorId, 10) : null,
           date,
           amount: amt,
           category,
@@ -527,6 +550,8 @@ function ExpenseForm({ editing, vendors, inventoryItems, inventoryLocations, onS
         receiptRemoved,
         rows,
       );
+    } catch(error){
+      toast.error((error as {data?:{error?:string}})?.data?.error??(error instanceof Error?error.message:'Could not save expense'));
     } finally {
       setSaving(false);
     }
@@ -534,6 +559,17 @@ function ExpenseForm({ editing, vendors, inventoryItems, inventoryLocations, onS
 
   return (
     <div className="space-y-4 mt-6">
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium">Vendor</label>
+        <Select value={vendorId||'__none__'} onValueChange={v=>{
+          const next=v==='__none__'?'':v;setVendorId(next);
+          setCategory(vendors.find(v=>String(v.id)===next)?.category||'other');
+        }}>
+          <SelectTrigger title="Choose the vendor first"><SelectValue placeholder="Choose a vendor or No vendor"/></SelectTrigger>
+          <SelectContent><SelectItem value="__none__">No vendor / manual expense</SelectItem>{vendors.map(v=><SelectItem key={v.id} value={String(v.id)}>{v.name}</SelectItem>)}</SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">Selecting a vendor fills its category. You can change the category for this expense below.</p>
+      </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Date</label>
         <Input type="date" title="Date of this expense" value={date} onChange={e => setDate(e.target.value)} />
@@ -547,20 +583,11 @@ function ExpenseForm({ editing, vendors, inventoryItems, inventoryLocations, onS
         <Select value={category} onValueChange={setCategory}>
           <SelectTrigger title="Select the expense category"><SelectValue /></SelectTrigger>
           <SelectContent>
-            {EXPENSE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+            {categories.map(c => <SelectItem key={c.key} value={c.key}>{c.name}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">Vendor (optional)</label>
-        <Select value={vendorId || '__none__'} onValueChange={v => setVendorId(v === '__none__' ? '' : v)}>
-          <SelectTrigger title="Select the vendor for this expense (optional)"><SelectValue placeholder="No vendor" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">No vendor</SelectItem>
-            {vendors.map(v => <SelectItem key={v.id} value={String(v.id)}>{v.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
+      <ExpenseCategoryManager/>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Description</label>
         <Textarea title="Brief description of what the expense was for" value={description} onChange={e => setDescription(e.target.value)} rows={2} />

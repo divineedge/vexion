@@ -6736,6 +6736,19 @@ export interface InventorySalesReport {
   endDate: string;
 }
 
+export interface ExpenseCategory {
+  key: string;
+  name: string;
+}
+
+export interface ExpenseCategoryInput {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  name: string;
+}
+
 export interface Vendor {
   id: number;
   tenantId: number;
@@ -6745,15 +6758,27 @@ export interface Vendor {
   /** @nullable */
   contact?: string | null;
   /** @nullable */
+  contactName?: string | null;
+  /** @nullable */
+  officePhone?: string | null;
+  /** @nullable */
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface CreateVendorInput {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
   name: string;
   category?: string;
   contact?: string;
+  /** @maxLength 200 */
+  contactName?: string;
+  /** @maxLength 80 */
+  officePhone?: string;
   notes?: string;
 }
 
@@ -6806,7 +6831,8 @@ export interface CreateExpenseInput {
   requestId?: string;
   /** @maxItems 100 */
   inventoryReceipts?: ExpenseInventoryReceipt[];
-  vendorId?: number;
+  /** @nullable */
+  vendorId?: number | null;
   date: string;
   amount: number;
   category?: string;

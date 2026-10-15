@@ -15,6 +15,10 @@ export interface Vendor {
   /** @nullable */
   contact?: string | null;
   /** @nullable */
+  contactName?: string | null;
+  /** @nullable */
+  officePhone?: string | null;
+  /** @nullable */
   notes?: string | null;
   createdAt: string;
   updatedAt: string;

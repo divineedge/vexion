@@ -8047,6 +8047,44 @@ paths:
           description: Deleted
 
   # VENDORS & EXPENSE LEDGER
+  /expense-categories:
+    get:
+      operationId: listExpenseCategories
+      responses:
+        "200":
+          description: Company vendor and expense categories, including legacy values
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/ExpenseCategory"}}
+    post:
+      operationId: createExpenseCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ExpenseCategoryInput"}
+      responses:
+        "201":
+          description: Created category
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExpenseCategory"}
+  /expense-categories/{key}:
+    patch:
+      operationId: renameExpenseCategory
+      parameters:
+        - {name: key, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ExpenseCategoryInput"}
+      responses:
+        "200":
+          description: Renamed category; historical classification keys are unchanged
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExpenseCategory"}
   /vendors:
     get:
       operationId: listVendors
@@ -16789,6 +16827,17 @@ components:
           type: ["string", "null"]
 
     # ── Vendors & Expense Ledger ─────────────────────────────────────────────
+    ExpenseCategory:
+      type: object
+      required: [key, name]
+      properties:
+        key: {type: string}
+        name: {type: string}
+    ExpenseCategoryInput:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100}
     Vendor:
       type: object
       required: [id, tenantId, name, createdAt, updatedAt]
@@ -16798,6 +16847,8 @@ components:
         name: { type: string }
         category: { type: ["string", "null"] }
         contact: { type: ["string", "null"] }
+        contactName: { type: ["string", "null"] }
+        officePhone: { type: ["string", "null"] }
         notes: { type: ["string", "null"] }
         createdAt: { type: string }
         updatedAt: { type: string }
@@ -16806,9 +16857,11 @@ components:
       type: object
       required: [name]
       properties:
-        name: { type: string }
+        name: { type: string, minLength: 1, maxLength: 200 }
         category: { type: string }
         contact: { type: string }
+        contactName: { type: string, maxLength: 200 }
+        officePhone: { type: string, maxLength: 80 }
         notes: { type: string }
 
     ExpenseEntry:
@@ -16839,7 +16892,7 @@ components:
           type: array
           maxItems: 100
           items: { $ref: "#/components/schemas/ExpenseInventoryReceipt" }
-        vendorId: { type: integer }
+        vendorId: { type: ["integer", "null"] }
         date: { type: string }
         amount: { type: number }
         category: { type: string }

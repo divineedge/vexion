@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real, index, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, index, jsonb, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -11,6 +11,8 @@ export const vendorsTable = pgTable("vendors", {
   name: text("name").notNull(),
   category: text("category"),
   contact: text("contact"),
+  contactName: text("contact_name"),
+  officePhone: text("office_phone"),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
@@ -21,6 +23,13 @@ export const vendorsTable = pgTable("vendors", {
 export const insertVendorSchema = createInsertSchema(vendorsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type Vendor = typeof vendorsTable.$inferSelect;
+
+// Stable keys preserve financial classifications when display names are edited.
+export const expenseCategoriesTable = pgTable("expense_categories", {
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  key: text("key").notNull(),
+  name: text("name").notNull(),
+}, t => [primaryKey({columns:[t.tenantId,t.key]})]);
 
 // ─── Expense Entries (Vendor & Expense Ledger) ─────────────────────────────
 // Feed into the P&L statement as operating costs.

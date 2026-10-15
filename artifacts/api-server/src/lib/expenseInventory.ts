@@ -16,7 +16,7 @@ export async function recordExpense(tenantId: number, input: CreateExpenseInput,
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date) || !Number.isFinite(Date.parse(input.date)) || new Date(input.date).toISOString().slice(0,10) !== input.date) fail("Invalid expense date");
   if (new Set(receipts.map(r => r.inventoryItemId)).size !== receipts.length) fail("Use one receipt row per inventory item");
   if (receipts.reduce((sum, row) => sum + row.quantity*row.costPrice, 0) > input.amount + .005) fail("Inventory purchase costs cannot exceed the expense total");
-  const normal = { vendorId: input.vendorId ?? null, date: input.date, amount: input.amount, category: input.category ?? "other", description: input.description ?? null, receiptUrl: input.receiptUrl ?? null, receipts };
+  const normal = { vendorId: input.vendorId ?? null, date: input.date, amount: input.amount, category: input.category ?? null, description: input.description ?? null, receiptUrl: input.receiptUrl ?? null, receipts };
   const fingerprint = createHash("sha256").update(JSON.stringify(normal)).digest("hex");
   return db.transaction(async tx => {
     if (input.requestId) {
@@ -24,9 +24,11 @@ export async function recordExpense(tenantId: number, input: CreateExpenseInput,
       const [old] = await tx.select().from(expenseEntriesTable).where(and(eq(expenseEntriesTable.tenantId,tenantId),eq(expenseEntriesTable.requestId,input.requestId)));
       if (old) { if (old.requestFingerprint !== fingerprint) fail("This request already saved a different expense",409); return old; }
     }
+    let category=input.category??'other';
     if (input.vendorId) {
       const [vendor] = await tx.select().from(vendorsTable).where(and(eq(vendorsTable.tenantId,tenantId),eq(vendorsTable.id,input.vendorId)));
       if (!vendor) fail("Invalid vendor");
+      if(input.category==null&&vendor.category)category=vendor.category;
     }
     const [tenant] = await tx.select().from(tenantsTable).where(eq(tenantsTable.id,tenantId));
     const locations = receipts.length ? await tx.select().from(inventoryLocationsTable).where(and(eq(inventoryLocationsTable.tenantId,tenantId),eq(inventoryLocationsTable.isActive,true))) : [];
@@ -63,7 +65,7 @@ export async function recordExpense(tenantId: number, input: CreateExpenseInput,
       snapshots.push({...receipt,locationId:location?.id,locationName:location?.name ?? "Unallocated inventory",itemName:item.name,previousCostPrice:item.unitPrice,previousSellPrice:item.markedUpPrice,newSellPrice:receipt.updatePrice?sell:item.markedUpPrice});
     }
     const [expense] = await tx.insert(expenseEntriesTable).values({
-      tenantId,...normal, requestId:input.requestId ?? null, requestFingerprint:fingerprint, inventoryReceipts:snapshots,
+      tenantId,...normal,category, requestId:input.requestId ?? null, requestFingerprint:fingerprint, inventoryReceipts:snapshots,
     }).returning();
     for (const row of snapshots) await tx.insert(inventoryTransfersTable).values({tenantId,inventoryItemId:row.inventoryItemId,toLocationId:row.locationId ?? null,quantity:row.quantity,reason:`Vendor expense #${expense.id} purchase receipt by staff #${actorId}`});
     return expense;

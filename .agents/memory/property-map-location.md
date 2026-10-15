@@ -20,3 +20,9 @@ Never generate a suggested measurement boundary from a geocoder bounding box.
 **Why:** Geocoder bounds are search-result extents, not reliable property boundaries, and were usually inaccurate.
 
 **How to apply:** New and backfilled properties start with no measurement zones; staff explicitly draw area polygons or linear paths. Hide legacy generated zones identified as `id: "boundary"` or label `"Suggested Boundary"`.
+
+Measurement drawing is separate from pin placement and geofence editing. Staff must be able to start measuring the currently selected zone type without first changing it.
+
+**Why:** The user could not place measurement points and experienced the map as stuck on the geofence.
+
+**How to apply:** Provide an explicit measurement action, keep non-measurement overlays from intercepting drawing gestures, and preserve pin/geofence coordinates and radius when saving measurements.

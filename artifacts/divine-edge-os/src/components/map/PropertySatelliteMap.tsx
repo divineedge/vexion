@@ -171,6 +171,7 @@ export default function PropertySatelliteMap({
   const [zones, setZones] = useState<MeasurementZone[]>(measurementPolygons);
   const [drawingMode, setDrawingMode] = useState(false);
   const [drawingPoints, setDrawingPoints] = useState<[number, number][]>([]);
+  const drawingPointsRef = useRef<[number, number][]>([]);
   const [selectedZoneTypeId, setSelectedZoneTypeId] = useState<string>('');
   const [editingGeofence, setEditingGeofence] = useState(false);
   const [currentLat, setCurrentLat] = useState(lat ?? 25.7617);
@@ -318,6 +319,7 @@ export default function PropertySatelliteMap({
         fillOpacity: 0.08,
         weight: 2,
         dashArray: '6 4',
+        interactive: false,
       }).addTo(map);
       markersRef.current.geofenceCircle = circle;
 
@@ -363,6 +365,7 @@ export default function PropertySatelliteMap({
         if (zone.mode === 'linear') {
           if (zone.vertices.length < 2) return;
           const line = L.polyline(zone.vertices, {
+            interactive: !drawingMode,
             color,
             weight: zone.enabled ? 4 : 2,
             opacity: zone.enabled ? 1 : 0.4,
@@ -374,6 +377,7 @@ export default function PropertySatelliteMap({
         } else {
           if (zone.vertices.length < 3) return;
           const poly = L.polygon(zone.vertices, {
+            interactive: !drawingMode,
             color,
             fillColor: color,
             fillOpacity: zone.enabled ? 0.25 : 0.05,
@@ -386,7 +390,7 @@ export default function PropertySatelliteMap({
         }
       });
     });
-  }, [mapReady, zones, preferredAreaUnit]);
+  }, [mapReady, zones, preferredAreaUnit, drawingMode]);
 
   // Distance (in screen pixels) between two lat/lng points, using the current map projection.
   const pixelDistance = useCallback(
@@ -416,22 +420,28 @@ export default function PropertySatelliteMap({
 
   // Handle map clicks for drawing
   const handleMapClick = useCallback((e: import('leaflet').LeafletMouseEvent) => {
-    setDrawingPoints(prev => {
-      // In area mode, clicking on/near the first placed point closes the polygon, once
-      // enough points exist. Linear zones are an open path, so no closing-click gesture.
-      if (drawModeRef.current === 'area' && prev.length >= 3 && pixelDistance(prev[0], e.latlng) <= FIRST_POINT_HIT_RADIUS_PX) {
-        finishZoneRef.current(prev);
-        return prev;
-      }
-      const next = [...prev, [e.latlng.lat, e.latlng.lng] as [number, number]];
-      return next;
-    });
+    const points = drawingPointsRef.current;
+    // Save outside a state updater: React may replay updaters, but a closing click
+    // must persist exactly one zone.
+    if (drawModeRef.current === 'area' && points.length >= 3 && pixelDistance(points[0], e.latlng) <= FIRST_POINT_HIT_RADIUS_PX) {
+      finishZoneRef.current(points);
+      return;
+    }
+    const next = [...points, [e.latlng.lat, e.latlng.lng] as [number, number]];
+    drawingPointsRef.current = next;
+    setDrawingPoints(next);
   }, [pixelDistance]);
 
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
     const map = mapRef.current;
+    const pin = markersRef.current.pin;
+    const pinElement = pin?.getElement();
+    if (pinElement) pinElement.style.pointerEvents = drawingMode ? 'none' : '';
+    if (drawingMode || readonly) pin?.dragging?.disable();
+    else pin?.dragging?.enable();
     if (drawingMode) {
+      map.closePopup();
       map.getContainer().style.cursor = 'crosshair';
       map.on('click', handleMapClick);
     } else {
@@ -452,7 +462,7 @@ export default function PropertySatelliteMap({
     return () => {
       map.off('click', handleMapClick);
     };
-  }, [drawingMode, handleMapClick, mapReady]);
+  }, [drawingMode, handleMapClick, mapReady, readonly]);
 
   // Draw temporary polyline while drawing
   useEffect(() => {
@@ -463,11 +473,11 @@ export default function PropertySatelliteMap({
       if (markersRef.current.tempPoints) map.removeLayer(markersRef.current.tempPoints);
       if (markersRef.current.tempDots) map.removeLayer(markersRef.current.tempDots);
       if (drawingPoints.length === 0) return;
-      const line = L.polyline(drawingPoints, { color: '#F59E0B', weight: 2, dashArray: '6 3' }).addTo(map);
+      const line = L.polyline(drawingPoints, { color: '#F59E0B', weight: 2, dashArray: '6 3', interactive: false }).addTo(map);
       markersRef.current.tempPoints = line;
       const dots = L.layerGroup(
         drawingPoints.map(pt =>
-          L.circleMarker(pt, { radius: 5, color: '#F59E0B', fillColor: '#fff', fillOpacity: 1, weight: 2 })
+          L.circleMarker(pt, { radius: 5, color: '#F59E0B', fillColor: '#fff', fillOpacity: 1, weight: 2, interactive: false })
         )
       ).addTo(map);
       markersRef.current.tempDots = dots;
@@ -493,6 +503,7 @@ export default function PropertySatelliteMap({
     const next = [...zones, newZone];
     setZones(next);
     setDrawingMode(false);
+    drawingPointsRef.current = [];
     setDrawingPoints([]);
     const total = next.filter(z => z.enabled).reduce((s, z) => s + z.areaSqft, 0);
     onMeasurementsChange?.(next, total);
@@ -507,7 +518,18 @@ export default function PropertySatelliteMap({
 
   const cancelDrawing = () => {
     setDrawingMode(false);
+    drawingPointsRef.current = [];
     setDrawingPoints([]);
+  };
+
+  const startDrawing = (typeId = selectedZoneTypeId) => {
+    if (readonly || !mapReady) return;
+    setSelectedZoneTypeId(typeId);
+    drawModeRef.current = effectiveZoneTypes.find(type => type.id === typeId)?.mode ?? 'area';
+    setEditingGeofence(false);
+    drawingPointsRef.current = [];
+    setDrawingPoints([]);
+    setDrawingMode(true);
   };
 
   const removeZone = (id: string) => {
@@ -539,8 +561,7 @@ export default function PropertySatelliteMap({
 
   const startOver = () => {
     clearAll();
-    setDrawingMode(false);
-    setDrawingPoints([]);
+    cancelDrawing();
   };
 
   const saveGeofence = () => {
@@ -621,29 +642,27 @@ export default function PropertySatelliteMap({
                     ) : null;
                   })()}
                   <select
+                    aria-label="Measurement type"
                     title="Zone type to assign when drawing a new zone — its mode (area or linear) determines how the zone is drawn"
                     className="text-sm border rounded px-2 py-1.5 bg-background flex-1"
                     value={selectedZoneTypeId}
                     onChange={e => {
-                      // A native select does not emit change when its current option is
-                      // chosen again. This selector action lets users trace the already
-                      // selected type (including when it is the tenant's only type)
-                      // without reintroducing a separate draw-mode button.
-                      if (e.target.value !== '__trace_selected__') {
-                        setSelectedZoneTypeId(e.target.value);
-                      }
-                      setDrawingPoints([]);
-                      setDrawingMode(true);
+                      startDrawing(e.target.value);
                     }}
                   >
-                    <option value="__trace_selected__">
-                      Trace {effectiveZoneTypes.find(z => z.id === selectedZoneTypeId)?.name ?? 'selected type'}
-                    </option>
                     {effectiveZoneTypes.map(zt => (
                       <option key={zt.id} value={zt.id}>{zt.name}{zt.mode === 'linear' ? ' (linear)' : ''}</option>
                     ))}
                   </select>
                 </div>
+                <button
+                  type="button"
+                  disabled={!mapReady || !selectedZoneTypeId}
+                  className="text-sm px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                  onClick={() => startDrawing()}
+                >
+                  {drawMode === 'linear' ? 'Measure Line' : 'Measure Area'}
+                </button>
               </div>
               {zones.length > 0 && (
                 <button
@@ -657,7 +676,7 @@ export default function PropertySatelliteMap({
               <button
                 className="text-sm px-3 py-1.5 border rounded hover:bg-muted transition"
                 title={editingGeofence ? 'Cancel geofence editing' : 'Edit the property geofence radius'}
-                onClick={() => setEditingGeofence(v => !v)}
+                onClick={() => { cancelDrawing(); setEditingGeofence(v => !v); }}
               >
                 {editingGeofence ? 'Cancel Geofence' : 'Edit Geofence'}
               </button>

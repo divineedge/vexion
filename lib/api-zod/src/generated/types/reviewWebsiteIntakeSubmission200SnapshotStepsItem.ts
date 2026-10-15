@@ -17,6 +17,8 @@ export type ReviewWebsiteIntakeSubmission200SnapshotStepsItem = {
   required: boolean;
   measurementMode: ReviewWebsiteIntakeSubmission200SnapshotStepsItemMeasurementMode;
   allowPinMove: boolean;
+  allowApproximate?: boolean;
+  approximateTerms?: string;
   condition?: ReviewWebsiteIntakeSubmission200SnapshotStepsItemCondition;
   questions: ReviewWebsiteIntakeSubmission200SnapshotStepsItemQuestionsItem[];
 };

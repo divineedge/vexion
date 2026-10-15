@@ -17,6 +17,8 @@ export type SaveWebsiteIntakeFormBodyDefinitionStepsItem = {
   required: boolean;
   measurementMode: SaveWebsiteIntakeFormBodyDefinitionStepsItemMeasurementMode;
   allowPinMove: boolean;
+  allowApproximate?: boolean;
+  approximateTerms?: string;
   condition?: SaveWebsiteIntakeFormBodyDefinitionStepsItemCondition;
   questions: SaveWebsiteIntakeFormBodyDefinitionStepsItemQuestionsItem[];
 };

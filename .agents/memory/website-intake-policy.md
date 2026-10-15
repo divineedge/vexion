@@ -8,11 +8,17 @@ Website hiring and quick-quote forms must support editable required/optional que
 
 **How to apply:** Keep draft edits separate from the public form, and retain the submitted wording and visible branch when forms are edited later.
 
-Website quote information stays outside the CRM until staff approves it. A customer who measures their property may see a calculated, preliminary estimate when pricing supports it. Without measurement, staff measures and prepares the estimate afterward. Property pin movement and measurement are company-configurable, not always mandatory.
+Website quote information stays outside the CRM until staff approves it. A customer who measures their property may see a calculated, preliminary estimate when pricing supports it. Without measurement, staff measures and prepares the estimate afterward unless the company permits customer-estimated size. Property pin movement and measurement are company-configurable, not always mandatory.
 
 **Why:** The user said they want the customer to provide information and staff to review it; estimates can be generated and shown if the customer measures, otherwise the office prepares them after measurement.
 
 **How to apply:** Apply the review boundary to older public submission endpoints too. Approval may create CRM records and an unsent draft estimate; it must not automatically send, accept, schedule, enroll in marketing, or create an employee account. Hiring records remain owner/designated-HR only.
+
+Companies may optionally allow customers to provide an approximate size without drawing a measurement and receive a preliminary estimate. This requires a separate, editable acknowledgment explaining that office verification or the first service may lead to a proposed price change. Keep the original wording and acceptance with the submission, and distinguish approximate sizes from drawn measurements.
+
+**Why:** The user explicitly extended the no-measurement flow to allow company-approved customer guesses, with terms the customer must agree to.
+
+**How to apply:** Do not enable approximate sizing for every company automatically or treat an entered number as a verified measurement. JPEG/PDF attachments on hiring and quote forms are likewise a company choice, with private staff review rather than public file links.
 
 Preserve the server-calculated submitted price when approving unchanged measurements; office-entered replacement measurements use current pricing and create an unsent draft for review.
 

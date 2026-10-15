@@ -48,6 +48,7 @@ export default function HrHiringPage() {
     qc.removeQueries({ predicate: q => q.queryKey[0] === 'hr' && (q.queryKey[1] !== uid || q.queryKey[2] !== tid) });
   }, [qc, uid, tid]);
 
+  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') ?? 'applications');
   if (meta.isLoading) return <div className="p-6"><Skeleton /></div>;
   if (meta.isError) return <div className="p-6"><ErrorRow msg="Couldn’t check your HR access." onRetry={() => meta.refetch()} /></div>;
   if (!allowed) return (
@@ -70,14 +71,14 @@ export default function HrHiringPage() {
         <Badge variant="outline" className="gap-1 w-fit"><Lock className="w-3 h-3" />{meta.data?.isOwner ? 'Owner' : 'HR access'}</Badge>
         </div>
       </div>
-      <Tabs defaultValue="applications">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="applications" data-testid="tab-applications">Applications</TabsTrigger>
-          <TabsTrigger value="postings" data-testid="tab-postings">Postings</TabsTrigger>
+          <TabsTrigger value="postings" data-testid="tab-postings">Job openings</TabsTrigger>
           <TabsTrigger value="settings" data-testid="tab-hiring-settings">Settings</TabsTrigger>
         </TabsList>
         <TabsContent value="applications" className="mt-4"><ApplicationsTab /></TabsContent>
-        <TabsContent value="postings" className="mt-4"><PostingsTab /></TabsContent>
+        <TabsContent value="postings" className="mt-4"><PostingsTab onOpenSettings={() => setTab('settings')} /></TabsContent>
         <TabsContent value="settings" className="mt-4 space-y-6">
           <SettingsTab isOwner={!!meta.data?.isOwner} careersUrl={meta.data?.publicCareersUrl ?? null} />
           {meta.data?.isOwner && <HrAccessSettings />}
@@ -365,24 +366,32 @@ function NewApplicationDialog({ open, onOpenChange, postings }: { open: boolean;
 }
 
 /* ── Postings ───────────────────────────────────────────────────────────── */
-function PostingsTab() {
+function PostingsTab({ onOpenSettings }: { onOpenSettings: () => void }) {
   const q = usePostings();
+  const hs = useHrSettings();
   const [editing, setEditing] = useState<Posting | 'new' | null>(null);
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
-        <div><CardTitle>Job postings</CardTitle><CardDescription>Open postings appear on your public careers page. Posting questions replace the general questions.</CardDescription></div>
-        <Button className="gap-1.5" onClick={() => setEditing('new')} data-testid="button-new-posting"><Plus className="w-4 h-4" />New posting</Button>
+        <div><CardTitle>Job openings</CardTitle><CardDescription>Openings set to Open are published on your careers page and website hiring form. Closed openings stay here but are hidden from applicants.</CardDescription></div>
+        <Button className="gap-1.5" onClick={() => setEditing('new')} data-testid="button-new-posting"><Plus className="w-4 h-4" />Create job opening</Button>
       </CardHeader>
       <CardContent>
+        {hs.data && !hs.data.publicHiringEnabled && (
+          <div className="mb-4 rounded-md border border-dashed bg-muted/40 p-3 text-sm flex flex-wrap items-center gap-2" data-testid="text-public-hiring-off">
+            <AlertTriangle className="w-4 h-4 text-muted-foreground" />
+            <span className="flex-1">Your public careers page is turned off, so Open job openings are not visible to applicants yet.</span>
+            <Button size="sm" variant="outline" onClick={onOpenSettings} data-testid="button-open-hiring-settings">Open Hiring settings</Button>
+          </div>
+        )}
         {q.isLoading ? <Skeleton /> : q.isError ? <ErrorRow msg={hrErr(q.error, 'Couldn’t load postings.')} onRetry={() => q.refetch()} />
-          : (q.data?.postings ?? []).length === 0 ? <p className="text-sm text-muted-foreground py-8 text-center">No postings yet. Applicants can still send a general application when hiring is enabled.</p>
+          : (q.data?.postings ?? []).length === 0 ? <p className="text-sm text-muted-foreground py-8 text-center">No job openings yet. Use Create job opening, then set it to Open to publish it.</p>
           : <ul className="divide-y">{q.data!.postings.map(p => (
             <li key={p.id} className="py-3 flex items-center gap-3" data-testid={`row-posting-${p.id}`}>
               <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{p.title}</p>
                 <p className="text-xs text-muted-foreground">{p.fields.length} question{p.fields.length === 1 ? '' : 's'} · created {fmtDate(p.createdAt)}</p></div>
-              <Badge variant={p.status === 'open' ? 'default' : 'outline'}>{p.status === 'open' ? 'Open' : 'Closed'}</Badge>
-              <Button size="icon" variant="ghost" onClick={() => setEditing(p)} aria-label="Edit posting" data-testid={`button-edit-posting-${p.id}`}><Pencil className="w-4 h-4" /></Button>
+              <Badge variant={p.status === 'open' ? 'default' : 'outline'}>{p.status === 'open' ? 'Open (published)' : 'Closed'}</Badge>
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setEditing(p)} data-testid={`button-edit-posting-${p.id}`}><Pencil className="w-3.5 h-3.5" />Edit opening</Button>
             </li>))}</ul>}
       </CardContent>
       {editing && <PostingDialog posting={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
@@ -409,17 +418,17 @@ function PostingDialog({ posting, onClose }: { posting: Posting | null; onClose:
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
       <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
-        <DialogHeader><DialogTitle>{posting ? 'Edit posting' : 'New posting'}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{posting ? 'Edit job opening' : 'Create job opening'}</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <Input placeholder="Job title *" value={title} onChange={e => setTitle(e.target.value)} data-testid="input-posting-title" />
           <Textarea rows={5} placeholder="Description — duties, schedule, pay range, requirements" value={description} onChange={e => setDescription(e.target.value)} data-testid="input-posting-description" />
-          <label className="flex items-center gap-2 text-sm"><Switch checked={open} onCheckedChange={setOpen} data-testid="switch-posting-open" />Open for applications</label>
+          <label className="flex items-center gap-2 text-sm"><Switch checked={open} onCheckedChange={setOpen} data-testid="switch-posting-open" />Open: publish on careers page and accept applications</label>
           <div className="space-y-2"><p className="text-sm font-medium">Questions for this posting</p>
             <p className="text-xs text-muted-foreground">If you add questions here, they replace the general application questions for this posting.</p>
             <FieldsEditor fields={fields} onChange={setFields} /></div>
           {err && <p className="text-sm text-destructive">{err}</p>}
         </div>
-        <DialogFooter><Button onClick={submit} disabled={save.isPending} data-testid="button-save-posting">{save.isPending ? 'Saving…' : 'Save posting'}</Button></DialogFooter>
+        <DialogFooter><Button onClick={submit} disabled={save.isPending} data-testid="button-save-posting">{save.isPending ? 'Saving…' : 'Save job opening'}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );

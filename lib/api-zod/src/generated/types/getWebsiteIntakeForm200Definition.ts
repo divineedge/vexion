@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { GetWebsiteIntakeForm200DefinitionStepsItem } from './getWebsiteIntakeForm200DefinitionStepsItem';
+import type { GetWebsiteIntakeForm200DefinitionUploads } from './getWebsiteIntakeForm200DefinitionUploads';
 
 export type GetWebsiteIntakeForm200Definition = {
   title: string;
@@ -13,4 +14,5 @@ export type GetWebsiteIntakeForm200Definition = {
   privacyNotice: string;
   successMessage: string;
   steps: GetWebsiteIntakeForm200DefinitionStepsItem[];
+  uploads?: GetWebsiteIntakeForm200DefinitionUploads;
 };

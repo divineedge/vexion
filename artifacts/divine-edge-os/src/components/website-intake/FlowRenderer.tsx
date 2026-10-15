@@ -9,10 +9,10 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AlertTriangle, ChevronLeft, ChevronRight, Loader2, MapPin, Ruler, Undo2, Trash2, ShieldCheck, Eye, SkipForward } from 'lucide-react';
-import { visibleFlow, validateFlowAnswers, type FlowDefinition, type FlowStep, type FlowQuestion } from '@/lib/websiteIntake';
+import { visibleFlow, validateFlowAnswers, APPROXIMATE_SIZE_TERMS, type FlowDefinition, type FlowStep, type FlowQuestion } from '@/lib/websiteIntake';
 import { PinMap, DrawMap, geodesicAreaSqft, pathLengthFt, type LatLng } from './IntakeMaps';
 
-export type Measurement = { mode: 'area' | 'linear'; points: LatLng[]; manual?: number };
+export type Measurement = { mode: 'area' | 'linear'; points: LatLng[]; manual?: number; source?: 'drawn' | 'approximate'; acceptedTerms?: boolean };
 export type Measurements = Record<string, Measurement>;
 type Opt = { value: string; label: string };
 
@@ -93,7 +93,11 @@ export default function FlowRenderer({ definition, services = [], postings = [],
     for (const q of visibleQuestions(s)) if (q.required && !isAnswered(answers[q.id])) return `${q.label} is required.`;
     if (s.kind === 'property' && s.required && center && !answers.pinConfirmed) return 'Confirm the pin marks the right property.';
     if (s.kind === 'property' && s.required && !center && !locateErr) return 'Locate the property on the map.';
-    if (s.kind === 'measurement' && s.required && !measureValue(measurements[s.id])) return 'Add a measurement to continue.';
+    if (s.kind === 'measurement') {
+      const m = measurements[s.id];
+      if (s.required && !measureValue(m)) return 'Add a measurement to continue.';
+      if (m && m.source === 'approximate' && !m.acceptedTerms) return 'Accept the approximate size terms, or clear the size, to continue.';
+    }
     return null;
   };
 
@@ -183,7 +187,7 @@ export default function FlowRenderer({ definition, services = [], postings = [],
             {steps.filter(s => s.kind === 'measurement').map(s => {
               const v = measureValue(measurements[s.id]);
               return <div key={s.id} className="px-3 py-2 grid grid-cols-5 gap-2 text-sm"><dt className="col-span-2 text-muted-foreground">{s.title}</dt>
-                <dd className="col-span-3">{v ? `${v.toLocaleString()} ${s.measurementMode === 'area' ? 'sq ft' : 'ft'} (your measurement, not yet verified)` : 'Skipped'}</dd></div>;
+                <dd className="col-span-3">{v ? `${v.toLocaleString()} ${s.measurementMode === 'area' ? 'sq ft' : 'ft'} ${(measurements[s.id]?.source === 'approximate' || (!measurements[s.id]?.points.length && measurements[s.id]?.manual)) ? '(approximate size you entered, unverified; terms accepted)' : '(drawn on the map, not yet verified)'}` : 'Skipped, no instant estimate for this step'}</dd></div>;
             })}
           </dl>
           {definition.privacyNotice && <p className="text-xs text-muted-foreground flex gap-1.5 whitespace-pre-wrap"><ShieldCheck className="w-3.5 h-3.5 shrink-0 mt-0.5" />{definition.privacyNotice}</p>}
@@ -216,7 +220,8 @@ export default function FlowRenderer({ definition, services = [], postings = [],
 
 function QuestionInput({ q, value, options, onChange }: { q: FlowQuestion; value: unknown; options: Opt[]; onChange: (v: unknown) => void }) {
   const label = <label className="text-sm font-medium" htmlFor={`q-${q.id}`}>{q.label}{q.required ? <span className="text-primary"> *</span> : <span className="text-muted-foreground font-normal"> (optional)</span>}</label>;
-  const str = typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+  // Normalise across single/multiple switches: a list shows its first value in a single select; a lone string becomes a one-item list.
+  const str = typeof value === 'string' || typeof value === 'number' ? String(value) : Array.isArray(value) && value.length ? String(value[0]) : '';
   const tid = `input-q-${q.id}`;
   switch (q.type) {
     case 'textarea': return <div className="space-y-1.5">{label}<Textarea id={`q-${q.id}`} rows={4} value={str} onChange={e => onChange(e.target.value)} data-testid={tid} /></div>;
@@ -225,7 +230,7 @@ function QuestionInput({ q, value, options, onChange }: { q: FlowQuestion; value
         <option value="">Choose…</option>{options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select></div>;
     case 'multiselect': {
-      const arr = Array.isArray(value) ? (value as string[]) : [];
+      const arr = Array.isArray(value) ? (value as unknown[]).map(String) : typeof value === 'string' && value ? [value] : [];
       return <div className="space-y-1.5">{label}<div className="grid gap-1.5">{options.map(o => {
         const on = arr.includes(o.value);
         return <button type="button" key={o.value} onClick={() => onChange(on ? arr.filter(x => x !== o.value) : [...arr, o.value])} data-testid={`${tid}-${o.value}`}
@@ -240,29 +245,44 @@ function QuestionInput({ q, value, options, onChange }: { q: FlowQuestion; value
 
 function MeasureStep({ step, center, value, onChange }: { step: FlowStep; center: LatLng | null; value?: Measurement; onChange: (m: Measurement | null) => void }) {
   const mode = step.measurementMode === 'linear' ? 'linear' : 'area';
-  const [manualMode, setManualMode] = useState(!center || (value?.manual ?? 0) > 0);
-  const pts = value?.points ?? [];
+  const approxOk = !!step.allowApproximate;
+  const [source, setSource] = useState<'drawn' | 'approximate'>(value?.source === 'approximate' && approxOk ? 'approximate' : center ? 'drawn' : approxOk ? 'approximate' : 'drawn');
+  const pts = value?.source === 'approximate' ? [] : value?.points ?? [];
   const v = measureValue(value);
   const unit = mode === 'area' ? 'sq ft' : 'ft';
+  const terms = step.approximateTerms?.trim() || APPROXIMATE_SIZE_TERMS;
+  const switchTo = (s: 'drawn' | 'approximate') => { if (s !== source) { setSource(s); onChange(null); } };
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between text-sm">
-        <p className="text-muted-foreground">{mode === 'area' ? 'Tap the corners of the area.' : 'Tap along the length.'}</p>
-        {center && <button className="text-xs underline text-muted-foreground" onClick={() => { setManualMode(m => !m); onChange(null); }} data-testid="button-toggle-manual">{manualMode ? 'Draw on map' : 'Enter number instead'}</button>}
-      </div>
-      {!manualMode && center ? (<>
-        <DrawMap center={center} mode={mode} points={pts} onChange={p => onChange({ mode, points: p })} />
+    <div className="space-y-3">
+      {approxOk && (
+        <div className="inline-flex rounded-lg border p-1 bg-muted/40" role="radiogroup" aria-label="How to measure">
+          <button type="button" role="radio" aria-checked={source === 'drawn'} disabled={!center} onClick={() => switchTo('drawn')} data-testid="button-source-drawn"
+            className={`px-3 py-1.5 rounded-md text-sm disabled:opacity-40 ${source === 'drawn' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'}`}>Draw on map</button>
+          <button type="button" role="radio" aria-checked={source === 'approximate'} onClick={() => switchTo('approximate')} data-testid="button-source-approximate"
+            className={`px-3 py-1.5 rounded-md text-sm ${source === 'approximate' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'}`}>Approximate size</button>
+        </div>
+      )}
+      {source === 'drawn' ? (center ? (<>
+        <p className="text-sm text-muted-foreground">{mode === 'area' ? 'Tap the corners of the area.' : 'Tap along the length.'}</p>
+        <DrawMap center={center} mode={mode} points={pts} onChange={p => onChange(p.length ? { mode, points: p, source: 'drawn' } : null)} />
         <div className="flex items-center gap-2 text-sm">
           <span className="flex-1" data-testid="text-measured">Measured: <strong>{v ? `${v.toLocaleString()} ${unit}` : '—'}</strong></span>
-          <Button size="sm" variant="ghost" disabled={!pts.length} onClick={() => onChange(pts.length > 1 ? { mode, points: pts.slice(0, -1) } : null)} aria-label="Undo" data-testid="button-undo"><Undo2 className="w-4 h-4" /></Button>
+          <Button size="sm" variant="ghost" disabled={!pts.length} onClick={() => onChange(pts.length > 1 ? { mode, points: pts.slice(0, -1), source: 'drawn' } : null)} aria-label="Undo" data-testid="button-undo"><Undo2 className="w-4 h-4" /></Button>
           <Button size="sm" variant="ghost" disabled={!pts.length} onClick={() => onChange(null)} aria-label="Clear" data-testid="button-clear"><Trash2 className="w-4 h-4" /></Button>
         </div>
-      </>) : (<>
-        {!center && <p className="text-xs text-muted-foreground">No map location yet. Enter your best measurement.</p>}
-        <Input type="number" min={1} placeholder={mode === 'area' ? 'Square feet' : 'Linear feet'} value={value?.manual ?? ''}
-          onChange={e => { const n = Number(e.target.value); onChange(Number.isFinite(n) && n > 0 ? { mode, points: [], manual: n } : null); }} data-testid="input-manual-measure" />
+        <p className="text-[11px] text-muted-foreground">Your drawing is checked by the company before any price is final.</p>
+      </>) : (
+        <p className="text-sm text-muted-foreground rounded-md bg-muted/50 p-3" data-testid="text-need-location">This step needs the property located on the map. Go back to find it{!step.required ? ', or skip this step' : ''}.</p>
+      )) : (<>
+        <label className="text-sm font-medium" htmlFor={`approx-${step.id}`}>Approximate {mode === 'area' ? 'square feet' : 'linear feet'}</label>
+        <Input id={`approx-${step.id}`} type="number" min={1} inputMode="decimal" value={value?.manual ?? ''}
+          onChange={e => { const n = Number(e.target.value); onChange(e.target.value !== '' && Number.isFinite(n) && n > 0 ? { mode, points: [], manual: n, source: 'approximate', acceptedTerms: false } : null); }} data-testid="input-approximate-size" />
+        <p className="text-xs rounded-md border border-dashed p-2.5 text-muted-foreground">Unverified size. Any price shown is preliminary until the company checks the property.</p>
+        <label className="flex items-start gap-2 text-sm">
+          <Checkbox checked={!!value?.acceptedTerms} disabled={!v} onCheckedChange={c => value && onChange({ ...value, acceptedTerms: c === true })} data-testid="checkbox-approximate-terms" />
+          <span className="text-xs leading-relaxed whitespace-pre-wrap">{terms}</span>
+        </label>
       </>)}
-      <p className="text-[11px] text-muted-foreground">Customer-provided measurement. The company verifies it before any price is final.</p>
     </div>
   );
 }

@@ -4,8 +4,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { ArrowUp, ArrowDown, Trash2, Plus, MapPin, Ruler, ListChecks, GitBranch, X } from 'lucide-react';
-import type { FlowDefinition, FlowStep, FlowQuestion, FlowCondition } from '@/lib/websiteIntake';
+import { Link } from 'wouter';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useListServices } from '@workspace/api-client-react';
+import { ArrowUp, ArrowDown, Trash2, Plus, MapPin, Ruler, ListChecks, GitBranch, X, Paperclip } from 'lucide-react';
+import { APPROXIMATE_SIZE_TERMS, type FlowDefinition, type FlowStep, type FlowQuestion, type FlowCondition } from '@/lib/websiteIntake';
 
 const QTYPES: FlowQuestion['type'][] = ['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'multiselect', 'checkbox'];
 const OPS: { v: FlowCondition['operator']; l: string }[] = [
@@ -44,6 +47,19 @@ export default function FlowBuilder({ value, onChange, kind }: { value: FlowDefi
         </div>
       </section>
 
+      <section className="rounded-xl border bg-card p-4 space-y-2" data-testid="section-uploads">
+        <label className="flex items-center gap-2 text-sm font-medium"><Paperclip className="w-4 h-4 text-primary" />
+          <Switch checked={!!value.uploads?.enabled} onCheckedChange={v => onChange({ ...value, uploads: { enabled: v, required: value.uploads?.required ?? false, label: value.uploads?.label || (kind === 'quote' ? 'Photos or documents' : 'Supporting documents') } })} data-testid="switch-uploads" />
+          Let visitors attach files</label>
+        <p className="text-xs text-muted-foreground">JPEG or PDF, up to 5 files, 10 MB each and 25 MB combined{kind === 'hiring' ? ' (including the resume)' : ''}. Files stay private to staff.</p>
+        {value.uploads?.enabled && (
+          <div className="flex flex-wrap items-center gap-3">
+            <Input className="h-9 flex-1 min-w-[12rem]" value={value.uploads.label} onChange={e => onChange({ ...value, uploads: { ...value.uploads!, label: e.target.value } })} placeholder="Upload label" aria-label="Upload label" data-testid="input-uploads-label" />
+            <label className="flex items-center gap-1.5 text-xs"><Switch checked={value.uploads.required} onCheckedChange={v => onChange({ ...value, uploads: { ...value.uploads!, required: v } })} data-testid="switch-uploads-required" />Required</label>
+          </div>
+        )}
+      </section>
+
       <ol className="space-y-4">
         {value.steps.map((s, si) => (
           <li key={s.id} className="rounded-xl border bg-card overflow-hidden" data-testid={`card-step-${s.id}`}>
@@ -66,6 +82,17 @@ export default function FlowBuilder({ value, onChange, kind }: { value: FlowDefi
                     <option value="area">area (sq ft)</option><option value="linear">length (ft)</option>
                   </select>
                   <span className="text-xs text-muted-foreground">Needs an earlier property step to show a map.</span>
+                </div>
+              )}
+              {s.kind === 'measurement' && (
+                <div className="space-y-2 rounded-md border p-3">
+                  <label className="flex items-center gap-2 text-sm"><Switch checked={!!s.allowApproximate}
+                    onCheckedChange={v => setStep(si, { ...s, allowApproximate: v, approximateTerms: v ? (s.approximateTerms?.trim() ? s.approximateTerms : APPROXIMATE_SIZE_TERMS) : s.approximateTerms })} data-testid={`switch-approximate-${s.id}`} />Allow customer-estimated size</label>
+                  <p className="text-xs text-muted-foreground">When on, customers can type an approximate size instead of drawing. They must accept these terms first. When off, only map drawing is offered.</p>
+                  {s.allowApproximate && (<>
+                    <Textarea rows={4} value={s.approximateTerms ?? APPROXIMATE_SIZE_TERMS} onChange={e => setStep(si, { ...s, approximateTerms: e.target.value })} aria-label="Approximate size terms" data-testid={`input-approximate-terms-${s.id}`} />
+                    <button className="text-xs underline text-muted-foreground" onClick={() => setStep(si, { ...s, approximateTerms: APPROXIMATE_SIZE_TERMS })} data-testid={`button-reset-terms-${s.id}`}>Reset to default terms</button>
+                  </>)}
                 </div>
               )}
               <ConditionEditor label="Show this step only if" cond={s.condition ?? null} refs={refsBefore(si)} onChange={c => setStep(si, { ...s, condition: c })} testId={`step-${s.id}`} />
@@ -104,20 +131,28 @@ export default function FlowBuilder({ value, onChange, kind }: { value: FlowDefi
 
 function QuestionRow({ q, refs, onChange, onMove, onRemove }: { q: FlowQuestion; refs: Ref[]; onChange: (q: FlowQuestion) => void; onMove: (d: number) => void; onRemove: () => void }) {
   const reserved = RESERVED.has(q.id);
+  const isServices = q.id === 'serviceIds';
   const hasOpts = (q.type === 'select' || q.type === 'multiselect') && !reserved;
   return (
     <div className="rounded-lg border p-3 space-y-2" data-testid={`row-question-${q.id}`}>
       <div className="flex flex-wrap items-center gap-2">
         <Input value={q.label} onChange={e => onChange({ ...q, label: e.target.value })} placeholder="Question wording" className="h-9 flex-1 min-w-[12rem]" data-testid={`input-question-label-${q.id}`} />
-        <select className={sel} value={q.type} disabled={reserved} onChange={e => onChange({ ...q, type: e.target.value as FlowQuestion['type'] })} data-testid={`select-question-type-${q.id}`}>
-          {QTYPES.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
+        {isServices ? (
+          <select className={sel} value={q.type === 'select' ? 'select' : 'multiselect'} onChange={e => onChange({ ...q, type: e.target.value as FlowQuestion['type'] })} aria-label="Service picker type" data-testid={`select-question-type-${q.id}`}>
+            <option value="multiselect">Choose several</option><option value="select">Choose one</option>
+          </select>
+        ) : (
+          <select className={sel} value={q.type} disabled={reserved} onChange={e => onChange({ ...q, type: e.target.value as FlowQuestion['type'] })} data-testid={`select-question-type-${q.id}`}>
+            {QTYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        )}
         <label className="flex items-center gap-1.5 text-xs"><Switch checked={q.required} onCheckedChange={v => onChange({ ...q, required: v })} data-testid={`switch-question-required-${q.id}`} />Required</label>
         <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => onMove(-1)} aria-label="Move up" data-testid={`button-question-up-${q.id}`}><ArrowUp className="w-3.5 h-3.5" /></Button>
         <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => onMove(1)} aria-label="Move down" data-testid={`button-question-down-${q.id}`}><ArrowDown className="w-3.5 h-3.5" /></Button>
         <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={onRemove} aria-label="Remove question" data-testid={`button-question-remove-${q.id}`}><Trash2 className="w-3.5 h-3.5" /></Button>
       </div>
-      {reserved && <Badge variant="secondary" className="text-[10px]">Options come from your live {q.id === 'serviceIds' ? 'services' : 'job postings'}</Badge>}
+      {isServices && <ServiceChooser selected={q.options} onChange={options => onChange({ ...q, options })} />}
+      {reserved && !isServices && <Badge variant="secondary" className="text-[10px]">Options come from your open job postings</Badge>}
       {hasOpts && <Input value={q.options.join(', ')} onChange={e => onChange({ ...q, options: e.target.value.split(',').map(s => s.trimStart()) })}
         onBlur={() => onChange({ ...q, options: q.options.map(s => s.trim()).filter(Boolean) })} placeholder="Options, comma separated" className="h-8 text-xs" data-testid={`input-question-options-${q.id}`} />}
       <ConditionEditor label="Ask only if" cond={q.condition ?? null} refs={refs} onChange={c => onChange({ ...q, condition: c })} testId={`question-${q.id}`} />
@@ -147,6 +182,38 @@ function ConditionEditor({ label, cond, refs, onChange, testId }: { label: strin
         : <Input className="h-8 w-40 text-xs" value={cond.value} onChange={e => onChange({ ...cond, value: e.target.value })} placeholder="value" data-testid={`input-condition-value-${testId}`} />)}
       <button onClick={() => onChange(null)} aria-label="Remove condition" data-testid={`button-remove-condition-${testId}`}><X className="w-3.5 h-3.5" /></button>
       {!ref && <span className="text-destructive">Must reference an earlier question.</span>}
+    </div>
+  );
+}
+
+function ServiceChooser({ selected, onChange }: { selected: string[]; onChange: (ids: string[]) => void }) {
+  const q = useListServices({ activeOnly: true });
+  const services = q.data ?? [];
+  const all = selected.length === 0;
+  const toggle = (id: string, on: boolean) => {
+    const base = all ? services.map(s => String(s.id)) : selected;
+    const next = on ? Array.from(new Set([...base, id])) : base.filter(x => x !== id);
+    onChange(next.length === services.length ? [] : next);
+  };
+  return (
+    <div className="rounded-md bg-muted/40 p-2.5 space-y-2" data-testid="section-service-chooser">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium">Services offered on this form {all && <span className="text-muted-foreground font-normal">(all active services)</span>}</p>
+        <Link href="/services" className="text-xs underline text-muted-foreground" data-testid="link-manage-services">Edit service names and pricing</Link>
+      </div>
+      {q.isLoading ? <div className="h-8 rounded bg-muted animate-pulse" /> : q.isError ? (
+        <p className="text-xs text-destructive">Could not load services. <button className="underline" onClick={() => q.refetch()}>Retry</button></p>
+      ) : services.length === 0 ? <p className="text-xs text-muted-foreground">No active services yet.</p> : (
+        <div className="grid sm:grid-cols-2 gap-1.5">
+          {services.map(s => (
+            <label key={s.id} className="flex items-center gap-2 text-sm">
+              <Checkbox checked={all || selected.includes(String(s.id))} onCheckedChange={v => toggle(String(s.id), v === true)} data-testid={`checkbox-service-${s.id}`} />{s.name}
+            </label>
+          ))}
+        </div>
+      )}
+      {!all && selected.some(id => !services.some(s => String(s.id) === id)) && q.isSuccess && <p className="text-[11px] text-muted-foreground">Some chosen services are no longer active and will not be shown.</p>}
+      {!all && (<button className="text-xs underline text-muted-foreground" onClick={() => onChange([])} data-testid="button-all-services">Offer all active services</button>)}
     </div>
   );
 }

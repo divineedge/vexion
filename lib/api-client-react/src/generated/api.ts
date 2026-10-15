@@ -741,6 +741,82 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       return useMutation(getReviewWebsiteIntakeSubmissionMutationOptions(options));
     }
 
+export const getDownloadWebsiteIntakeFileUrl = (id: number,
+    fileId: string,) => {
+
+
+
+
+  return `/api/website-intake/submissions/${id}/files/${fileId}`
+}
+
+export const downloadWebsiteIntakeFile = async (id: number,
+    fileId: string, options?: RequestInit): Promise<Blob> => {
+
+  return customFetch<Blob>(getDownloadWebsiteIntakeFileUrl(id,fileId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getDownloadWebsiteIntakeFileQueryKey = (id: number,
+    fileId: string,) => {
+    return [
+    `/api/website-intake/submissions/${id}/files/${fileId}`
+    ] as const;
+    }
+
+
+export const getDownloadWebsiteIntakeFileQueryOptions = <TData = Awaited<ReturnType<typeof downloadWebsiteIntakeFile>>, TError = ErrorType<unknown>>(id: number,
+    fileId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof downloadWebsiteIntakeFile>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getDownloadWebsiteIntakeFileQueryKey(id,fileId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof downloadWebsiteIntakeFile>>> = ({ signal }) => downloadWebsiteIntakeFile(id,fileId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined && fileId !== null && fileId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof downloadWebsiteIntakeFile>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type DownloadWebsiteIntakeFileQueryResult = NonNullable<Awaited<ReturnType<typeof downloadWebsiteIntakeFile>>>
+export type DownloadWebsiteIntakeFileQueryError = ErrorType<unknown>
+
+
+
+export function useDownloadWebsiteIntakeFile<TData = Awaited<ReturnType<typeof downloadWebsiteIntakeFile>>, TError = ErrorType<unknown>>(
+ id: number,
+    fileId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof downloadWebsiteIntakeFile>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getDownloadWebsiteIntakeFileQueryOptions(id,fileId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetPublicWebsiteIntakeConfigUrl = (params: GetPublicWebsiteIntakeConfigParams,) => {
   const normalizedParams = new URLSearchParams();
 

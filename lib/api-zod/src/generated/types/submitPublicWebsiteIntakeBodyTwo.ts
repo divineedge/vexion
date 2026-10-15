@@ -10,4 +10,6 @@ export type SubmitPublicWebsiteIntakeBodyTwo = {
   /** JSON-encoded PublicSubmission */
   submission: string;
   resume?: Blob;
+  /** @maxItems 5 */
+  files?: Blob[];
 };

@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SaveWebsiteIntakeForm200DefinitionStepsItem } from './saveWebsiteIntakeForm200DefinitionStepsItem';
+import type { SaveWebsiteIntakeForm200DefinitionUploads } from './saveWebsiteIntakeForm200DefinitionUploads';
 
 export type SaveWebsiteIntakeForm200Definition = {
   title: string;
@@ -13,4 +14,5 @@ export type SaveWebsiteIntakeForm200Definition = {
   privacyNotice: string;
   successMessage: string;
   steps: SaveWebsiteIntakeForm200DefinitionStepsItem[];
+  uploads?: SaveWebsiteIntakeForm200DefinitionUploads;
 };

@@ -10,12 +10,14 @@ const id=z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/);
 const condition=z.object({field:id,operator:z.enum(['equals','not_equals','contains','answered']),value:z.string().max(10000)}).strict().nullable().optional();
 const question=z.object({id,label:z.string().trim().min(1).max(300),type:z.enum(['text','textarea','email','phone','number','date','select','multiselect','checkbox']),required:z.boolean(),options:z.array(z.string().min(1).max(300)).max(100),condition}).strict();
 export const websiteFlowSchema=z.object({title:z.string().trim().min(1).max(300),intro:z.string().max(10000),privacyNotice:z.string().trim().min(1).max(10000),successMessage:z.string().trim().min(1).max(3000),
- steps:z.array(z.object({id,title:z.string().trim().min(1).max(300),kind:z.enum(['questions','property','measurement']),required:z.boolean(),measurementMode:z.enum(['area','linear']),allowPinMove:z.boolean(),condition,questions:z.array(question).max(50)}).strict()).min(1).max(30)}).strict().superRefine((flow,ctx)=>{
+ uploads:z.object({enabled:z.boolean(),required:z.boolean(),label:z.string().trim().min(1).max(300)}).strict().optional(),
+ steps:z.array(z.object({id,title:z.string().trim().min(1).max(300),kind:z.enum(['questions','property','measurement']),required:z.boolean(),measurementMode:z.enum(['area','linear']),allowPinMove:z.boolean(),allowApproximate:z.boolean().optional(),approximateTerms:z.string().trim().min(1).max(10000).optional(),condition,questions:z.array(question).max(50)}).strict()).min(1).max(30)}).strict().superRefine((flow,ctx)=>{
  const fields=new Set<string>(),steps=new Set<string>();
  const check=(c:z.infer<typeof condition>)=>{if(c&&!fields.has(c.field))ctx.addIssue({code:'custom',message:'Conditions must refer to an earlier question; reorder steps or update the condition'});};
  for(const step of flow.steps){
   if(steps.has(step.id))ctx.addIssue({code:'custom',message:'Step IDs must be unique'});steps.add(step.id);check(step.condition);
   for(const q of step.questions){
+   if(q.id==='serviceIds'&&(!['select','multiselect'].includes(q.type)||q.options.some(v=>!/^[1-9]\d*$/.test(v))))ctx.addIssue({code:'custom',message:'The services picker must use single or multiple selection of catalog services'});
    check(q.condition);
    if(fields.has(q.id)||['__proto__','constructor','prototype','lat','lng','pinConfirmed'].includes(q.id))ctx.addIssue({code:'custom',message:'Question IDs must be unique and cannot use reserved names'});
    fields.add(q.id);
@@ -91,13 +93,17 @@ export function validateMeasurements(flow:FlowDefinition,answers:Answers,raw:unk
   }
   if(value==null&&!points.length){if(step.required)throw new HrError(`${step.title} is required`);continue;}
   if(typeof value!=='number'||!Number.isFinite(value)||value<=0||value>(m.mode==='area'?10000000:100000))throw new HrError('Enter a positive, reasonable measurement');
-  measurements[step.id]={mode:m.mode,points,manual:points.length?undefined:value};
+  if(!points.length){
+   if(!step.allowApproximate)throw new HrError('Customer-estimated sizes are not enabled. Draw the measurement or ask the office to measure.');
+   if(m.acceptedTerms!==true)throw new HrError('Agree to the approximate-size pricing terms before requesting this estimate');
+  }
+  measurements[step.id]={mode:m.mode,points,manual:points.length?undefined:value,source:points.length?'drawn':'approximate',...(!points.length?{acceptedTerms:true}:{})};
   if(m.mode==='area')areaSqft=(areaSqft??0)+value;else lengthFt=(lengthFt??0)+value;
  }
  return {measurements,areaSqft,lengthFt};
 }
 export async function calculateWebsitePreview(tenantId:number,answers:Answers,area:number|null,length:number|null,handle:HrDb=db):Promise<PricePreview|null>{
- const ids=Array.isArray(answers.serviceIds)?answers.serviceIds.map(Number):answers.serviceId?[Number(answers.serviceId)]:[];
+ const ids=Array.isArray(answers.serviceIds)?answers.serviceIds.map(Number):answers.serviceIds?[Number(answers.serviceIds)]:answers.serviceId?[Number(answers.serviceId)]:[];
  if(ids.length>50||ids.some(n=>!Number.isSafeInteger(n)||n<1)||new Set(ids).size!==ids.length)throw new HrError('Choose valid services');
  const all=await handle.select().from(servicesTable).where(and(eq(servicesTable.tenantId,tenantId),eq(servicesTable.isActive,true)));
  if(ids.some(id=>!all.some(s=>s.id===id)))throw new HrError('A selected service is no longer available');

@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItem } from './listWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItem';
+import type { ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotUploads } from './listWebsiteIntakeSubmissions200SubmissionsItemSnapshotUploads';
 
 export type ListWebsiteIntakeSubmissions200SubmissionsItemSnapshot = {
   title: string;
@@ -13,4 +14,5 @@ export type ListWebsiteIntakeSubmissions200SubmissionsItemSnapshot = {
   privacyNotice: string;
   successMessage: string;
   steps: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItem[];
+  uploads?: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotUploads;
 };

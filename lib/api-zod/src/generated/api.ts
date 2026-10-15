@@ -25,6 +25,8 @@ export const GetWebsiteIntakeFormResponse = zod.object({
   "required": zod.boolean(),
   "measurementMode": zod.enum(['area', 'linear']),
   "allowPinMove": zod.boolean(),
+  "allowApproximate": zod.boolean().optional(),
+  "approximateTerms": zod.string().optional(),
   "condition": zod.union([zod.object({
   "field": zod.string(),
   "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
@@ -42,7 +44,12 @@ export const GetWebsiteIntakeFormResponse = zod.object({
   "value": zod.string()
 }),zod.null()]).optional()
 }))
-}))
+})),
+  "uploads": zod.object({
+  "enabled": zod.boolean(),
+  "required": zod.boolean(),
+  "label": zod.string()
+}).optional()
 }),
   "published": zod.union([zod.object({
   "title": zod.string(),
@@ -56,6 +63,8 @@ export const GetWebsiteIntakeFormResponse = zod.object({
   "required": zod.boolean(),
   "measurementMode": zod.enum(['area', 'linear']),
   "allowPinMove": zod.boolean(),
+  "allowApproximate": zod.boolean().optional(),
+  "approximateTerms": zod.string().optional(),
   "condition": zod.union([zod.object({
   "field": zod.string(),
   "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
@@ -73,7 +82,12 @@ export const GetWebsiteIntakeFormResponse = zod.object({
   "value": zod.string()
 }),zod.null()]).optional()
 }))
-}))
+})),
+  "uploads": zod.object({
+  "enabled": zod.boolean(),
+  "required": zod.boolean(),
+  "label": zod.string()
+}).optional()
 }),zod.null()]),
   "revision": zod.number()
 })
@@ -96,6 +110,8 @@ export const SaveWebsiteIntakeFormBody = zod.object({
   "required": zod.boolean(),
   "measurementMode": zod.enum(['area', 'linear']),
   "allowPinMove": zod.boolean(),
+  "allowApproximate": zod.boolean().optional(),
+  "approximateTerms": zod.string().optional(),
   "condition": zod.union([zod.object({
   "field": zod.string(),
   "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
@@ -113,7 +129,12 @@ export const SaveWebsiteIntakeFormBody = zod.object({
   "value": zod.string()
 }),zod.null()]).optional()
 }))
-}))
+})),
+  "uploads": zod.object({
+  "enabled": zod.boolean(),
+  "required": zod.boolean(),
+  "label": zod.string()
+}).optional()
 }),
   "revision": zod.number(),
   "publish": zod.boolean()
@@ -132,6 +153,8 @@ export const SaveWebsiteIntakeFormResponse = zod.object({
   "required": zod.boolean(),
   "measurementMode": zod.enum(['area', 'linear']),
   "allowPinMove": zod.boolean(),
+  "allowApproximate": zod.boolean().optional(),
+  "approximateTerms": zod.string().optional(),
   "condition": zod.union([zod.object({
   "field": zod.string(),
   "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
@@ -149,7 +172,12 @@ export const SaveWebsiteIntakeFormResponse = zod.object({
   "value": zod.string()
 }),zod.null()]).optional()
 }))
-}))
+})),
+  "uploads": zod.object({
+  "enabled": zod.boolean(),
+  "required": zod.boolean(),
+  "label": zod.string()
+}).optional()
 }),
   "published": zod.union([zod.object({
   "title": zod.string(),
@@ -163,6 +191,8 @@ export const SaveWebsiteIntakeFormResponse = zod.object({
   "required": zod.boolean(),
   "measurementMode": zod.enum(['area', 'linear']),
   "allowPinMove": zod.boolean(),
+  "allowApproximate": zod.boolean().optional(),
+  "approximateTerms": zod.string().optional(),
   "condition": zod.union([zod.object({
   "field": zod.string(),
   "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
@@ -180,7 +210,12 @@ export const SaveWebsiteIntakeFormResponse = zod.object({
   "value": zod.string()
 }),zod.null()]).optional()
 }))
-}))
+})),
+  "uploads": zod.object({
+  "enabled": zod.boolean(),
+  "required": zod.boolean(),
+  "label": zod.string()
+}).optional()
 }),zod.null()]),
   "revision": zod.number()
 })
@@ -211,6 +246,8 @@ export const ListWebsiteIntakeSubmissionsResponse = zod.object({
   "required": zod.boolean(),
   "measurementMode": zod.enum(['area', 'linear']),
   "allowPinMove": zod.boolean(),
+  "allowApproximate": zod.boolean().optional(),
+  "approximateTerms": zod.string().optional(),
   "condition": zod.union([zod.object({
   "field": zod.string(),
   "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
@@ -228,7 +265,12 @@ export const ListWebsiteIntakeSubmissionsResponse = zod.object({
   "value": zod.string()
 }),zod.null()]).optional()
 }))
-}))
+})),
+  "uploads": zod.object({
+  "enabled": zod.boolean(),
+  "required": zod.boolean(),
+  "label": zod.string()
+}).optional()
 }),
   "payload": zod.object({
   "answers": zod.object({
@@ -246,13 +288,22 @@ export const ListWebsiteIntakeSubmissionsResponse = zod.object({
   "lat": zod.number(),
   "lng": zod.number()
 })),
-  "manual": zod.number().optional()
+  "manual": zod.number().optional(),
+  "source": zod.enum(['drawn', 'approximate']).optional(),
+  "acceptedTerms": zod.boolean().optional()
 }).optional()
 }),
   "areaSqft": zod.number().nullish(),
   "lengthFt": zod.number().nullish(),
   "revision": zod.number().optional(),
   "consentAt": zod.string().optional(),
+  "attachments": zod.array(zod.object({
+  "id": zod.string(),
+  "fileName": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "role": zod.enum(['attachment', 'resume'])
+})).optional(),
   "referralCode": zod.string().optional(),
   "doorHangerCode": zod.string().optional()
 }),
@@ -329,6 +380,8 @@ export const ReviewWebsiteIntakeSubmissionResponse = zod.object({
   "required": zod.boolean(),
   "measurementMode": zod.enum(['area', 'linear']),
   "allowPinMove": zod.boolean(),
+  "allowApproximate": zod.boolean().optional(),
+  "approximateTerms": zod.string().optional(),
   "condition": zod.union([zod.object({
   "field": zod.string(),
   "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
@@ -346,7 +399,12 @@ export const ReviewWebsiteIntakeSubmissionResponse = zod.object({
   "value": zod.string()
 }),zod.null()]).optional()
 }))
-}))
+})),
+  "uploads": zod.object({
+  "enabled": zod.boolean(),
+  "required": zod.boolean(),
+  "label": zod.string()
+}).optional()
 }),
   "payload": zod.object({
   "answers": zod.object({
@@ -364,13 +422,22 @@ export const ReviewWebsiteIntakeSubmissionResponse = zod.object({
   "lat": zod.number(),
   "lng": zod.number()
 })),
-  "manual": zod.number().optional()
+  "manual": zod.number().optional(),
+  "source": zod.enum(['drawn', 'approximate']).optional(),
+  "acceptedTerms": zod.boolean().optional()
 }).optional()
 }),
   "areaSqft": zod.number().nullish(),
   "lengthFt": zod.number().nullish(),
   "revision": zod.number().optional(),
   "consentAt": zod.string().optional(),
+  "attachments": zod.array(zod.object({
+  "id": zod.string(),
+  "fileName": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "role": zod.enum(['attachment', 'resume'])
+})).optional(),
   "referralCode": zod.string().optional(),
   "doorHangerCode": zod.string().optional()
 }),
@@ -408,6 +475,14 @@ export const ReviewWebsiteIntakeSubmissionResponse = zod.object({
 })
 
 
+export const DownloadWebsiteIntakeFileParams = zod.object({
+  "id": zod.coerce.number(),
+  "fileId": zod.coerce.string()
+})
+
+export const DownloadWebsiteIntakeFileResponse = zod.unknown()
+
+
 export const GetPublicWebsiteIntakeConfigQueryParams = zod.object({
   "kind": zod.enum(['quote', 'hiring']),
   "tenantId": zod.coerce.number().optional(),
@@ -430,6 +505,8 @@ export const GetPublicWebsiteIntakeConfigResponse = zod.object({
   "required": zod.boolean(),
   "measurementMode": zod.enum(['area', 'linear']),
   "allowPinMove": zod.boolean(),
+  "allowApproximate": zod.boolean().optional(),
+  "approximateTerms": zod.string().optional(),
   "condition": zod.union([zod.object({
   "field": zod.string(),
   "operator": zod.enum(['equals', 'not_equals', 'contains', 'answered']),
@@ -447,7 +524,12 @@ export const GetPublicWebsiteIntakeConfigResponse = zod.object({
   "value": zod.string()
 }),zod.null()]).optional()
 }))
-}))
+})),
+  "uploads": zod.object({
+  "enabled": zod.boolean(),
+  "required": zod.boolean(),
+  "label": zod.string()
+}).optional()
 }),
   "revision": zod.number(),
   "privacyNotice": zod.string(),
@@ -482,7 +564,9 @@ export const SubmitPublicWebsiteIntakeBody = zod.object({
   "lat": zod.number(),
   "lng": zod.number()
 })),
-  "manual": zod.number().optional()
+  "manual": zod.number().optional(),
+  "source": zod.enum(['drawn', 'approximate']).optional(),
+  "acceptedTerms": zod.boolean().optional()
 }).optional()
 }),
   "consent": zod.boolean(),

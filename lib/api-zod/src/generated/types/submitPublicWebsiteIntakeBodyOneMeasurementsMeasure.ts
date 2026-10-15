@@ -7,9 +7,12 @@
  */
 import type { SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasureMode } from './submitPublicWebsiteIntakeBodyOneMeasurementsMeasureMode';
 import type { SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasurePointsItem } from './submitPublicWebsiteIntakeBodyOneMeasurementsMeasurePointsItem';
+import type { SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasureSource } from './submitPublicWebsiteIntakeBodyOneMeasurementsMeasureSource';
 
 export type SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasure = {
   mode: SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasureMode;
   points: SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasurePointsItem[];
   manual?: number;
+  source?: SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasureSource;
+  acceptedTerms?: boolean;
 };

@@ -17,6 +17,8 @@ export type ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItem = {
   required: boolean;
   measurementMode: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemMeasurementMode;
   allowPinMove: boolean;
+  allowApproximate?: boolean;
+  approximateTerms?: string;
   condition?: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemCondition;
   questions: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemQuestionsItem[];
 };

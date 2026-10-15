@@ -7,9 +7,12 @@
  */
 import type { ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasureMode } from './listWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasureMode';
 import type { ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasurePointsItem } from './listWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasurePointsItem';
+import type { ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasureSource } from './listWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasureSource';
 
 export type ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasure = {
   mode: ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasureMode;
   points: ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasurePointsItem[];
   manual?: number;
+  source?: ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasureSource;
+  acceptedTerms?: boolean;
 };

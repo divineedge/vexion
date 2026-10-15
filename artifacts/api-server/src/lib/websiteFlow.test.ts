@@ -37,4 +37,13 @@ describe('published website flow invariants',()=>{
   expect(()=>validateWebsiteAnswers(flow,answers)).toThrow('Confirm');
   expect(()=>validateWebsiteAnswers(flow,{...answers,pinConfirmed:true,lat:100,lng:0})).toThrow('pin');
  });
+ it('requires company permission and a separate acknowledgment for approximate sizes',()=>{
+  const flow=defaultWebsiteFlow('quote');
+  const value={measure:{mode:'area',points:[],manual:1000,source:'drawn'}};
+  expect(()=>validateMeasurements(flow,{},value)).toThrow('not enabled');
+  flow.steps.at(-1)!.allowApproximate=true;
+  expect(()=>validateMeasurements(flow,{},value)).toThrow('Agree');
+  const result=validateMeasurements(flow,{}, {measure:{...value.measure,acceptedTerms:true}});
+  expect(result.areaSqft).toBe(1000);expect(result.measurements.measure.source).toBe('approximate');expect(result.measurements.measure.acceptedTerms).toBe(true);
+ });
 });

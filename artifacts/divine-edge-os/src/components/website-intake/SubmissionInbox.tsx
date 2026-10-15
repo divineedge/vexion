@@ -10,8 +10,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { AlertTriangle, Inbox, ExternalLink, MapPin, Ruler, CheckCircle2, XCircle, Eye } from 'lucide-react';
-import { loadWebsiteSubmissions, reviewWebsiteSubmission, visibleFlow, type WebsiteSubmission, type ReviewInput } from '@/lib/websiteIntake';
+import { AlertTriangle, Inbox, ExternalLink, MapPin, Ruler, CheckCircle2, XCircle, Eye, Download, Paperclip } from 'lucide-react';
+import { customFetch } from '@workspace/api-client-react';
+import { loadWebsiteSubmissions, reviewWebsiteSubmission, visibleFlow, APPROXIMATE_SIZE_TERMS, type WebsiteSubmission, type ReviewInput } from '@/lib/websiteIntake';
 import { DrawMap, PinMap } from './IntakeMaps';
 import { displayAnswer, measureValue, type Measurement } from './FlowRenderer';
 
@@ -151,7 +152,13 @@ function ReviewSheet({ kind, sub, onClose }: { kind: Kind; sub: WebsiteSubmissio
                       {shown && ms && (
                         <div className="mt-2 space-y-1">
                           {ms.points.length > 0 && lat != null && lng != null && <DrawMap center={{ lat, lng }} mode={ms.mode} points={ms.points} readOnly />}
-                          <p className="text-xs flex items-center gap-1"><Ruler className="w-3 h-3" />{measureValue(ms)?.toLocaleString() ?? '—'} {ms.mode === 'area' ? 'sq ft' : 'ft'} · {ms.manual ? 'typed by customer' : `${ms.points.length} points drawn`} · unverified</p>
+                          <p className="text-xs flex items-center gap-1"><Ruler className="w-3 h-3" />{measureValue(ms)?.toLocaleString() ?? '—'} {ms.mode === 'area' ? 'sq ft' : 'ft'} · {ms.source === 'approximate' || (!ms.points.length && ms.manual) ? <Badge variant="outline" className="text-[10px]">Approximate, customer estimated</Badge> : `drawn on map, ${ms.points.length} points`} · unverified</p>
+                          {(ms.source === 'approximate' || (!ms.points.length && ms.manual)) && (
+                            <div className="rounded-md bg-muted/50 p-2 text-xs space-y-1" data-testid={`approx-terms-${s.id}`}>
+                              <p className="font-medium">{ms.acceptedTerms ? `Terms accepted by customer at submission, ${fmt(sub.createdAt)}` : 'Terms acceptance not recorded'}</p>
+                              <p className="whitespace-pre-wrap text-muted-foreground">{s.approximateTerms?.trim() || APPROXIMATE_SIZE_TERMS}</p>
+                            </div>
+                          )}
                         </div>
                       )}
                     </li>
@@ -159,6 +166,8 @@ function ReviewSheet({ kind, sub, onClose }: { kind: Kind; sub: WebsiteSubmissio
                 })}
               </ol>
             </section>
+
+            <AttachmentList sub={sub} />
 
             {sub.preview && (
               <section className="rounded-lg border p-3 space-y-1" data-testid="section-preview">
@@ -206,5 +215,34 @@ function ReviewSheet({ kind, sub, onClose }: { kind: Kind; sub: WebsiteSubmissio
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+type Attachment = { id: number | string; fileName: string; mimeType: string; sizeBytes: number; role: 'attachment' | 'resume' };
+function AttachmentList({ sub }: { sub: WebsiteSubmission }) {
+  const list = (Array.isArray((sub.payload as { attachments?: unknown }).attachments) ? (sub.payload as unknown as { attachments: Attachment[] }).attachments : []);
+  const [busy, setBusy] = useState<string | number | null>(null);
+  if (!list.length) return null;
+  const download = async (f: Attachment) => {
+    setBusy(f.id);
+    try {
+      const blob = await customFetch<Blob>(`/api/website-intake/submissions/${sub.id}/files/${encodeURIComponent(String(f.id))}`, { responseType: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = f.fileName; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) { toast.error(errMsg(e, 'Download failed')); } finally { setBusy(null); }
+  };
+  return (
+    <section className="space-y-2" data-testid="section-attachments">
+      <h3 className="text-sm font-semibold flex items-center gap-1.5"><Paperclip className="w-4 h-4" />Files ({list.length})</h3>
+      <ul className="divide-y rounded-md border">{list.map(f => (
+        <li key={f.id} className="flex items-center gap-3 p-2.5" data-testid={`row-attachment-${f.id}`}>
+          <div className="flex-1 min-w-0"><p className="text-sm truncate">{f.fileName}</p>
+            <p className="text-xs text-muted-foreground">{f.role === 'resume' ? 'Resume' : 'Attachment'} · {(f.sizeBytes / 1024 / 1024).toFixed(1)} MB</p></div>
+          <Button size="sm" variant="ghost" className="gap-1" disabled={busy === f.id} onClick={() => download(f)} aria-label={`Download ${f.fileName}`} data-testid={`button-download-attachment-${f.id}`}>
+            <Download className="w-4 h-4" />{busy === f.id ? '…' : 'Download'}</Button>
+        </li>))}</ul>
+    </section>
   );
 }

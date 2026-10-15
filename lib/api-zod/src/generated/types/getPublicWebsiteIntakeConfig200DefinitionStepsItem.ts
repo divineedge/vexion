@@ -17,6 +17,8 @@ export type GetPublicWebsiteIntakeConfig200DefinitionStepsItem = {
   required: boolean;
   measurementMode: GetPublicWebsiteIntakeConfig200DefinitionStepsItemMeasurementMode;
   allowPinMove: boolean;
+  allowApproximate?: boolean;
+  approximateTerms?: string;
   condition?: GetPublicWebsiteIntakeConfig200DefinitionStepsItemCondition;
   questions: GetPublicWebsiteIntakeConfig200DefinitionStepsItemQuestionsItem[];
 };

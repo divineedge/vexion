@@ -1,4 +1,5 @@
-import {db,tenantsTable,hrSettingsTable,hrPostingsTable,servicesTable,websiteIntakeSubmissionsTable,customersTable,propertiesTable,estimatesTable,usersTable,taskNotificationsTable} from '@workspace/db';
+import {db,tenantsTable,hrSettingsTable,hrPostingsTable,servicesTable,websiteIntakeSubmissionsTable,customersTable,propertiesTable,estimatesTable,usersTable,taskNotificationsTable,hrDocumentsTable} from '@workspace/db';
+import {hrFile,hrStorage} from './hrFiles';
 import {and,eq,sql} from 'drizzle-orm';
 import {createHash,randomUUID} from 'node:crypto';
 import {z} from 'zod';
@@ -6,6 +7,8 @@ import {acquisitionSettings} from './acquisitionRewards';
 import {intakeApplication} from './hiring';
 import {HrError,type HrDb} from './hrAccess';
 import {effectivePaymentPolicy} from './paymentPolicy';
+import {logger} from './logger';
+import {APPROXIMATE_SIZE_TERMS} from '@workspace/api-client-react/website-flow';
 import {getWebsiteForm,canonicalJson,validateWebsiteAnswers,validateMeasurements,calculateWebsitePreview,type FlowKind,type FlowDefinition,type Answers,type Measurements,type PricePreview} from './websiteFlow';
 const kindSchema=z.enum(['quote','hiring']);
 export const publicInput=z.object({tenantId:z.number().int().positive(),kind:kindSchema,requestId:z.string().uuid(),revision:z.number().int().nonnegative(),answers:z.record(z.unknown()),measurements:z.record(z.unknown()).default({}),consent:z.literal(true),referralCode:z.string().max(200).optional(),doorHangerCode:z.string().max(200).optional()}).strict();
@@ -17,18 +20,24 @@ export async function publicWebsiteConfig(kind:FlowKind,tenantId?:number,slug?:s
  const enabled=kind==='quote'?acquisitionSettings(tenant.acquisitionSettings).quoteWidgetEnabled:hr?.publicHiringEnabled===true;
  if(!enabled)throw new HrError(kind==='quote'?'Website quotes are not enabled':'This business is not accepting applications',404);
  const form=await getWebsiteForm(tenant.id,kind,handle);
- const definition=form.published??form.definition;
- const services=kind==='quote'?await handle.select({id:servicesTable.id,name:servicesTable.name}).from(servicesTable).where(and(eq(servicesTable.tenantId,tenant.id),eq(servicesTable.isActive,true))):[];
+ const definition=structuredClone(form.published??form.definition);
+ for(const step of definition.steps)if(step.allowApproximate&&!step.approximateTerms)step.approximateTerms=APPROXIMATE_SIZE_TERMS;
+ let services=kind==='quote'?await handle.select({id:servicesTable.id,name:servicesTable.name}).from(servicesTable).where(and(eq(servicesTable.tenantId,tenant.id),eq(servicesTable.isActive,true))):[];
+ const choices=definition.steps.flatMap(s=>s.questions).find(q=>q.id==='serviceIds')?.options??[];
+ if(choices.length)services=services.filter(s=>choices.includes(String(s.id)));
  const postings=kind==='hiring'?await handle.select({id:hrPostingsTable.id,title:hrPostingsTable.title}).from(hrPostingsTable).where(and(eq(hrPostingsTable.tenantId,tenant.id),eq(hrPostingsTable.status,'open'))):[];
  return {tenantId:tenant.id,companyName:tenant.name,enabled:true,definition,revision:definitionVersion(definition),services,postings,privacyNotice:definition.privacyNotice};
 }
 const receipt=(row:typeof websiteIntakeSubmissionsTable.$inferSelect)=>({received:true as const,pendingReview:true as const,reference:row.reference,preview:row.preview as PricePreview|null});
-export async function receiveWebsiteSubmission(raw:unknown,resume?:Express.Multer.File){
+export async function receiveWebsiteSubmission(raw:unknown,resume?:Express.Multer.File,files:Express.Multer.File[]=[]){
  const parsed=publicInput.safeParse(raw);if(!parsed.success)throw new HrError('Provide valid submission details and consent to storage and contact');
  const input=parsed.data;
  if(resume&&input.kind!=='hiring')throw new HrError('Resume files are only accepted with hiring applications');
- const hash=createHash('sha256').update(canonicalJson({input,resume:resume?{name:resume.originalname,hash:createHash('sha256').update(resume.buffer).digest('hex')}:null})).digest('hex');
- return db.transaction(async tx=>{
+ if(files.length>5||[...files,...(resume?[resume]:[])].reduce((n,f)=>n+f.size,0)>25*1024*1024)throw new HrError('Upload at most five attachments, 10 MB each, and 25 MB total including the resume',413);
+ const fileInfo=files.map(file=>{const info=hrFile(file);if(!['application/pdf','image/jpeg'].includes(info.mimeType))throw new HrError('Attachments must be JPEG images or PDF documents');if(file.size>10*1024*1024)throw new HrError('Each attachment must be at most 10 MB',413);return {file,info};});
+ const hash=createHash('sha256').update(canonicalJson({input,resume:resume?{name:resume.originalname,hash:createHash('sha256').update(resume.buffer).digest('hex')}:null,...(files.length?{files:files.map(f=>({name:f.originalname,hash:createHash('sha256').update(f.buffer).digest('hex')}))}:{})})).digest('hex');
+ const stored:string[]=[];
+ try{return await db.transaction(async tx=>{
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('website-intake'),hashtext(${input.tenantId+':'+input.kind+':'+input.requestId}))`);
   const [prior]=await tx.select().from(websiteIntakeSubmissionsTable).where(and(eq(websiteIntakeSubmissionsTable.tenantId,input.tenantId),eq(websiteIntakeSubmissionsTable.kind,input.kind),eq(websiteIntakeSubmissionsTable.requestId,input.requestId)));
   if(prior){if(prior.requestHash!==hash)throw new HrError('Submission details changed. Start a new submission.',409);return receipt(prior);}
@@ -36,17 +45,28 @@ export async function receiveWebsiteSubmission(raw:unknown,resume?:Express.Multe
   const config=await publicWebsiteConfig(input.kind,input.tenantId,undefined,tx);
   if(input.revision!==config.revision)throw new HrError('This form has changed. Refresh the page before submitting.',409);
   const visible=validateWebsiteAnswers(config.definition,input.answers);
+  const selected=Array.isArray(visible.answers.serviceIds)?visible.answers.serviceIds:visible.answers.serviceIds?[visible.answers.serviceIds]:[];
+  if(input.kind==='quote'&&selected.some(id=>!config.services.some(s=>String(s.id)===String(id))))throw new HrError('Choose one of the offered services');
+  if(files.length&&!config.definition.uploads?.enabled)throw new HrError('File attachments are not enabled for this form');
+  if(config.definition.uploads?.enabled&&config.definition.uploads.required&&!files.length)throw new HrError('Add the required JPEG or PDF attachment');
   const measured=validateMeasurements(config.definition,visible.answers,input.measurements);
   const preview=input.kind==='quote'?await calculateWebsitePreview(input.tenantId,visible.answers,measured.areaSqft,measured.lengthFt,tx):null;
   let applicationId:number|null=null;
   if(input.kind==='hiring'){
    const postingId=visible.answers.postingId;
    if(postingId&&!config.postings.some(p=>String(p.id)===String(postingId)))throw new HrError('This position is no longer open');
-   const application=await intakeApplication(input.tenantId,null,{requestId:input.requestId,fullName:visible.answers.name??'',email:visible.answers.email??'',phone:visible.answers.phone??'',postingId:postingId??null,answers:visible.answers,consent:true},'website',resume,tx,config.definition);
+   const application=await intakeApplication(input.tenantId,null,{requestId:input.requestId,fullName:visible.answers.name??'',email:visible.answers.email??'',phone:visible.answers.phone??'',postingId:postingId??null,answers:visible.answers,consent:true},'website',undefined,tx,config.definition);
    applicationId=application.id;
   }
+  const attachments=[];
+  const uploads=[...(resume?[{file:resume,info:hrFile(resume),role:'resume'}]:[]),...fileInfo.map(f=>({...f,role:'attachment'}))];
+  for(const upload of uploads){
+   const objectPath=await hrStorage.saveHrDocument(upload.file.buffer,upload.info.mimeType);stored.push(objectPath);
+   if(applicationId)await tx.insert(hrDocumentsTable).values({tenantId:input.tenantId,applicationId,title:upload.role==='resume'?'Application resume':config.definition.uploads?.label??'Website attachment',...upload.info,objectPath,uploadedBy:null});
+   attachments.push({id:randomUUID(),...upload.info,role:upload.role,objectPath});
+  }
   const [row]=await tx.insert(websiteIntakeSubmissionsTable).values({tenantId:input.tenantId,kind:input.kind,requestId:input.requestId,requestHash:hash,reference:randomUUID(),applicationId,
-   payload:{answers:visible.answers,measurements:measured.measurements,areaSqft:measured.areaSqft,lengthFt:measured.lengthFt,referralCode:input.referralCode,doorHangerCode:input.doorHangerCode,consentAt:new Date().toISOString(),revision:input.revision},
+   payload:{answers:visible.answers,measurements:measured.measurements,areaSqft:measured.areaSqft,lengthFt:measured.lengthFt,referralCode:input.referralCode,doorHangerCode:input.doorHangerCode,consentAt:new Date().toISOString(),revision:input.revision,attachments},
    snapshot:config.definition,preview,path:visible.steps.map(s=>s.id)}).returning();
   if(input.kind==='quote'){
    // No PII in notifications and no customer/property/estimate creation at public submission.
@@ -55,7 +75,24 @@ export async function receiveWebsiteSubmission(raw:unknown,resume?:Express.Multe
     WHERE tenant_id=${input.tenantId} AND is_active IS DISTINCT FROM false AND role IN ('company_owner','office_manager','department_manager')`);
   }
   return receipt(row);
- });
+ });}catch(error){
+  if(stored.length){
+   // A disconnected COMMIT can be ambiguous. Never delete evidence for a saved receipt.
+   try{
+    const [committed]=await db.select().from(websiteIntakeSubmissionsTable).where(and(eq(websiteIntakeSubmissionsTable.tenantId,input.tenantId),eq(websiteIntakeSubmissionsTable.kind,input.kind),eq(websiteIntakeSubmissionsTable.requestId,input.requestId)));
+    if(committed?.requestHash===hash)return receipt(committed);
+    const cleanup=await Promise.allSettled(stored.map(path=>hrStorage.deleteObjectEntity(path)));
+    if(cleanup.some(r=>r.status==='rejected'))logger.warn('Private website attachment cleanup requires attention');
+   }catch{logger.warn('Could not verify website attachment commit; retaining private files to avoid evidence loss');}
+  }
+  throw error;
+ }
+}
+export function staffSubmission(row:typeof websiteIntakeSubmissionsTable.$inferSelect){
+ const {requestHash:_hash,requestId:_request,...safe}=row;
+ const payload=row.payload as Record<string,unknown>;
+ const files=(payload.attachments??[]) as Record<string,unknown>[];
+ return {...safe,payload:{...payload,attachments:files.map(({objectPath:_private,...file})=>file)}};
 }
 export const reviewInput=z.object({action:z.enum(['approve','decline','review']),notes:z.string().max(20000).optional(),
  customer:z.object({name:z.string().trim().max(200),email:z.string().max(254).optional(),phone:z.string().max(80).optional(),address:z.string().max(500).optional(),city:z.string().max(200).optional(),state:z.string().max(100).optional(),zip:z.string().max(50).optional()}).strict().optional(),

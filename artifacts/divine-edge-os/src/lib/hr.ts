@@ -300,5 +300,5 @@ export function validateEmpAnswers(fields: EmpFormField[], answers: Record<strin
   return errs;
 }
 export const fmtBytes = (n: number) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`;
-export const ALLOWED_UPLOAD = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/heic', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+export const ALLOWED_UPLOAD = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
 export const MAX_UPLOAD = 10 * 1024 * 1024;

@@ -17,6 +17,10 @@ type Result = Awaited<ReturnType<typeof submitPublicWebsiteForm>>;
 const RESUME_TYPES = '.pdf,.docx,.jpg,.jpeg,.png,.webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp';
 const RESUME_EXT = /\.(pdf|docx|jpe?g|png|webp)$/i;
 const MAX_RESUME = 10 * 1024 * 1024;
+const ATTACH_EXT = /\.(pdf|jpe?g)$/i;
+const ATTACH_MIME = new Set(['application/pdf', 'image/jpeg']);
+const MAX_FILES = 5;
+const MAX_TOTAL = 25 * 1024 * 1024;
 const money = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export function PublicQuoteForm() { return <PublicSiteForm kind="quote" />; }
@@ -40,10 +44,28 @@ export default function PublicSiteForm({ kind }: { kind: Kind }) {
   const [resume, setResume] = useState<File | null>(null);
   const [resumeErr, setResumeErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [filesErr, setFilesErr] = useState<string | null>(null);
+  const attachRef = useRef<HTMLInputElement>(null);
+  const totalBytes = (list: File[], r: File | null) => list.reduce((n, f) => n + f.size, 0) + (r?.size ?? 0);
+  const addFiles = (picked: FileList | null) => {
+    if (!picked) return;
+    const next = [...files];
+    for (const f of Array.from(picked)) {
+      if (!(ATTACH_MIME.has(f.type) || ATTACH_EXT.test(f.name))) { setFilesErr(`${f.name}: only JPEG or PDF files are accepted.`); continue; }
+      if (f.size > MAX_RESUME) { setFilesErr(`${f.name} is larger than 10 MB.`); continue; }
+      if (next.length >= MAX_FILES) { setFilesErr(`Up to ${MAX_FILES} files.`); break; }
+      if (totalBytes([...next, f], kind === 'hiring' ? resume : null) > MAX_TOTAL) { setFilesErr('All files together must be 25 MB or less.'); break; }
+      next.push(f); setFilesErr(null);
+    }
+    setFiles(next);
+    if (attachRef.current) attachRef.current.value = '';
+  };
   const pickResume = (f?: File) => {
     if (!f) return;
     if (!RESUME_EXT.test(f.name)) { setResumeErr('Use a PDF, DOCX, JPG, PNG or WebP file.'); return; }
     if (f.size > MAX_RESUME) { setResumeErr('File must be 10 MB or smaller.'); return; }
+    if (totalBytes(files, f) > MAX_TOTAL) { setResumeErr('All files together must be 25 MB or less.'); return; }
     setResumeErr(null); setResume(f);
     if (fileRef.current) fileRef.current.value = '';
   };
@@ -61,7 +83,10 @@ export default function PublicSiteForm({ kind }: { kind: Kind }) {
 
   const submit = async (p: { answers: Record<string, unknown>; measurements: Measurements; consent: boolean }) => {
     if (!data?.definition) return;
-    const sig = JSON.stringify({ p, resume: resume ? [resume.name, resume.size, resume.lastModified] : null });
+    const up = data.definition.uploads;
+    if (up?.enabled && up.required && files.length === 0) { setErr(`${up.label || 'An attachment'} is required.`); return; }
+    const fsig = (f: File) => [f.name, f.size, f.lastModified];
+    const sig = JSON.stringify({ p, resume: resume ? fsig(resume) : null, files: up?.enabled ? files.map(fsig) : [] });
     if (lastSig.current !== null && lastSig.current !== sig) requestId.current = crypto.randomUUID();
     lastSig.current = sig;
     setSubmitting(true); setErr(null);
@@ -70,7 +95,7 @@ export default function PublicSiteForm({ kind }: { kind: Kind }) {
         tenantId: data.tenantId, kind, requestId: requestId.current, revision: data.revision,
         answers: p.answers, measurements: p.measurements, consent: p.consent,
         referralCode: qs.get('ref') ?? undefined, doorHangerCode: qs.get('dh') ?? undefined,
-      }, kind === 'hiring' ? resume ?? undefined : undefined);
+      }, kind === 'hiring' ? resume ?? undefined : undefined, data.definition.uploads?.enabled ? files : undefined);
       setResult(r);
     } catch (e) {
       setErr((e as { data?: { error?: string } })?.data?.error ?? 'We could not send this. Your answers are still here; please try again.');
@@ -123,6 +148,20 @@ export default function PublicSiteForm({ kind }: { kind: Kind }) {
                   <input ref={fileRef} type="file" accept={RESUME_TYPES} className="hidden" onChange={e => pickResume(e.target.files?.[0])} data-testid="input-resume" />
                   <p className="text-[11px] text-muted-foreground">PDF, DOCX, JPG, PNG or WebP, up to 10 MB. Kept private to the hiring team.</p>
                   {resumeErr && <p className="text-xs text-destructive" data-testid="text-resume-error">{resumeErr}</p>}
+                </div>
+              )}
+              {def.uploads?.enabled && (
+                <div className="mb-5 rounded-lg border border-dashed p-3 space-y-2" data-testid="section-attachments">
+                  <p className="text-sm font-medium">{def.uploads.label || 'Attachments'} {def.uploads.required ? <span className="text-primary">*</span> : <span className="text-muted-foreground font-normal">(optional)</span>}</p>
+                  {files.length > 0 && <ul className="space-y-1">{files.map((f, i) => (
+                    <li key={`${f.name}-${i}`} className="flex items-center gap-2 text-sm"><span className="flex-1 truncate" data-testid={`text-attachment-${i}`}>{f.name}</span>
+                      <span className="text-xs text-muted-foreground">{(f.size / 1024 / 1024).toFixed(1)} MB</span>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`Remove ${f.name}`} onClick={() => { setFiles(files.filter((_, k) => k !== i)); setFilesErr(null); }} data-testid={`button-remove-attachment-${i}`}><X className="w-4 h-4" /></Button></li>
+                  ))}</ul>}
+                  {files.length < MAX_FILES && <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => attachRef.current?.click()} data-testid="button-add-attachment"><Upload className="w-4 h-4" />Add files</Button>}
+                  <input ref={attachRef} type="file" multiple accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg" className="hidden" onChange={e => addFiles(e.target.files)} data-testid="input-attachments" />
+                  <p className="text-[11px] text-muted-foreground">JPEG or PDF, up to {MAX_FILES} files, 10 MB each, 25 MB combined{kind === 'hiring' ? ' including your resume' : ''}. Private to the business.</p>
+                  {filesErr && <p className="text-xs text-destructive" data-testid="text-attachments-error">{filesErr}</p>}
                 </div>
               )}
               <FlowRenderer definition={def} services={data.services} postings={data.postings} tenantId={data.tenantId}

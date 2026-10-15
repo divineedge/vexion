@@ -297,6 +297,16 @@ function DocumentsTab({ id, data }: { id: number; data: HrEmployeeDetail }) {
   const [editId, setEditId] = useState<number | null>(null);
   const [filter, setFilter] = useState('all');
   const documents = data.documents.filter(doc => filter === 'all' || doc.expirationStatus === filter);
+  const startCredential = (type: 'license' | 'certificate') => {
+    setFile(null); setTitle(''); setHist(''); setShared(false); setCredentialType(type); setExpiresOn('');
+    setRenews(null); setEditId(null); setOpen(true);
+  };
+  const autoAdd = useRef(false);
+  useEffect(() => {
+    if (autoAdd.current || !data.canManage) return;
+    const add = new URLSearchParams(window.location.search).get('add');
+    if (add === 'license' || add === 'certificate') { autoAdd.current = true; startCredential(add); }
+  }, [data.canManage]); // eslint-disable-line react-hooks/exhaustive-deps
   const startUpload = (doc?: HrEmployeeDetail['documents'][number], edit = false) => {
     setFile(null); setTitle(doc?.title ?? ''); setHist(''); setShared(false);
     setCredentialType(doc?.credentialType ?? ''); setExpiresOn(edit ? doc?.expiresOn ?? '' : '');
@@ -305,7 +315,7 @@ function DocumentsTab({ id, data }: { id: number; data: HrEmployeeDetail }) {
   const [busyId, setBusyId] = useState<number | null>(null);
   const pick = (f: File | null) => {
     if (f && f.size > MAX_UPLOAD) { toast.error('Files must be 10 MB or smaller'); return; }
-    if (f && !ALLOWED_UPLOAD.includes(f.type)) { toast.error('Upload a PDF, image, or Word (.docx) file'); return; }
+    if (f && !ALLOWED_UPLOAD.includes(f.type) && !(f.type === '' && /\.(pdf|png|jpe?g|webp|docx)$/i.test(f.name))) { toast.error('Upload a PDF, JPEG, PNG, WebP, or Word (.docx) file'); return; }
     setFile(f); if (f && !title) setTitle(f.name.replace(/\.[^.]+$/, ''));
   };
   const submit = () => {
@@ -332,7 +342,11 @@ function DocumentsTab({ id, data }: { id: number; data: HrEmployeeDetail }) {
         <Select value={filter} onValueChange={setFilter}><SelectTrigger className="w-56" aria-label="Document expiration filter"><SelectValue /></SelectTrigger>
           <SelectContent><SelectItem value="all">All documents & renewal history</SelectItem><SelectItem value="upcoming">Expiring within {data.credentialWarningDays} days</SelectItem><SelectItem value="expired">Expired</SelectItem><SelectItem value="renewed">Prior renewal evidence</SelectItem></SelectContent>
         </Select>
-        {data.canManage && <Button size="sm" className="gap-2 ml-auto" onClick={() => startUpload()} data-testid="button-upload-document"><Upload className="w-4 h-4" /> Upload document</Button>}
+        {data.canManage && <div className="flex flex-wrap gap-2 ml-auto">
+          <Button size="sm" variant="outline" onClick={() => startCredential('license')} data-testid="button-add-license">Add license</Button>
+          <Button size="sm" variant="outline" onClick={() => startCredential('certificate')} data-testid="button-add-certificate">Add certificate</Button>
+          <Button size="sm" className="gap-2" onClick={() => startUpload()} data-testid="button-upload-document"><Upload className="w-4 h-4" /> Upload document</Button>
+        </div>}
       </div>
       <p className="text-xs text-muted-foreground">Expiration warnings are for human review only. Renewals keep the original evidence. Employee notifications require deliberate sharing.</p>
       <Card><CardContent className="p-0">
@@ -354,7 +368,7 @@ function DocumentsTab({ id, data }: { id: number; data: HrEmployeeDetail }) {
       </CardContent></Card>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-          <SheetHeader className="mb-5"><SheetTitle>{editId ? 'Credential details' : renews ? 'Upload renewal' : 'Upload document'}</SheetTitle><SheetDescription>{editId ? 'The file is unchanged. Metadata changes are audited.' : renews ? 'Upload new evidence. The prior document and its expiration date will be retained. Sharing does not carry forward automatically.' : 'PDF, image, or Word (.docx), up to 10 MB.'}</SheetDescription></SheetHeader>
+          <SheetHeader className="mb-5"><SheetTitle>{editId ? 'Credential details' : renews ? 'Upload renewal' : credentialType === 'license' ? 'Add license' : credentialType === 'certificate' ? 'Add certificate' : 'Upload document'}</SheetTitle><SheetDescription>{editId ? 'The file is unchanged. Metadata changes are audited.' : renews ? 'Upload new evidence. The prior document and its expiration date will be retained. Sharing does not carry forward automatically.' : 'PDF, JPEG, PNG, WebP, or Word (.docx), up to 10 MB.'}</SheetDescription></SheetHeader>
           <div className="space-y-4">
             <div className="space-y-1.5"><label className="text-sm font-medium">Document type</label>
               <Select value={credentialType || 'other'} disabled={!!renews} onValueChange={v => { setCredentialType(v === 'other' ? '' : v); if(v === 'other') setExpiresOn(''); }}>
@@ -363,7 +377,7 @@ function DocumentsTab({ id, data }: { id: number; data: HrEmployeeDetail }) {
             </div>
             {credentialType && <div className="space-y-1.5"><label className="text-sm font-medium">Expiration date (optional)</label><Input type="date" aria-label="Expiration date" value={expiresOn} onChange={e => setExpiresOn(e.target.value)} /><p className="text-xs text-muted-foreground">Blank means no expiration warning. The credential is valid through this date.</p></div>}
             {!editId && <>
-            <Input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.heic,.docx" onChange={e => pick(e.target.files?.[0] ?? null)} data-testid="input-document-file" />
+            <Input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.docx" onChange={e => pick(e.target.files?.[0] ?? null)} data-testid="input-document-file" />
             <div className="space-y-1.5"><label className="text-sm font-medium">Title</label><Input value={title} onChange={e => setTitle(e.target.value)} /></div>
             <div className="space-y-1.5"><label className="text-sm font-medium">Link to record (optional)</label>
               <Select value={hist || '__none__'} onValueChange={v => setHist(v === '__none__' ? '' : v)}>
@@ -569,7 +583,7 @@ export default function EmployeeFilePage() {
   const isSelf = meta.data?.ownUserId === id;
   const [addOpen, setAddOpen] = useState(false);
   const [evidence, setEvidence] = useState<{ timeEntryIds: number[]; subTimerIds: number[] }>({ timeEntryIds: [], subTimerIds: [] });
-  const [tab, setTab] = useState('history');
+  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') ?? 'history');
   const noEvidence = useMemo(() => ({ timeEntryIds: [] as number[], subTimerIds: [] as number[] }), []);
 
   if (meta.isLoading || q.isLoading) return <div className="space-y-3"><Skeleton className="h-10 w-64" /><Skeleton className="h-48" /></div>;

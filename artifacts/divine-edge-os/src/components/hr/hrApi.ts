@@ -164,12 +164,13 @@ export async function downloadHrDocument(doc: HrDocument) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export const ACCEPTED_DOCS = '.pdf,.png,.jpg,.jpeg,.webp,.gif,.docx,application/pdf,image/*,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+export const ACCEPTED_DOCS = '.pdf,.png,.jpg,.jpeg,.webp,.docx,application/pdf,image/jpeg,image/png,image/webp,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const DOC_MIME = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']);
 export const MAX_DOC_BYTES = 10 * 1024 * 1024;
 export function validateDoc(f: File): string | null {
   if (f.size > MAX_DOC_BYTES) return 'File must be 10 MB or smaller.';
-  const ok = f.type === 'application/pdf' || f.type.startsWith('image/') || /\.docx$/i.test(f.name) || /\.pdf$/i.test(f.name);
-  return ok ? null : 'Only PDF, image, or Word (.docx) files are accepted.';
+  const ok = DOC_MIME.has(f.type) || (f.type === '' && /\.(pdf|png|jpe?g|webp|docx)$/i.test(f.name));
+  return ok ? null : 'Only PDF, JPEG, PNG, WebP, or Word (.docx) files are accepted.';
 }
 export const fmtBytes = (n: number) => n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
 

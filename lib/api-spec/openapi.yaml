@@ -69,6 +69,18 @@ paths:
     $ref: "./website-intake.yaml#/inboxPath"
   /website-intake/submissions/{id}/review:
     $ref: "./website-intake.yaml#/reviewPath"
+  /website-intake/submissions/{id}/files/{fileId}:
+    get:
+      operationId: downloadWebsiteIntakeFile
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+        - {name: fileId, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Private tenant-authorized download; hiring requires HR access
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
   /public-intake/config:
     $ref: "./website-intake.yaml#/publicConfigPath"
   /public-intake/submit:

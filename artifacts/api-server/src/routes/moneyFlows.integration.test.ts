@@ -4,8 +4,14 @@ import request from "supertest";
 import {drizzle} from "drizzle-orm/node-postgres";
 import {and,eq,inArray} from "drizzle-orm";
 import {randomUUID,createHash} from "node:crypto";
+import {Readable} from 'node:stream';
 
 const scope=vi.hoisted(()=>({tenant:0,user:0,connection:null as any}));
+const intakeStorage=vi.hoisted(()=>({save:vi.fn().mockResolvedValue('/objects/hr-documents/intake_fixture'),remove:vi.fn().mockResolvedValue(undefined),get:vi.fn()}));
+vi.mock('../lib/hrFiles',async original=>{
+ const actual=await original<typeof import('../lib/hrFiles')>();
+ return {...actual,hrStorage:{saveHrDocument:intakeStorage.save,deleteObjectEntity:intakeStorage.remove,getObjectEntityFile:intakeStorage.get}};
+});
 const gateway=vi.hoisted(()=>({checkout:{sessions:{create:vi.fn().mockResolvedValue({url:"https://checkout.example.invalid/fixture"})}},webhooks:{constructEvent:vi.fn()},paymentIntents:{retrieve:vi.fn().mockResolvedValue({customer:"cus_qa",payment_method:"pm_qa"})},paymentMethods:{retrieve:vi.fn().mockResolvedValue({id:"pm_qa",customer:"cus_qa",card:{brand:"visa",last4:"4242",exp_year:2030,exp_month:11}})}}));
 vi.mock("../lib/stripe",()=>({getStripeClient:()=>gateway,getStripePublishableKey:()=>"pk_test_fixture",ensureStripeCustomer:async()=>"cus_qa"}));
 // Portal owns a second Stripe factory; mock the SDK too so no test can call a gateway.
@@ -45,6 +51,7 @@ import {defaultWebsiteFlow} from '@workspace/api-client-react/website-flow';
 describe("rollback-only pricing, inventory and invoice recovery",()=>{
   let client:any,serial=0,customer:number,item:number,warehouse:number,job:number,otherTenant:number;
   const app=express();
+  app.set('trust proxy',1);
   app.use(express.json({verify:(req,_res,buffer)=>{(req as any).rawBody=buffer;}}),expenses,pricing,safety,policies,reminderSettings,portal,sharing,invoices,estimates,settings,kpis,websiteIntake,publicWebsiteIntakeRouter,vendorRoutes);
   app.use((error:any,_req:any,res:any,_next:any)=>res.status(500).json({error:error.message,cause:error.cause?.message}));
   beforeAll(async()=>{
@@ -131,14 +138,14 @@ describe("rollback-only pricing, inventory and invoice recovery",()=>{
     await db.execute(sql`UPDATE tenants SET acquisition_settings='{"quoteWidgetEnabled":true}'::jsonb WHERE id=${scope.tenant}`);
     const [service]=await db.insert(servicesTable).values({tenantId:scope.tenant,name:"Website QA service",basePrice:100,pricingMode:"flat"}).returning();
     const startCustomers=(await db.select().from(customersTable).where(eq(customersTable.tenantId,scope.tenant))).length;
-    const flow=defaultWebsiteFlow('quote');flow.title='Public quote before edit';
+    const flow=defaultWebsiteFlow('quote');flow.title='Public quote before edit';flow.steps.at(-1)!.allowApproximate=true;flow.steps.at(-1)!.approximateTerms='Size is approximate; confirm pricing after verification.';
     flow.steps[0].questions.push({id:'gate',label:'Is there a locked gate?',type:'select',required:true,options:['Yes','No']},{id:'gateCode',label:'Gate code',type:'text',required:true,options:[],condition:{field:'gate',operator:'equals',value:'Yes'}});
     expect((await request(app).put('/website-intake/forms/quote').send({definition:flow,revision:0,publish:false})).status).toBe(200);
     expect((await request(app).get(`/public-intake/config?kind=quote&tenantId=${scope.tenant}`)).body.definition.title).not.toBe(flow.title);
     expect((await request(app).put('/website-intake/forms/quote').send({definition:flow,revision:1,publish:true})).status).toBe(200);
     expect((await request(app).put('/website-intake/forms/quote').send({definition:flow,revision:1,publish:true})).status).toBe(409);
     const config=(await request(app).get(`/public-intake/config?kind=quote&tenantId=${scope.tenant}`)).body;
-    const body={tenantId:scope.tenant,kind:'quote',requestId:randomUUID(),revision:config.revision,consent:true,answers:{name:'Website QA',email:'website@example.invalid',serviceIds:[String(service.id)],address:'1 Main',city:'Denver',state:'CO',zip:'80000',lat:40.12,lng:-105.12,pinConfirmed:true,gate:'No',gateCode:'must be dropped'},measurements:{measure:{mode:'area',points:[],manual:1000}}};
+    const body={tenantId:scope.tenant,kind:'quote',requestId:randomUUID(),revision:config.revision,consent:true,answers:{name:'Website QA',email:'website@example.invalid',serviceIds:[String(service.id)],address:'1 Main',city:'Denver',state:'CO',zip:'80000',lat:40.12,lng:-105.12,pinConfirmed:true,gate:'No',gateCode:'must be dropped'},measurements:{measure:{mode:'area',points:[],manual:1000,acceptedTerms:true}}};
     const first=await request(app).post('/public-intake/submit').send(body);expect(first.status,JSON.stringify(first.body)).toBe(201);
     expect(first.body.preview.total).toBe(100);
     expect((await request(app).post('/public-intake/submit').send(body)).body.reference).toBe(first.body.reference);
@@ -212,6 +219,64 @@ describe("rollback-only pricing, inventory and invoice recovery",()=>{
       await db.update(usersTable).set({role:'technician'}).where(eq(usersTable.id,otherOwner.id));
       expect((await request(app).post('/expense-categories').send({name:'Denied'})).status).toBe(403);
     }finally{scope.tenant=originalTenant;scope.user=originalUser;await client.query('ROLLBACK TO SAVEPOINT vendor_category_fixture');await client.query('RELEASE SAVEPOINT vendor_category_fixture');}
+  });
+  it('enforces offered services and private company-controlled JPEG/PDF uploads without creating CRM records',async()=>{
+    await client.query('SAVEPOINT website_attachment_fixture');
+    const owner=scope.user;
+    const post=()=>request(app).post('/public-intake/submit').set('X-Forwarded-For','198.51.100.23');
+    try{
+      const [offered]=await db.insert(servicesTable).values({tenantId:scope.tenant,name:'Offered service',basePrice:75}).returning();
+      const [excluded]=await db.insert(servicesTable).values({tenantId:scope.tenant,name:'Not offered',basePrice:99}).returning();
+      const flow=defaultWebsiteFlow('quote');flow.uploads={enabled:true,required:true,label:'Property photos or documents'};
+      const picker=flow.steps.flatMap(s=>s.questions).find(q=>q.id==='serviceIds')!;picker.type='select';picker.options=[String(offered.id)];
+      const old=(await request(app).get('/website-intake/forms/quote')).body;
+      const saved=await request(app).put('/website-intake/forms/quote').send({definition:flow,revision:old.revision,publish:true});expect(saved.status,JSON.stringify(saved.body)).toBe(200);
+      const config=(await request(app).get(`/public-intake/config?kind=quote&tenantId=${scope.tenant}`)).body;
+      expect(config.services.map((s:any)=>s.id)).toEqual([offered.id]);
+      const body={tenantId:scope.tenant,kind:'quote',requestId:randomUUID(),revision:config.revision,consent:true,answers:{name:'Attachment QA',email:'files@example.invalid',serviceIds:String(offered.id),address:'1 Main',city:'Denver',state:'CO',zip:'80000'},measurements:{}};
+      expect((await post().send(body)).status).toBe(400);
+      const pdf=Buffer.from('%PDF-1.4 fixture'),saveCount=intakeStorage.save.mock.calls.length;
+      const received=await post().field('submission',JSON.stringify(body)).attach('files',pdf,'property.pdf');
+      expect(received.status,JSON.stringify(received.body)).toBe(201);
+      expect(received.body.attachments).toBeUndefined();expect(intakeStorage.save.mock.calls.length).toBe(saveCount+1);
+      const repeat=await post().field('submission',JSON.stringify(body)).attach('files',pdf,'property.pdf');
+      expect(repeat.body.reference).toBe(received.body.reference);expect(intakeStorage.save.mock.calls.length).toBe(saveCount+1);
+      const inbox=(await request(app).get('/website-intake/submissions?kind=quote')).body;
+      const entry=inbox.submissions.find((s:any)=>s.payload.answers.name==='Attachment QA');
+      expect(entry.customerId).toBeNull();expect(entry.estimateId).toBeNull();expect(entry.payload.attachments[0].objectPath).toBeUndefined();
+      expect(entry.payload.attachments[0].fileName).toBe('property.pdf');
+      intakeStorage.get.mockImplementation(async()=>({createReadStream:()=>Readable.from([pdf])}));
+      const download=await request(app).get(`/website-intake/submissions/${entry.id}/files/${entry.payload.attachments[0].id}`);
+      expect(download.status).toBe(200);expect(download.headers['content-disposition']).toContain('attachment');expect(download.headers['cache-control']).toContain('no-store');
+      const notOffered=await post().field('submission',JSON.stringify({...body,requestId:randomUUID(),answers:{...body.answers,serviceIds:String(excluded.id)}})).attach('files',pdf,'property.pdf');
+      expect(notOffered.status).toBe(400);
+      const badType=await post().field('submission',JSON.stringify({...body,requestId:randomUUID()})).attach('files',Buffer.from('<svg/>'),'photo.jpg');
+      expect(badType.status).toBe(400);
+      const png=Buffer.from([137,80,78,71,13,10,26,10,0]);
+      expect((await post().field('submission',JSON.stringify({...body,requestId:randomUUID()})).attach('files',png,'photo.png')).status).toBe(400);
+      const removeCount=intakeStorage.remove.mock.calls.length;
+      intakeStorage.save.mockResolvedValueOnce('/objects/hr-documents/rollback_fixture').mockRejectedValueOnce(new Error('Storage temporarily unavailable'));
+      const interrupted=await post().field('submission',JSON.stringify({...body,requestId:randomUUID()})).attach('files',pdf,'one.pdf').attach('files',pdf,'two.pdf');
+      expect(interrupted.status).toBe(500);expect(intakeStorage.remove.mock.calls.length).toBe(removeCount+1);
+      const hiring=defaultWebsiteFlow('hiring');hiring.uploads={enabled:true,required:false,label:'Application supporting documents'};
+      const previous=(await request(app).get('/website-intake/forms/hiring')).body;
+      expect((await request(app).put('/website-intake/forms/hiring').send({definition:hiring,revision:previous.revision,publish:true})).status).toBe(200);
+      const hiringConfig=(await request(app).get(`/public-intake/config?kind=hiring&tenantId=${scope.tenant}`)).body;
+      const application=await post().field('submission',JSON.stringify({tenantId:scope.tenant,kind:'hiring',requestId:randomUUID(),revision:hiringConfig.revision,consent:true,answers:{name:'Applicant with documents',email:'applicant-files@example.invalid'},measurements:{}})).attach('files',pdf,'certificate.pdf');
+      expect(application.status,JSON.stringify(application.body)).toBe(201);
+      const hiringInbox=(await request(app).get('/website-intake/submissions?kind=hiring')).body;
+      const hiringEntry=hiringInbox.submissions.find((s:any)=>s.payload.answers.name==='Applicant with documents');
+      expect(hiringEntry.applicationId).toBeTruthy();expect(hiringEntry.payload.attachments[0].objectPath).toBeUndefined();
+      expect((await request(app).get(`/website-intake/submissions/${hiringEntry.id}/files/${hiringEntry.payload.attachments[0].id}`)).status).toBe(200);
+      const [manager]=await db.insert(usersTable).values({tenantId:scope.tenant,name:'Non-HR file test',email:`${randomUUID()}@example.invalid`,role:'office_manager'}).returning();scope.user=manager.id;
+      expect((await request(app).get(`/website-intake/submissions/${hiringEntry.id}/files/${hiringEntry.payload.attachments[0].id}`)).status).toBe(403);scope.user=owner;
+      flow.uploads={enabled:false,required:false,label:'Property attachments'};
+      expect((await request(app).put('/website-intake/forms/quote').send({definition:flow,revision:saved.body.revision,publish:true})).status).toBe(200);
+      const disabled=(await request(app).get(`/public-intake/config?kind=quote&tenantId=${scope.tenant}`)).body;
+      expect((await post().field('submission',JSON.stringify({...body,requestId:randomUUID(),revision:disabled.revision})).attach('files',pdf,'not-enabled.pdf')).status).toBe(400);
+      const [nonHr]=await db.insert(usersTable).values({tenantId:scope.tenant,name:'Private credential test',email:`${randomUUID()}@example.invalid`,role:'technician'}).returning();scope.user=nonHr.id;
+      expect((await request(app).get(`/website-intake/submissions/${entry.id}/files/${entry.payload.attachments[0].id}`)).status).toBe(403);
+    }finally{scope.user=owner;await client.query('ROLLBACK TO SAVEPOINT website_attachment_fixture');await client.query('RELEASE SAVEPOINT website_attachment_fixture');}
   });
   afterAll(async()=>{vi.unstubAllEnvs();scope.connection=null;if(client){await client.query("ROLLBACK");client.release();}});
   it("receives once, preserves old stock and markup, and rolls back invalid receipts",async()=>{

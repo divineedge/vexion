@@ -9,8 +9,8 @@ export interface ReviewInput {action:'approve'|'decline'|'review';notes?:string;
 export const reviewWebsiteSubmission=(id:number,input:ReviewInput)=>customFetch<WebsiteSubmission>(`/api/website-intake/submissions/${id}/review`,{method:'POST',body:JSON.stringify(input)});
 export interface PublicWebsiteConfig {tenantId:number;companyName:string;enabled:boolean;definition:FlowDefinition;revision:number;services:{id:number;name:string}[];postings:{id:number;title:string}[];privacyNotice:string}
 export const loadPublicWebsiteForm=(input:{kind:FlowKind;tenantId?:string|number;slug?:string})=>customFetch<PublicWebsiteConfig>(`/api/public-intake/config?${new URLSearchParams(Object.entries(input).filter(([,v])=>v!=null).map(([k,v])=>[k,String(v)]))}`);
-export const submitPublicWebsiteForm=(input:{tenantId:number;kind:FlowKind;requestId:string;revision:number;answers:Answers;measurements:Measurements;consent:boolean;referralCode?:string;doorHangerCode?:string},resume?:File)=>{
- const data=resume?new FormData():null;
- if(data){data.append('submission',JSON.stringify(input));data.append('resume',resume!);}
+export const submitPublicWebsiteForm=(input:{tenantId:number;kind:FlowKind;requestId:string;revision:number;answers:Answers;measurements:Measurements;consent:boolean;referralCode?:string;doorHangerCode?:string},resume?:File,files:File[]=[])=>{
+ const data=resume||files.length?new FormData():null;
+ if(data){data.append('submission',JSON.stringify(input));if(resume)data.append('resume',resume);for(const file of files)data.append('files',file);}
  return customFetch<{received:true;pendingReview:true;reference:string;preview:PricePreview|null}>('/api/public-intake/submit',{method:'POST',body:data??JSON.stringify(input)});
 };

@@ -10,6 +10,7 @@ import { Globe, Lock, AlertTriangle, Save, Send, RotateCcw, Calculator, UserPlus
 import { Link } from 'wouter';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
+import { useListServices, getListServicesQueryKey } from '@workspace/api-client-react';
 import { useHrMeta } from '@/components/hr/hrApi';
 import { loadWebsiteForm, saveWebsiteForm, loadPublicWebsiteForm, type FlowDefinition } from '@/lib/websiteIntake';
 import FlowBuilder from '@/components/website-intake/FlowBuilder';
@@ -65,6 +66,11 @@ function Workspace({ kind }: { kind: Kind }) {
   const [err, setErr] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
   const init = useRef(false);
+  const svc = useListServices({ activeOnly: true }, { query: { enabled: kind === 'quote', queryKey: getListServicesQueryKey({ activeOnly: true }) } });
+  const previewServices = useMemo(() => {
+    const allowed = draft?.steps.flatMap(s => s.questions).find(q => q.id === 'serviceIds')?.options ?? [];
+    return (svc.data ?? []).filter(s => !allowed.length || allowed.includes(String(s.id))).map(s => ({ id: s.id, name: s.name }));
+  }, [svc.data, draft]);
   useEffect(() => { if (q.data && !init.current) { init.current = true; setDraft(q.data.definition); setRevision(q.data.revision); } }, [q.data]);
   const dirty = useMemo(() => !!draft && !!q.data && JSON.stringify(draft) !== JSON.stringify(q.data.definition), [draft, q.data]);
 
@@ -107,6 +113,12 @@ function Workspace({ kind }: { kind: Kind }) {
         </div>
       )}
       <PublicLinkPanel kind={kind} />
+      {kind === 'hiring' && (
+        <p className="mt-3 text-xs text-muted-foreground rounded-lg border bg-muted/30 p-3" data-testid="text-openings-hint">
+          Job openings shown in the position picker are managed in Employees, Hiring, Job openings.{' '}
+          <Link href="/hiring?tab=postings" className="underline" data-testid="link-job-openings">Create or edit job openings</Link>
+        </p>
+      )}
       <TabsContent value="build" className="mt-4 space-y-4">
         <FlowBuilder value={draft} onChange={setDraft} kind={kind} />
         <div className="sticky bottom-3 z-10 flex justify-end gap-2 rounded-xl border bg-background/90 backdrop-blur p-2 shadow-lg">
@@ -122,7 +134,15 @@ function Workspace({ kind }: { kind: Kind }) {
             {draft.intro && <p className="text-sm opacity-90 mt-1">{draft.intro}</p>}
           </div>
           <div className="p-5">
-            {draft.steps.length ? <FlowRenderer key={JSON.stringify(draft)} definition={draft} preview allowProperty={kind === 'quote'} />
+            {draft.uploads?.enabled && (
+              <div className="mb-5 rounded-lg border border-dashed p-3 space-y-2" data-testid="preview-attachments">
+                <p className="text-sm font-medium">{draft.uploads.label || 'Attachments'} {draft.uploads.required ? <span className="text-primary">*</span> : <span className="text-muted-foreground font-normal">(optional)</span>}</p>
+                <Button type="button" variant="outline" size="sm" disabled aria-disabled="true" data-testid="button-preview-add-attachment">Add files</Button>
+                <p className="text-[11px] text-muted-foreground">JPEG or PDF, up to 5 files, 10 MB each, 25 MB combined{kind === 'hiring' ? ' including the resume' : ''}. Private to the business.</p>
+                <p className="text-[11px] text-muted-foreground">Preview only: file selection is disabled here and nothing is uploaded or checked.</p>
+              </div>
+            )}
+            {draft.steps.length ? <FlowRenderer key={JSON.stringify(draft)} definition={draft} services={previewServices} preview allowProperty={kind === 'quote'} />
               : <p className="text-sm text-muted-foreground text-center py-6">Add a step to preview the form.</p>}
           </div>
         </div>

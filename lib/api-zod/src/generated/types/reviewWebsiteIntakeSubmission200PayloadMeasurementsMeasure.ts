@@ -7,9 +7,12 @@
  */
 import type { ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasureMode } from './reviewWebsiteIntakeSubmission200PayloadMeasurementsMeasureMode';
 import type { ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasurePointsItem } from './reviewWebsiteIntakeSubmission200PayloadMeasurementsMeasurePointsItem';
+import type { ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasureSource } from './reviewWebsiteIntakeSubmission200PayloadMeasurementsMeasureSource';
 
 export type ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasure = {
   mode: ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasureMode;
   points: ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasurePointsItem[];
   manual?: number;
+  source?: ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasureSource;
+  acceptedTerms?: boolean;
 };

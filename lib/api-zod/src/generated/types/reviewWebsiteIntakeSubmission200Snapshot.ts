@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ReviewWebsiteIntakeSubmission200SnapshotStepsItem } from './reviewWebsiteIntakeSubmission200SnapshotStepsItem';
+import type { ReviewWebsiteIntakeSubmission200SnapshotUploads } from './reviewWebsiteIntakeSubmission200SnapshotUploads';
 
 export type ReviewWebsiteIntakeSubmission200Snapshot = {
   title: string;
@@ -13,4 +14,5 @@ export type ReviewWebsiteIntakeSubmission200Snapshot = {
   privacyNotice: string;
   successMessage: string;
   steps: ReviewWebsiteIntakeSubmission200SnapshotStepsItem[];
+  uploads?: ReviewWebsiteIntakeSubmission200SnapshotUploads;
 };

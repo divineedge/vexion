@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { GetPublicWebsiteIntakeConfig200DefinitionStepsItem } from './getPublicWebsiteIntakeConfig200DefinitionStepsItem';
+import type { GetPublicWebsiteIntakeConfig200DefinitionUploads } from './getPublicWebsiteIntakeConfig200DefinitionUploads';
 
 export type GetPublicWebsiteIntakeConfig200Definition = {
   title: string;
@@ -13,4 +14,5 @@ export type GetPublicWebsiteIntakeConfig200Definition = {
   privacyNotice: string;
   successMessage: string;
   steps: GetPublicWebsiteIntakeConfig200DefinitionStepsItem[];
+  uploads?: GetPublicWebsiteIntakeConfig200DefinitionUploads;
 };

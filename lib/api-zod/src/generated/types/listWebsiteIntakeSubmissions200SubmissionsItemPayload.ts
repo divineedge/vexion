@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ListWebsiteIntakeSubmissions200SubmissionsItemPayloadAnswers } from './listWebsiteIntakeSubmissions200SubmissionsItemPayloadAnswers';
+import type { ListWebsiteIntakeSubmissions200SubmissionsItemPayloadAttachmentsItem } from './listWebsiteIntakeSubmissions200SubmissionsItemPayloadAttachmentsItem';
 import type { ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurements } from './listWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurements';
 
 export type ListWebsiteIntakeSubmissions200SubmissionsItemPayload = {
@@ -17,6 +18,7 @@ export type ListWebsiteIntakeSubmissions200SubmissionsItemPayload = {
   lengthFt?: number | null;
   revision?: number;
   consentAt?: string;
+  attachments?: ListWebsiteIntakeSubmissions200SubmissionsItemPayloadAttachmentsItem[];
   referralCode?: string;
   doorHangerCode?: string;
 };

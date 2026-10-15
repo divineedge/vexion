@@ -7362,8 +7362,16 @@ export type GetWebsiteIntakeForm200DefinitionStepsItem = {
   required: boolean;
   measurementMode: GetWebsiteIntakeForm200DefinitionStepsItemMeasurementMode;
   allowPinMove: boolean;
+  allowApproximate?: boolean;
+  approximateTerms?: string;
   condition?: GetWebsiteIntakeForm200DefinitionStepsItemCondition;
   questions: GetWebsiteIntakeForm200DefinitionStepsItemQuestionsItem[];
+};
+
+export type GetWebsiteIntakeForm200DefinitionUploads = {
+  enabled: boolean;
+  required: boolean;
+  label: string;
 };
 
 export type GetWebsiteIntakeForm200Definition = {
@@ -7372,6 +7380,7 @@ export type GetWebsiteIntakeForm200Definition = {
   privacyNotice: string;
   successMessage: string;
   steps: GetWebsiteIntakeForm200DefinitionStepsItem[];
+  uploads?: GetWebsiteIntakeForm200DefinitionUploads;
 };
 
 export type GetWebsiteIntakeForm200PublishedStepsItemKind = typeof GetWebsiteIntakeForm200PublishedStepsItemKind[keyof typeof GetWebsiteIntakeForm200PublishedStepsItemKind];
@@ -7454,8 +7463,16 @@ export type GetWebsiteIntakeForm200PublishedStepsItem = {
   required: boolean;
   measurementMode: GetWebsiteIntakeForm200PublishedStepsItemMeasurementMode;
   allowPinMove: boolean;
+  allowApproximate?: boolean;
+  approximateTerms?: string;
   condition?: GetWebsiteIntakeForm200PublishedStepsItemCondition;
   questions: GetWebsiteIntakeForm200PublishedStepsItemQuestionsItem[];
+};
+
+export type GetWebsiteIntakeForm200PublishedUploads = {
+  enabled: boolean;
+  required: boolean;
+  label: string;
 };
 
 export type GetWebsiteIntakeForm200Published = {
@@ -7464,6 +7481,7 @@ export type GetWebsiteIntakeForm200Published = {
   privacyNotice: string;
   successMessage: string;
   steps: GetWebsiteIntakeForm200PublishedStepsItem[];
+  uploads?: GetWebsiteIntakeForm200PublishedUploads;
 } | null;
 
 export type GetWebsiteIntakeForm200 = {
@@ -7552,8 +7570,16 @@ export type SaveWebsiteIntakeFormBodyDefinitionStepsItem = {
   required: boolean;
   measurementMode: SaveWebsiteIntakeFormBodyDefinitionStepsItemMeasurementMode;
   allowPinMove: boolean;
+  allowApproximate?: boolean;
+  approximateTerms?: string;
   condition?: SaveWebsiteIntakeFormBodyDefinitionStepsItemCondition;
   questions: SaveWebsiteIntakeFormBodyDefinitionStepsItemQuestionsItem[];
+};
+
+export type SaveWebsiteIntakeFormBodyDefinitionUploads = {
+  enabled: boolean;
+  required: boolean;
+  label: string;
 };
 
 export type SaveWebsiteIntakeFormBodyDefinition = {
@@ -7562,6 +7588,7 @@ export type SaveWebsiteIntakeFormBodyDefinition = {
   privacyNotice: string;
   successMessage: string;
   steps: SaveWebsiteIntakeFormBodyDefinitionStepsItem[];
+  uploads?: SaveWebsiteIntakeFormBodyDefinitionUploads;
 };
 
 export type SaveWebsiteIntakeFormBody = {
@@ -7650,8 +7677,16 @@ export type SaveWebsiteIntakeForm200DefinitionStepsItem = {
   required: boolean;
   measurementMode: SaveWebsiteIntakeForm200DefinitionStepsItemMeasurementMode;
   allowPinMove: boolean;
+  allowApproximate?: boolean;
+  approximateTerms?: string;
   condition?: SaveWebsiteIntakeForm200DefinitionStepsItemCondition;
   questions: SaveWebsiteIntakeForm200DefinitionStepsItemQuestionsItem[];
+};
+
+export type SaveWebsiteIntakeForm200DefinitionUploads = {
+  enabled: boolean;
+  required: boolean;
+  label: string;
 };
 
 export type SaveWebsiteIntakeForm200Definition = {
@@ -7660,6 +7695,7 @@ export type SaveWebsiteIntakeForm200Definition = {
   privacyNotice: string;
   successMessage: string;
   steps: SaveWebsiteIntakeForm200DefinitionStepsItem[];
+  uploads?: SaveWebsiteIntakeForm200DefinitionUploads;
 };
 
 export type SaveWebsiteIntakeForm200PublishedStepsItemKind = typeof SaveWebsiteIntakeForm200PublishedStepsItemKind[keyof typeof SaveWebsiteIntakeForm200PublishedStepsItemKind];
@@ -7742,8 +7778,16 @@ export type SaveWebsiteIntakeForm200PublishedStepsItem = {
   required: boolean;
   measurementMode: SaveWebsiteIntakeForm200PublishedStepsItemMeasurementMode;
   allowPinMove: boolean;
+  allowApproximate?: boolean;
+  approximateTerms?: string;
   condition?: SaveWebsiteIntakeForm200PublishedStepsItemCondition;
   questions: SaveWebsiteIntakeForm200PublishedStepsItemQuestionsItem[];
+};
+
+export type SaveWebsiteIntakeForm200PublishedUploads = {
+  enabled: boolean;
+  required: boolean;
+  label: string;
 };
 
 export type SaveWebsiteIntakeForm200Published = {
@@ -7752,6 +7796,7 @@ export type SaveWebsiteIntakeForm200Published = {
   privacyNotice: string;
   successMessage: string;
   steps: SaveWebsiteIntakeForm200PublishedStepsItem[];
+  uploads?: SaveWebsiteIntakeForm200PublishedUploads;
 } | null;
 
 export type SaveWebsiteIntakeForm200 = {
@@ -7864,8 +7909,16 @@ export type ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItem = {
   required: boolean;
   measurementMode: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemMeasurementMode;
   allowPinMove: boolean;
+  allowApproximate?: boolean;
+  approximateTerms?: string;
   condition?: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemCondition;
   questions: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItemQuestionsItem[];
+};
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotUploads = {
+  enabled: boolean;
+  required: boolean;
+  label: string;
 };
 
 export type ListWebsiteIntakeSubmissions200SubmissionsItemSnapshot = {
@@ -7874,6 +7927,7 @@ export type ListWebsiteIntakeSubmissions200SubmissionsItemSnapshot = {
   privacyNotice: string;
   successMessage: string;
   steps: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotStepsItem[];
+  uploads?: ListWebsiteIntakeSubmissions200SubmissionsItemSnapshotUploads;
 };
 
 export type ListWebsiteIntakeSubmissions200SubmissionsItemPayloadAnswers = {
@@ -7899,15 +7953,41 @@ export type ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMea
   lng: number;
 };
 
+export type ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasureSource = typeof ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasureSource[keyof typeof ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasureSource];
+
+
+export const ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasureSource = {
+  drawn: 'drawn',
+  approximate: 'approximate',
+} as const;
+
 export type ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasure = {
   mode: ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasureMode;
   points: ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasurePointsItem[];
   manual?: number;
+  source?: ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasureSource;
+  acceptedTerms?: boolean;
 };
 
 export type ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurements = {
   measure?: ListWebsiteIntakeSubmissions200SubmissionsItemPayloadMeasurementsMeasure;
   [key: string]: unknown;
+};
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemPayloadAttachmentsItemRole = typeof ListWebsiteIntakeSubmissions200SubmissionsItemPayloadAttachmentsItemRole[keyof typeof ListWebsiteIntakeSubmissions200SubmissionsItemPayloadAttachmentsItemRole];
+
+
+export const ListWebsiteIntakeSubmissions200SubmissionsItemPayloadAttachmentsItemRole = {
+  attachment: 'attachment',
+  resume: 'resume',
+} as const;
+
+export type ListWebsiteIntakeSubmissions200SubmissionsItemPayloadAttachmentsItem = {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  role: ListWebsiteIntakeSubmissions200SubmissionsItemPayloadAttachmentsItemRole;
 };
 
 export type ListWebsiteIntakeSubmissions200SubmissionsItemPayload = {
@@ -7919,6 +7999,7 @@ export type ListWebsiteIntakeSubmissions200SubmissionsItemPayload = {
   lengthFt?: number | null;
   revision?: number;
   consentAt?: string;
+  attachments?: ListWebsiteIntakeSubmissions200SubmissionsItemPayloadAttachmentsItem[];
   referralCode?: string;
   doorHangerCode?: string;
 };
@@ -8106,8 +8187,16 @@ export type ReviewWebsiteIntakeSubmission200SnapshotStepsItem = {
   required: boolean;
   measurementMode: ReviewWebsiteIntakeSubmission200SnapshotStepsItemMeasurementMode;
   allowPinMove: boolean;
+  allowApproximate?: boolean;
+  approximateTerms?: string;
   condition?: ReviewWebsiteIntakeSubmission200SnapshotStepsItemCondition;
   questions: ReviewWebsiteIntakeSubmission200SnapshotStepsItemQuestionsItem[];
+};
+
+export type ReviewWebsiteIntakeSubmission200SnapshotUploads = {
+  enabled: boolean;
+  required: boolean;
+  label: string;
 };
 
 export type ReviewWebsiteIntakeSubmission200Snapshot = {
@@ -8116,6 +8205,7 @@ export type ReviewWebsiteIntakeSubmission200Snapshot = {
   privacyNotice: string;
   successMessage: string;
   steps: ReviewWebsiteIntakeSubmission200SnapshotStepsItem[];
+  uploads?: ReviewWebsiteIntakeSubmission200SnapshotUploads;
 };
 
 export type ReviewWebsiteIntakeSubmission200PayloadAnswers = {
@@ -8141,15 +8231,41 @@ export type ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasurePointsItem
   lng: number;
 };
 
+export type ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasureSource = typeof ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasureSource[keyof typeof ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasureSource];
+
+
+export const ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasureSource = {
+  drawn: 'drawn',
+  approximate: 'approximate',
+} as const;
+
 export type ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasure = {
   mode: ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasureMode;
   points: ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasurePointsItem[];
   manual?: number;
+  source?: ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasureSource;
+  acceptedTerms?: boolean;
 };
 
 export type ReviewWebsiteIntakeSubmission200PayloadMeasurements = {
   measure?: ReviewWebsiteIntakeSubmission200PayloadMeasurementsMeasure;
   [key: string]: unknown;
+};
+
+export type ReviewWebsiteIntakeSubmission200PayloadAttachmentsItemRole = typeof ReviewWebsiteIntakeSubmission200PayloadAttachmentsItemRole[keyof typeof ReviewWebsiteIntakeSubmission200PayloadAttachmentsItemRole];
+
+
+export const ReviewWebsiteIntakeSubmission200PayloadAttachmentsItemRole = {
+  attachment: 'attachment',
+  resume: 'resume',
+} as const;
+
+export type ReviewWebsiteIntakeSubmission200PayloadAttachmentsItem = {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  role: ReviewWebsiteIntakeSubmission200PayloadAttachmentsItemRole;
 };
 
 export type ReviewWebsiteIntakeSubmission200Payload = {
@@ -8161,6 +8277,7 @@ export type ReviewWebsiteIntakeSubmission200Payload = {
   lengthFt?: number | null;
   revision?: number;
   consentAt?: string;
+  attachments?: ReviewWebsiteIntakeSubmission200PayloadAttachmentsItem[];
   referralCode?: string;
   doorHangerCode?: string;
 };
@@ -8320,8 +8437,16 @@ export type GetPublicWebsiteIntakeConfig200DefinitionStepsItem = {
   required: boolean;
   measurementMode: GetPublicWebsiteIntakeConfig200DefinitionStepsItemMeasurementMode;
   allowPinMove: boolean;
+  allowApproximate?: boolean;
+  approximateTerms?: string;
   condition?: GetPublicWebsiteIntakeConfig200DefinitionStepsItemCondition;
   questions: GetPublicWebsiteIntakeConfig200DefinitionStepsItemQuestionsItem[];
+};
+
+export type GetPublicWebsiteIntakeConfig200DefinitionUploads = {
+  enabled: boolean;
+  required: boolean;
+  label: string;
 };
 
 export type GetPublicWebsiteIntakeConfig200Definition = {
@@ -8330,6 +8455,7 @@ export type GetPublicWebsiteIntakeConfig200Definition = {
   privacyNotice: string;
   successMessage: string;
   steps: GetPublicWebsiteIntakeConfig200DefinitionStepsItem[];
+  uploads?: GetPublicWebsiteIntakeConfig200DefinitionUploads;
 };
 
 export type GetPublicWebsiteIntakeConfig200ServicesItem = {
@@ -8384,10 +8510,20 @@ export type SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasurePointsItem = {
   lng: number;
 };
 
+export type SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasureSource = typeof SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasureSource[keyof typeof SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasureSource];
+
+
+export const SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasureSource = {
+  drawn: 'drawn',
+  approximate: 'approximate',
+} as const;
+
 export type SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasure = {
   mode: SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasureMode;
   points: SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasurePointsItem[];
   manual?: number;
+  source?: SubmitPublicWebsiteIntakeBodyOneMeasurementsMeasureSource;
+  acceptedTerms?: boolean;
 };
 
 export type SubmitPublicWebsiteIntakeBodyOneMeasurements = {
@@ -8411,6 +8547,8 @@ export type SubmitPublicWebsiteIntakeBodyTwo = {
   /** JSON-encoded PublicSubmission */
   submission: string;
   resume?: Blob;
+  /** @maxItems 5 */
+  files?: Blob[];
 };
 
 export type SubmitPublicWebsiteIntake201PreviewItemsItem = {

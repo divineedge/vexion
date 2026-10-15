@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SaveWebsiteIntakeFormBodyDefinitionStepsItem } from './saveWebsiteIntakeFormBodyDefinitionStepsItem';
+import type { SaveWebsiteIntakeFormBodyDefinitionUploads } from './saveWebsiteIntakeFormBodyDefinitionUploads';
 
 export type SaveWebsiteIntakeFormBodyDefinition = {
   title: string;
@@ -13,4 +14,5 @@ export type SaveWebsiteIntakeFormBodyDefinition = {
   privacyNotice: string;
   successMessage: string;
   steps: SaveWebsiteIntakeFormBodyDefinitionStepsItem[];
+  uploads?: SaveWebsiteIntakeFormBodyDefinitionUploads;
 };

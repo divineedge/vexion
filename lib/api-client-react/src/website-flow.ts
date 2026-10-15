@@ -3,9 +3,10 @@ export type FlowKind='quote'|'hiring';
 export type Answers=Record<string,unknown>;
 export interface FlowCondition {field:string;operator:'equals'|'not_equals'|'contains'|'answered';value:string}
 export interface FlowQuestion {id:string;label:string;type:'text'|'textarea'|'email'|'phone'|'number'|'date'|'select'|'multiselect'|'checkbox';required:boolean;options:string[];condition?:FlowCondition|null}
-export interface FlowStep {id:string;title:string;kind:'questions'|'property'|'measurement';required:boolean;measurementMode:'area'|'linear';allowPinMove:boolean;condition?:FlowCondition|null;questions:FlowQuestion[]}
-export interface FlowDefinition {title:string;intro:string;privacyNotice:string;successMessage:string;steps:FlowStep[]}
-export interface Measurement {mode:'area'|'linear';points:{lat:number;lng:number}[];manual?:number}
+export interface FlowStep {id:string;title:string;kind:'questions'|'property'|'measurement';required:boolean;measurementMode:'area'|'linear';allowPinMove:boolean;allowApproximate?:boolean;approximateTerms?:string;condition?:FlowCondition|null;questions:FlowQuestion[]}
+export interface FlowDefinition {title:string;intro:string;privacyNotice:string;successMessage:string;steps:FlowStep[];uploads?:{enabled:boolean;required:boolean;label:string}}
+export interface Measurement {mode:'area'|'linear';points:{lat:number;lng:number}[];manual?:number;source?:'drawn'|'approximate';acceptedTerms?:boolean}
+export const APPROXIMATE_SIZE_TERMS='My estimate is based on the approximate size I provide, which has not been verified. The business may propose a different price after the office verifies the measurements or after the first service reveals the actual area or work required. The business must explain any proposed price change and get my approval before charging the revised amount. I understand this is a preliminary estimate, not a guaranteed final price.';
 export type Measurements=Record<string,Measurement>;
 export interface PricePreview {items:{serviceId:number;name:string;price:number}[];total:number}
 export interface WebsiteSubmission {id:number;kind:FlowKind;status:string;payload:{answers:Answers;measurements:Measurements;[key:string]:unknown};snapshot:FlowDefinition;preview:PricePreview|null;createdAt:string;customerId?:number|null;propertyId?:number|null;estimateId?:number|null;applicationId?:number|null;reviewNotes?:string|null;reviewData?:unknown;path?:string[]}

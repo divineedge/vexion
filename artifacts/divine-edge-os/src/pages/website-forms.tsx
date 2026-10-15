@@ -12,14 +12,18 @@ import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
 import { useListServices, getListServicesQueryKey } from '@workspace/api-client-react';
 import { useHrMeta } from '@/components/hr/hrApi';
-import { loadWebsiteForm, saveWebsiteForm, loadPublicWebsiteForm, type FlowDefinition } from '@/lib/websiteIntake';
 import FlowBuilder from '@/components/website-intake/FlowBuilder';
 import FlowRenderer from '@/components/website-intake/FlowRenderer';
 import SubmissionInbox from '@/components/website-intake/SubmissionInbox';
+import { loadWebsiteForm, saveWebsiteForm, loadPublicWebsiteForm, restoreWebsiteForm, type WebsiteFormVersion, type FlowDefinition } from '@/lib/websiteIntake';
+import PublishedHistory from '@/components/website-intake/PublishedHistory';
 
 type Kind = 'quote' | 'hiring';
 const errMsg = (e: unknown, f: string) => (e as { data?: { error?: string } })?.data?.error ?? (e instanceof Error ? e.message : f);
 
+const flowJson = (value: FlowDefinition) => JSON.stringify(value, (_key, v) =>
+  v && typeof v === 'object' && !Array.isArray(v)
+    ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v);
 export default function WebsiteFormsPage() {
   const search = useSearch();
   const [, setLocation] = useLocation();
@@ -62,7 +66,8 @@ function Workspace({ kind }: { kind: Kind }) {
   const q = useQuery({ queryKey: ['website-form', kind], queryFn: () => loadWebsiteForm(kind) });
   const [draft, setDraft] = useState<FlowDefinition | null>(null);
   const [revision, setRevision] = useState(0);
-  const [saving, setSaving] = useState<null | 'draft' | 'publish'>(null);
+  const [saving, setSaving] = useState<null | 'draft' | 'publish' | 'restore'>(null);
+  const [tab, setTab] = useState('build');
   const [err, setErr] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
   const init = useRef(false);
@@ -72,7 +77,7 @@ function Workspace({ kind }: { kind: Kind }) {
     return (svc.data ?? []).filter(s => !allowed.length || allowed.includes(String(s.id))).map(s => ({ id: s.id, name: s.name }));
   }, [svc.data, draft]);
   useEffect(() => { if (q.data && !init.current) { init.current = true; setDraft(q.data.definition); setRevision(q.data.revision); } }, [q.data]);
-  const dirty = useMemo(() => !!draft && !!q.data && JSON.stringify(draft) !== JSON.stringify(q.data.definition), [draft, q.data]);
+  const dirty = useMemo(() => !!draft && !!q.data && flowJson(draft) !== flowJson(q.data.definition), [draft, q.data]);
 
   const save = async (publish: boolean) => {
     if (!draft) return;
@@ -81,6 +86,10 @@ function Workspace({ kind }: { kind: Kind }) {
       const r = await saveWebsiteForm(kind, draft, revision, publish);
       qc.setQueryData(['website-form', kind], r);
       setDraft(r.definition); setRevision(r.revision); setConflict(false);
+      if (publish) {
+        void qc.invalidateQueries({ queryKey: ['website-form-history', kind] });
+        void qc.invalidateQueries({ queryKey: ['website-form-public', kind] });
+      }
       toast.success(publish ? 'Published. Visitors now see this version.' : 'Draft saved');
     } catch (e) {
       if ((e as { status?: number })?.status === 409) { setConflict(true); setErr('Someone else saved this form. Your draft is kept here; reload to see their version.'); }
@@ -88,17 +97,31 @@ function Workspace({ kind }: { kind: Kind }) {
     } finally { setSaving(null); }
   };
   const reload = async () => { const r = await q.refetch(); if (r.data) { setDraft(r.data.definition); setRevision(r.data.revision); setConflict(false); setErr(null); } };
+  const restore = async (version: WebsiteFormVersion) => {
+    if (saving || !window.confirm(`Restore revision ${version.revision} as the saved draft? This replaces your current draft${dirty ? ' and unsaved changes' : ''}. The live form and past submissions will not change.`)) return;
+    setSaving('restore'); setErr(null);
+    try {
+      const r = await restoreWebsiteForm(kind, version.id, revision);
+      qc.setQueryData(['website-form', kind], r);
+      setDraft(r.definition); setRevision(r.revision); setConflict(false); setTab('build');
+      toast.success('Version restored as draft. Review it, then Publish when ready.');
+    } catch (e) {
+      if ((e as { status?: number })?.status === 409) setConflict(true);
+      setErr(errMsg(e, 'Could not restore this version.'));
+    } finally { setSaving(null); }
+  };
 
   if (q.isLoading || (!draft && !q.isError)) return <div className="space-y-3">{[0, 1, 2].map(i => <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />)}</div>;
   if (q.isError || !draft) return <div className="flex items-center gap-3 text-sm text-destructive py-6"><AlertTriangle className="w-4 h-4" />{errMsg(q.error, 'Could not load this form.')}<Button size="sm" variant="outline" onClick={() => q.refetch()}>Retry</Button></div>;
 
   return (
-    <Tabs defaultValue="build">
+    <Tabs value={tab} onValueChange={setTab}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <TabsList>
           <TabsTrigger value="build" data-testid="tab-build">Build</TabsTrigger>
           <TabsTrigger value="preview" data-testid="tab-preview">Preview</TabsTrigger>
           <TabsTrigger value="inbox" data-testid="tab-inbox">Submissions</TabsTrigger>
+          <TabsTrigger value="history" data-testid="tab-history">Published history</TabsTrigger>
         </TabsList>
         <div className="flex items-center gap-2">
           <Badge variant={q.data?.published ? 'default' : 'outline'} data-testid="status-published">{q.data?.published ? 'Live' : 'Not published'}</Badge>
@@ -149,6 +172,7 @@ function Workspace({ kind }: { kind: Kind }) {
         <p className="text-xs text-muted-foreground text-center mt-3">Service and posting pickers show live options on the public page. Map lookup works on the public page.</p>
       </TabsContent>
       <TabsContent value="inbox" className="mt-4"><SubmissionInbox kind={kind} /></TabsContent>
+      <TabsContent value="history" className="mt-4"><PublishedHistory kind={kind} busy={!!saving} onRestore={restore} /></TabsContent>
     </Tabs>
   );
 }

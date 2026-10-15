@@ -23,7 +23,7 @@ publicWebsiteIntakeRouter.use('/public-intake',(req,res,next)=>{
  next();
 });
 publicWebsiteIntakeRouter.get('/public-intake/config',async(req,res)=>{
- const kind=z.enum(['quote','hiring']).parse(req.query.kind);
+ const kind=z.enum(['quote','hiring']).parse(req.query.kind);await access(req,kind);
  const tenantId=req.query.tenantId==null?undefined:Number(req.query.tenantId);
  if(tenantId!==undefined&&(!Number.isSafeInteger(tenantId)||tenantId<1))throw new HrError('Choose a valid business');
  res.json(await publicWebsiteConfig(kind,tenantId,typeof req.query.slug==='string'?req.query.slug:undefined));
@@ -46,26 +46,30 @@ async function access(req:Request,kind:FlowKind){
  }
 }
 router.get('/website-intake/forms/:kind',async(req,res)=>{
- const kind=z.enum(['quote','hiring']).parse(req.params.kind);await access(req,kind);
+ const kind=z.enum(['quote','hiring']).parse(req.query.kind);await access(req,kind);
  res.json(await getWebsiteForm(getTenantId(req),kind));
 });
-router.put('/website-intake/forms/:kind',async(req,res)=>{
- const kind=z.enum(['quote','hiring']).parse(req.params.kind);await access(req,kind);
+router.get('/website-intake/forms/:kind/history',async(req,res)=>{
+ const kind=z.enum(['quote','hiring']).parse(req.query.kind);await access(req,kind);
  const input=z.object({definition:websiteFlowSchema,revision:z.number().int().nonnegative(),publish:z.boolean()}).strict().parse(req.body);
- if(kind==='hiring'&&input.definition.steps.some(s=>s.kind!=='questions'))throw new HrError('Property and measurement steps are only available for customer estimate inquiries');
- await db.transaction(async tx=>{
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('website-form'),hashtext(${getTenantId(req)+':'+kind}))`);
-  const current=await getWebsiteForm(getTenantId(req),kind,tx);
-  if(current.revision!==input.revision)throw new HrError('Someone changed this form. Reload before saving; your draft has not been saved.',409);
-  await tx.execute(sql`INSERT INTO website_intake_forms(tenant_id,kind,draft,published,revision,updated_by)
-    VALUES(${getTenantId(req)},${kind},${JSON.stringify(input.definition)}::jsonb,${JSON.stringify(input.publish?input.definition:current.published??current.definition)}::jsonb,1,${getUserId(req)})
-    ON CONFLICT(tenant_id,kind) DO UPDATE SET draft=EXCLUDED.draft,published=CASE WHEN ${input.publish} THEN EXCLUDED.draft ELSE website_intake_forms.published END,revision=website_intake_forms.revision+1,updated_by=EXCLUDED.updated_by,updated_at=now()`);
+
+ const restored=await db.transaction(async tx=>{
+  const tenant=getTenantId(req);
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('website-form'),hashtext(${tenant+':'+kind}))`);
+  const current=await getWebsiteForm(tenant,kind,tx);
+  if(current.revision!==input.revision)throw new HrError('Someone changed this form. Reload before restoring; the draft has not been changed.',409);
+  const result=await tx.execute(sql`SELECT definition FROM website_intake_versions WHERE id=${id} AND tenant_id=${tenant} AND kind=${kind}`);
+  if(!result.rows[0])throw new HrError('Published version not found',404);
+  // Copy the entire immutable definition, including conditions and required flags.
+  await tx.execute(sql`UPDATE website_intake_forms SET draft=${JSON.stringify(result.rows[0].definition)}::jsonb,revision=revision+1,updated_by=${getUserId(req)},updated_at=now() WHERE tenant_id=${tenant} AND kind=${kind}`);
+  return getWebsiteForm(tenant,kind,tx);
  });
- res.json(await getWebsiteForm(getTenantId(req),kind));
-});
-router.get('/website-intake/submissions',async(req,res)=>{
  const kind=z.enum(['quote','hiring']).parse(req.query.kind);await access(req,kind);
  const before=req.query.before==null?undefined:z.coerce.number().int().positive().parse(req.query.before);
+
+ const result=await db.execute(sql`SELECT id,revision,definition,published_by AS "publishedBy",publisher_name AS "publisherName",published_at AS "publishedAt",legacy
+   FROM website_intake_versions WHERE tenant_id=${getTenantId(req)} AND kind=${kind}
+   AND (${before}::integer IS NULL OR id<${before}) ORDER BY id DESC LIMIT 21`);
  const rows=await db.select().from(websiteIntakeSubmissionsTable).where(and(eq(websiteIntakeSubmissionsTable.tenantId,getTenantId(req)),eq(websiteIntakeSubmissionsTable.kind,kind),before?lt(websiteIntakeSubmissionsTable.id,before):undefined)).orderBy(desc(websiteIntakeSubmissionsTable.id)).limit(101);
  const submissions=rows.slice(0,100).map(staffSubmission);
  res.json({submissions,nextCursor:rows.length>100?submissions.at(-1)!.id:null});

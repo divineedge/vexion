@@ -6,6 +6,12 @@ export const websiteIntakeFormsTable=pgTable('website_intake_forms',{
   draft:jsonb('draft').notNull(),published:jsonb('published'),revision:integer('revision').notNull().default(0),
   updatedBy:integer('updated_by').references(()=>usersTable.id),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
 },t=>[primaryKey({columns:[t.tenantId,t.kind]})]);
+export const websiteIntakeVersionsTable=pgTable('website_intake_versions',{
+  id:serial('id').primaryKey(),tenantId:integer('tenant_id').notNull().references(()=>tenantsTable.id),kind:text('kind').notNull(),
+  revision:integer('revision').notNull(),definition:jsonb('definition').notNull(),
+  publishedBy:integer('published_by'),publisherName:text('publisher_name'),
+  publishedAt:timestamp('published_at',{withTimezone:true}),legacy:integer('legacy').notNull().default(0),
+},t=>[uniqueIndex('website_intake_version_revision').on(t.tenantId,t.kind,t.revision)]);
 export const websiteIntakeSubmissionsTable=pgTable('website_intake_submissions',{
   id:serial('id').primaryKey(),tenantId:integer('tenant_id').notNull().references(()=>tenantsTable.id),kind:text('kind').notNull(),
   requestId:text('request_id').notNull(),requestHash:text('request_hash').notNull(),reference:text('reference').notNull(),

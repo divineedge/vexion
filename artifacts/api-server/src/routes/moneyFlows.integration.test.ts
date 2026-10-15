@@ -187,6 +187,64 @@ describe("rollback-only pricing, inventory and invoice recovery",()=>{
     expect((await request(app).get('/website-intake/forms/hiring')).status).toBe(403);scope.user=owner;
     await db.update(usersTable).set({role:'technician'}).where(eq(usersTable.id,manager.id));
   });
+  it('retains immutable published form history and restores only the draft with tenant and role checks',async()=>{
+    for(const kind of ['quote','hiring'] as const){
+      const url=`/website-intake/forms/${kind}`;
+      const current=(await request(app).get(url)).body;
+      const first=defaultWebsiteFlow(kind);first.title=`Historical ${kind}`;
+      first.steps[0].questions.push({id:'historyGate',label:'Show details?',type:'select',options:['Yes','No'],required:true},
+        {id:'historyDetails',label:'Required details',type:'text',options:[],required:true,condition:{field:'historyGate',operator:'equals',value:'Yes'}});
+      expect((await request(app).put(url).send({definition:first,revision:current.revision,publish:true})).status).toBe(200);
+      const second={...first,title:`Latest ${kind}`};
+      const published=await request(app).put(url).send({definition:second,revision:current.revision+1,publish:true});
+      expect(published.status).toBe(200);
+      const history=(await request(app).get(`${url}/history`)).body;
+      expect(history.versions[0].publisherName).toBe('QA owner');
+      expect(history.versions[0].publishedBy).toBe(scope.user);
+      expect(history.versions[0].publishedAt).toBeTruthy();
+      const old=history.versions[1];expect(old.definition).toEqual(first);
+      expect((await request(app).get(`${url}/history?before=${history.versions[0].id}`)).body.versions[0]).toEqual(old);
+      const snapshots=await db.select().from(websiteIntakeSubmissionsTable).where(eq(websiteIntakeSubmissionsTable.tenantId,scope.tenant));
+      expect((await request(app).post(`${url}/history/${old.id}/restore`).send({revision:current.revision})).status).toBe(409);
+      const restored=await request(app).post(`${url}/history/${old.id}/restore`).send({revision:published.body.revision});
+      expect(restored.status,JSON.stringify(restored.body)).toBe(200);
+      expect(restored.body.definition).toEqual(first);expect(restored.body.published).toEqual(second);
+      const publicUrl=`/public-intake/config?kind=${kind}&tenantId=${scope.tenant}`;
+      const liveAfterRestore=await request(app).get(publicUrl);
+      expect(liveAfterRestore.status).toBe(200);expect(liveAfterRestore.body.definition).toEqual(second);
+      expect(restored.body.revision).toBe(published.body.revision+1);
+      expect((await request(app).get(url)).body).toEqual(restored.body);
+      expect((await request(app).get(`${url}/history`)).body).toEqual(history);
+      expect(await db.select().from(websiteIntakeSubmissionsTable).where(eq(websiteIntakeSubmissionsTable.tenantId,scope.tenant))).toEqual(snapshots);
+      const tenant=scope.tenant;scope.tenant=otherTenant;
+      // Use an owner in the other company to test tenant scoping, not just permissions.
+      const user=scope.user;const [otherOwner]=await db.insert(usersTable).values({tenantId:otherTenant,name:'Other owner',email:`${randomUUID()}@example.invalid`,role:'company_owner'}).returning();
+      scope.user=otherOwner.id;
+      expect((await request(app).get(`${url}/history`)).body.versions).toEqual([]);
+      expect((await request(app).post(`${url}/history/${old.id}/restore`).send({revision:0})).status).toBe(404);
+      scope.tenant=tenant;scope.user=user;
+      const [restricted]=await db.insert(usersTable).values({tenantId:tenant,name:'Restricted history user',email:`${randomUUID()}@example.invalid`,role:kind==='hiring'?'office_manager':'technician'}).returning();
+      scope.user=restricted.id;
+      expect((await request(app).get(`${url}/history`)).status).toBe(403);
+      expect((await request(app).post(`${url}/history/${old.id}/restore`).send({revision:restored.body.revision})).status).toBe(403);
+      scope.user=user;
+      await db.update(usersTable).set({isActive:false}).where(eq(usersTable.id,restricted.id));
+      const republished=await request(app).put(url).send({definition:restored.body.definition,revision:restored.body.revision,publish:true});
+      expect(republished.status).toBe(200);expect(republished.body.published).toEqual(first);
+      expect((await request(app).get(publicUrl)).body.definition).toEqual(first);
+      const latest=(await request(app).get(`${url}/history`)).body;
+      expect(latest.versions.length).toBe(history.versions.length+1);
+      expect(latest.versions[1]).toEqual(history.versions[0]);
+    }
+  });
+  it('preserves existing live forms once without inventing legacy publication metadata',async()=>{
+    const flow=defaultWebsiteFlow('quote');
+    await db.execute(sql`INSERT INTO website_intake_forms(tenant_id,kind,draft,published,revision,updated_by) VALUES(${otherTenant},'quote',${JSON.stringify({...flow,title:'Unpublished edit'})}::jsonb,${JSON.stringify(flow)}::jsonb,7,${scope.user})`);
+    await installWebsiteIntakeSchema();await installWebsiteIntakeSchema();
+    const result=await db.execute(sql`SELECT * FROM website_intake_versions WHERE tenant_id=${otherTenant} AND kind='quote'`);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({definition:flow,legacy:1,publisher_name:null,published_by:null,published_at:null});
+  });
   it('saves vendor contacts and custom categories, defaults expenses from vendors, and keeps rename history and tenant boundaries',async()=>{
     await client.query('SAVEPOINT vendor_category_fixture');
     const originalTenant=scope.tenant,originalUser=scope.user;

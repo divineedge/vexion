@@ -28,6 +28,13 @@ export const websiteFlowSchema=z.object({title:z.string().trim().min(1).max(300)
 });
 export async function installWebsiteIntakeSchema(){
  await db.execute(sql`CREATE TABLE IF NOT EXISTS website_intake_forms(tenant_id integer NOT NULL REFERENCES tenants(id),kind text NOT NULL,draft jsonb NOT NULL,published jsonb,revision integer NOT NULL DEFAULT 0,updated_by integer REFERENCES users(id),updated_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(tenant_id,kind))`);
+ await db.execute(sql`CREATE TABLE IF NOT EXISTS website_intake_versions(id serial PRIMARY KEY,tenant_id integer NOT NULL REFERENCES tenants(id),kind text NOT NULL,revision integer NOT NULL,definition jsonb NOT NULL,published_by integer,publisher_name text,published_at timestamptz,legacy integer NOT NULL DEFAULT 0)`);
+ await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS website_intake_version_revision ON website_intake_versions(tenant_id,kind,revision)`);
+ // Earlier releases retained only the current live form, not its publication metadata.
+ await db.execute(sql`INSERT INTO website_intake_versions(tenant_id,kind,revision,definition,legacy)
+   SELECT f.tenant_id,f.kind,f.revision,f.published,1 FROM website_intake_forms f
+   WHERE f.published IS NOT NULL AND NOT EXISTS(SELECT 1 FROM website_intake_versions v WHERE v.tenant_id=f.tenant_id AND v.kind=f.kind)
+   ON CONFLICT DO NOTHING`);
  await db.execute(sql`CREATE TABLE IF NOT EXISTS website_intake_submissions(id serial PRIMARY KEY,tenant_id integer NOT NULL REFERENCES tenants(id),kind text NOT NULL,request_id text NOT NULL,request_hash text NOT NULL,reference text NOT NULL,status text NOT NULL DEFAULT 'pending',payload jsonb NOT NULL,snapshot jsonb NOT NULL,preview jsonb,path jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),customer_id integer,property_id integer,estimate_id integer,application_id integer,review_notes text,reviewed_by integer,reviewed_at timestamptz,review_data jsonb)`);
  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS website_intake_once ON website_intake_submissions(tenant_id,kind,request_id)`);
  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS website_intake_reference ON website_intake_submissions(reference)`);

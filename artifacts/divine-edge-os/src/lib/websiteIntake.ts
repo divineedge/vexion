@@ -2,6 +2,8 @@ import {customFetch} from '@workspace/api-client-react';
 import type {FlowKind,FlowDefinition,Answers,Measurements,PricePreview,WebsiteSubmission} from '@workspace/api-client-react/website-flow';
 export * from '@workspace/api-client-react/website-flow';
 export interface WebsiteFormConfig {definition:FlowDefinition;published:FlowDefinition|null;revision:number}
+
+export interface WebsiteFormVersion {id:number;revision:number;definition:FlowDefinition;publishedBy:number|null;publisherName:string|null;publishedAt:string|null;legacy:number}
 export const loadWebsiteForm=(kind:FlowKind)=>customFetch<WebsiteFormConfig>(`/api/website-intake/forms/${kind}`);
 export const saveWebsiteForm=(kind:FlowKind,definition:FlowDefinition,revision:number,publish:boolean)=>customFetch<WebsiteFormConfig>(`/api/website-intake/forms/${kind}`,{method:'PUT',body:JSON.stringify({definition,revision,publish})});
 export const loadWebsiteSubmissions=(kind:FlowKind,before?:number)=>customFetch<{submissions:WebsiteSubmission[];nextCursor:number|null}>(`/api/website-intake/submissions?kind=${kind}${before?`&before=${before}`:''}`);
@@ -14,3 +16,7 @@ export const submitPublicWebsiteForm=(input:{tenantId:number;kind:FlowKind;reque
  if(data){data.append('submission',JSON.stringify(input));if(resume)data.append('resume',resume);for(const file of files)data.append('files',file);}
  return customFetch<{received:true;pendingReview:true;reference:string;preview:PricePreview|null}>('/api/public-intake/submit',{method:'POST',body:data??JSON.stringify(input)});
 };
+
+export const loadWebsiteFormHistory=(kind:FlowKind,before?:number)=>customFetch<{versions:WebsiteFormVersion[];nextCursor:number|null}>(`/api/website-intake/forms/${kind}/history${before?`?before=${before}`:''}`);
+
+export const restoreWebsiteForm=(kind:FlowKind,id:number,revision:number)=>customFetch<WebsiteFormConfig>(`/api/website-intake/forms/${kind}/history/${id}/restore`,{method:'POST',body:JSON.stringify({revision})});

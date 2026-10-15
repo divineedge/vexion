@@ -8,6 +8,12 @@ Website hiring and quick-quote forms must support editable required/optional que
 
 **How to apply:** Keep draft edits separate from the public form, and retain the submitted wording and visible branch when forms are edited later.
 
+Restoring a published form must create a draft only; staff must explicitly publish again. Do not infer original publication metadata from the last draft editor or edit time when preserving a pre-history live form.
+
+**Why:** The user requires explicit publication and unchanged submission snapshots; earlier releases did not retain the original publication event, so draft metadata is not reliable evidence.
+
+**How to apply:** Preserve the live definition during history upgrades, label unavailable legacy provenance honestly, and keep complete required/conditional question definitions when restoring.
+
 Website quote information stays outside the CRM until staff approves it. A customer who measures their property may see a calculated, preliminary estimate when pricing supports it. Without measurement, staff measures and prepares the estimate afterward unless the company permits customer-estimated size. Property pin movement and measurement are company-configurable, not always mandatory.
 
 **Why:** The user said they want the customer to provide information and staff to review it; estimates can be generated and shown if the customer measures, otherwise the office prepares them after measurement.

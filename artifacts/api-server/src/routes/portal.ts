@@ -166,6 +166,8 @@ router.get("/portal/tenant-info", async (req, res): Promise<void> => {
     slug: tenantRow.slug ?? null,
     name: tenantRow.name,
     logoUrl: tenantRow.logoUrl ?? null,
+    customerReferralsEnabled: acquisitionSettings(tenantRow.acquisitionSettings).customerReferralsEnabled,
+    portalShowMeasurements: tenantRow.portalShowMeasurements??true,
   });
 });
 
@@ -213,6 +215,7 @@ router.post("/portal/auth/login", async (req, res): Promise<void> => {
       and(
         eq(customersTable.tenantId, tenantId),
         eq(customersTable.email, email.toLowerCase().trim()),
+        isNull(customersTable.mergedIntoCustomerId),
       ),
     )
     .limit(1);
@@ -285,7 +288,7 @@ router.post("/portal/auth/request-otp", async (req, res): Promise<void> => {
   const [customer] = await db
     .select()
     .from(customersTable)
-    .where(and(eq(customersTable.tenantId, tenantId), eq(customersTable.email, email.toLowerCase().trim())))
+    .where(and(eq(customersTable.tenantId,tenantId),eq(customersTable.email,email.toLowerCase().trim()),isNull(customersTable.mergedIntoCustomerId)))
     .limit(1);
 
   if (!customer) {
@@ -1151,8 +1154,18 @@ router.get("/portal/invoices/:id/pdf", requirePortalAuth, async (req: any, res):
 // ---------------------------------------------------------------------------
 // GET /portal/properties
 // ---------------------------------------------------------------------------
+router.get('/portal/property/:id',requirePortalAuth,async(req:any,res)=>{
+ const {portalCustomerId,portalTenantId}=req.portalLocals as PortalLocals;
+ const [property]=await db.select().from(propertiesTable).where(and(eq(propertiesTable.id,Number(req.params.id)),eq(propertiesTable.tenantId,portalTenantId),eq(propertiesTable.customerId,portalCustomerId)));
+ if(!property){res.status(404).json({error:'Property not found'});return;}
+ const [tenant]=await db.select().from(tenantsTable).where(eq(tenantsTable.id,portalTenantId));
+ const show=tenant?.portalShowMeasurements!==false;
+ res.set('Cache-Control','private, no-store').json({id:property.id,portalShowMeasurements:show,measurementZones:show?property.measurementPolygons??[]:[]});
+});
 router.get("/portal/properties", requirePortalAuth, async (req: any, res): Promise<void> => {
   const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const [tenant]=await db.select().from(tenantsTable).where(eq(tenantsTable.id,portalTenantId));
+  const show=tenant?.portalShowMeasurements!==false;
 
   const rows = await db
     .select()
@@ -1176,8 +1189,10 @@ router.get("/portal/properties", requirePortalAuth, async (req: any, res): Promi
       notes: p.notes ?? null,
       lat: p.lat ?? null,
       lng: p.lng ?? null,
-      measurementPolygons: (p.measurementPolygons as unknown[]) ?? [],
-      serviceableAreaSqft: p.serviceableAreaSqft ?? null,
+      portalShowMeasurements:show,
+      measurementPolygons: show?(p.measurementPolygons as unknown[])??[]:[],
+      measurementZones: show?(p.measurementPolygons as unknown[])??[]:[],
+      serviceableAreaSqft: show?p.serviceableAreaSqft??null:null,
       sizeUnit: p.sizeUnit ?? "sqft",
     })),
   );

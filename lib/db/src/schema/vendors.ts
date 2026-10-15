@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real, index, jsonb, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, boolean, index, jsonb, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -26,6 +26,7 @@ export type Vendor = typeof vendorsTable.$inferSelect;
 
 // Stable keys preserve financial classifications when display names are edited.
 export const expenseCategoriesTable = pgTable("expense_categories", {
+  deletedAt: timestamp("deleted_at", {withTimezone:true}),
   tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   key: text("key").notNull(),
   name: text("name").notNull(),
@@ -35,6 +36,10 @@ export const expenseCategoriesTable = pgTable("expense_categories", {
 // Feed into the P&L statement as operating costs.
 
 export const expenseEntriesTable = pgTable("expense_entries", {
+  subtotal: real("subtotal"),
+  salesTaxPct: real("sales_tax_pct").notNull().default(0),
+  salesTaxAmount: real("sales_tax_amount").notNull().default(0),
+  capitalizeSalesTax: boolean("capitalize_sales_tax").notNull().default(false),
   requestId: text("request_id"),
   requestFingerprint: text("request_fingerprint"),
   inventoryReceipts: jsonb("inventory_receipts").default([]),

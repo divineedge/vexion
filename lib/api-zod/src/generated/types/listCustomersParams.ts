@@ -8,6 +8,10 @@
 
 export type ListCustomersParams = {
 /**
+ * Explicit active view takes priority over archive inclusion
+ */
+activeOnly?: boolean;
+/**
  * Search query
  */
 q?: string;

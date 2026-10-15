@@ -177,6 +177,7 @@ import type {
   GetKpiDashboardReportParams,
   GetPaymentPolicy200,
   GetPlStatementReportParams,
+  GetPortalPropertyMeasurements200,
   GetPricingHistoryReportParams,
   GetPublicWebsiteIntakeConfig200,
   GetPublicWebsiteIntakeConfigParams,
@@ -239,6 +240,7 @@ import type {
   ListCustomersParams,
   ListEquipmentParams,
   ListEstimatesParams,
+  ListExpenseCategoriesParams,
   ListExpensesParams,
   ListExternalAuditParams,
   ListFollowupQueueItemsParams,
@@ -270,6 +272,8 @@ import type {
   MarkInvoicePaidInput,
   MasterClockState,
   MediaAttachment,
+  MergeCustomer200,
+  MergeCustomerBody,
   PauseSeriesInput,
   PaymentPolicy,
   PayrollAdjustment,
@@ -310,6 +314,8 @@ import type {
   PortalServiceRequestInput,
   PortalSummary,
   PortalUpdatePlanInput,
+  PreviewCustomerMerge200,
+  PreviewCustomerMergeParams,
   PreviewCustomerPlanInput,
   PricingHistoryReport,
   Property,
@@ -488,6 +494,226 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getGetPortalPropertyMeasurementsUrl = (id: number,) => {
+
+
+
+
+  return `/api/portal/property/${id}`
+}
+
+export const getPortalPropertyMeasurements = async (id: number, options?: RequestInit): Promise<GetPortalPropertyMeasurements200> => {
+
+  return customFetch<GetPortalPropertyMeasurements200>(getGetPortalPropertyMeasurementsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPortalPropertyMeasurementsQueryKey = (id: number,) => {
+    return [
+    `/api/portal/property/${id}`
+    ] as const;
+    }
+
+
+export const getGetPortalPropertyMeasurementsQueryOptions = <TData = Awaited<ReturnType<typeof getPortalPropertyMeasurements>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalPropertyMeasurements>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPortalPropertyMeasurementsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPortalPropertyMeasurements>>> = ({ signal }) => getPortalPropertyMeasurements(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortalPropertyMeasurements>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPortalPropertyMeasurementsQueryResult = NonNullable<Awaited<ReturnType<typeof getPortalPropertyMeasurements>>>
+export type GetPortalPropertyMeasurementsQueryError = ErrorType<void>
+
+
+
+export function useGetPortalPropertyMeasurements<TData = Awaited<ReturnType<typeof getPortalPropertyMeasurements>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalPropertyMeasurements>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPortalPropertyMeasurementsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPreviewCustomerMergeUrl = (id: number,
+    params: PreviewCustomerMergeParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/customers/${id}/merge-preview?${stringifiedParams}` : `/api/customers/${id}/merge-preview`
+}
+
+export const previewCustomerMerge = async (id: number,
+    params: PreviewCustomerMergeParams, options?: RequestInit): Promise<PreviewCustomerMerge200> => {
+
+  return customFetch<PreviewCustomerMerge200>(getPreviewCustomerMergeUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getPreviewCustomerMergeQueryKey = (id: number,
+    params?: PreviewCustomerMergeParams,) => {
+    return [
+    `/api/customers/${id}/merge-preview`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getPreviewCustomerMergeQueryOptions = <TData = Awaited<ReturnType<typeof previewCustomerMerge>>, TError = ErrorType<unknown>>(id: number,
+    params: PreviewCustomerMergeParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof previewCustomerMerge>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPreviewCustomerMergeQueryKey(id,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof previewCustomerMerge>>> = ({ signal }) => previewCustomerMerge(id,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof previewCustomerMerge>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type PreviewCustomerMergeQueryResult = NonNullable<Awaited<ReturnType<typeof previewCustomerMerge>>>
+export type PreviewCustomerMergeQueryError = ErrorType<unknown>
+
+
+
+export function usePreviewCustomerMerge<TData = Awaited<ReturnType<typeof previewCustomerMerge>>, TError = ErrorType<unknown>>(
+ id: number,
+    params: PreviewCustomerMergeParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof previewCustomerMerge>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getPreviewCustomerMergeQueryOptions(id,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getMergeCustomerUrl = (id: number,) => {
+
+
+
+
+  return `/api/customers/${id}/merge`
+}
+
+export const mergeCustomer = async (id: number,
+    mergeCustomerBody: MergeCustomerBody, options?: RequestInit): Promise<MergeCustomer200> => {
+
+  return customFetch<MergeCustomer200>(getMergeCustomerUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(mergeCustomerBody)
+  }
+);}
+
+
+
+
+
+export const getMergeCustomerMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof mergeCustomer>>, TError,{id: number;data: BodyType<MergeCustomerBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof mergeCustomer>>, TError,{id: number;data: BodyType<MergeCustomerBody>}, TContext> => {
+
+const mutationKey = ['mergeCustomer'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof mergeCustomer>>, {id: number;data: BodyType<MergeCustomerBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  mergeCustomer(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MergeCustomerMutationResult = NonNullable<Awaited<ReturnType<typeof mergeCustomer>>>
+    export type MergeCustomerMutationBody = BodyType<MergeCustomerBody>
+    export type MergeCustomerMutationError = ErrorType<void>
+
+    export const useMergeCustomer = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof mergeCustomer>>, TError,{id: number;data: BodyType<MergeCustomerBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof mergeCustomer>>,
+        TError,
+        {id: number;data: BodyType<MergeCustomerBody>},
+        TContext
+      > => {
+      return useMutation(getMergeCustomerMutationOptions(options));
+    }
 
 export const getGetWebsiteIntakeFormUrl = (kind: 'quote' | 'hiring',) => {
 
@@ -29759,17 +29985,24 @@ export const useDeleteInventorySupplier = <TError = ErrorType<unknown>,
       return useMutation(getDeleteInventorySupplierMutationOptions(options));
     }
 
-export const getListExpenseCategoriesUrl = () => {
+export const getListExpenseCategoriesUrl = (params?: ListExpenseCategoriesParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/expense-categories`
+  return stringifiedParams.length > 0 ? `/api/expense-categories?${stringifiedParams}` : `/api/expense-categories`
 }
 
-export const listExpenseCategories = async ( options?: RequestInit): Promise<ExpenseCategory[]> => {
+export const listExpenseCategories = async (params?: ListExpenseCategoriesParams, options?: RequestInit): Promise<ExpenseCategory[]> => {
 
-  return customFetch<ExpenseCategory[]>(getListExpenseCategoriesUrl(),
+  return customFetch<ExpenseCategory[]>(getListExpenseCategoriesUrl(params),
   {
     ...options,
     method: 'GET'
@@ -29782,23 +30015,23 @@ export const listExpenseCategories = async ( options?: RequestInit): Promise<Exp
 
 
 
-export const getListExpenseCategoriesQueryKey = () => {
+export const getListExpenseCategoriesQueryKey = (params?: ListExpenseCategoriesParams,) => {
     return [
-    `/api/expense-categories`
+    `/api/expense-categories`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getListExpenseCategoriesQueryOptions = <TData = Awaited<ReturnType<typeof listExpenseCategories>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listExpenseCategories>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListExpenseCategoriesQueryOptions = <TData = Awaited<ReturnType<typeof listExpenseCategories>>, TError = ErrorType<unknown>>(params?: ListExpenseCategoriesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listExpenseCategories>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListExpenseCategoriesQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getListExpenseCategoriesQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listExpenseCategories>>> = ({ signal }) => listExpenseCategories({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listExpenseCategories>>> = ({ signal }) => listExpenseCategories(params, { signal, ...requestOptions });
 
 
 
@@ -29813,11 +30046,11 @@ export type ListExpenseCategoriesQueryError = ErrorType<unknown>
 
 
 export function useListExpenseCategories<TData = Awaited<ReturnType<typeof listExpenseCategories>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listExpenseCategories>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: ListExpenseCategoriesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listExpenseCategories>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListExpenseCategoriesQueryOptions(options)
+  const queryOptions = getListExpenseCategoriesQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -29893,6 +30126,71 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getCreateExpenseCategoryMutationOptions(options));
+    }
+
+export const getDeleteExpenseCategoryUrl = (key: string,) => {
+
+
+
+
+  return `/api/expense-categories/${key}`
+}
+
+export const deleteExpenseCategory = async (key: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteExpenseCategoryUrl(key),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteExpenseCategoryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteExpenseCategory>>, TError,{key: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteExpenseCategory>>, TError,{key: string}, TContext> => {
+
+const mutationKey = ['deleteExpenseCategory'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteExpenseCategory>>, {key: string}> = (props) => {
+          const {key} = props ?? {};
+
+          return  deleteExpenseCategory(key,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteExpenseCategoryMutationResult = NonNullable<Awaited<ReturnType<typeof deleteExpenseCategory>>>
+
+    export type DeleteExpenseCategoryMutationError = ErrorType<unknown>
+
+    export const useDeleteExpenseCategory = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteExpenseCategory>>, TError,{key: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteExpenseCategory>>,
+        TError,
+        {key: string},
+        TContext
+      > => {
+      return useMutation(getDeleteExpenseCategoryMutationOptions(options));
     }
 
 export const getRenameExpenseCategoryUrl = (key: string,) => {

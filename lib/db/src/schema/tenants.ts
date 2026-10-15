@@ -213,6 +213,7 @@ export const tenantsTable = pgTable("tenants", {
   callbackDueHoursLow: integer("callback_due_hours_low").notNull().default(72),
   /** When true, a cancellation fee is charged when a customer cancels a job via the portal */
   cancellationFeeEnabled: boolean("cancellation_fee_enabled").notNull().default(false),
+  portalShowMeasurements: boolean("portal_show_measurements").notNull().default(true),
   /** Dollar amount charged as a cancellation fee (only applied when cancellationFeeEnabled = true) */
   cancellationFeeAmount: real("cancellation_fee_amount").notNull().default(0),
   // ── Chemical / Rainfast Weather Alerts ───────────────────────────────────

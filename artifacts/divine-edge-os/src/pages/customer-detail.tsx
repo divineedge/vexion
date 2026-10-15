@@ -50,6 +50,7 @@ import { CustomerCreditsCard } from '@/components/customer/CustomerCreditsCard';
 import { PaymentPolicyCard } from '@/components/billing/PaymentPolicyCard';
 import { CustomerDepositsCard } from '@/components/billing/CustomerDepositsCard';
 import { StaffNotesPanel } from '@/components/StaffNotesPanel';
+import { CustomerMergeButton } from '@/components/customer/CustomerMergeDialog';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import type { CustomerFieldConfig, TenantSettings } from '@/lib/fieldConfig';
@@ -929,6 +930,7 @@ export default function CustomerDetailPage() {
           </Button>
           {canManageOffice && (
             <>
+              {!(customer as any).mergedIntoCustomerId && <CustomerMergeButton primaryId={id} primaryName={customer.name} />}
               <Button variant="outline" className="gap-2" title={(customer as any).archivedAt ? 'Restore this customer' : 'Archive this customer'} onClick={() => setArchiveDialogOpen(true)}>
                 {(customer as any).archivedAt ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
                 {(customer as any).archivedAt ? 'Unarchive' : 'Archive'}
@@ -940,6 +942,14 @@ export default function CustomerDetailPage() {
           )}
         </div>
       </div>
+
+      {(customer as any).mergedIntoCustomerId && (
+        <div className="rounded-lg border border-amber-300/60 bg-amber-50 text-amber-900 px-4 py-3 text-sm flex flex-wrap items-center gap-2" role="status" data-testid="banner-customer-merged">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>This customer was merged into another record and is kept for history only.</span>
+          <Link href={`/customers/${(customer as any).mergedIntoCustomerId}`} className="font-medium underline" data-testid="link-merged-primary">Go to the primary customer</Link>
+        </div>
+      )}
 
       {/* KPI bar */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">

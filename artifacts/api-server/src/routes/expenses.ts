@@ -4,6 +4,7 @@ import { eq, and, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { recordExpense } from "../lib/expenseInventory";
+import {expenseTax} from '../lib/expenseTax';
 import { CreateExpenseBody } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -84,6 +85,17 @@ router.patch("/expenses/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (req.body.inventoryReceipts !== undefined || req.body.requestId !== undefined) { res.status(409).json({error:"Inventory was received when this expense was created. Use an inventory adjustment to correct stock."}); return; }
   const { vendorId, date, amount, category, description, receiptUrl } = req.body;
+  const hasTax=['subtotal','salesTaxPct','capitalizeSalesTax'].some(k=>req.body[k]!==undefined);
+  const [prior]=await db.select().from(expenseEntriesTable).where(and(eq(expenseEntriesTable.id,id),eq(expenseEntriesTable.tenantId,tenantId)));
+  if(!prior){res.status(404).json({error:'Expense not found'});return;}
+  const base=req.body.subtotal??prior.subtotal??(amount!==undefined?Number(amount):prior.amount);
+  const rate=req.body.salesTaxPct??prior.salesTaxPct;
+  const tax=hasTax?expenseTax({amount:amount===undefined?Math.round((base+Math.round(base*rate)/100)*100)/100:Number(amount),subtotal:base,salesTaxPct:rate,capitalizeSalesTax:req.body.capitalizeSalesTax??prior.capitalizeSalesTax}):null;
+  const receivedRows=Array.isArray(prior.inventoryReceipts)&&prior.inventoryReceipts.length>0;
+  if(receivedRows&&((amount!==undefined&&Number(amount)!==prior.amount)||(tax&&(tax.salesTaxPct!==prior.salesTaxPct||tax.salesTaxAmount!==prior.salesTaxAmount||tax.capitalizeSalesTax!==prior.capitalizeSalesTax)))){
+   res.status(409).json({error:'Purchase totals and tax are locked after inventory is received. Use an inventory adjustment to correct supply costs.'});return;
+  }
+  if(!hasTax&&amount!==undefined&&prior.salesTaxPct>0&&Number(amount)!==prior.amount){res.status(400).json({error:'Update the subtotal and tax rate together with the total'});return;}
   if(amount!==undefined){
     const [existing]=await db.select().from(expenseEntriesTable).where(and(eq(expenseEntriesTable.id,id),eq(expenseEntriesTable.tenantId,tenantId)));
     if(!existing){res.status(404).json({error:"Expense not found"});return;}
@@ -94,12 +106,14 @@ router.patch("/expenses/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Invalid vendorId" }); return;
   }
   const update: Partial<typeof expenseEntriesTable.$inferInsert> = {};
+  if(tax){Object.assign(update,tax);update.amount=Math.round((tax.subtotal+tax.salesTaxAmount)*100)/100;}
   if (vendorId !== undefined) update.vendorId = vendorId ? parseInt(vendorId, 10) : null;
   if (date !== undefined) update.date = date;
-  if (amount !== undefined) update.amount = Number(amount);
+  if (amount !== undefined) update.amount = tax?tax.amount:Number(amount);
   if (category !== undefined) update.category = category;
   if (description !== undefined) update.description = description;
   if (receiptUrl !== undefined) update.receiptUrl = receiptUrl;
+  if(!Object.keys(update).length){res.json(fmt(prior));return;}
 
   const [updated] = await db.update(expenseEntriesTable).set(update).where(and(eq(expenseEntriesTable.id, id), eq(expenseEntriesTable.tenantId, tenantId))).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }

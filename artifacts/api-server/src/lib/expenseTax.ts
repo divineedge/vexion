@@ -1,0 +1,11 @@
+/** Purchase tax, not tax charged to the customer. Amount is always the cash total. */
+export function expenseTax(input:{amount:number;subtotal?:number|null;salesTaxPct?:number;capitalizeSalesTax?:boolean}){
+ const fail=(message:string):never=>{throw Object.assign(new Error(message),{status:400});};
+ const rate=input.salesTaxPct??0,base=input.subtotal??input.amount;
+ if(!Number.isFinite(base)||base<0||!Number.isFinite(rate)||rate<0||rate>100)fail('Enter a non-negative subtotal and a sales tax percentage from 0 to 100');
+ if(input.capitalizeSalesTax!==undefined&&typeof input.capitalizeSalesTax!=='boolean')fail('Choose whether sales tax is included in supply cost');
+ const round=(n:number)=>Math.round((n+Number.EPSILON)*100)/100;
+ const tax=round(base*rate/100),total=round(base+tax);
+ if(!Number.isFinite(input.amount)||input.amount<0||Math.abs(input.amount-total)>.005)fail('Expense total must equal the subtotal plus sales tax');
+ return {amount:total,subtotal:round(base),salesTaxPct:rate,salesTaxAmount:tax,capitalizeSalesTax:input.capitalizeSalesTax??false};
+}

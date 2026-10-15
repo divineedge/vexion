@@ -670,6 +670,22 @@ export default function SettingsPage() {
               <p className="text-xs text-muted-foreground mt-2">
                 Customers log in with the email and phone number you have on file for them.
               </p>
+              <div className="flex items-start justify-between gap-4 pt-4 mt-4 border-t">
+                <div>
+                  <p className="text-sm font-medium">Let customers view property measurements</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">When on, customers can tick Show measurements on a property to see measured outlines, lengths and areas. When off, sizes and outlines are hidden; the address and map stay visible.</p>
+                </div>
+                <Switch
+                  checked={(settings as { portalShowMeasurements?: boolean } | undefined)?.portalShowMeasurements !== false}
+                  disabled={!settings || updateSettings.isPending}
+                  aria-label="Let customers view property measurements"
+                  data-testid="switch-portal-show-measurements"
+                  onCheckedChange={v => updateSettings.mutate({ data: { portalShowMeasurements: v } as Parameters<typeof updateSettings.mutate>[0]['data'] }, {
+                    onSuccess: () => { qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); toast.success(v ? 'Customers can view measurements' : 'Measurements hidden from customers'); },
+                    onError: () => toast.error('Could not save this setting'),
+                  })}
+                />
+              </div>
             </CardContent>
           </Card>
 

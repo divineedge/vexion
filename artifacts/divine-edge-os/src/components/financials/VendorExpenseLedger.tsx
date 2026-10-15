@@ -12,6 +12,7 @@ import {
 } from '@workspace/api-client-react';
 import type { Vendor, ExpenseEntry, InventoryItem, InventoryLocation,ExpenseCategory } from '@workspace/api-client-react';
 import ExpenseCategoryManager from './ExpenseCategoryManager';
+import { useAllExpenseCategories } from '@/lib/expenseCategories';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,7 +30,8 @@ import { downloadCsv } from '@/lib/csvExport';
 
 export interface ReceiptRowInput { inventoryItemId: number; locationId?: number; quantity: number; costPrice: number; updatePrice: boolean; markupPct?: number }
 interface ReceiptDraft { key: string; itemId: string; locationId: string; quantity: string; costPrice: string; updatePrice: boolean; markupPct: string }
-interface SavedReceipt { inventoryItemId?: number; itemName?: string | null; locationName?: string | null; quantity?: number; costPrice?: number; markupPct?: number | null; updatePrice?: boolean }
+/** purchaseCostPrice = pre-tax unit cost paid; costPrice = unit cost saved to the item (tax-inclusive when capitalized). */
+interface SavedReceipt { purchaseCostPrice?: number | null; inventoryItemId?: number; itemName?: string | null; locationName?: string | null; quantity?: number; costPrice?: number; markupPct?: number | null; updatePrice?: boolean }
 const receiptsOf = (e: ExpenseEntry | null): SavedReceipt[] =>
   ((e as unknown as { inventoryReceipts?: SavedReceipt[] | null } | null)?.inventoryReceipts ?? []);
 const newDraft = (): ReceiptDraft => ({ key: crypto.randomUUID(), itemId: '', locationId: '', quantity: '1', costPrice: '', updatePrice: false, markupPct: '' });
@@ -59,7 +61,9 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
   const { data: expenses = [] } = useListExpenses({}, { query: { queryKey: getListExpensesQueryKey({}) } });
   const categoryQuery=useListExpenseCategories();
   const categories=categoryQuery.data??[];
-  const categoryName=(key:string)=>categories.find(c=>c.key===key)?.name??key;
+  const allCategories=useAllExpenseCategories();
+  // History labels use every category (including deleted); pickers use active ones only.
+  const categoryName=(key:string)=>allCategories.data?.find(c=>c.key===key)?.name??categories.find(c=>c.key===key)?.name??key;
 
   const [vendorSheetOpen, setVendorSheetOpen] = useState(false);
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
@@ -334,6 +338,7 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
             editing={editingExpense}
             vendors={vendors}
             categories={categories}
+            categoryName={categoryName}
             inventoryItems={inventoryItems}
             inventoryLocations={inventoryLocations}
             onSubmit={async (values, receiptFile, removeReceipt, inventoryReceipts) => {
@@ -446,11 +451,16 @@ function VendorForm({ editing, categories,onSubmit }: { editing: Vendor | null;c
         <label className="text-sm font-medium">Name</label>
         <Input title="Vendor or supplier name" value={name} onChange={e => setName(e.target.value)} placeholder="Acme Supply Co." />
       </div>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className="space-y-1.5"><label className="text-sm font-medium" htmlFor="vendor-contact-name">Contact name</label><Input id="vendor-contact-name" value={contactName} maxLength={200} onChange={e=>setContactName(e.target.value)} placeholder="Your contact at this vendor" data-testid="input-vendor-contact-name"/></div>
+        <div className="space-y-1.5"><label className="text-sm font-medium" htmlFor="vendor-office-phone">Office phone</label><Input id="vendor-office-phone" type="tel" maxLength={80} value={officePhone} onChange={e=>setOfficePhone(e.target.value)} placeholder="Office phone number" data-testid="input-vendor-office-phone"/></div>
+      </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Category</label>
         <Select value={category||'__none__'} onValueChange={v=>setCategory(v==='__none__'?'':v)}>
           <SelectTrigger title="Choose the vendor's default expense category"><SelectValue placeholder="Choose a category"/></SelectTrigger>
-          <SelectContent><SelectItem value="__none__">No default category</SelectItem>{categories.map(c=><SelectItem key={c.key} value={c.key}>{c.name}</SelectItem>)}</SelectContent>
+          <SelectContent><SelectItem value="__none__">No default category</SelectItem>{categories.map(c=><SelectItem key={c.key} value={c.key}>{c.name}</SelectItem>)}
+            {category&&!categories.some(c=>c.key===category)&&<SelectItem value={category}>{category} (deleted)</SelectItem>}</SelectContent>
         </Select>
         <ExpenseCategoryManager/>
       </div>
@@ -462,23 +472,20 @@ function VendorForm({ editing, categories,onSubmit }: { editing: Vendor | null;c
         <label className="text-sm font-medium">Notes</label>
         <Textarea title="Additional notes about this vendor (billing terms, special instructions, etc.)" value={notes} onChange={e => setNotes(e.target.value)} rows={3} />
       </div>
-      <div className="grid sm:grid-cols-2 gap-4">
-        <div className="space-y-1.5"><label className="text-sm font-medium" htmlFor="vendor-contact-name">Contact name</label><Input id="vendor-contact-name" value={contactName} maxLength={200} onChange={e=>setContactName(e.target.value)} placeholder="Your contact at this vendor"/></div>
-        <div className="space-y-1.5"><label className="text-sm font-medium" htmlFor="vendor-office-phone">Office number</label><Input id="vendor-office-phone" type="tel" maxLength={80} value={officePhone} onChange={e=>setOfficePhone(e.target.value)} placeholder="Office phone number"/></div>
-      </div>
       <Button title={editing ? 'Save changes to this vendor' : 'Add this vendor to the list'} className="w-full" onClick={handleSave} disabled={saving}>{editing ? 'Save Changes' : 'Add Vendor'}</Button>
     </div>
   );
 }
 
-function ExpenseForm({ editing, vendors,categories, inventoryItems, inventoryLocations, onSubmit }: {
+function ExpenseForm({ editing, vendors,categories,categoryName, inventoryItems, inventoryLocations, onSubmit }: {
   editing: ExpenseEntry | null;
   vendors: Vendor[];
   categories:ExpenseCategory[];
+  categoryName:(key:string)=>string;
   inventoryItems: InventoryItem[];
   inventoryLocations: InventoryLocation[];
   onSubmit: (
-    values: { vendorId?: number|null; date: string; amount: number; category: string; description?: string },
+    values: { vendorId?: number|null; date: string; amount: number; category: string; description?: string; subtotal?: number; salesTaxPct?: number; capitalizeSalesTax?: boolean },
     receiptFile: File | null,
     removeReceipt: boolean,
     inventoryReceipts: ReceiptRowInput[],
@@ -491,7 +498,17 @@ function ExpenseForm({ editing, vendors,categories, inventoryItems, inventoryLoc
   const patchReceipt = (key: string, patch: Partial<ReceiptDraft>) => setReceipts(rs => rs.map(r => r.key === key ? { ...r, ...patch } : r));
   const [vendorId, setVendorId] = useState<string>(editing?.vendorId ? String(editing.vendorId) : '');
   const [date, setDate] = useState(editing?.date ?? new Date().toISOString().slice(0, 10));
-  const [amount, setAmount] = useState(editing ? String(editing.amount) : '');
+  const ex = editing as (ExpenseEntry & { subtotal?: number | null; salesTaxPct?: number | null; capitalizeSalesTax?: boolean | null; salesTaxAmount?: number | null }) | null;
+  // Subtotal is pre-tax; legacy expenses without a subtotal treat amount as the subtotal (no double tax).
+  const [amount, setAmount] = useState(ex ? String(ex.subtotal ?? ex.amount) : '');
+  const [taxPct, setTaxPct] = useState(ex?.salesTaxPct != null ? String(ex.salesTaxPct) : '0');
+  const [capitalizeTax, setCapitalizeTax] = useState(!!ex?.capitalizeSalesTax);
+  const financialLocked = savedReceipts.length > 0;
+  const subCents = Math.round((parseFloat(amount) || 0) * 100);
+  const rate = Math.min(100, Math.max(0, parseFloat(taxPct) || 0));
+  const taxCents = Math.round(subCents * rate / 100);
+  const totalCents = subCents + taxCents;
+  const taxFactor = capitalizeTax ? 1 + rate / 100 : 1;
   const [category, setCategory] = useState(editing?.category ?? 'other');
   const [description, setDescription] = useState(editing?.description ?? '');
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -512,7 +529,9 @@ function ExpenseForm({ editing, vendors,categories, inventoryItems, inventoryLoc
 
   const handleSave = async () => {
     const amt = parseFloat(amount);
-    if (!date || !amt || amt <= 0) { toast.error('Enter a valid date and amount'); return; }
+    if (!date || !amt || amt <= 0) { toast.error('Enter a valid date and subtotal'); return; }
+    const pct = Number(taxPct || 0);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) { toast.error('Sales tax rate must be between 0 and 100'); return; }
     const rows: ReceiptRowInput[] = [];
     if (!editing) {
       for (const [i, r] of receipts.entries()) {
@@ -531,7 +550,7 @@ function ExpenseForm({ editing, vendors,categories, inventoryItems, inventoryLoc
         rows.push({
           inventoryItemId: Number(r.itemId),
           ...(r.locationId ? { locationId: Number(r.locationId) } : {}),
-          quantity: qty, costPrice: cost, updatePrice: r.updatePrice,
+          quantity: qty, costPrice: r.updatePrice ? Math.round(cost * taxFactor * 100) / 100 : cost, updatePrice: r.updatePrice,
           ...(markup !== undefined ? { markupPct: markup } : {}),
         });
       }
@@ -542,9 +561,11 @@ function ExpenseForm({ editing, vendors,categories, inventoryItems, inventoryLoc
         {
           vendorId: vendorId ? parseInt(vendorId, 10) : null,
           date,
-          amount: amt,
           category,
           description: description.trim() || undefined,
+          ...(financialLocked && ex
+            ? { amount: ex.amount }
+            : { amount: totalCents / 100, subtotal: subCents / 100, salesTaxPct: pct, capitalizeSalesTax: capitalizeTax }),
         },
         receiptFile,
         receiptRemoved,
@@ -575,15 +596,30 @@ function ExpenseForm({ editing, vendors,categories, inventoryItems, inventoryLoc
         <Input type="date" title="Date of this expense" value={date} onChange={e => setDate(e.target.value)} />
       </div>
       <div className="space-y-1.5">
-        <label className="text-sm font-medium">Amount</label>
-        <Input type="number" step="0.01" title="Total expense amount in dollars" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" />
+        <label className="text-sm font-medium" htmlFor="expense-subtotal">Subtotal (before tax)</label>
+        <Input id="expense-subtotal" type="number" step="0.01" min={0} disabled={financialLocked} value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" data-testid="input-expense-subtotal" />
       </div>
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium" htmlFor="expense-tax-pct">Sales tax rate (%)</label>
+        <Input id="expense-tax-pct" type="number" step="0.001" min={0} max={100} disabled={financialLocked} value={taxPct} onChange={e => setTaxPct(e.target.value)} data-testid="input-expense-tax-pct" />
+      </div>
+      <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-1" data-testid="panel-expense-totals">
+        <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span className="tabular-nums">${(subCents / 100).toFixed(2)}</span></div>
+        <div className="flex justify-between"><span className="text-muted-foreground">Sales tax ({rate}%)</span><span className="tabular-nums">${(taxCents / 100).toFixed(2)}</span></div>
+        <div className="flex justify-between font-semibold border-t pt-1"><span>Total paid</span><span className="tabular-nums" data-testid="text-expense-total">${(totalCents / 100).toFixed(2)}</span></div>
+        {financialLocked && <p className="text-xs text-muted-foreground pt-1">Amounts are locked because stock was received on this expense.</p>}
+      </div>
+      <label className="flex items-start gap-2 text-sm">
+        <input type="checkbox" className="mt-0.5" checked={capitalizeTax} disabled={financialLocked} onChange={e => setCapitalizeTax(e.target.checked)} data-testid="checkbox-capitalize-sales-tax" />
+        <span>Include sales tax in supply cost<span className="block text-xs text-muted-foreground">When updating an item's cost price below, the saved unit cost includes tax, so markup is based on the tax-inclusive cost.</span></span>
+      </label>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Category</label>
         <Select value={category} onValueChange={setCategory}>
           <SelectTrigger title="Select the expense category"><SelectValue /></SelectTrigger>
           <SelectContent>
             {categories.map(c => <SelectItem key={c.key} value={c.key}>{c.name}</SelectItem>)}
+            {category && !categories.some(c => c.key === category) && <SelectItem value={category}>{categoryName(category)} (deleted)</SelectItem>}
           </SelectContent>
         </Select>
       </div>
@@ -660,7 +696,7 @@ function ExpenseForm({ editing, vendors,categories, inventoryItems, inventoryLoc
             <p className="text-sm font-medium flex items-center gap-1.5"><PackagePlus className="w-4 h-4" /> Inventory received</p>
             {savedReceipts.map((r, i) => (
               <p key={i} className="text-xs text-muted-foreground">
-                {r.quantity ?? 0} x {r.itemName ?? `Item #${r.inventoryItemId}`}{r.locationName ? ` to ${r.locationName}` : ''} at ${Number(r.costPrice ?? 0).toFixed(2)} each{r.updatePrice ? ' (cost price updated' + (r.markupPct != null ? `, markup ${r.markupPct}%` : '') + ')' : ''}
+                {r.quantity ?? 0} x {r.itemName ?? `Item #${r.inventoryItemId}`}{r.locationName ? ` to ${r.locationName}` : ''} at ${Number(r.purchaseCostPrice ?? r.costPrice ?? 0).toFixed(2)} each{r.purchaseCostPrice != null && Number(r.purchaseCostPrice) !== Number(r.costPrice ?? 0) ? ` before tax, saved as $${Number(r.costPrice ?? 0).toFixed(2)} with tax` : ''}{r.updatePrice ? ' (cost price updated' + (r.markupPct != null ? `, markup ${r.markupPct}%` : '') + ')' : ''}
               </p>
             ))}
             <p className="text-xs text-muted-foreground">Stock was already applied when this expense was logged. Editing the expense does not change inventory, and this expense cannot be deleted. Adjust stock from Inventory if needed.</p>
@@ -705,6 +741,11 @@ function ExpenseForm({ editing, vendors,categories, inventoryItems, inventoryLoc
                   <Input type="number" min={0} step="0.1" className="h-8 text-xs"
                     placeholder={`Markup % override (blank keeps ${item?.markupPct ?? 'existing'}%)`}
                     value={r.markupPct} onChange={e => patchReceipt(r.key, { markupPct: e.target.value })} data-testid={`input-receipt-markup-${i}`} />
+                )}
+                {r.updatePrice && r.costPrice.trim() !== '' && Number.isFinite(Number(r.costPrice)) && (
+                  <p className="text-xs text-muted-foreground" data-testid={`text-receipt-effective-cost-${i}`}>
+                    Saved unit cost: ${(Math.round(Number(r.costPrice) * taxFactor * 100) / 100).toFixed(2)}{capitalizeTax && rate > 0 ? ` (includes ${rate}% tax)` : ''}
+                  </p>
                 )}
               </div>
             );

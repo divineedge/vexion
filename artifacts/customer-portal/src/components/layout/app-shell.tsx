@@ -1,10 +1,11 @@
 import * as React from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { usePortalGetMe, usePortalGetSummary, setDefaultHeaders } from "@workspace/api-client-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { MapPin, Briefcase, FileText, Bell, LayoutDashboard, Menu, X, LogOut, Loader2, CalendarDays, ClipboardList, ClipboardCheck, MessageSquare, Gift } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { usePortalTenantInfo } from "@/lib/tenantInfo";
 
 const navItems = [
   { name: "Overview", path: "/home", icon: LayoutDashboard },
@@ -43,15 +44,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       queryKey: ["usePortalGetSummary", token]
     }
   });
-  const { data: business } = useQuery<{ tenantId: number; slug: string | null; name: string; logoUrl: string | null }>({
-    queryKey: ["portalBusiness", token],
-    enabled: !!token,
-    queryFn: async () => {
-      const response = await fetch("/api/portal/tenant-info", { headers: { "x-portal-token": token! } });
-      if (!response.ok) throw new Error("Cannot verify portal business");
-      return response.json();
-    },
-  });
+  const { data: business } = usePortalTenantInfo();
+  const visibleNav = navItems.filter(i => i.path !== "/referrals" || business?.customerReferralsEnabled === true);
   const verifiedCompanyMatches = !selector || !business || selector === String(business.tenantId) || selector === business.slug;
   React.useEffect(() => {
     if (!business || !verifiedCompanyMatches) return;
@@ -113,7 +107,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
             {/* Desktop Nav */}
             <nav className="hidden md:flex items-center space-x-1">
-              {navItems.map((item) => {
+              {visibleNav.map((item) => {
                 const isActive = location === item.path || location.startsWith(`${item.path}/`);
                 return (
                   <Link
@@ -185,7 +179,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {mobileMenuOpen && (
         <div className="md:hidden border-b bg-card animate-in slide-in-from-top-2">
           <div className="space-y-1 px-4 pb-4 pt-2">
-            {navItems.map((item) => {
+            {visibleNav.map((item) => {
               const isActive = location === item.path || location.startsWith(`${item.path}/`);
               return (
                 <Link

@@ -189,6 +189,7 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     renewalWarningDays: tenant.renewalWarningDays ?? 30,
     // Cancellation policy
     cancellationFeeEnabled: tenant.cancellationFeeEnabled ?? false,
+    portalShowMeasurements: tenant.portalShowMeasurements ?? true,
     cancellationFeeAmount: tenant.cancellationFeeAmount ?? 0,
     // Chemical / Rainfast weather alerts
     rainfastRainThresholdPct: tenant.rainfastRainThresholdPct ?? 40,
@@ -510,6 +511,10 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (callbackDueHoursLow !== undefined) updates.callbackDueHoursLow = parseInt(callbackDueHoursLow, 10);
   if (renewalWarningDays !== undefined) updates.renewalWarningDays = parseInt(renewalWarningDays, 10);
   if (cancellationFeeEnabled !== undefined) updates.cancellationFeeEnabled = cancellationFeeEnabled;
+  if(req.body.portalShowMeasurements!==undefined){
+   if(typeof req.body.portalShowMeasurements!=='boolean'){res.status(400).json({error:'Choose whether portal measurements are visible'});return;}
+   updates.portalShowMeasurements=req.body.portalShowMeasurements;
+  }
   if (cancellationFeeAmount !== undefined) updates.cancellationFeeAmount = parseFloat(cancellationFeeAmount);
   if (rainfastRainThresholdPct !== undefined) {
     const pct = parseInt(rainfastRainThresholdPct, 10);

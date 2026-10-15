@@ -7,7 +7,11 @@ import {
   usePortalListProperties,
   MediaAttachment,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { customFetch, type MeasurementZone } from "@workspace/api-client-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { usePortalTenantInfo } from "@/lib/tenantInfo";
+import { MeasurementZonesView } from "@/components/MeasurementZonesView";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -258,6 +262,15 @@ export default function PropertyDetail() {
   const { data: properties, isLoading: propsLoading } = usePortalListProperties();
   const property = properties?.find((p) => p.id === propertyId);
 
+  const tenantInfo = usePortalTenantInfo();
+  const measurementsAllowed = tenantInfo.data?.portalShowMeasurements === true;
+  const [showMeasurements, setShowMeasurements] = useState(false);
+  const zonesQ = useQuery({
+    queryKey: ["portal-property-measurements", propertyId],
+    enabled: !!propertyId && measurementsAllowed && showMeasurements,
+    queryFn: () => customFetch<{ id: number; portalShowMeasurements?: boolean; measurementZones?: MeasurementZone[] | null }>(`/api/portal/property/${propertyId}`),
+  });
+
   const { data: media, isLoading: mediaLoading } = usePortalListPropertyMedia(
     propertyId ?? 0,
   );
@@ -312,11 +325,11 @@ export default function PropertyDetail() {
       )}
 
       {/* Satellite view & measurements */}
-      {property && ((property as any).lat || (property as any).serviceableAreaSqft) && (
+      {property && ((property as any).lat || (measurementsAllowed && (property as any).serviceableAreaSqft)) && (
         <div className="space-y-4">
           <h2 className="text-lg font-semibold tracking-tight">Property Information</h2>
           <div className="grid gap-4 sm:grid-cols-2">
-            {(property as any).serviceableAreaSqft && (
+            {measurementsAllowed && (property as any).serviceableAreaSqft && (
               <Card className="shadow-none">
                 <CardContent className="p-4 flex items-center gap-3">
                   <div className="p-2.5 bg-primary/10 rounded-xl">
@@ -335,7 +348,7 @@ export default function PropertyDetail() {
               </Card>
             )}
             {(property as any).lat && (property as any).lng && (
-              <Card className={`overflow-hidden shadow-none ${(property as any).serviceableAreaSqft ? '' : 'sm:col-span-2'}`}>
+              <Card className={`overflow-hidden shadow-none ${measurementsAllowed && (property as any).serviceableAreaSqft ? '' : 'sm:col-span-2'}`}>
                 <iframe
                   title="Satellite view"
                   src={`https://maps.google.com/maps?q=${(property as any).lat},${(property as any).lng}&t=k&z=19&output=embed`}
@@ -361,6 +374,20 @@ export default function PropertyDetail() {
               </Card>
             )}
           </div>
+        </div>
+      )}
+
+      {property && measurementsAllowed && (
+        <div className="space-y-3" data-testid="section-portal-measurements">
+          <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+            <Checkbox checked={showMeasurements} onCheckedChange={v => setShowMeasurements(v === true)} data-testid="checkbox-show-measurements" />
+            Show measurements
+          </label>
+          {showMeasurements && (zonesQ.isLoading ? <Skeleton className="h-48 rounded-xl" />
+            : zonesQ.isError ? (
+              <div className="text-sm text-destructive flex items-center gap-2">Couldn't load measurements.
+                <Button size="sm" variant="outline" onClick={() => zonesQ.refetch()} data-testid="button-retry-measurements">Retry</Button></div>
+            ) : zonesQ.data?.portalShowMeasurements === false ? <p className="text-sm text-muted-foreground">Measurements aren't shared for this property.</p> : <MeasurementZonesView zones={zonesQ.data?.measurementZones ?? []} />)}
         </div>
       )}
 

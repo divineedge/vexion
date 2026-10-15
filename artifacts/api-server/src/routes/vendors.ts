@@ -13,7 +13,21 @@ const vendorFields=z.object({name:z.string().trim().min(1).max(200),category:z.s
 router.use('/expense-categories',async(req,res,next)=>{
  if(!await isAdminRole(getTenantId(req),getUserId(req))){res.status(403).json({error:'Restricted to owner/admin roles'});return;}next();
 });
-router.get('/expense-categories',async(req,res)=>{res.json(await listVendorCategories(getTenantId(req)));});
+router.get('/expense-categories',async(req,res)=>{res.json(await listVendorCategories(getTenantId(req),db,req.query.includeDeleted==='true'));});
+router.delete('/expense-categories/:key',async(req,res)=>{
+ const tenantId=getTenantId(req),key=String(req.params.key);
+ if(key==='other'){res.status(400).json({error:'Other is needed as the fallback category and cannot be deleted'});return;}
+ const found=await db.transaction(async tx=>{
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(${tenantId},-91045)`);
+  const category=(await listVendorCategories(tenantId,tx,true)).find(c=>c.key===key);
+  if(!category)return false;
+  if(!category.deletedAt){
+   await tx.insert(expenseCategoriesTable).values({tenantId,key,name:category.name,deletedAt:new Date()}).onConflictDoUpdate({target:[expenseCategoriesTable.tenantId,expenseCategoriesTable.key],set:{deletedAt:new Date()}});
+   await tx.update(vendorsTable).set({category:'other'}).where(and(eq(vendorsTable.tenantId,tenantId),eq(vendorsTable.category,key)));
+  }return true;
+ });
+ if(!found){res.status(404).json({error:'Category not found'});return;}res.sendStatus(204);
+});
 router.post('/expense-categories',async(req,res)=>{await saveCategory(req,res);});
 router.patch('/expense-categories/:key',async(req,res)=>{await saveCategory(req,res,String(req.params.key));});
 async function saveCategory(req:import('express').Request,res:import('express').Response,key?:string){

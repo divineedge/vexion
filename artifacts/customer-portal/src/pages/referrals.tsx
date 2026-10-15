@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Gift, Copy, Share2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatCurrency, formatDate } from '@/lib/format';
+import { usePortalTenantInfo } from '@/lib/tenantInfo';
 
 interface ReferralData {
   enabled: boolean; tenantId: number; shareToken: string | null;
@@ -12,11 +13,20 @@ interface ReferralData {
 }
 
 export default function Referrals() {
-  const { data, isLoading, isError, refetch } = useQuery({
+  const info = usePortalTenantInfo();
+  const off = !info.isLoading && info.data?.customerReferralsEnabled !== true;
+  const { data, isLoading: qLoading, isError, refetch } = useQuery({
     queryKey: ['portal-referrals'],
+    enabled: info.data?.customerReferralsEnabled === true,
     queryFn: () => customFetch<ReferralData>('/api/portal/referrals'),
   });
 
+  const isLoading = info.isLoading || qLoading;
+  if (off) return (
+    <div className="text-center py-16 space-y-2"><Gift className="h-10 w-10 mx-auto text-muted-foreground" />
+      <h1 className="text-xl font-semibold">Referrals aren’t available</h1>
+      <p className="text-muted-foreground text-sm">Your service company hasn’t turned on the referral program.</p></div>
+  );
   if (isLoading) return <div className="space-y-4">{[0, 1, 2].map(i => <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />)}</div>;
   if (isError || !data) return (
     <div className="text-center py-16 space-y-3"><AlertTriangle className="h-8 w-8 mx-auto text-destructive" /><p>Couldn’t load referrals.</p>

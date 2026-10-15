@@ -63,6 +63,28 @@ tags:
     description: Recurring billing templates and automation
 
 paths:
+  /portal/property/{id}:
+    get:
+      operationId: getPortalPropertyMeasurements
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        "200":
+          description: Measurements for the signed-in customer's own property when company sharing is enabled
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, portalShowMeasurements, measurementZones]
+                properties:
+                  id: {type: integer}
+                  portalShowMeasurements: {type: boolean}
+                  measurementZones: {type: array, items: {$ref: "#/components/schemas/MeasurementZone"}}
+        "404": {description: Property not found for this customer and company}
+  /customers/{id}/merge-preview:
+    $ref: "./customer-merge.yaml#/preview"
+  /customers/{id}/merge:
+    $ref: "./customer-merge.yaml#/merge"
   /website-intake/forms/{kind}:
     $ref: "./website-intake.yaml#/formPath"
   /website-intake/submissions:
@@ -648,6 +670,7 @@ paths:
       tags: [customers]
       summary: List all customers
       parameters:
+        - {name: activeOnly, in: query, schema: {type: boolean}, description: Explicit active view takes priority over archive inclusion}
         - name: q
           in: query
           schema:
@@ -8064,6 +8087,8 @@ paths:
   /expense-categories:
     get:
       operationId: listExpenseCategories
+      parameters:
+        - {name: includeDeleted, in: query, schema: {type: boolean}}
       responses:
         "200":
           description: Company vendor and expense categories, including legacy values
@@ -8084,6 +8109,12 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/ExpenseCategory"}
   /expense-categories/{key}:
+    delete:
+      operationId: deleteExpenseCategory
+      parameters:
+        - {name: key, in: path, required: true, schema: {type: string}}
+      responses:
+        "204": {description: Removed from future selections; historical expense classification preserved}
     patch:
       operationId: renameExpenseCategory
       parameters:
@@ -13472,6 +13503,7 @@ components:
       type: object
       required: [id, tenantId]
       properties:
+        portalShowMeasurements: {type: boolean}
         defaultInvoiceTerms:
           type: ["string", "null"]
         defaultInvoiceNotes:
@@ -16847,6 +16879,7 @@ components:
       properties:
         key: {type: string}
         name: {type: string}
+        deletedAt: {type: ["string", "null"]}
     ExpenseCategoryInput:
       type: object
       required: [name]
@@ -16891,6 +16924,10 @@ components:
         vendorName: { type: ["string", "null"] }
         date: { type: string }
         amount: { type: number }
+        subtotal: {type: ["number", "null"]}
+        salesTaxPct: {type: number}
+        salesTaxAmount: {type: number}
+        capitalizeSalesTax: {type: boolean}
         category: { type: string }
         description: { type: ["string", "null"] }
         receiptUrl: { type: ["string", "null"] }
@@ -16909,6 +16946,9 @@ components:
         vendorId: { type: ["integer", "null"] }
         date: { type: string }
         amount: { type: number }
+        subtotal: {type: number, minimum: 0}
+        salesTaxPct: {type: number, minimum: 0, maximum: 100}
+        capitalizeSalesTax: {type: boolean}
         category: { type: string }
         description: { type: string }
         receiptUrl: { type: string }

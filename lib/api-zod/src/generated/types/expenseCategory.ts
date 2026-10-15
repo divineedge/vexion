@@ -9,4 +9,6 @@
 export interface ExpenseCategory {
   key: string;
   name: string;
+  /** @nullable */
+  deletedAt?: string | null;
 }

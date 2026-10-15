@@ -164,9 +164,9 @@ describe("rollback-only pricing, inventory and invoice recovery",()=>{
     const [estimate]=await db.select().from(estimatesTable).where(eq(estimatesTable.id,approval.body.estimateId));expect(estimate.status).toBe('draft');expect(estimate.total).toBe(100);
     const noMeasure=await request(app).post('/public-intake/submit').send({...body,requestId:randomUUID(),measurements:{}});expect(noMeasure.body.preview).toBeNull();
     const [held]=await db.select().from(websiteIntakeSubmissionsTable).where(eq(websiteIntakeSubmissionsTable.reference,noMeasure.body.reference));
-    const failed=await request(app).post(`/website-intake/submissions/${held.id}/review`).send({action:'approve',createEstimate:true});expect(failed.status).toBe(400);
+    const failed=await request(app).post(`/website-intake/submissions/${held.id}/review`).send({action:'approve',createEstimate:true,confirmCustomerChoice:true});expect(failed.status).toBe(400);
     expect((await db.select().from(customersTable).where(eq(customersTable.tenantId,scope.tenant))).length).toBe(startCustomers+1);
-    expect((await request(app).post(`/website-intake/submissions/${held.id}/review`).send({action:'approve',createEstimate:true,areaSqft:1000})).status).toBe(200);
+    expect((await request(app).post(`/website-intake/submissions/${held.id}/review`).send({action:'approve',createEstimate:true,areaSqft:1000,confirmCustomerChoice:true})).status).toBe(200);
     const currentTenant=scope.tenant;scope.tenant=otherTenant;
     expect((await request(app).post(`/website-intake/submissions/${held.id}/review`).send({action:'approve'})).status).toBe(404);scope.tenant=currentTenant;
   });
@@ -335,6 +335,88 @@ describe("rollback-only pricing, inventory and invoice recovery",()=>{
       const [nonHr]=await db.insert(usersTable).values({tenantId:scope.tenant,name:'Private credential test',email:`${randomUUID()}@example.invalid`,role:'technician'}).returning();scope.user=nonHr.id;
       expect((await request(app).get(`/website-intake/submissions/${entry.id}/files/${entry.payload.attachments[0].id}`)).status).toBe(403);
     }finally{scope.user=owner;await client.query('ROLLBACK TO SAVEPOINT website_attachment_fixture');await client.query('RELEASE SAVEPOINT website_attachment_fixture');}
+  });
+  it('merges an inactive duplicate atomically, preserving credit and work history and redirecting later references',async()=>{
+    await client.query('SAVEPOINT customer_merge_fixture');
+    try{
+      const s=await import('@workspace/db'),{mergeCustomers,customerMergePreview}=await import('../lib/customerMerge');
+      const [primary]=await db.insert(s.customersTable).values({tenantId:scope.tenant,name:'Retained QA',email:`${randomUUID()}@example.invalid`,phone:'5551112222'}).returning();
+      const [source]=await db.insert(s.customersTable).values({tenantId:scope.tenant,name:'Inactive duplicate QA',email:`${randomUUID()}@example.invalid`,phone:'',archivedAt:new Date(),smsOptOut:true,notes:'Preserved source note'}).returning();
+      app.use((await import('./customers')).default);
+      const active=await request(app).get('/customers?activeOnly=true&includeArchived=true&q=QA&limit=100');
+      expect(active.status).toBe(200);expect(active.body.items.some((c:any)=>c.id===primary.id)).toBe(true);expect(active.body.items.some((c:any)=>c.id===source.id)).toBe(false);expect(active.body.items.every((c:any)=>!c.archivedAt)).toBe(true);
+      const all=await request(app).get('/customers?includeArchived=true&q=QA&limit=100');expect(all.body.items.some((c:any)=>c.id===source.id)).toBe(true);
+      const [property]=await db.insert(s.propertiesTable).values({tenantId:scope.tenant,customerId:source.id,address:'Synthetic merge property'}).returning();
+      const [work]=await db.insert(s.jobsTable).values({tenantId:scope.tenant,customerId:source.id,propertyId:property.id,title:'Historical merge work',status:'completed',scheduledAt:new Date(),completedAt:new Date(),totalAmount:40}).returning();
+      await db.insert(s.customerCreditsTable).values({tenantId:scope.tenant,customerId:source.id,amount:35,kind:'prepayment',reference:'Synthetic receipt',requestId:randomUUID()});
+      const preview=await customerMergePreview(scope.tenant,primary.id,source.id);expect(preview.blockers).toEqual([]);expect(preview.source.archivedAt).toBeTruthy();
+      await mergeCustomers(scope.tenant,scope.user,primary.id,source.id);
+      await mergeCustomers(scope.tenant,scope.user,primary.id,source.id);
+      const [retained]=await db.select().from(s.customersTable).where(eq(s.customersTable.id,primary.id));
+      const [duplicate]=await db.select().from(s.customersTable).where(eq(s.customersTable.id,source.id));
+      expect(retained.smsOptOut).toBe(true);expect(retained.name).toBe('Retained QA');expect(retained.notes).toContain('Preserved source note');
+      expect(duplicate.mergedIntoCustomerId).toBe(primary.id);expect(duplicate.archivedAt).toBeTruthy();
+      const [moved]=await db.select().from(s.jobsTable).where(eq(s.jobsTable.id,work.id));expect(moved.customerId).toBe(primary.id);expect(moved.status).toBe('completed');
+      const credits=await db.select().from(s.customerCreditsTable).where(eq(s.customerCreditsTable.customerId,primary.id));expect(credits.reduce((n:number,c:any)=>n+c.amount,0)).toBe(35);expect(credits.length).toBe(1);
+      const [late]=await db.insert(s.customerCreditsTable).values({tenantId:scope.tenant,customerId:source.id,amount:5,kind:'prepayment',reference:'Late incoming payment',requestId:randomUUID()}).returning();expect(late.customerId).toBe(primary.id);
+      await expect(db.transaction(async(tx:any)=>tx.insert(s.propertiesTable).values({tenantId:scope.tenant,customerId:source.id,address:'Stale operational reference'}))).rejects.toThrow();
+      const audits=await db.select().from(s.customerMergeRecordsTable).where(eq(s.customerMergeRecordsTable.sourceId,source.id));expect(audits.length).toBe(1);expect(audits[0].sourceSnapshot).toMatchObject({name:'Inactive duplicate QA'});
+      const [paymentSource]=await db.insert(s.customersTable).values({tenantId:scope.tenant,name:'Payment profile duplicate',email:`${randomUUID()}@example.invalid`,phone:'',stripeCustomerId:'cus_merge_fixture'}).returning();
+      await expect(mergeCustomers(scope.tenant,scope.user,primary.id,paymentSource.id)).rejects.toThrow('payment profile');
+      await client.query('CREATE TABLE merge_fixture_conflict(tenant_id integer NOT NULL,customer_id integer NOT NULL REFERENCES customers(id),tag text NOT NULL,UNIQUE(tenant_id,customer_id,tag))');
+      const [conflict]=await db.insert(s.customersTable).values({tenantId:scope.tenant,name:'Conflict duplicate',email:`${randomUUID()}@example.invalid`,phone:''}).returning();
+      await db.execute(sql`INSERT INTO merge_fixture_conflict VALUES(${scope.tenant},${primary.id},'same'),(${scope.tenant},${conflict.id},'same')`);
+      await expect(mergeCustomers(scope.tenant,scope.user,primary.id,conflict.id)).rejects.toThrow('Nothing was merged');
+      const [unchanged]=await db.select().from(s.customersTable).where(eq(s.customersTable.id,conflict.id));expect(unchanged.mergedIntoCustomerId).toBeNull();expect(unchanged.archivedAt).toBeNull();
+    }finally{await client.query('ROLLBACK TO SAVEPOINT customer_merge_fixture');await client.query('RELEASE SAVEPOINT customer_merge_fixture');}
+  });
+  it('includes purchase tax once, capitalizes supply cost only when chosen, and hides deleted categories without rewriting history',async()=>{
+    await client.query('SAVEPOINT vendor_tax_fixture');
+    try{
+      const s=await import('@workspace/db'),{recordExpense}=await import('../lib/expenseInventory');
+      const [supply]=await db.insert(s.inventoryItemsTable).values({tenantId:scope.tenant,name:'Taxed supply QA',sku:randomUUID(),unit:'each',quantity:0,unitPrice:10,markedUpPrice:15}).returning();
+      const [location]=await db.insert(s.inventoryLocationsTable).values({tenantId:scope.tenant,name:'Tax receipt location',type:'other'}).returning();
+      const input={requestId:randomUUID(),date:'2026-10-15',amount:22,subtotal:20,salesTaxPct:10,capitalizeSalesTax:true,inventoryReceipts:[{inventoryItemId:supply.id,locationId:location.id,quantity:2,costPrice:10,updatePrice:true}]};
+      const created=await recordExpense(scope.tenant,input,scope.user);await recordExpense(scope.tenant,input,scope.user);
+      expect(created.amount).toBe(22);expect(created.salesTaxAmount).toBe(2);expect(created.subtotal).toBe(20);
+      const [updated]=await db.select().from(s.inventoryItemsTable).where(eq(s.inventoryItemsTable.id,supply.id));expect(updated.quantity).toBe(2);expect(updated.unitPrice).toBe(11);expect(updated.markedUpPrice).toBe(16.5);
+      expect((await request(app).patch(`/expenses/${created.id}`).send({amount:44,subtotal:40,salesTaxPct:10})).status).toBe(409);
+      await recordExpense(scope.tenant,{...input,requestId:randomUUID(),amount:11,subtotal:10,capitalizeSalesTax:false,inventoryReceipts:[{...input.inventoryReceipts[0],quantity:1}]},scope.user);
+      const [untaxedCost]=await db.select().from(s.inventoryItemsTable).where(eq(s.inventoryItemsTable.id,supply.id));expect(untaxedCost.unitPrice).toBe(10);expect(untaxedCost.markedUpPrice).toBe(15);
+      await expect(recordExpense(scope.tenant,{...input,requestId:randomUUID(),amount:20},scope.user)).rejects.toThrow('subtotal plus sales tax');
+      const newCategory=await request(app).post('/expense-categories').send({name:'Deleted history QA'});expect(newCategory.status).toBe(201);
+      const key=newCategory.body.key;
+      const vendor=await request(app).post('/vendors').send({name:'Deleted category vendor QA',category:key});expect(vendor.status).toBe(201);
+      const expense=await recordExpense(scope.tenant,{date:'2026-10-15',amount:3,category:key,vendorId:vendor.body.id},scope.user);
+      expect((await request(app).delete(`/expense-categories/${key}`)).status).toBe(204);
+      expect((await request(app).get('/expense-categories')).body.some((c:any)=>c.key===key)).toBe(false);
+      const history=(await request(app).get('/expense-categories?includeDeleted=true')).body.find((c:any)=>c.key===key);expect(history.name).toBe('Deleted history QA');expect(history.deletedAt).toBeTruthy();
+      const [oldExpense]=await db.select().from(s.expenseEntriesTable).where(eq(s.expenseEntriesTable.id,expense.id));expect(oldExpense.category).toBe(key);
+      const [changedVendor]=await db.select().from(s.vendorsTable).where(eq(s.vendorsTable.id,vendor.body.id));expect(changedVendor.category).toBe('other');
+      expect((await request(app).delete('/expense-categories/other')).status).toBe(400);
+    }finally{await client.query('ROLLBACK TO SAVEPOINT vendor_tax_fixture');await client.query('RELEASE SAVEPOINT vendor_tax_fixture');}
+  });
+  it('only shares owned-property measurements when enabled and returns the actual referral program state',async()=>{
+    await client.query('SAVEPOINT portal_visibility_fixture');
+    try{
+      const s=await import('@workspace/db');
+      const [owner]=await db.insert(s.customersTable).values({tenantId:scope.tenant,name:'Portal measurement owner',email:`${randomUUID()}@example.invalid`,phone:''}).returning();
+      const [other]=await db.insert(s.customersTable).values({tenantId:scope.tenant,name:'Other portal customer',email:`${randomUUID()}@example.invalid`,phone:''}).returning();
+      const zones=[{id:'synthetic-zone',label:'Synthetic private geometry',mode:'area',zoneType:'lawn',enabled:true,color:'#339955',areaSqft:100,vertices:[[40,-105],[40,-104.99],[40.01,-105]]}];
+      const [property]=await db.insert(s.propertiesTable).values({tenantId:scope.tenant,customerId:owner.id,address:'Synthetic owned property',measurementPolygons:zones,serviceableAreaSqft:100}).returning();
+      const [foreign]=await db.insert(s.propertiesTable).values({tenantId:scope.tenant,customerId:other.id,address:'Not owned by this portal customer',measurementPolygons:zones}).returning();
+      const token=randomUUID();
+      await db.insert(customerOtpSessionsTable).values({tenantId:scope.tenant,customerId:owner.id,email:owner.email!,otpHash:'fixture',sessionToken:createHash('sha256').update(token).digest('hex'),expiresAt:new Date(Date.now()+300000)});
+      const [tenant]=await db.select().from(s.tenantsTable).where(eq(s.tenantsTable.id,scope.tenant));
+      await db.update(s.tenantsTable).set({portalShowMeasurements:false,acquisitionSettings:{...(tenant.acquisitionSettings as object??{}),customerReferralsEnabled:false}}).where(eq(s.tenantsTable.id,scope.tenant));
+      const info=await request(app).get('/portal/tenant-info').set('x-portal-token',token);expect(info.status).toBe(200);expect(info.body.customerReferralsEnabled).toBe(false);expect(info.body.portalShowMeasurements).toBe(false);
+      const hidden=await request(app).get(`/portal/property/${property.id}`).set('x-portal-token',token);expect(hidden.status).toBe(200);expect(hidden.body.measurementZones).toEqual([]);expect(hidden.body.portalShowMeasurements).toBe(false);
+      const list=await request(app).get('/portal/properties').set('x-portal-token',token);expect(list.status).toBe(200);expect(JSON.stringify(list.body)).not.toContain('Synthetic private geometry');
+      expect((await request(app).get(`/portal/property/${foreign.id}`).set('x-portal-token',token)).status).toBe(404);
+      await db.update(s.tenantsTable).set({portalShowMeasurements:true}).where(eq(s.tenantsTable.id,scope.tenant));
+      const shared=await request(app).get(`/portal/property/${property.id}`).set('x-portal-token',token);expect(shared.status).toBe(200);expect(shared.body.measurementZones).toEqual(zones);expect(shared.headers['cache-control']).toContain('no-store');
+      expect((await request(app).get(`/portal/property/${property.id}`)).status).toBe(401);
+    }finally{await client.query('ROLLBACK TO SAVEPOINT portal_visibility_fixture');await client.query('RELEASE SAVEPOINT portal_visibility_fixture');}
   });
   afterAll(async()=>{vi.unstubAllEnvs();scope.connection=null;if(client){await client.query("ROLLBACK");client.release();}});
   it("receives once, preserves old stock and markup, and rolls back invalid receipts",async()=>{

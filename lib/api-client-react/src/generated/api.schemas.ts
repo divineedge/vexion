@@ -3942,6 +3942,7 @@ export interface PreTripChecklistItem {
 }
 
 export interface TenantSettings {
+  portalShowMeasurements?: boolean;
   /** @nullable */
   defaultInvoiceTerms?: string | null;
   /** @nullable */
@@ -6739,6 +6740,8 @@ export interface InventorySalesReport {
 export interface ExpenseCategory {
   key: string;
   name: string;
+  /** @nullable */
+  deletedAt?: string | null;
 }
 
 export interface ExpenseCategoryInput {
@@ -6814,6 +6817,11 @@ export interface ExpenseEntry {
   vendorName?: string | null;
   date: string;
   amount: number;
+  /** @nullable */
+  subtotal?: number | null;
+  salesTaxPct?: number;
+  salesTaxAmount?: number;
+  capitalizeSalesTax?: boolean;
   category: string;
   /** @nullable */
   description?: string | null;
@@ -6835,6 +6843,14 @@ export interface CreateExpenseInput {
   vendorId?: number | null;
   date: string;
   amount: number;
+  /** @minimum 0 */
+  subtotal?: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  salesTaxPct?: number;
+  capitalizeSalesTax?: boolean;
   category?: string;
   description?: string;
   receiptUrl?: string;
@@ -7281,6 +7297,57 @@ export interface ExternalAccessAuditRow {
   requestId: string | null;
   createdAt: string;
 }
+
+export type GetPortalPropertyMeasurements200 = {
+  id: number;
+  portalShowMeasurements: boolean;
+  measurementZones: MeasurementZone[];
+};
+
+export type PreviewCustomerMergeParams = {
+sourceId: number;
+};
+
+export type PreviewCustomerMerge200Primary = {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  /** @nullable */
+  archivedAt: string | null;
+};
+
+export type PreviewCustomerMerge200Source = {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  /** @nullable */
+  archivedAt: string | null;
+};
+
+export type PreviewCustomerMerge200RelationsItem = {
+  table: string;
+  count: number;
+};
+
+export type PreviewCustomerMerge200 = {
+  primary: PreviewCustomerMerge200Primary;
+  source: PreviewCustomerMerge200Source;
+  relations: PreviewCustomerMerge200RelationsItem[];
+  blockers: string[];
+};
+
+export type MergeCustomerBody = {
+  /** @minimum 1 */
+  sourceId: number;
+  confirm: boolean;
+};
+
+export type MergeCustomer200 = {
+  primaryId: number;
+  sourceId: number;
+};
 
 export type GetWebsiteIntakeForm200DefinitionStepsItemKind = typeof GetWebsiteIntakeForm200DefinitionStepsItemKind[keyof typeof GetWebsiteIntakeForm200DefinitionStepsItemKind];
 
@@ -8785,6 +8852,10 @@ export type UpdateSkipReasonBody = {
 
 export type ListCustomersParams = {
 /**
+ * Explicit active view takes priority over archive inclusion
+ */
+activeOnly?: boolean;
+/**
  * Search query
  */
 q?: string;
@@ -9292,6 +9363,10 @@ startDate?: string;
 endDate?: string;
 };
 
+export type ListExpenseCategoriesParams = {
+includeDeleted?: boolean;
+};
+
 export type GetPricingHistoryReportParams = {
 from?: string;
 to?: string;
@@ -9420,3 +9495,4 @@ export type GetKpiDashboardReportParams = {
 from: string;
 to: string;
 };
+

@@ -326,11 +326,12 @@ export default function CustomersPage() {
     hasReminderFailure: reminderFailureFilter ? true : undefined,
     includeArchived: archiveView === 'all' ? true : undefined,
     archivedOnly: archiveView === 'archived' ? true : undefined,
+    activeOnly: archiveView === 'active' ? true : undefined,
   };
 
   const { data, isLoading } = useListCustomers(
-    queryParams,
-    { query: { queryKey: getListCustomersQueryKey(queryParams) } },
+    queryParams as Parameters<typeof useListCustomers>[0],
+    { query: { queryKey: getListCustomersQueryKey(queryParams as Parameters<typeof useListCustomers>[0]) } },
   );
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
 
@@ -360,6 +361,8 @@ export default function CustomersPage() {
   }, [debouncedSearch, reminderFailureFilter, openBalanceFilter, noCardFilter, typeFilter, tagFilter, archiveView]);
 
   const visibleCustomers = (data?.items ?? [])
+    // Defensive: never show archived or merged rows in the Active view, even from stale cache.
+    .filter(c => archiveView !== 'active' || (!(c as any).archivedAt && !(c as any).mergedIntoCustomerId))
     .filter(c => typeFilter === 'all' || (c as any).customerType === typeFilter)
     .filter(c => !openBalanceFilter || ((c as any).paymentStanding?.overdueAmount ?? 0) > 0)
     .filter(c => tagFilter === '__all__' || ((c as any).tags ?? []).includes(tagFilter))
@@ -504,7 +507,7 @@ export default function CustomersPage() {
           <ImportExportControls
             entity="customers"
             entityLabel="Customers"
-            exportQuery={{ q: debouncedSearch || undefined, hasReminderFailure: reminderFailureFilter ? 'true' : undefined, ...(typeFilter !== 'all' ? { customerType: typeFilter } : {}) }}
+            exportQuery={{ q: debouncedSearch || undefined, hasReminderFailure: reminderFailureFilter ? 'true' : undefined, ...(archiveView === 'all' ? { includeArchived: 'true' } : archiveView === 'archived' ? { archivedOnly: 'true' } : { activeOnly: 'true' }), ...(typeFilter !== 'all' ? { customerType: typeFilter } : {}) }}
             onImportComplete={() => qc.invalidateQueries({ queryKey: getListCustomersQueryKey() })}
           />
           <Button title="Create a new customer" onClick={() => { setForm(f => ({ ...f, name: search.trim() || f.name })); setCreating(true); }} className="gap-2">

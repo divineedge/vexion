@@ -3,10 +3,13 @@ import { and, eq, sql } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { CreateExpenseBody } from "@workspace/api-zod";
 import type { z } from "zod";
+import {expenseTax} from './expenseTax';
 type CreateExpenseInput = z.infer<typeof CreateExpenseBody>;
 
 const fail = (message: string, status = 400): never => { throw Object.assign(new Error(message), { status }); };
 export async function recordExpense(tenantId: number, input: CreateExpenseInput, actorId: number) {
+  const hasTax=input.subtotal!==undefined||input.salesTaxPct!==undefined||input.capitalizeSalesTax!==undefined;
+  const tax=hasTax?expenseTax(input):{subtotal:null,salesTaxPct:0,salesTaxAmount:0,capitalizeSalesTax:false};
   const receipts = (input.inventoryReceipts ?? []).map(row => ({
     inventoryItemId: row.inventoryItemId, locationId: row.locationId,
     quantity: row.quantity, costPrice: row.costPrice, updatePrice: row.updatePrice, markupPct: row.markupPct,
@@ -15,8 +18,8 @@ export async function recordExpense(tenantId: number, input: CreateExpenseInput,
   if (!Number.isFinite(input.amount) || input.amount < 0) fail("Amount must be non-negative");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date) || !Number.isFinite(Date.parse(input.date)) || new Date(input.date).toISOString().slice(0,10) !== input.date) fail("Invalid expense date");
   if (new Set(receipts.map(r => r.inventoryItemId)).size !== receipts.length) fail("Use one receipt row per inventory item");
-  if (receipts.reduce((sum, row) => sum + row.quantity*row.costPrice, 0) > input.amount + .005) fail("Inventory purchase costs cannot exceed the expense total");
-  const normal = { vendorId: input.vendorId ?? null, date: input.date, amount: input.amount, category: input.category ?? null, description: input.description ?? null, receiptUrl: input.receiptUrl ?? null, receipts };
+  if (receipts.reduce((sum, row) => sum + row.quantity*row.costPrice, 0) > (tax.subtotal??input.amount) + .005) fail("Inventory purchase costs cannot exceed the pre-tax expense subtotal");
+  const normal = { vendorId: input.vendorId ?? null, date: input.date, amount: input.amount, category: input.category ?? null, description: input.description ?? null, receiptUrl: input.receiptUrl ?? null, receipts,...(hasTax?tax:{}) };
   const fingerprint = createHash("sha256").update(JSON.stringify(normal)).digest("hex");
   return db.transaction(async tx => {
     if (input.requestId) {
@@ -36,13 +39,15 @@ export async function recordExpense(tenantId: number, input: CreateExpenseInput,
     const snapshots = [];
     // Consistent item lock order prevents concurrent multi-item receipts deadlocking.
     for (const receipt of [...receipts].sort((a,b)=>a.inventoryItemId-b.inventoryItemId)) {
+      const purchaseCostPrice=receipt.costPrice;
+      const effectiveCost=tax.capitalizeSalesTax?Math.round(purchaseCostPrice*(1+tax.salesTaxPct/100)*1e6)/1e6:purchaseCostPrice;
       const [item] = await tx.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.tenantId,tenantId),eq(inventoryItemsTable.id,receipt.inventoryItemId))).for("update");
       if (!item) fail("Inventory item does not belong to this business");
       const location = receipt.locationId ? locations.find(l=>l.id===receipt.locationId) : locations.length===1 ? locations[0] : null;
       if (receipt.locationId && !location) fail("Choose an active receiving location in this business");
       if (!location && locations.length>1) fail("Choose the receiving location for each item");
       const markup = receipt.markupPct ?? (item.unitPrice>0 ? Math.max(0,(item.markedUpPrice/item.unitPrice-1)*100) : tenant.defaultMarkupPct);
-      const sell = Math.round(receipt.costPrice*(1+markup/100)*100)/100;
+      const sell = Math.round(effectiveCost*(1+markup/100)*100)/100;
       if (!Number.isFinite(sell)) fail("Invalid resulting supply price");
       if (item.quantity + receipt.quantity > 2147483647) fail("Resulting stock quantity is too large");
       const stocks = await tx.select().from(inventoryLocationStockTable).where(and(eq(inventoryLocationStockTable.tenantId,tenantId),eq(inventoryLocationStockTable.inventoryItemId,item.id)));
@@ -60,12 +65,12 @@ export async function recordExpense(tenantId: number, input: CreateExpenseInput,
       } else if (stocks.length) fail("Choose an active receiving location");
       await tx.update(inventoryItemsTable).set({
         quantity:item.quantity+receipt.quantity, isLowStock:item.quantity+receipt.quantity<=item.reorderPoint,
-        ...(receipt.updatePrice ? {unitPrice:receipt.costPrice,markedUpPrice:sell} : {}),
+        ...(receipt.updatePrice ? {unitPrice:effectiveCost,markedUpPrice:sell} : {}),
       }).where(and(eq(inventoryItemsTable.tenantId,tenantId),eq(inventoryItemsTable.id,item.id)));
-      snapshots.push({...receipt,locationId:location?.id,locationName:location?.name ?? "Unallocated inventory",itemName:item.name,previousCostPrice:item.unitPrice,previousSellPrice:item.markedUpPrice,newSellPrice:receipt.updatePrice?sell:item.markedUpPrice});
+      snapshots.push({...receipt,purchaseCostPrice,costPrice:effectiveCost,salesTaxPct:tax.salesTaxPct,capitalizeSalesTax:tax.capitalizeSalesTax,locationId:location?.id,locationName:location?.name ?? "Unallocated inventory",itemName:item.name,previousCostPrice:item.unitPrice,previousSellPrice:item.markedUpPrice,newSellPrice:receipt.updatePrice?sell:item.markedUpPrice});
     }
     const [expense] = await tx.insert(expenseEntriesTable).values({
-      tenantId,...normal,category, requestId:input.requestId ?? null, requestFingerprint:fingerprint, inventoryReceipts:snapshots,
+      tenantId,...normal,...tax,category, requestId:input.requestId ?? null, requestFingerprint:fingerprint, inventoryReceipts:snapshots,
     }).returning();
     for (const row of snapshots) await tx.insert(inventoryTransfersTable).values({tenantId,inventoryItemId:row.inventoryItemId,toLocationId:row.locationId ?? null,quantity:row.quantity,reason:`Vendor expense #${expense.id} purchase receipt by staff #${actorId}`});
     return expense;

@@ -1,4 +1,6 @@
 import { saveAcquisitionAttribution } from "../lib/acquisitionRewards";
+import {customerMergePreview,mergeCustomers} from '../lib/customerMerge';
+import {z} from 'zod';
 import { Router, type IRouter } from "express";
 import { db, customersTable, propertiesTable, jobsTable, invoicesTable, estimatesTable, activityLogTable, propertyOwnershipHistoryTable, customerOtpSessionsTable, stopServiceFlagsTable, communicationsLogTable, tenantsTable } from "@workspace/db";
 import { eq, and, or, ilike, sql, desc, isNull, isNotNull, ne, inArray } from "drizzle-orm";
@@ -24,6 +26,27 @@ import {
 } from "../lib/importExport";
 
 const router: IRouter = Router();
+router.use('/customers/:id',async(req,res,next)=>{
+ if(!['POST','PATCH','DELETE','PUT'].includes(req.method)){next();return;}
+ const id=Number(req.params.id);
+ if(!Number.isSafeInteger(id)||id<=0){next();return;}
+ const [customer]=await db.select({primaryId:customersTable.mergedIntoCustomerId}).from(customersTable).where(and(eq(customersTable.tenantId,getTenantId(req)),eq(customersTable.id,id)));
+ if(customer?.primaryId){res.status(409).json({error:'This customer was merged. Use the retained customer record.',primaryId:customer.primaryId});return;}
+ next();
+});
+router.get('/customers/:id/merge-preview',async(req,res)=>{
+ const tenant=getTenantId(req);
+ if(!await isAdminRole(tenant,getUserId(req))){res.status(403).json({error:'Owner/admin access is required to merge customers'});return;}
+ const id=z.coerce.number().int().positive().parse(req.params.id),sourceId=z.coerce.number().int().positive().parse(req.query.sourceId);
+ res.json(await customerMergePreview(tenant,id,sourceId));
+});
+router.post('/customers/:id/merge',async(req,res)=>{
+ const tenant=getTenantId(req),actor=getUserId(req);
+ if(!await isAdminRole(tenant,actor)){res.status(403).json({error:'Owner/admin access is required to merge customers'});return;}
+ const id=z.coerce.number().int().positive().parse(req.params.id);
+ const {sourceId}=z.object({sourceId:z.number().int().positive(),confirm:z.literal(true)}).strict().parse(req.body);
+ res.json(await mergeCustomers(tenant,actor,id,sourceId));
+});
 
 function normalizeIdentityText(value: unknown): string {
   return typeof value === "string"
@@ -427,6 +450,7 @@ function formatCustomer(
     noCardAlertSilenced: c.noCardAlertSilenced ?? false,
     cardExpiresAt: c.cardExpiresAt ?? null,
     archivedAt: c.archivedAt?.toISOString() ?? null,
+    mergedIntoCustomerId:c.mergedIntoCustomerId??null,
     createdAt: c.createdAt.toISOString(),
   };
 }
@@ -472,11 +496,14 @@ router.get("/customers", async (req, res): Promise<void> => {
   const limitNum = Math.min(100, parseInt(limit, 10));
   const offset = (pageNum - 1) * limitNum;
 
-  const baseWhere = archivedOnly === "true"
+  const archiveWhere = req.query.activeOnly==="true"
+    ? and(eq(customersTable.tenantId,tenantId),isNull(customersTable.archivedAt))
+    : archivedOnly === "true"
     ? and(eq(customersTable.tenantId, tenantId), isNotNull(customersTable.archivedAt))
     : includeArchived === "true"
       ? eq(customersTable.tenantId, tenantId)
       : and(eq(customersTable.tenantId, tenantId), isNull(customersTable.archivedAt));
+  const baseWhere=and(archiveWhere,isNull(customersTable.mergedIntoCustomerId));
   let where = q
     ? and(baseWhere, or(
         ilike(customersTable.name, `%${q}%`),
@@ -732,6 +759,7 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
   const [existing] = await db.select().from(customersTable)
     .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId))).limit(1);
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if(existing.mergedIntoCustomerId){res.status(409).json({error:'This duplicate has been merged. Edit the retained customer instead.',primaryId:existing.mergedIntoCustomerId});return;}
   const nextReferralSource = referralSource !== undefined ? referralSource : existing.referralSource;
   const nextReferringCustomerId = referringCustomerId !== undefined
     ? referringCustomerId

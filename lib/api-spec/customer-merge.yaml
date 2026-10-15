@@ -1,0 +1,62 @@
+preview:
+  get:
+    operationId: previewCustomerMerge
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      - {name: sourceId, in: query, required: true, schema: {type: integer}}
+    responses:
+      "200":
+        description: Explicit retained customer, duplicate, related history counts and safety blockers
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [primary, source, relations, blockers]
+              properties:
+                primary: {$ref: "#/identity"}
+                source: {$ref: "#/identity"}
+                relations:
+                  type: array
+                  items:
+                    type: object
+                    required: [table, count]
+                    properties:
+                      table: {type: string}
+                      count: {type: integer}
+                blockers: {type: array, items: {type: string}}
+merge:
+  post:
+    operationId: mergeCustomer
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [sourceId, confirm]
+            properties:
+              sourceId: {type: integer, minimum: 1}
+              confirm: {type: boolean}
+    responses:
+      "200":
+        description: Atomic retry-safe merge; source retained as archived evidence, no external card movement
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [primaryId, sourceId]
+              properties:
+                primaryId: {type: integer}
+                sourceId: {type: integer}
+      "409": {description: "Payment profiles, payment rules or unique related records must be reconciled before merging"}
+identity:
+  type: object
+  required: [id, name, email, phone, archivedAt]
+  properties:
+    id: {type: integer}
+    name: {type: string}
+    email: {type: string}
+    phone: {type: string}
+    archivedAt: {type: ["string", "null"]}

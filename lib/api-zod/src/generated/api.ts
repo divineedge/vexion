@@ -8,6 +8,75 @@
 import * as zod from 'zod';
 
 
+export const GetPortalPropertyMeasurementsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetPortalPropertyMeasurementsResponse = zod.object({
+  "id": zod.number(),
+  "portalShowMeasurements": zod.boolean(),
+  "measurementZones": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs. For mode \'linear\' this is an open polyline path; for \'area\' (default) it is a closed polygon ring.'),
+  "areaSqft": zod.number().describe('Computed polygon area in square feet. 0 for linear zones.'),
+  "lengthFt": zod.number().nullish().describe('Computed polyline length in feet. Only set for mode \'linear\' zones (fence lines, edging, hedges, etc).'),
+  "mode": zod.enum(['area', 'linear']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
+  "enabled": zod.boolean(),
+  "color": zod.string()
+}))
+})
+
+
+export const PreviewCustomerMergeParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const PreviewCustomerMergeQueryParams = zod.object({
+  "sourceId": zod.coerce.number()
+})
+
+export const PreviewCustomerMergeResponse = zod.object({
+  "primary": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "phone": zod.string(),
+  "archivedAt": zod.string().nullable()
+}),
+  "source": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "phone": zod.string(),
+  "archivedAt": zod.string().nullable()
+}),
+  "relations": zod.array(zod.object({
+  "table": zod.string(),
+  "count": zod.number()
+})),
+  "blockers": zod.array(zod.string())
+})
+
+
+export const MergeCustomerParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+
+export const MergeCustomerBody = zod.object({
+  "sourceId": zod.number().min(1),
+  "confirm": zod.boolean()
+})
+
+export const MergeCustomerResponse = zod.object({
+  "primaryId": zod.number(),
+  "sourceId": zod.number()
+})
+
+
 export const GetWebsiteIntakeFormParams = zod.object({
   "kind": zod.enum(['quote', 'hiring'])
 })
@@ -221,10 +290,16 @@ export const SaveWebsiteIntakeFormResponse = zod.object({
 })
 
 
+
+
+
 export const ListWebsiteIntakeSubmissionsQueryParams = zod.object({
   "kind": zod.enum(['quote', 'hiring']),
   "before": zod.coerce.number().min(1).optional()
 })
+
+
+
 
 
 export const ListWebsiteIntakeSubmissionsResponse = zod.object({
@@ -353,6 +428,9 @@ export const ReviewWebsiteIntakeSubmissionParams = zod.object({
 })
 
 
+
+
+
 export const ReviewWebsiteIntakeSubmissionBody = zod.object({
   "action": zod.enum(['approve', 'decline', 'review']),
   "customerId": zod.number().min(1).optional(),
@@ -372,6 +450,9 @@ export const ReviewWebsiteIntakeSubmissionBody = zod.object({
   "areaSqft": zod.number().optional(),
   "lengthFt": zod.number().optional()
 })
+
+
+
 
 
 export const ReviewWebsiteIntakeSubmissionResponse = zod.object({
@@ -492,6 +573,9 @@ export const ReviewWebsiteIntakeSubmissionResponse = zod.object({
 })
 
 
+
+
+
 export const GetWebsiteCustomerChoicesParams = zod.object({
   "id": zod.coerce.number().min(1)
 })
@@ -499,6 +583,15 @@ export const GetWebsiteCustomerChoicesParams = zod.object({
 export const getWebsiteCustomerChoicesQuerySearchMax = 200;
 
 export const getWebsiteCustomerChoicesQueryNameMax = 200;
+
+export const getWebsiteCustomerChoicesQueryEmailMax = 254;
+
+export const getWebsiteCustomerChoicesQueryPhoneMax = 80;
+
+export const getWebsiteCustomerChoicesQueryAddressMax = 500;
+
+
+
 export const GetWebsiteCustomerChoicesQueryParams = zod.object({
   "search": zod.coerce.string().max(getWebsiteCustomerChoicesQuerySearchMax).optional(),
   "name": zod.coerce.string().max(getWebsiteCustomerChoicesQueryNameMax).optional(),
@@ -685,6 +778,7 @@ export const ListJobRequestsResponse = zod.array(ListJobRequestsResponseItem)
  */
 
 
+
 export const CreateJobRequestBody = zod.object({
   "customerId": zod.number().nullish(),
   "propertyId": zod.number().nullish(),
@@ -765,6 +859,9 @@ export const RejectJobRequestParams = zod.object({
 })
 
 
+
+
+
 export const RejectJobRequestBody = zod.object({
   "adminResponse": zod.string().min(1),
   "idempotencyKey": zod.string().min(1)
@@ -803,6 +900,9 @@ export const RequestJobRequestClarificationParams = zod.object({
 })
 
 
+
+
+
 export const RequestJobRequestClarificationBody = zod.object({
   "adminResponse": zod.string().min(1),
   "idempotencyKey": zod.string().min(1)
@@ -839,6 +939,8 @@ export const RequestJobRequestClarificationResponse = zod.object({
 export const AmendJobRequestParams = zod.object({
   "id": zod.coerce.number()
 })
+
+
 
 
 export const AmendJobRequestBody = zod.object({
@@ -1290,6 +1392,7 @@ export const DeleteSkipReasonResponse = zod.void()
  * @summary List all customers
  */
 export const ListCustomersQueryParams = zod.object({
+  "activeOnly": zod.coerce.boolean().optional().describe('Explicit active view takes priority over archive inclusion'),
   "q": zod.coerce.string().optional().describe('Search query'),
   "page": zod.coerce.number().optional(),
   "limit": zod.coerce.number().optional(),
@@ -1614,11 +1717,13 @@ export const DeleteCustomerResponse = zod.void()
 export const getAddressSuggestionsQueryQMin = 2;
 
 
+
 export const GetAddressSuggestionsQueryParams = zod.object({
   "q": zod.coerce.string().min(getAddressSuggestionsQueryQMin)
 })
 
 export const getAddressSuggestionsResponseItemsMax = 10;
+
 
 
 export const GetAddressSuggestionsResponse = zod.object({
@@ -3579,6 +3684,8 @@ export const listJobMessagesQueryLimitDefault = 100;
 export const listJobMessagesQueryLimitMax = 100;
 
 
+
+
 export const ListJobMessagesQueryParams = zod.object({
   "limit": zod.coerce.number().min(1).max(listJobMessagesQueryLimitMax).default(listJobMessagesQueryLimitDefault),
   "beforeId": zod.coerce.number().min(1).optional().describe('Return messages with IDs lower than this cursor')
@@ -3612,6 +3719,7 @@ export const createJobMessageBodyBodyMax = 4000;
 
 export const createJobMessageBodyClientMessageIdMin = 8;
 export const createJobMessageBodyClientMessageIdMax = 100;
+
 
 
 export const CreateJobMessageBody = zod.object({
@@ -3688,6 +3796,7 @@ export const sendStaffMessageToAudienceBodyOneClientMessageIdMin = 8;
 export const sendStaffMessageToAudienceBodyOneClientMessageIdMax = 100;
 
 
+
 export const SendStaffMessageToAudienceBody = zod.object({
   "body": zod.string().min(1).max(sendStaffMessageToAudienceBodyOneBodyMax),
   "clientMessageId": zod.string().min(sendStaffMessageToAudienceBodyOneClientMessageIdMin).max(sendStaffMessageToAudienceBodyOneClientMessageIdMax)
@@ -3734,6 +3843,8 @@ export const listStaffConversationMessagesQueryLimitDefault = 100;
 export const listStaffConversationMessagesQueryLimitMax = 100;
 
 
+
+
 export const ListStaffConversationMessagesQueryParams = zod.object({
   "limit": zod.coerce.number().min(1).max(listStaffConversationMessagesQueryLimitMax).default(listStaffConversationMessagesQueryLimitDefault),
   "beforeId": zod.coerce.number().min(1).optional().describe('Return messages with IDs lower than this cursor')
@@ -3770,6 +3881,7 @@ export const createStaffConversationMessageBodyClientMessageIdMin = 8;
 export const createStaffConversationMessageBodyClientMessageIdMax = 100;
 
 
+
 export const CreateStaffConversationMessageBody = zod.object({
   "body": zod.string().min(1).max(createStaffConversationMessageBodyBodyMax),
   "clientMessageId": zod.string().min(createStaffConversationMessageBodyClientMessageIdMin).max(createStaffConversationMessageBodyClientMessageIdMax)
@@ -3801,6 +3913,8 @@ export const ListStaffMessagesParams = zod.object({
 
 export const listStaffMessagesQueryLimitDefault = 100;
 export const listStaffMessagesQueryLimitMax = 100;
+
+
 
 
 export const ListStaffMessagesQueryParams = zod.object({
@@ -3837,6 +3951,7 @@ export const createStaffMessageBodyBodyMax = 4000;
 
 export const createStaffMessageBodyClientMessageIdMin = 8;
 export const createStaffMessageBodyClientMessageIdMax = 100;
+
 
 
 export const CreateStaffMessageBody = zod.object({
@@ -5133,6 +5248,7 @@ export const SubmitReviewRatingParams = zod.object({
 export const submitReviewRatingBodyRatingMax = 5;
 
 
+
 export const SubmitReviewRatingBody = zod.object({
   "rating": zod.number().min(1).max(submitReviewRatingBodyRatingMax)
 })
@@ -5311,6 +5427,7 @@ export const createGeofenceEntryBodyLatMax = 90;
 
 export const createGeofenceEntryBodyLngMin = -180;
 export const createGeofenceEntryBodyLngMax = 180;
+
 
 
 export const CreateGeofenceEntryBody = zod.object({
@@ -5592,6 +5709,8 @@ export const ListTimeEntriesResponse = zod.array(ListTimeEntriesResponseItem)
 export const AdjustTimeEntryParams = zod.object({
   "id": zod.coerce.number()
 })
+
+
 
 
 export const AdjustTimeEntryBody = zod.object({
@@ -6016,6 +6135,7 @@ export const GenerateBlueprintAiZonesParams = zod.object({
 export const generateBlueprintAiZonesBodyZonesItemPolygonMin = 3;
 
 
+
 export const GenerateBlueprintAiZonesBody = zod.object({
   "zones": zod.array(zod.object({
   "id": zod.string(),
@@ -6307,7 +6427,9 @@ export const getTenantSettingsResponseDefaultOffSeasonEndRegExp = new RegExp('^\
 export const getTenantSettingsResponsePreTripChecklistNameMax = 80;
 
 
+
 export const GetTenantSettingsResponse = zod.object({
+  "portalShowMeasurements": zod.boolean().optional(),
   "defaultInvoiceTerms": zod.string().nullish(),
   "defaultInvoiceNotes": zod.string().nullish(),
   "defaultEstimateTerms": zod.string().nullish(),
@@ -6454,6 +6576,7 @@ export const updateTenantSettingsBodyDefaultOffSeasonEndRegExp = new RegExp('^\\
 export const updateTenantSettingsBodyPreTripChecklistNameMax = 80;
 
 
+
 export const UpdateTenantSettingsBody = zod.object({
   "defaultInvoiceTerms": zod.string().nullish(),
   "defaultInvoiceNotes": zod.string().nullish(),
@@ -6573,7 +6696,9 @@ export const updateTenantSettingsResponseDefaultOffSeasonEndRegExp = new RegExp(
 export const updateTenantSettingsResponsePreTripChecklistNameMax = 80;
 
 
+
 export const UpdateTenantSettingsResponse = zod.object({
+  "portalShowMeasurements": zod.boolean().optional(),
   "defaultInvoiceTerms": zod.string().nullish(),
   "defaultInvoiceNotes": zod.string().nullish(),
   "defaultEstimateTerms": zod.string().nullish(),
@@ -7750,6 +7875,7 @@ export const createEquipmentFuelLogBodyMeterReadingMin = 0;
 export const createEquipmentFuelLogBodyExpectedMeterReadingMin = 0;
 
 
+
 export const CreateEquipmentFuelLogBody = zod.object({
   "meterReading": zod.number().min(createEquipmentFuelLogBodyMeterReadingMin).optional(),
   "expectedMeterReading": zod.number().min(createEquipmentFuelLogBodyExpectedMeterReadingMin).optional(),
@@ -7834,6 +7960,7 @@ export const createBulkFuelAdjustmentBodyTwoIdempotencyKeyMax = 200;
 export const createBulkFuelAdjustmentBodyTwoExpectedMovementIdMin = 0;
 
 
+
 export const CreateBulkFuelAdjustmentBody = zod.object({
   "measuredGallons": zod.number().min(createBulkFuelAdjustmentBodyOneMeasuredGallonsMin),
   "reason": zod.string().min(1).max(createBulkFuelAdjustmentBodyOneReasonMax),
@@ -7907,6 +8034,7 @@ export const ListBulkFuelTanksResponse = zod.array(ListBulkFuelTanksResponseItem
 export const createBulkFuelTankBodyCurrentMeterReadingMin = 0;
 
 
+
 export const CreateBulkFuelTankBody = zod.object({
   "currentMeterReading": zod.number().min(createBulkFuelTankBodyCurrentMeterReadingMin).optional(),
   "name": zod.string(),
@@ -7933,6 +8061,7 @@ export const UpdateBulkFuelTankParams = zod.object({
 })
 
 export const updateBulkFuelTankBodyCurrentMeterReadingMin = 0;
+
 
 
 export const UpdateBulkFuelTankBody = zod.object({
@@ -7962,6 +8091,7 @@ export const ListBulkFuelTransactionsParams = zod.object({
 })
 
 export const listBulkFuelTransactionsQueryLimitMax = 100;
+
 
 
 export const ListBulkFuelTransactionsQueryParams = zod.object({
@@ -8091,6 +8221,7 @@ export const CreateEquipmentReadingLogResponse = zod.object({
 export const createEquipmentPreTripBodyMeterReadingMin = 0;
 
 export const createEquipmentPreTripBodyExpectedMeterReadingMin = 0;
+
 
 
 export const CreateEquipmentPreTripBody = zod.object({
@@ -8248,6 +8379,7 @@ export const ReviewEquipmentInspectionParams = zod.object({
 })
 
 export const reviewEquipmentInspectionBodyNotesMax = 4000;
+
 
 
 export const ReviewEquipmentInspectionBody = zod.object({
@@ -9864,6 +9996,9 @@ export const ResumeCustomerServiceResponse = zod.object({
  */
 
 
+
+
+
 export const RequestUploadUrlBody = zod.object({
   "name": zod.string().min(1),
   "size": zod.number().min(1),
@@ -10466,6 +10601,9 @@ export const DismissPlanCancelRequestResponse = zod.object({
 /**
  * @summary Request a presigned upload URL (portal customers)
  */
+
+
+
 
 
 export const PortalRequestUploadUrlBody = zod.object({
@@ -12377,6 +12515,7 @@ export const ReschedulePlanVisitParams = zod.object({
 export const reschedulePlanVisitBodyRescheduleFeeAmountMin = 0;
 
 
+
 export const ReschedulePlanVisitBody = zod.object({
   "chargeRescheduleFee": zod.boolean().optional(),
   "rescheduleFeeAmount": zod.number().min(reschedulePlanVisitBodyRescheduleFeeAmountMin).optional(),
@@ -12720,6 +12859,7 @@ export const RetryBillingEmailParams = zod.object({
 
 export const retryBillingEmailBodyEvidenceMin = 10;
 export const retryBillingEmailBodyEvidenceMax = 2000;
+
 
 
 export const RetryBillingEmailBody = zod.object({
@@ -13797,14 +13937,20 @@ export const DeleteInventorySupplierParams = zod.object({
 export const DeleteInventorySupplierResponse = zod.void()
 
 
+export const ListExpenseCategoriesQueryParams = zod.object({
+  "includeDeleted": zod.coerce.boolean().optional()
+})
+
 export const ListExpenseCategoriesResponseItem = zod.object({
   "key": zod.string(),
-  "name": zod.string()
+  "name": zod.string(),
+  "deletedAt": zod.string().nullish()
 })
 export const ListExpenseCategoriesResponse = zod.array(ListExpenseCategoriesResponseItem)
 
 
 export const createExpenseCategoryBodyNameMax = 100;
+
 
 
 export const CreateExpenseCategoryBody = zod.object({
@@ -13813,8 +13959,16 @@ export const CreateExpenseCategoryBody = zod.object({
 
 export const CreateExpenseCategoryResponse = zod.object({
   "key": zod.string(),
-  "name": zod.string()
+  "name": zod.string(),
+  "deletedAt": zod.string().nullish()
 })
+
+
+export const DeleteExpenseCategoryParams = zod.object({
+  "key": zod.coerce.string()
+})
+
+export const DeleteExpenseCategoryResponse = zod.void()
 
 
 export const RenameExpenseCategoryParams = zod.object({
@@ -13824,13 +13978,15 @@ export const RenameExpenseCategoryParams = zod.object({
 export const renameExpenseCategoryBodyNameMax = 100;
 
 
+
 export const RenameExpenseCategoryBody = zod.object({
   "name": zod.string().min(1).max(renameExpenseCategoryBodyNameMax)
 })
 
 export const RenameExpenseCategoryResponse = zod.object({
   "key": zod.string(),
-  "name": zod.string()
+  "name": zod.string(),
+  "deletedAt": zod.string().nullish()
 })
 
 
@@ -13860,6 +14016,7 @@ export const createVendorBodyNameMax = 200;
 export const createVendorBodyContactNameMax = 200;
 
 export const createVendorBodyOfficePhoneMax = 80;
+
 
 
 export const CreateVendorBody = zod.object({
@@ -13920,6 +14077,7 @@ export const updateVendorBodyContactNameMax = 200;
 export const updateVendorBodyOfficePhoneMax = 80;
 
 
+
 export const UpdateVendorBody = zod.object({
   "name": zod.string().min(1).max(updateVendorBodyNameMax),
   "category": zod.string().optional(),
@@ -13960,6 +14118,7 @@ export const getEstimateReminderSettingsResponseRulesItemLabelMax = 100;
 export const getEstimateReminderSettingsResponseRulesMax = 10;
 
 
+
 export const GetEstimateReminderSettingsResponse = zod.object({
   "enabled": zod.boolean(),
   "rules": zod.array(zod.object({
@@ -13979,6 +14138,7 @@ export const updateEstimateReminderSettingsBodyRulesItemLabelMax = 100;
 export const updateEstimateReminderSettingsBodyRulesMax = 10;
 
 
+
 export const UpdateEstimateReminderSettingsBody = zod.object({
   "enabled": zod.boolean(),
   "rules": zod.array(zod.object({
@@ -13995,6 +14155,7 @@ export const updateEstimateReminderSettingsResponseRulesItemOffsetDaysMax = 365;
 export const updateEstimateReminderSettingsResponseRulesItemLabelMax = 100;
 
 export const updateEstimateReminderSettingsResponseRulesMax = 10;
+
 
 
 export const UpdateEstimateReminderSettingsResponse = zod.object({
@@ -14043,6 +14204,7 @@ export const RecoverJobInvoiceParams = zod.object({
 export const recoverJobInvoiceBodyReasonMax = 1000;
 
 
+
 export const RecoverJobInvoiceBody = zod.object({
   "reason": zod.string().max(recoverJobInvoiceBodyReasonMax).optional()
 })
@@ -14064,11 +14226,13 @@ export const ListExpensesQueryParams = zod.object({
 })
 
 
+
 export const listExpensesResponseInventoryReceiptsItemQuantityMax = 1000000;
 
 export const listExpensesResponseInventoryReceiptsItemCostPriceMin = 0;
 
 export const listExpensesResponseInventoryReceiptsItemMarkupPctMin = 0;
+
 
 
 export const ListExpensesResponseItem = zod.object({
@@ -14091,6 +14255,10 @@ export const ListExpensesResponseItem = zod.object({
   "vendorName": zod.string().nullish(),
   "date": zod.string(),
   "amount": zod.number(),
+  "subtotal": zod.number().nullish(),
+  "salesTaxPct": zod.number().optional(),
+  "salesTaxAmount": zod.number().optional(),
+  "capitalizeSalesTax": zod.boolean().optional(),
   "category": zod.string(),
   "description": zod.string().nullish(),
   "receiptUrl": zod.string().nullish(),
@@ -14107,6 +14275,7 @@ export const createExpenseBodyRequestIdMin = 8;
 export const createExpenseBodyRequestIdMax = 128;
 
 
+
 export const createExpenseBodyInventoryReceiptsItemQuantityMax = 1000000;
 
 export const createExpenseBodyInventoryReceiptsItemCostPriceMin = 0;
@@ -14114,6 +14283,12 @@ export const createExpenseBodyInventoryReceiptsItemCostPriceMin = 0;
 export const createExpenseBodyInventoryReceiptsItemMarkupPctMin = 0;
 
 export const createExpenseBodyInventoryReceiptsMax = 100;
+
+export const createExpenseBodySubtotalMin = 0;
+
+export const createExpenseBodySalesTaxPctMin = 0;
+export const createExpenseBodySalesTaxPctMax = 100;
+
 
 
 export const CreateExpenseBody = zod.object({
@@ -14134,10 +14309,14 @@ export const CreateExpenseBody = zod.object({
   "vendorId": zod.number().nullish(),
   "date": zod.string(),
   "amount": zod.number(),
+  "subtotal": zod.number().min(createExpenseBodySubtotalMin).optional(),
+  "salesTaxPct": zod.number().min(createExpenseBodySalesTaxPctMin).max(createExpenseBodySalesTaxPctMax).optional(),
+  "capitalizeSalesTax": zod.boolean().optional(),
   "category": zod.string().optional(),
   "description": zod.string().optional(),
   "receiptUrl": zod.string().optional()
 })
+
 
 
 export const createExpenseResponseInventoryReceiptsItemQuantityMax = 1000000;
@@ -14145,6 +14324,7 @@ export const createExpenseResponseInventoryReceiptsItemQuantityMax = 1000000;
 export const createExpenseResponseInventoryReceiptsItemCostPriceMin = 0;
 
 export const createExpenseResponseInventoryReceiptsItemMarkupPctMin = 0;
+
 
 
 export const CreateExpenseResponse = zod.object({
@@ -14167,6 +14347,10 @@ export const CreateExpenseResponse = zod.object({
   "vendorName": zod.string().nullish(),
   "date": zod.string(),
   "amount": zod.number(),
+  "subtotal": zod.number().nullish(),
+  "salesTaxPct": zod.number().optional(),
+  "salesTaxAmount": zod.number().optional(),
+  "capitalizeSalesTax": zod.boolean().optional(),
   "category": zod.string(),
   "description": zod.string().nullish(),
   "receiptUrl": zod.string().nullish(),
@@ -14183,11 +14367,13 @@ export const GetExpenseParams = zod.object({
 })
 
 
+
 export const getExpenseResponseInventoryReceiptsItemQuantityMax = 1000000;
 
 export const getExpenseResponseInventoryReceiptsItemCostPriceMin = 0;
 
 export const getExpenseResponseInventoryReceiptsItemMarkupPctMin = 0;
+
 
 
 export const GetExpenseResponse = zod.object({
@@ -14210,6 +14396,10 @@ export const GetExpenseResponse = zod.object({
   "vendorName": zod.string().nullish(),
   "date": zod.string(),
   "amount": zod.number(),
+  "subtotal": zod.number().nullish(),
+  "salesTaxPct": zod.number().optional(),
+  "salesTaxAmount": zod.number().optional(),
+  "capitalizeSalesTax": zod.boolean().optional(),
   "category": zod.string(),
   "description": zod.string().nullish(),
   "receiptUrl": zod.string().nullish(),
@@ -14229,6 +14419,7 @@ export const updateExpenseBodyRequestIdMin = 8;
 export const updateExpenseBodyRequestIdMax = 128;
 
 
+
 export const updateExpenseBodyInventoryReceiptsItemQuantityMax = 1000000;
 
 export const updateExpenseBodyInventoryReceiptsItemCostPriceMin = 0;
@@ -14236,6 +14427,12 @@ export const updateExpenseBodyInventoryReceiptsItemCostPriceMin = 0;
 export const updateExpenseBodyInventoryReceiptsItemMarkupPctMin = 0;
 
 export const updateExpenseBodyInventoryReceiptsMax = 100;
+
+export const updateExpenseBodySubtotalMin = 0;
+
+export const updateExpenseBodySalesTaxPctMin = 0;
+export const updateExpenseBodySalesTaxPctMax = 100;
+
 
 
 export const UpdateExpenseBody = zod.object({
@@ -14256,10 +14453,14 @@ export const UpdateExpenseBody = zod.object({
   "vendorId": zod.number().nullish(),
   "date": zod.string(),
   "amount": zod.number(),
+  "subtotal": zod.number().min(updateExpenseBodySubtotalMin).optional(),
+  "salesTaxPct": zod.number().min(updateExpenseBodySalesTaxPctMin).max(updateExpenseBodySalesTaxPctMax).optional(),
+  "capitalizeSalesTax": zod.boolean().optional(),
   "category": zod.string().optional(),
   "description": zod.string().optional(),
   "receiptUrl": zod.string().optional()
 })
+
 
 
 export const updateExpenseResponseInventoryReceiptsItemQuantityMax = 1000000;
@@ -14267,6 +14468,7 @@ export const updateExpenseResponseInventoryReceiptsItemQuantityMax = 1000000;
 export const updateExpenseResponseInventoryReceiptsItemCostPriceMin = 0;
 
 export const updateExpenseResponseInventoryReceiptsItemMarkupPctMin = 0;
+
 
 
 export const UpdateExpenseResponse = zod.object({
@@ -14289,6 +14491,10 @@ export const UpdateExpenseResponse = zod.object({
   "vendorName": zod.string().nullish(),
   "date": zod.string(),
   "amount": zod.number(),
+  "subtotal": zod.number().nullish(),
+  "salesTaxPct": zod.number().optional(),
+  "salesTaxAmount": zod.number().optional(),
+  "capitalizeSalesTax": zod.boolean().optional(),
   "category": zod.string(),
   "description": zod.string().nullish(),
   "receiptUrl": zod.string().nullish(),
@@ -14636,6 +14842,7 @@ export const RescheduleJobOnceParams = zod.object({
 })
 
 export const rescheduleJobOnceBodyRescheduleFeeAmountMin = 0;
+
 
 
 export const RescheduleJobOnceBody = zod.object({
@@ -15102,6 +15309,7 @@ export const createExternalConnectionBodyNameMax = 100;
 export const createExternalConnectionBodyDescriptionMax = 1000;
 
 
+
 export const CreateExternalConnectionBody = zod.object({
   "name": zod.string().min(1).max(createExternalConnectionBodyNameMax),
   "description": zod.string().max(createExternalConnectionBodyDescriptionMax).optional(),
@@ -15150,6 +15358,7 @@ export const UpdateExternalConnectionParams = zod.object({
 export const updateExternalConnectionBodyNameMax = 100;
 
 export const updateExternalConnectionBodyDescriptionMax = 1000;
+
 
 
 export const UpdateExternalConnectionBody = zod.object({
@@ -15264,6 +15473,7 @@ export const setExternalWebhookSecretBodySecretMin = 8;
 export const setExternalWebhookSecretBodySecretMax = 4096;
 
 
+
 export const SetExternalWebhookSecretBody = zod.object({
   "secret": zod.string().min(setExternalWebhookSecretBodySecretMin).max(setExternalWebhookSecretBodySecretMax)
 })
@@ -15294,6 +15504,7 @@ export const SetExternalWebhookSecretResponse = zod.object({
  */
 export const listExternalAuditQueryConnectionIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const listExternalAuditQueryLimitMax = 100;
+
 
 
 export const ListExternalAuditQueryParams = zod.object({
@@ -15470,6 +15681,7 @@ export const approveFinalPayrollBodyOneDateToRegExp = new RegExp('^\\d{4}-\\d{2}
 export const approveFinalPayrollBodyTwoP4pOnlyReasonMax = 2000;
 
 
+
 export const ApproveFinalPayrollBody = zod.object({
   "dateFrom": zod.string().regex(approveFinalPayrollBodyOneDateFromRegExp),
   "dateTo": zod.string().regex(approveFinalPayrollBodyOneDateToRegExp)
@@ -15483,6 +15695,7 @@ export const approveFinalPayrollResponseTwoAdjustmentsItemOneAmountMin = -100000
 export const approveFinalPayrollResponseTwoAdjustmentsItemOneAmountMax = 1000000;
 
 export const approveFinalPayrollResponseTwoAdjustmentsItemOneReasonMax = 2000;
+
 
 
 export const ApproveFinalPayrollResponse = zod.object({
@@ -15565,6 +15778,9 @@ export const ApproveFinalPayrollResponse = zod.object({
 }))
 
 
+
+
+
 export const GetFinalPayrollParams = zod.object({
   "id": zod.coerce.number().min(1)
 })
@@ -15574,6 +15790,7 @@ export const getFinalPayrollResponseTwoAdjustmentsItemOneAmountMin = -1000000;
 export const getFinalPayrollResponseTwoAdjustmentsItemOneAmountMax = 1000000;
 
 export const getFinalPayrollResponseTwoAdjustmentsItemOneReasonMax = 2000;
+
 
 
 export const GetFinalPayrollResponse = zod.object({
@@ -15656,6 +15873,9 @@ export const GetFinalPayrollResponse = zod.object({
 }))
 
 
+
+
+
 export const AddFinalPayrollAdjustmentParams = zod.object({
   "id": zod.coerce.number().min(1)
 })
@@ -15665,6 +15885,7 @@ export const addFinalPayrollAdjustmentBodyAmountMin = -1000000;
 export const addFinalPayrollAdjustmentBodyAmountMax = 1000000;
 
 export const addFinalPayrollAdjustmentBodyReasonMax = 2000;
+
 
 
 export const AddFinalPayrollAdjustmentBody = zod.object({
@@ -15678,6 +15899,7 @@ export const addFinalPayrollAdjustmentResponseOneAmountMin = -1000000;
 export const addFinalPayrollAdjustmentResponseOneAmountMax = 1000000;
 
 export const addFinalPayrollAdjustmentResponseOneReasonMax = 2000;
+
 
 
 export const AddFinalPayrollAdjustmentResponse = zod.object({
@@ -15775,7 +15997,10 @@ export const GetEfficiencyJobsResponse = zod.object({
 })
 
 
+
+
 export const requestFormEvidenceUploadBodyFileNameMax = 180;
+
 
 
 export const RequestFormEvidenceUploadBody = zod.object({
@@ -15944,8 +16169,3 @@ export const GetKpiDashboardReportResponse = zod.object({
 })
 
 
-export const getWebsiteCustomerChoicesQueryEmailMax = 254;
-
-export const getWebsiteCustomerChoicesQueryPhoneMax = 80;
-
-export const getWebsiteCustomerChoicesQueryAddressMax = 500;

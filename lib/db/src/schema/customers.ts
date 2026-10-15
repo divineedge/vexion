@@ -54,6 +54,7 @@ export const customersTable = pgTable("customers", {
   totalSpend: real("total_spend").notNull().default(0),
   /** Set when the customer is archived; null means active */
   archivedAt: timestamp("archived_at", { withTimezone: true }),
+  mergedIntoCustomerId: integer("merged_into_customer_id").references((): AnyPgColumn => customersTable.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -79,4 +79,5 @@
 - [Website intake review](website-intake-policy.md) — customizable conditional forms; quote inquiries stay outside CRM until staff review, with measurement-dependent preliminary estimates.
 - [Drizzle JSON object compatibility](drizzle-json-object-compatibility.md) — normalize null-prototype maps before ORM writes; allowlist keys to preserve safety.
 - [Vendor category policy](vendor-category-policy.md) — company-managed labels, vendor defaults with per-expense overrides, and stable historical classification keys.
+- [Customer merge safety](customer-merge-safety.md) — inactive duplicates, preserved history, payment-profile conflicts, and safe handling of late financial events.
 - [Drizzle correlated SQL](drizzle-correlated-sql.md) — explicitly qualify outer-table columns inside SQL subqueries; single-table selects may strip interpolated qualifiers.

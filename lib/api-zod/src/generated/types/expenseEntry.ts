@@ -17,6 +17,11 @@ export interface ExpenseEntry {
   vendorName?: string | null;
   date: string;
   amount: number;
+  /** @nullable */
+  subtotal?: number | null;
+  salesTaxPct?: number;
+  salesTaxAmount?: number;
+  capitalizeSalesTax?: boolean;
   category: string;
   /** @nullable */
   description?: string | null;

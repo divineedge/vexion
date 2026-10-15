@@ -7,6 +7,7 @@ export * from "./payroll";
 export * from "./tenants";
 export * from "./users";
 export * from "./customers";
+export * from './customerMerges';
 export * from "./properties";
 export * from "./propertyHistory";
 export * from "./jobs";

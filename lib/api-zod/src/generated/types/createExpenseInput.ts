@@ -19,6 +19,14 @@ export interface CreateExpenseInput {
   vendorId?: number | null;
   date: string;
   amount: number;
+  /** @minimum 0 */
+  subtotal?: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  salesTaxPct?: number;
+  capitalizeSalesTax?: boolean;
   category?: string;
   description?: string;
   receiptUrl?: string;

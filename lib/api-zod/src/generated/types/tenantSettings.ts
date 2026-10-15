@@ -22,6 +22,7 @@ import type { TenantSettingsPreferredAreaUnit } from './tenantSettingsPreferredA
 import type { TenantSettingsRolePermissions } from './tenantSettingsRolePermissions';
 
 export interface TenantSettings {
+  portalShowMeasurements?: boolean;
   /** @nullable */
   defaultInvoiceTerms?: string | null;
   /** @nullable */

@@ -15,7 +15,7 @@ export function AutosaveIndicator({ status, hasUnsaved, onRetry, label }: { stat
     idle: null,
     pending: <><CloudUpload className="w-4 h-4" /> Unsaved changes…</>,
     saving: <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>,
-    saved: <><Check className="w-4 h-4 text-emerald-600" /> All changes saved</>,
+    saved: <><Check className="w-4 h-4 text-emerald-600" /> {label ? `${label} saved` : 'Changes saved'}</>,
   } as const;
   const content = map[status];
   return (

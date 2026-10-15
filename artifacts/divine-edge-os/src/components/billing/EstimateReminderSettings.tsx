@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AutosaveIndicator } from '@/components/settings/AutosaveIndicator';
-import type { AutosaveStatus } from '@/lib/settingsAutosave';
+import { useAutosaveFields, useSettingsAutosave } from '@/hooks/use-settings-autosave';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -39,17 +39,16 @@ export function EstimateReminderSettings() {
   });
   const [enabled, setEnabled] = useState(false);
   const [rules, setRules] = useState<EstimateReminderRule[]>([]);
-  const [status, setStatus] = useState<AutosaveStatus>('idle');
   const [dirty, setDirty] = useState(false);
   const initialized = useRef(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const seq = useRef(0);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     if (data && !initialized.current) {
       initialized.current = true;
       setEnabled(!!data.enabled);
       setRules((data.rules ?? []).map(r => ({ ...r, channels: r.channels ?? [], notifyAdmin: !!r.notifyAdmin, createTask: !!r.createTask })));
+      setReady(true);
     }
   }, [data]);
 
@@ -62,35 +61,12 @@ export function EstimateReminderSettings() {
     rules: [...rs].sort((x, y) => x.offsetDays - y.offsetDays).map(r => ({ ...r, label: r.label.trim() || `${r.offsetDays} days after sending` })),
   });
 
-  const saveNow = async (body: EstimateReminderConfig) => {
-    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
-    const mySeq = ++seq.current;
-    setStatus('saving');
-    try {
-      const res = await customFetch<EstimateReminderConfig>(URL, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      qc.setQueryData(KEY, res);
-      if (mySeq === seq.current) { setStatus('saved'); setDirty(false); }
-    } catch (e: any) {
-      if (mySeq === seq.current) {
-        setStatus('error');
-        toast.error(e?.data?.error ?? e?.message ?? 'Could not save estimate reminders');
-      }
-    }
-  };
-  const saveRef = useRef(saveNow);
-  saveRef.current = saveNow;
-
-  // Debounced autosave — only valid drafts are ever sent.
-  useEffect(() => {
-    if (!initialized.current || !dirty) return;
-    if (timer.current) clearTimeout(timer.current);
-    if (hasErrors) { setStatus('pending'); return; }
-    setStatus('pending');
-    const body = buildPayload(enabled, rules);
-    timer.current = setTimeout(() => { saveRef.current(body); }, 800);
-    return () => { if (timer.current) clearTimeout(timer.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, rules, dirty, hasErrors]);
+  const autosave = useSettingsAutosave(async patch => {
+    const res = await customFetch<EstimateReminderConfig>(URL, { method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch.settings) });
+    qc.setQueryData(KEY, res);
+  });
+  useAutosaveFields({ settings: buildPayload(enabled, rules) }, ready, autosave.queue, !hasErrors);
 
   const update = (idx: number, patch: Partial<EstimateReminderRule>) => {
     setDirty(true);
@@ -196,7 +172,7 @@ export function EstimateReminderSettings() {
               <AlertTriangle className="w-3.5 h-3.5" /> Not saved — fix the highlighted rule{errors.filter(Boolean).length > 1 ? 's' : ''} to save.
             </span>
           ) : (
-            <AutosaveIndicator status={status} hasUnsaved={dirty} onRetry={() => saveNow(buildPayload(enabled, rules))} />
+            <AutosaveIndicator status={autosave.status} hasUnsaved={autosave.hasUnsaved} onRetry={() => { void autosave.retry(); }} />
           )}
         </div>
       </CardContent>

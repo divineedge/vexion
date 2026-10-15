@@ -26,7 +26,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { SettingsTabs as Tabs, SettingsTabsContent as TabsContent } from '@/components/settings/SettingsTabs';
 import { TimezoneSelect } from '@/components/settings/TimezoneSelect';
 import { AutosaveIndicator } from '@/components/settings/AutosaveIndicator';
 import { useSettingsAutosave, useAutosaveFields } from '@/hooks/use-settings-autosave';
@@ -246,6 +247,44 @@ export default function SettingsPage() {
   const followupAutosave = useSettingsAutosave(
     patch => followupAsyncRef.current({ data: patch.followupConfig as FollowupTriggerConfig }),
   );
+  const skipUpdateRef = useRef(updateSkipReasonMutation.mutateAsync);
+  skipUpdateRef.current = updateSkipReasonMutation.mutateAsync;
+  const skipAutosave = useSettingsAutosave(async patch => {
+    for (const change of Object.values(patch)) {
+      await skipUpdateRef.current(change as Parameters<typeof updateSkipReasonMutation.mutateAsync>[0]);
+    }
+  }, { onSaved: () => qc.invalidateQueries({ queryKey: getListSkipReasonsQueryKey() }) });
+  const priorSkipDraft = useRef<{ id: number; json: string } | null>(null);
+  const tagUpdateRef = useRef(updateTagMutation.mutateAsync);
+  tagUpdateRef.current = updateTagMutation.mutateAsync;
+  const tagAutosave = useSettingsAutosave(async patch => {
+    for (const change of Object.values(patch)) {
+      await tagUpdateRef.current(change as Parameters<typeof updateTagMutation.mutateAsync>[0]);
+    }
+  }, { onSaved: () => qc.invalidateQueries({ queryKey: getListTagsQueryKey() }) });
+  const priorTagDraft = useRef<{ id: number; json: string } | null>(null);
+  useEffect(() => {
+    if (editingTagId == null) { priorTagDraft.current = null; return; }
+    const data = { name: editingTagName.trim(), color: editingTagColor };
+    const json = JSON.stringify(data);
+    if (data.name && priorTagDraft.current?.id === editingTagId && priorTagDraft.current.json !== json) {
+      tagAutosave.queue({ [String(editingTagId)]: { id: editingTagId, data } });
+    }
+    priorTagDraft.current = { id: editingTagId, json };
+  }, [editingTagId, editingTagName, editingTagColor, tagAutosave.queue]);
+  useEffect(() => {
+    if (editingSkipId == null) { priorSkipDraft.current = null; return; }
+    const actionConfig: Record<string, string> = {};
+    if (editingSkipAction === 'notify_customer' && editingSkipMsgTemplate) actionConfig.messageTemplate = editingSkipMsgTemplate;
+    if (editingSkipAction === 'flag_property' && editingSkipFlagNote) actionConfig.note = editingSkipFlagNote;
+    if (editingSkipAction === 'create_task' && editingSkipTaskTitle) actionConfig.title = editingSkipTaskTitle;
+    const data = { action: editingSkipAction, actionConfig };
+    const json = JSON.stringify(data);
+    if (priorSkipDraft.current?.id === editingSkipId && priorSkipDraft.current.json !== json) {
+      skipAutosave.queue({ [String(editingSkipId)]: { id: editingSkipId, data } });
+    }
+    priorSkipDraft.current = { id: editingSkipId, json };
+  }, [editingSkipId, editingSkipAction, editingSkipMsgTemplate, editingSkipFlagNote, editingSkipTaskTitle, skipAutosave.queue]);
   const [stopServiceThresholdDays, setStopServiceThresholdDays] = useState('30');
 
   // Reviews
@@ -429,25 +468,6 @@ export default function SettingsPage() {
     setBusinessMailingZip(item.zip ?? '');
   };
 
-  const saveBranding = () => { void autosave.flush(); };
-
-  const savePaymentReminders = () => { void autosave.flush(); };
-
-  const saveNotificationTemplates = () => { void autosave.flush(); };
-
-  const saveFollowupConfig = () => { void followupAutosave.flush(); };
-
-  const saveReviews = () => { void autosave.flush(); };
-
-  const saveGeneral = () => { void autosave.flush(); };
-
-  const saveInvoicingDefaults = () => { void autosave.flush(); };
-
-  const saveEstimateDefaults = () => { void autosave.flush(); };
-
-  const saveInventoryPricing = () => { void autosave.flush(); };
-
-  const saveOperational = () => { void autosave.flush(); };
 
 
   const toggleFieldProp = (key: string, prop: 'visible' | 'required') => {
@@ -482,9 +502,24 @@ export default function SettingsPage() {
 
   const numOrSkip = (v: string, int = false): number | undefined => {
     if (v.trim() === '') return undefined;
-    const n = int ? parseInt(v, 10) : parseFloat(v);
-    return Number.isFinite(n) ? n : undefined;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 && (!int || Number.isInteger(n)) ? n : undefined;
   };
+  const numericDrafts: [string, string, boolean][] = [
+    [taxRate, 'tax rate', false], [buffer, 'material buffer', false],
+    [callbackDueHoursHigh, 'high-priority callback hours', true], [callbackDueHoursNormal, 'callback hours', true],
+    [callbackDueHoursLow, 'low-priority callback hours', true], [renewalWarningDays, 'renewal warning days', true],
+    [callbackWarningThresholdPct, 'callback warning percentage', true], [cancellationFeeAmount, 'cancellation fee', false],
+    [stopServiceThresholdDays, 'stop-service days', true], [invoiceDueDays, 'invoice due days', true],
+    [estimateExpiryDays, 'estimate expiry days', true], [markupPct, 'inventory markup', false],
+    [dailyTaskHourlyRate, 'daily task hourly rate', false], [defaultGeofenceRadius, 'geofence radius', true],
+  ];
+  const invalidMainFields = !hydrated ? [] : [
+    ...(!companyName.trim() ? ['company name'] : []),
+    ...numericDrafts.filter(([v, , integer]) => numOrSkip(v, integer) === undefined || Number(v) < 0).map(([, label]) => label),
+    ...(maxClockInHours.trim() && (numOrSkip(maxClockInHours) === undefined || Number(maxClockInHours) <= 0) ? ['maximum clock-in hours'] : []),
+    ...(zoneTypes.some(zone => !zone.name.trim()) ? ['measurement zone names'] : []),
+  ];
   const mailingSame = businessMailingSameAsPhysical;
   const autosaveFields: Record<string, unknown> = Object.fromEntries(Object.entries({
     // General
@@ -503,6 +538,8 @@ export default function SettingsPage() {
     businessMailingState: (mailingSame ? businessState : businessMailingState) || null,
     businessMailingZip: (mailingSame ? businessZip : businessMailingZip) || null,
     businessLicenseNumber, businessTagline, invoiceFooterText,
+    mainPhoneNumber: mainPhoneNumber || null, marketingPhoneNumber: marketingPhoneNumber || null,
+    emailProviderConfig: { gmailSenderName },
     // Invoicing / estimates
     paymentRemindersEnabled, paymentReminderSchedule, paymentReminderChannels, stopServiceRuleEnabled,
     stopServiceThresholdDays: numOrSkip(stopServiceThresholdDays, true),
@@ -518,12 +555,16 @@ export default function SettingsPage() {
     dailyTaskHourlyRate: numOrSkip(dailyTaskHourlyRate), defaultOffSeasonStart: defaultOffSeasonStart || null, defaultOffSeasonEnd: defaultOffSeasonEnd || null,
     // Maps
     defaultGeofenceRadius: numOrSkip(defaultGeofenceRadius, true), defaultGeofenceUnit, autoCreateGeofence,
-    preferredAreaUnit, measurementZoneTypes: zoneTypes.filter(z => z.name.trim()).map(z => ({ ...z, mode: z.mode ?? 'area' as const })),
+    preferredAreaUnit, measurementZoneTypes: zoneTypes.every(z => z.name.trim())
+      ? zoneTypes.map(z => ({ ...z, mode: z.mode ?? 'area' as const })) : undefined,
     // Customer fields
     customerFields,
   }).filter(([, v]) => v !== undefined));
   useAutosaveFields(autosaveFields, hydrated, autosave.queue);
-  useAutosaveFields({ followupConfig }, hydrated, followupAutosave.queue);
+  const followupValid = [followupConfig.sentEstimate?.delayDays, followupConfig.sentEstimate?.repeatDays,
+    followupConfig.sentInvoice?.delayDays, followupConfig.sentInvoice?.repeatDays, followupConfig.unansweredEmail?.hours]
+    .every(value => value === undefined || (Number.isInteger(value) && value > 0));
+  useAutosaveFields({ followupConfig }, hydrated, followupAutosave.queue, followupValid);
 
   const portalUrl: string = (settings as { portalUrl?: string | null } | undefined)?.portalUrl
     || (settings?.slug ? `${window.location.origin}/portal/business/${settings.slug}` : '');
@@ -563,11 +604,14 @@ export default function SettingsPage() {
     <div className="space-y-6 max-w-5xl mx-auto animate-in fade-in duration-500">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground mt-1">Changes save automatically. Credentials, connections, uploads and automation runs still use their own buttons.</p>
+        <p className="text-muted-foreground mt-1">Settings save automatically after you finish typing or change a switch. You can switch tabs without losing edits. Adding or deleting items, connecting providers, uploads and automation runs still use their own buttons.</p>
       </div>
       <div className="sticky top-0 z-20 -mt-3 flex flex-wrap items-center gap-4 rounded-md bg-background/90 backdrop-blur py-1.5" data-testid="settings-autosave-bar">
         {!hydrated ? <span className="text-sm text-muted-foreground">Loading settings…</span> : <>
-          <AutosaveIndicator status={autosave.status} hasUnsaved={autosave.hasUnsaved} onRetry={() => { void autosave.retry(); }} />
+          {(autosave.status !== 'saved' || invalidMainFields.length === 0) &&
+            <AutosaveIndicator label="Company settings" status={autosave.status} hasUnsaved={autosave.hasUnsaved} onRetry={() => { void autosave.retry(); }} />}
+          {invalidMainFields.length > 0 && <p className="text-sm text-destructive" role="alert">Not saved: enter valid {invalidMainFields.join(', ')}.</p>}
+          {!followupValid && <p className="text-sm text-destructive" role="alert">Follow-up delays are not saved — use whole numbers of at least 1.</p>}
           {followupAutosave.status !== 'idle' && <AutosaveIndicator label="follow-up rules" status={followupAutosave.status} hasUnsaved={followupAutosave.hasUnsaved} onRetry={() => { void followupAutosave.retry(); }} />}
         </>}
       </div>
@@ -620,9 +664,6 @@ export default function SettingsPage() {
                   <TimezoneSelect value={timezone} onChange={setTimezone} />
                 </div>
               </div>
-              <Button onClick={saveGeneral} disabled={updateSettings.isPending}>
-                {updateSettings.isPending ? 'Saving...' : 'Save Changes'}
-              </Button>
             </CardContent>
           </Card>
 
@@ -785,7 +826,6 @@ export default function SettingsPage() {
                   <span className="text-xs text-muted-foreground">%</span>
                 </div>
               </div>
-              <Button onClick={saveGeneral} disabled={updateSettings.isPending} variant="outline">Save Defaults</Button>
             </CardContent>
           </Card>
 
@@ -843,9 +883,6 @@ export default function SettingsPage() {
                 />
               </div>
 
-              <Button onClick={saveInventoryPricing} disabled={updateSettings.isPending} variant="outline">
-                Save Pricing Settings
-              </Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -1034,13 +1071,6 @@ export default function SettingsPage() {
                 </div>
                 <Switch checked={autoCreateGeofence} onCheckedChange={setAutoCreateGeofence} />
               </div>
-              <Button
-                onClick={() => { void autosave.flush(); }}
-                disabled={updateSettings.isPending}
-                variant="outline"
-              >
-                Save Geofence Defaults
-              </Button>
             </CardContent>
           </Card>
 
@@ -1173,14 +1203,6 @@ export default function SettingsPage() {
 
               </div>
 
-              <Button
-                title="Save measurement settings and zone type definitions"
-                onClick={() => { void autosave.flush(); }}
-                disabled={updateSettings.isPending}
-                variant="outline"
-              >
-                Save Measurement Settings
-              </Button>
             </CardContent>
           </Card>
 
@@ -1293,16 +1315,6 @@ export default function SettingsPage() {
                   />
                 </div>
               </div>
-              <Button
-                variant="outline"
-                disabled={updateSettings.isPending}
-                onClick={() => updateSettings.mutate(
-                  { data: { mainPhoneNumber, marketingPhoneNumber } as any },
-                  { onSuccess: () => toast.success('Phone numbers saved'), onError: () => toast.error('Failed to save') }
-                )}
-              >
-                Save Phone Numbers
-              </Button>
             </CardContent>
           </Card>
 
@@ -1477,7 +1489,7 @@ export default function SettingsPage() {
                   }
                 )}
               >
-                Save SMS Provider
+                Apply SMS connection
               </Button>
             </CardContent>
           </Card>
@@ -1547,20 +1559,6 @@ export default function SettingsPage() {
                       Customers will see "Mike's Lawn Care &lt;{gmailEmail || 'you@gmail.com'}&gt;" instead of just your email address. Leave blank to show only the address.
                     </p>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={updateSettings.isPending}
-                    onClick={() => updateSettings.mutate(
-                      { data: { emailProvider: 'gmail', emailProviderConfig: { gmailSenderName } } as any },
-                      {
-                        onSuccess: () => { toast.success('Gmail sender name saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
-                        onError: () => toast.error('Failed to save'),
-                      }
-                    )}
-                  >
-                    Save Sender Name
-                  </Button>
                 </div>
               )}
 
@@ -1692,7 +1690,7 @@ export default function SettingsPage() {
                   }
                 )}
               >
-                Save Email Provider
+                Apply email connection
               </Button>
               )}
             </CardContent>
@@ -1794,7 +1792,6 @@ export default function SettingsPage() {
               </div>
               <DefaultWordingCard kind="estimate" />
               <div className="flex flex-wrap items-center gap-2 pt-2 border-t">
-                <Button onClick={saveEstimateDefaults} disabled={updateSettings.isPending}>Save Estimate Defaults</Button>
                 <Button variant="outline" onClick={() => setLocation('/estimates?tab=templates')} className="gap-1.5">
                   Edit estimate templates <ArrowRight className="w-3.5 h-3.5" />
                 </Button>
@@ -1868,7 +1865,6 @@ export default function SettingsPage() {
               <PaymentPolicyCard scope="company" id={0} canEdit={!!canManageOffice} title="Deposits and prepayment (company default)" />
               {canManageOffice && <CompanyDepositRules />}
               <div className="flex flex-wrap items-center gap-2 pt-2 border-t">
-                <Button onClick={saveInvoicingDefaults} disabled={updateSettings.isPending} data-testid="button-save-invoicing">Save Invoicing</Button>
                 <Button variant="outline" onClick={() => setLocation('/financials?tab=invoice-templates')} className="gap-1.5">
                   Edit invoice templates <ArrowRight className="w-3.5 h-3.5" />
                 </Button>
@@ -1979,9 +1975,6 @@ export default function SettingsPage() {
               </div>
 
               <div className="flex justify-end pt-2 border-t">
-                <Button onClick={saveOperational} disabled={updateSettings.isPending} variant="outline">
-                  Save Job Settings
-                </Button>
               </div>
             </CardContent>
           </Card>
@@ -2241,9 +2234,6 @@ export default function SettingsPage() {
                 />
                 <p className="text-xs text-muted-foreground">Appears at the bottom of every invoice. Good place for payment terms or a thank-you note.</p>
               </div>
-              <Button onClick={saveBranding} disabled={updateSettings.isPending} variant="outline">
-                {updateSettings.isPending ? 'Saving…' : 'Save Business Profile'}
-              </Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -2434,9 +2424,6 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <Button onClick={savePaymentReminders} disabled={updateSettings.isPending} variant="outline">
-                {updateSettings.isPending ? 'Saving…' : 'Save Reminder Settings'}
-              </Button>
             </CardContent>
           </Card>
 
@@ -2479,9 +2466,6 @@ export default function SettingsPage() {
                 </p>
               </div>
 
-              <Button onClick={savePaymentReminders} disabled={updateSettings.isPending} variant="outline">
-                {updateSettings.isPending ? 'Saving…' : 'Save Stop-Service Rule'}
-              </Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -2584,9 +2568,6 @@ export default function SettingsPage() {
                 />
               </div>
 
-              <Button onClick={saveFollowupConfig} disabled={updateFollowupTriggerConfig.isPending}>
-                {updateFollowupTriggerConfig.isPending ? 'Saving…' : 'Save Follow-Up Settings'}
-              </Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -2721,9 +2702,6 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <Button onClick={saveReviews} disabled={updateSettings.isPending} variant="outline">
-                {updateSettings.isPending ? 'Saving…' : 'Save Review Settings'}
-              </Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -2823,9 +2801,6 @@ export default function SettingsPage() {
               </div>
 
               <div className="flex gap-2 flex-wrap">
-                <Button onClick={saveNotificationTemplates} disabled={updateSettings.isPending} variant="outline">
-                  {updateSettings.isPending ? 'Saving…' : 'Save Templates'}
-                </Button>
                 <Button
                   variant="ghost"
                   disabled={testEmailSending}
@@ -2931,12 +2906,9 @@ export default function SettingsPage() {
                               }
                             }}
                           />
-                          <Button size="sm" className="h-8"
-                            onClick={() => updateTagMutation.mutate({ id: tag.id, data: { name: editingTagName, color: editingTagColor } }, {
-                              onSuccess: () => { toast.success('Tag updated'); setEditingTagId(null); qc.invalidateQueries({ queryKey: getListTagsQueryKey() }); },
-                              onError: () => toast.error('Failed to update tag'),
-                            })}>Save</Button>
-                          <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingTagId(null)}><X className="w-3 h-3" /></Button>
+                          {!editingTagName.trim() ? <span className="text-xs text-destructive" role="alert">Enter a name to save.</span>
+                            : <AutosaveIndicator status={tagAutosave.status} hasUnsaved={tagAutosave.hasUnsaved} onRetry={() => { void tagAutosave.retry(); }} />}
+                          <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingTagId(null)}>Done</Button>
                         </>
                       ) : (
                         <>
@@ -3066,17 +3038,8 @@ export default function SettingsPage() {
                               <Input placeholder="Task title (optional)" value={editingSkipTaskTitle} onChange={e => setEditingSkipTaskTitle(e.target.value)} />
                             )}
                             <div className="flex gap-2">
-                              <Button size="sm" onClick={() => {
-                                const cfg: Record<string, string> = {};
-                                if (editingSkipAction === 'notify_customer' && editingSkipMsgTemplate) cfg['messageTemplate'] = editingSkipMsgTemplate;
-                                if (editingSkipAction === 'flag_property' && editingSkipFlagNote) cfg['note'] = editingSkipFlagNote;
-                                if (editingSkipAction === 'create_task' && editingSkipTaskTitle) cfg['title'] = editingSkipTaskTitle;
-                                updateSkipReasonMutation.mutate({ id: reason.id, data: { action: editingSkipAction, actionConfig: cfg } }, {
-                                  onSuccess: () => { toast.success('Updated'); setEditingSkipId(null); qc.invalidateQueries({ queryKey: getListSkipReasonsQueryKey() }); },
-                                  onError: () => toast.error('Failed to update'),
-                                });
-                              }}>Save</Button>
-                              <Button size="sm" variant="ghost" onClick={() => setEditingSkipId(null)}>Cancel</Button>
+                              <AutosaveIndicator status={skipAutosave.status} hasUnsaved={skipAutosave.hasUnsaved} onRetry={() => { void skipAutosave.retry(); }} />
+                              <Button size="sm" variant="ghost" onClick={() => setEditingSkipId(null)}>Done</Button>
                             </div>
                           </div>
                         ) : (

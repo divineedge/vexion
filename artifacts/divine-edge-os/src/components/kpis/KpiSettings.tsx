@@ -1,21 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Loader2, RotateCcw } from 'lucide-react';
+import { AlertTriangle, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { KPI_DATE_PRESETS, validateKpiRange } from '@/lib/kpiDates';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { KPI_CATALOG, DEFAULT_KPIS, loadKpiSettings, saveKpiSettings, type KpiId, type KpiSettings as KpiSettingsT } from '@/lib/kpiApi';
+import { useAutosaveFields, useSettingsAutosave } from '@/hooks/use-settings-autosave';
+import { AutosaveIndicator } from '@/components/settings/AutosaveIndicator';
 
 const order = (ids: KpiId[]) => KPI_CATALOG.map(k => k.id).filter(id => ids.includes(id));
 type Ext = KpiSettingsT & { defaultDateRange?: string | null; customFrom?: string | null; customTo?: string | null };
-const same = (a: KpiId[], b: KpiId[]) => order(a).join() === order(b).join();
 
 export function KpiSettings() {
   const { user } = useAuth();
@@ -29,22 +29,26 @@ export function KpiSettings() {
   const [cTo, setCTo] = useState('');
   const [error, setError] = useState<string | null>(null);
   const initRef = useRef(false);
+  const [ready, setReady] = useState(false);
 
   const hydrateRange = (d: Ext) => { setRange((d.defaultDateRange ?? 'year_to_date') as typeof range); setCFrom(d.customFrom ?? ''); setCTo(d.customTo ?? ''); };
   useEffect(() => {
-    if (q.data && !initRef.current) { initRef.current = true; setMain(q.data.mainKpis); setDetail(q.data.detailKpis); hydrateRange(q.data as Ext); }
+    if (q.data && !initRef.current) { initRef.current = true; setMain(q.data.mainKpis); setDetail(q.data.detailKpis); hydrateRange(q.data as Ext); setReady(true); }
   }, [q.data]);
 
   const save = useMutation({
     mutationFn: (s: Ext) => saveKpiSettings(s as KpiSettingsT),
-    onSuccess: saved => { qc.setQueryData(key, saved); setMain(saved.mainKpis); setDetail(saved.detailKpis); hydrateRange(saved as Ext); setError(null); qc.invalidateQueries({ queryKey: ['kpi-report', user?.tenantId] }); toast.success('KPI settings saved'); },
+    onSuccess: saved => { qc.setQueryData(key, saved); setError(null); qc.invalidateQueries({ queryKey: ['kpi-report', user?.tenantId] }); },
     onError: (e: Error) => { setError(e?.message || 'Could not save KPI settings'); toast.error('Could not save KPI settings'); },
   });
 
-  const saved = q.data as Ext | undefined;
-  const rangeDirty = !!saved && (range !== (saved.defaultDateRange ?? 'year_to_date') || (range === 'custom' && (cFrom !== (saved.customFrom ?? '') || cTo !== (saved.customTo ?? ''))));
-  const dirty = !!saved && (!same(main, saved.mainKpis) || !same(detail, saved.detailKpis) || rangeDirty);
   const customError = range === 'custom' ? (!cFrom || !cTo ? 'Enter both custom start and end dates.' : validateKpiRange(cFrom, cTo)) : null;
+  const saveRef = useRef(save.mutateAsync); saveRef.current = save.mutateAsync;
+  const autosave = useSettingsAutosave(patch => saveRef.current(patch.settings as Ext));
+  useAutosaveFields({ settings: {
+    mainKpis: order(main), detailKpis: order(Array.from(new Set([...detail, ...main]))),
+    defaultDateRange: range, customFrom: range === 'custom' ? cFrom : null, customTo: range === 'custom' ? cTo : null,
+  } }, ready, autosave.queue, !customError);
   const toggleMain = (id: KpiId) => {
     if (main.includes(id)) setMain(main.filter(x => x !== id));
     else { setMain([...main, id]); if (!detail.includes(id)) setDetail([...detail, id]); }
@@ -67,15 +71,12 @@ export function KpiSettings() {
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="flex items-center gap-2">KPI Dashboard {dirty && <Badge variant="outline" className="border-amber-300 text-amber-700" data-testid="status-kpi-unsaved">Unsaved changes</Badge>}</CardTitle>
+            <CardTitle className="flex items-center gap-2">KPI Dashboard</CardTitle>
             <CardDescription>These settings control the dedicated KPI Dashboard page; no KPIs appear on the main Dashboard. KPI dashboard metrics show as cards. Detailed view metrics can be opened for formula, warnings and supporting records; every KPI dashboard metric is included in the detailed view.</CardDescription>
           </div>
           <div className="flex gap-2">
             <Button size="sm" variant="ghost" onClick={() => { setMain([...DEFAULT_KPIS]); setDetail([...DEFAULT_KPIS]); setRange('year_to_date'); }} data-testid="button-kpi-defaults"><RotateCcw className="w-4 h-4 mr-1" />Defaults</Button>
-            <Button size="sm" variant="outline" disabled={!dirty || save.isPending} onClick={() => { setMain(q.data!.mainKpis); setDetail(q.data!.detailKpis); hydrateRange(q.data as Ext); setError(null); }} data-testid="button-kpi-discard">Discard</Button>
-            <Button size="sm" disabled={!dirty || save.isPending || !!customError} onClick={() => save.mutate({ mainKpis: order(main), detailKpis: order(Array.from(new Set([...detail, ...main]))), defaultDateRange: range, customFrom: range === 'custom' ? cFrom : null, customTo: range === 'custom' ? cTo : null })} data-testid="button-kpi-save">
-              {save.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Save
-            </Button>
+            {!customError && <AutosaveIndicator status={autosave.status} hasUnsaved={autosave.hasUnsaved} onRetry={() => { void autosave.retry(); }} />}
           </div>
         </div>
         {error && <p className="text-sm text-red-600 flex items-center gap-1" data-testid="text-kpi-save-error"><AlertTriangle className="w-4 h-4" />{error}</p>}

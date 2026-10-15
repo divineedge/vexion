@@ -10,6 +10,25 @@ export type AutosaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error';
 export type Patch = Record<string, unknown>;
 export interface AutosaveSnapshot { status: AutosaveStatus; error: unknown; hasUnsaved: boolean }
 
+/** Observe hydration without saving it; invalid drafts never advance the baseline. */
+export function createAutosaveFieldTracker() {
+  let baseline: Record<string, string> | null = null;
+  return (fields: Patch, ready: boolean, valid = true): Patch => {
+    if (!ready) return {};
+    if (!baseline) {
+      baseline = Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, JSON.stringify(value)]));
+      return {};
+    }
+    if (!valid) return {};
+    const changed: Patch = {};
+    for (const [key, value] of Object.entries(fields)) {
+      const serialized = JSON.stringify(value);
+      if (baseline[key] !== serialized) { changed[key] = value; baseline[key] = serialized; }
+    }
+    return changed;
+  };
+}
+
 export interface AutosaveQueue {
   queue(patch: Patch): void;
   flush(): Promise<void>;

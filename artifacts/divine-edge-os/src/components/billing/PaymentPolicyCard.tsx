@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useAutosaveFields, useSettingsAutosave } from '@/hooks/use-settings-autosave';
+import { AutosaveIndicator } from '@/components/settings/AutosaveIndicator';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -39,7 +41,7 @@ export function PaymentPolicyCard(props: Props) {
   if (!canManageOffice || !props.canEdit) return null;
   return (
     <>
-      <PaymentPolicyCardInner {...props} />
+      <PaymentPolicyCardInner key={`${props.scope}:${props.id}`} {...props} />
       {props.scope === 'customer' && props.id > 0 && <CustomerInvoiceGroupingCard customerId={props.id} />}
     </>
   );
@@ -61,10 +63,12 @@ function PaymentPolicyCardInner({ scope, id, canEdit, title }: Props) {
 
   const [draft, setDraft] = useState<PaymentPolicy>(EMPTY);
   const [valueStr, setValueStr] = useState('');
+  const [ready, setReady] = useState(false);
   useEffect(() => {
-    if (query.data) {
+    if (query.data && !ready) {
       setDraft(query.data);
       setValueStr(query.data.depositValue != null ? String(query.data.depositValue) : '');
+      setReady(true);
     }
   }, [query.data]);
 
@@ -75,30 +79,23 @@ function PaymentPolicyCardInner({ scope, id, canEdit, title }: Props) {
       }),
     onSuccess: (r) => {
       qc.setQueryData(paymentPolicyQueryKey(scope, id), { ...EMPTY, ...r.policy });
-      toast.success('Payment policy saved');
     },
     onError: (e: unknown) => toast.error(e instanceof Error && e.message ? e.message : 'Failed to save payment policy'),
   });
 
   const needsValue = draft.depositType === 'fixed' || draft.depositType === 'percent';
-  const handleSave = () => {
-    let depositValue: number | null = null;
-    if (needsValue) {
-      const n = Number(valueStr);
-      if (!valueStr.trim() || !Number.isFinite(n) || n <= 0) { toast.error('Enter a deposit amount greater than zero'); return; }
-      if (draft.depositType === 'percent' && n > 100) { toast.error('Percent deposit cannot exceed 100'); return; }
-      depositValue = n;
-    }
-    const body: PaymentPolicy = { ...draft, depositValue };
-    if (isCompany) {
-      body.depositType = body.depositType ?? 'none';
-      body.requirePrepay = body.requirePrepay ?? false;
-      body.requireCard = body.requireCard ?? false;
-    }
-    save.mutate(body);
-  };
-
-  const disabled = !canEdit || save.isPending;
+  const valueInvalid = needsValue && (!valueStr.trim() || !Number.isFinite(Number(valueStr)) ||
+    Number(valueStr) <= 0 || (draft.depositType === 'percent' && Number(valueStr) > 100));
+  const body: PaymentPolicy = { ...draft, depositValue: needsValue ? Number(valueStr) : null };
+  if (isCompany) {
+    body.depositType = body.depositType ?? 'none';
+    body.requirePrepay = body.requirePrepay ?? false;
+    body.requireCard = body.requireCard ?? false;
+  }
+  const saveRef = useRef(save.mutateAsync); saveRef.current = save.mutateAsync;
+  const autosave = useSettingsAutosave(patch => saveRef.current(patch.policy as PaymentPolicy));
+  useAutosaveFields({ policy: body }, ready, autosave.queue, canEdit && !valueInvalid);
+  const disabled = !canEdit;
   const companyVal = (v: string) => (isCompany && v === INHERIT ? 'no' : v);
 
   return (
@@ -185,9 +182,8 @@ function PaymentPolicyCardInner({ scope, id, canEdit, title }: Props) {
 
             {canEdit && (
               <div className="flex justify-end">
-                <Button size="sm" onClick={handleSave} disabled={save.isPending} data-testid={`button-save-payment-policy-${scope}`}>
-                  {save.isPending ? 'Saving...' : 'Save payment policy'}
-                </Button>
+                {valueInvalid ? <p className="text-sm text-destructive" role="alert">Not saved — enter a deposit greater than zero{draft.depositType === 'percent' ? ' and at most 100%' : ''}.</p>
+                  : <AutosaveIndicator status={autosave.status} hasUnsaved={autosave.hasUnsaved} onRetry={() => { void autosave.retry(); }} />}
               </div>
             )}
           </>

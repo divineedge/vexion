@@ -1,4 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useAutosaveFields, useSettingsAutosave } from '@/hooks/use-settings-autosave';
+import { AutosaveIndicator } from '@/components/settings/AutosaveIndicator';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useGetTenantSettings, getGetTenantSettingsQueryKey,
@@ -75,12 +77,18 @@ export default function RolePermissionsSettings() {
   const qc = useQueryClient();
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
   const updateSettings = useUpdateTenantSettings();
-  const [saving, setSaving] = useState<string | null>(null); // "role:key" while pending
-
-  const tenantPerms = useMemo(
-    () => ((settings as any)?.rolePermissions as Record<string, Record<string, boolean>> | null) ?? null,
-    [settings]
-  );
+  const [tenantPerms, setTenantPerms] = useState<Record<string, Record<string, boolean>>>({});
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (settings && !ready) {
+      setTenantPerms((settings.rolePermissions as Record<string, Record<string, boolean>> | null) ?? {});
+      setReady(true);
+    }
+  }, [settings, ready]);
+  const saveRef = useRef(updateSettings.mutateAsync); saveRef.current = updateSettings.mutateAsync;
+  const autosave = useSettingsAutosave(patch => saveRef.current({ data: { rolePermissions: patch.rolePermissions } as any }),
+    { onSaved: () => qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }) });
+  useAutosaveFields({ rolePermissions: tenantPerms }, ready, autosave.queue);
 
   // Build effective permissions per role (defaults merged with tenant config)
   const effectivePerms = useMemo(() => {
@@ -92,27 +100,8 @@ export default function RolePermissionsSettings() {
   }, [tenantPerms]);
 
   const toggle = (roleKey: string, permKey: PermissionKey, currentValue: boolean) => {
-    const pendingKey = `${roleKey}:${permKey}`;
-    setSaving(pendingKey);
-
-    // Build the updated rolePermissions blob
-    const updated: Record<string, Record<string, boolean>> = {};
-    for (const role of ROLES) {
-      updated[role.key] = { ...effectivePerms[role.key] };
-    }
-    updated[roleKey] = { ...updated[roleKey], [permKey]: !currentValue };
-
-    updateSettings.mutate(
-      { data: { rolePermissions: updated } as any },
-      {
-        onSuccess: () => {
-          qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() });
-          toast.success('Permission updated');
-        },
-        onError: () => toast.error('Failed to save permission'),
-        onSettled: () => setSaving(null),
-      }
-    );
+    setTenantPerms(previous => ({ ...previous,
+      [roleKey]: { ...previous[roleKey], [permKey]: !currentValue } }));
   };
 
   return (
@@ -121,8 +110,9 @@ export default function RolePermissionsSettings() {
         <h3 className="text-lg font-semibold">Role Permissions</h3>
         <p className="text-sm text-muted-foreground mt-1">
           Control what each role can see and do. <strong>Owner</strong> always has full access.
-          Changes save immediately.
+          Changes save automatically.
         </p>
+        <AutosaveIndicator status={autosave.status} hasUnsaved={autosave.hasUnsaved} onRetry={() => { void autosave.retry(); }} />
       </div>
 
       {PERMISSION_GROUPS.map(group => (
@@ -166,7 +156,7 @@ export default function RolePermissionsSettings() {
                               <Switch
                                 checked={val}
                                 onCheckedChange={() => toggle(role.key, item.key, val)}
-                                disabled={saving === pendingKey}
+                                disabled={!ready}
                                 aria-label={`${item.label} for ${role.label}`}
                               />
                               {isDefault && (

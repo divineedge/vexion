@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { useAutosaveFields, useSettingsAutosave } from '@/hooks/use-settings-autosave';
+import { AutosaveIndicator } from '@/components/settings/AutosaveIndicator';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customFetch, useListServices, getListServicesQueryKey } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -115,37 +117,22 @@ function CompanyDepositRulesInner() {
   const serviceName = (id: number) => services.find(s => s.id === id)?.name ?? `Service #${id}`;
 
   const [drafts, setDrafts] = useState<DraftRule[]>([]);
-  const [dirty, setDirty] = useState(false);
-  const [justSaved, setJustSaved] = useState(false);
+  const [ready, setReady] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<DraftRule | null>(null);
-  const dirtyRef = useRef(false);
-  dirtyRef.current = dirty;
 
   // Only hydrate from server when there are no unsaved local edits.
   useEffect(() => {
-    if (query.data && !dirtyRef.current) setDrafts(query.data.map(toDraft));
+    if (query.data && !ready) { setDrafts(query.data.map(toDraft)); setReady(true); }
   }, [query.data]);
-
-  useEffect(() => {
-    if (!dirty) return;
-    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
-    window.addEventListener('beforeunload', h);
-    return () => window.removeEventListener('beforeunload', h);
-  }, [dirty]);
 
   const save = useMutation({
     mutationFn: (rules: DepositRule[]) =>
       customFetch<{ rules: DepositRule[] }>(URL, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rules }) }),
     onSuccess: r => {
       const rules = r?.rules ?? [];
-      dirtyRef.current = false;
-      setDirty(false);
       setSaveError(null);
-      setJustSaved(true);
-      setDrafts(rules.map(toDraft));
       qc.setQueryData(depositRulesQueryKey, rules);
-      toast.success('Deposit rules saved');
     },
     onError: (e: unknown) => {
       const msg = e instanceof Error && e.message ? e.message : 'Failed to save deposit rules';
@@ -154,7 +141,7 @@ function CompanyDepositRulesInner() {
     },
   });
 
-  const mutate = (fn: (d: DraftRule[]) => DraftRule[]) => { setDrafts(fn); setDirty(true); setJustSaved(false); };
+  const mutate = (fn: (d: DraftRule[]) => DraftRule[]) => { setDrafts(fn); };
   const patch = (id: string, p: Partial<DraftRule>) => mutate(ds => ds.map(d => (d.id === id ? { ...d, ...p } : d)));
   const move = (i: number, dir: -1 | 1) => mutate(ds => {
     const j = i + dir; if (j < 0 || j >= ds.length) return ds;
@@ -164,17 +151,11 @@ function CompanyDepositRulesInner() {
     if (drafts.length >= MAX_RULES) return;
     mutate(ds => [...ds, { id: newId(), name: `Deposit rule ${ds.length + 1}`, enabled: true, min: '', max: '', serviceIds: [], serviceMatch: 'any', depositType: 'percent', value: '' }]);
   };
-  const handleSave = () => {
-    const v = validate(drafts);
-    if (v.error) { setSaveError(v.error); toast.error(v.error); return; }
-    save.mutate(v.rules!);
-  };
-  const discard = () => {
-    dirtyRef.current = false; setDirty(false); setSaveError(null);
-    setDrafts((query.data ?? []).map(toDraft));
-  };
-
-  const busy = save.isPending;
+  const validation = validate(drafts);
+  const saveRef = useRef(save.mutateAsync); saveRef.current = save.mutateAsync;
+  const autosave = useSettingsAutosave(patch => saveRef.current(patch.rules as DepositRule[]));
+  useAutosaveFields({ rules: validation.rules ?? [] }, ready, autosave.queue, !validation.error);
+  const busy = false; // Valid edits made during a save are queued, not blocked.
 
   return (
     <Card data-testid="card-company-deposit-rules">
@@ -297,7 +278,7 @@ function CompanyDepositRulesInner() {
             {saveError && (
               <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-2.5 text-sm text-destructive" role="alert" data-testid="text-deposit-rules-error">
                 <span className="flex items-center gap-2"><AlertTriangle className="w-4 h-4" />{saveError}</span>
-                <Button size="sm" variant="outline" onClick={handleSave} disabled={busy} data-testid="button-retry-save-deposit-rules">Retry</Button>
+                <Button size="sm" variant="outline" onClick={() => { void autosave.retry(); }} disabled={!!validation.error} data-testid="button-retry-save-deposit-rules">Retry</Button>
               </div>
             )}
 
@@ -306,15 +287,8 @@ function CompanyDepositRulesInner() {
                 <Plus className="w-3.5 h-3.5" />Add rule {drafts.length >= MAX_RULES && `(limit ${MAX_RULES})`}
               </Button>
               <div className="flex items-center gap-2">
-                <span className="text-xs" aria-live="polite" data-testid="status-deposit-rules">
-                  {busy ? <span className="text-muted-foreground">Saving...</span>
-                    : dirty ? <span className="text-amber-600 dark:text-amber-400">Unsaved changes</span>
-                    : justSaved ? <span className="text-emerald-600 dark:text-emerald-400">All changes saved</span> : null}
-                </span>
-                {dirty && <Button type="button" size="sm" variant="ghost" onClick={discard} disabled={busy} data-testid="button-discard-deposit-rules">Discard</Button>}
-                <Button type="button" size="sm" onClick={handleSave} disabled={busy || !dirty} data-testid="button-save-deposit-rules">
-                  {busy ? 'Saving...' : 'Save rules'}
-                </Button>
+                {validation.error ? <p className="text-sm text-destructive" role="alert">Not saved — {validation.error}</p>
+                  : <AutosaveIndicator status={autosave.status} hasUnsaved={autosave.hasUnsaved} onRetry={() => { void autosave.retry(); }} />}
               </div>
             </div>
           </>

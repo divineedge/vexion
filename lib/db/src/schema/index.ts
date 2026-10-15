@@ -13,6 +13,7 @@ export * from "./propertyHistory";
 export * from "./jobs";
 export * from "./crews";
 export * from "./inventory";
+export * from './inventoryCostLots';
 export * from "./invoices";
 export * from "./timeTracking";
 export * from "./blueprints";

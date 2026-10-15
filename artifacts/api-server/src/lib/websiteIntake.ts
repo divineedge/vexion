@@ -21,7 +21,9 @@ export async function publicWebsiteConfig(kind:FlowKind,tenantId?:number,slug?:s
  const enabled=kind==='quote'?acquisitionSettings(tenant.acquisitionSettings).quoteWidgetEnabled:hr?.publicHiringEnabled===true;
  if(!enabled)throw new HrError(kind==='quote'?'Website quotes are not enabled':'This business is not accepting applications',404);
  const form=await getWebsiteForm(tenant.id,kind,handle);
- const definition=structuredClone(form.published??form.definition);
+  // Existing enabled links retain their legacy form until staff explicitly publish.
+  // Saving a private first draft must never make that draft public.
+  const definition=structuredClone(form.published??(await getWebsiteForm(tenant.id,kind,handle,true)).definition);
  for(const step of definition.steps)if(step.allowApproximate&&!step.approximateTerms)step.approximateTerms=APPROXIMATE_SIZE_TERMS;
  let services=kind==='quote'?await handle.select({id:servicesTable.id,name:servicesTable.name}).from(servicesTable).where(and(eq(servicesTable.tenantId,tenant.id),eq(servicesTable.isActive,true))):[];
  const choices=definition.steps.flatMap(s=>s.questions).find(q=>q.id==='serviceIds')?.options??[];

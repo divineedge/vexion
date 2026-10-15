@@ -18,6 +18,11 @@ export interface Vendor {
   contactName?: string | null;
   /** @nullable */
   officePhone?: string | null;
+  /**
+     * @maxLength 80
+     * @nullable
+     */
+  contactPhone?: string | null;
   /** @nullable */
   notes?: string | null;
   createdAt: string;

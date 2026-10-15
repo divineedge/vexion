@@ -9,6 +9,7 @@ import { installKpiSchema } from "./lib/kpiSettings";
 import { installWebsiteIntakeSchema } from "./lib/websiteFlow";
 import {installVendorCategoriesSchema} from './lib/vendorCategories';
 import {installCustomerMergeSchema} from './lib/customerMerge';
+import {installInventoryCostSchema} from './lib/inventoryCosting';
 
 // drizzle push handles tables but not rate-capture/immutability triggers.
 // Install the idempotent migration before this build begins serving requests.
@@ -25,6 +26,7 @@ await installDocumentReminderSchema();
 await installKpiSchema();
 await installWebsiteIntakeSchema();
 await installVendorCategoriesSchema();
+await installInventoryCostSchema();
 await installCustomerMergeSchema();
 startEstimateReminderScheduler();
 

@@ -40,10 +40,10 @@ export async function installWebsiteIntakeSchema(){
  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS website_intake_reference ON website_intake_submissions(reference)`);
  await db.execute(sql`CREATE INDEX IF NOT EXISTS website_intake_inbox ON website_intake_submissions(tenant_id,kind,id)`);
 }
-export async function getWebsiteForm(tenantId:number,kind:FlowKind,handle:HrDb=db){
+export async function getWebsiteForm(tenantId:number,kind:FlowKind,handle:HrDb=db,legacyOnly=false){
  const result=await handle.execute(sql`SELECT draft,published,revision FROM website_intake_forms WHERE tenant_id=${tenantId} AND kind=${kind}`);
  const row=result.rows[0];
- if(row)return {definition:row.draft as FlowDefinition,published:row.published as FlowDefinition|null,revision:Number(row.revision)};
+ if(row&&!legacyOnly)return {definition:row.draft as FlowDefinition,published:row.published as FlowDefinition|null,revision:Number(row.revision)};
  let extra:FlowQuestion[]=[];
  if(kind==='hiring'){
   const [settings]=await handle.select().from(hrSettingsTable).where(eq(hrSettingsTable.tenantId,tenantId));

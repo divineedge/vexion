@@ -2,6 +2,7 @@ import { formsGuardedJobUpdate,FormError,assertCompletedJobCreationAllowed } fro
 import { paymentGuardedJobInsert, ensureScheduledJobPayment } from "../lib/paymentPolicy";
 import { creditedInvoiceInsert } from "../lib/customerCredit";
 import { Router, type IRouter } from "express";
+import {publicParts,setJobPart} from '../lib/inventoryCosting';
 import { getStripeClient } from "../lib/stripeClient";
 import { logger } from "../lib/logger";
 
@@ -442,7 +443,7 @@ function formatJob(
   return {
     ...j,
     lineItems: (j.lineItems as unknown[]) ?? [],
-    jobParts: (j.jobParts as unknown[]) ?? [],
+    jobParts: publicParts(j.jobParts),
     scheduledAt: j.scheduledAt.toISOString(),
     completedAt: j.completedAt?.toISOString() ?? null,
     archivedAt: j.archivedAt?.toISOString() ?? null,
@@ -1963,50 +1964,17 @@ router.get("/jobs/:id/parts", async (req, res): Promise<void> => {
     .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
   if (!job) { res.status(404).json({ error: "Not found" }); return; }
 
-  res.json((job.jobParts as JobPart[]) ?? []);
+  res.json(publicParts(job.jobParts));
 });
 
 // Add or update a part on a job (upserts by inventoryItemId)
 router.post("/jobs/:id/parts", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(req.params.id, 10);
-  const { inventoryItemId, quantity } = req.body;
-
-  if (!inventoryItemId || !quantity || quantity <= 0) {
-    res.status(400).json({ error: "inventoryItemId and positive quantity are required" });
-    return;
-  }
-
-  // Fetch the job and the inventory item
-  const [[job], [item]] = await Promise.all([
-    db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId))),
-    db.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.id, inventoryItemId), eq(inventoryItemsTable.tenantId, tenantId))),
-  ]);
-  if (!job) { res.status(404).json({ error: "Job not found" }); return; }
-  if (!item) { res.status(404).json({ error: "Inventory item not found" }); return; }
-
-  const existingParts = (job.jobParts as JobPart[]) ?? [];
-  const sellPrice = item.markedUpPrice;
-  const newPart: JobPart = {
-    inventoryItemId: item.id,
-    name: item.name,
-    quantity,
-    unitPrice: sellPrice,
-    total: sellPrice * quantity,
-  };
-
-  // Upsert: replace if same item exists
-  const updatedParts = [
-    ...existingParts.filter(p => p.inventoryItemId !== inventoryItemId),
-    newPart,
-  ];
-
-  const [updated] = await db.update(jobsTable)
-    .set({ jobParts: updatedParts })
-    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
-    .returning();
-
-  res.json(formatJob(updated));
+  const {inventoryItemId,quantity}=req.body;
+  if(!Number.isSafeInteger(inventoryItemId)||inventoryItemId<=0||!Number.isSafeInteger(quantity)||quantity<=0){res.status(400).json({error:'Choose a supply and enter a positive whole-number quantity'});return;}
+  try{res.json(formatJob(await setJobPart(tenantId,id,inventoryItemId,quantity)));}
+  catch(error:any){if(error.status){res.status(error.status).json({error:error.message});return;}throw error;}
 });
 
 // Remove a part from a job
@@ -2015,18 +1983,8 @@ router.delete("/jobs/:id/parts/:inventoryItemId", async (req, res): Promise<void
   const id = parseInt(req.params.id, 10);
   const inventoryItemId = parseInt(req.params.inventoryItemId, 10);
 
-  const [job] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
-  if (!job) { res.status(404).json({ error: "Not found" }); return; }
-
-  const existingParts = (job.jobParts as JobPart[]) ?? [];
-  const updatedParts = existingParts.filter(p => p.inventoryItemId !== inventoryItemId);
-
-  const [updated] = await db.update(jobsTable)
-    .set({ jobParts: updatedParts })
-    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
-    .returning();
-
-  res.json(formatJob(updated));
+  try{res.json(formatJob(await setJobPart(tenantId,id,inventoryItemId,0)));}
+  catch(error:any){if(error.status){res.status(error.status).json({error:error.message});return;}throw error;}
 });
 
 // ---------------------------------------------------------------------------

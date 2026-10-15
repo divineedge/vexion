@@ -27,6 +27,9 @@ export interface CreateExpenseInput {
      */
   salesTaxPct?: number;
   capitalizeSalesTax?: boolean;
+  /** @minimum 0 */
+  shippingAmount?: number;
+  capitalizeShipping?: boolean;
   category?: string;
   description?: string;
   receiptUrl?: string;

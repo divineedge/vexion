@@ -36,6 +36,7 @@ export default function PublicSiteForm({ kind }: { kind: Kind }) {
   const [data, setData] = useState<Loaded | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [closed, setClosed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
@@ -72,14 +73,21 @@ export default function PublicSiteForm({ kind }: { kind: Kind }) {
 
   const load = useCallback(() => {
     if (kind === 'quote' && !tenantParam) { setLoadErr('This link is missing a company identifier.'); setLoading(false); return; }
-    setLoading(true); setLoadErr(null);
+    setLoading(true); setLoadErr(null); setClosed(false);
     loadPublicWebsiteForm({ kind, tenantId: tenantParam, slug: params.slug })
-      .then(setData).catch(() => setLoadErr('We could not load this form.')).finally(() => setLoading(false));
+      .then(d => {
+        if (!d || typeof d !== 'object') { setLoadErr('This form returned an unexpected response.'); return; }
+        if (d.enabled && !d.definition && kind === 'quote') { setLoadErr('This form is not set up correctly yet.'); return; }
+        setData(d);
+      })
+      // A 404 means the form is off or unavailable (older servers): friendly message, no retry loop.
+      .catch(e => { if ((e as { status?: number })?.status === 404) setClosed(true); else setLoadErr('We could not load this form. Check your connection and try again.'); })
+      .finally(() => setLoading(false));
   }, [kind, tenantParam, params.slug]);
   useEffect(load, [load]);
 
   // No custom hiring form published yet: keep the existing careers page. Load failures show an error instead.
-  if (kind === 'hiring' && data && !data.definition) return <CareersPage />;
+  if (kind === 'hiring' && data && data.enabled && !data.definition) return <CareersPage />;
 
   const submit = async (p: { answers: Record<string, unknown>; measurements: Measurements; consent: boolean }) => {
     if (!data?.definition) return;
@@ -113,11 +121,13 @@ export default function PublicSiteForm({ kind }: { kind: Kind }) {
         </div>
         <div className="p-5">
           {loading ? <div className="space-y-3">{[0, 1, 2].map(i => <div key={i} className="h-10 rounded-md bg-muted animate-pulse" />)}</div>
-            : loadErr || !data ? (
+            : closed ? (
+              <p className="text-sm text-center py-6 text-muted-foreground" data-testid="text-form-closed">{kind === 'quote' ? 'This company is not accepting online quote requests right now. Please contact them directly.' : 'This company is not accepting online applications right now.'}</p>
+            ) : loadErr || !data ? (
               <div className="text-center py-6 space-y-3"><AlertTriangle className="w-8 h-8 mx-auto text-destructive" /><p className="text-sm">{loadErr}</p>
                 <Button variant="outline" onClick={load} data-testid="button-retry">Try again</Button></div>
             ) : !data.enabled || !def ? (
-              <p className="text-sm text-center py-6 text-muted-foreground">Online requests are currently turned off for {data.companyName}. Please contact them directly.</p>
+              <p className="text-sm text-center py-6 text-muted-foreground" data-testid="text-form-closed">{kind === 'quote' ? `${data.companyName} is not accepting online quote requests right now. Please contact them directly.` : `${data.companyName} is not accepting online applications right now.`}</p>
             ) : result ? (
               <div className="text-center space-y-3 py-2" data-testid="panel-done">
                 <CheckCircle2 className="w-12 h-12 text-primary mx-auto" />

@@ -19,6 +19,7 @@ import { loadWebsiteForm, saveWebsiteForm, loadPublicWebsiteForm, restoreWebsite
 import PublishedHistory from '@/components/website-intake/PublishedHistory';
 
 type Kind = 'quote' | 'hiring';
+const statusOf = (e: unknown) => (e as { status?: number } | null)?.status;
 const errMsg = (e: unknown, f: string) => (e as { data?: { error?: string } })?.data?.error ?? (e instanceof Error ? e.message : f);
 
 const flowJson = (value: FlowDefinition) => JSON.stringify(value, (_key, v) =>
@@ -50,7 +51,9 @@ export default function WebsiteFormsPage() {
         </div>
       </header>
       {kind === 'hiring' && hr.isLoading ? <div className="h-40 rounded-xl bg-muted animate-pulse" />
-        : !allowed ? (
+        : kind === 'hiring' && hr.isError ? (
+          <div className="flex items-center gap-3 text-sm text-destructive py-6" data-testid="text-hr-access-error"><AlertTriangle className="w-4 h-4" />Could not check your hiring access.<Button size="sm" variant="outline" onClick={() => hr.refetch()}>Retry</Button></div>
+        ) : !allowed ? (
           <div className="text-center py-20 space-y-3" data-testid="text-no-access">
             <Lock className="w-10 h-10 mx-auto text-muted-foreground" />
             <h2 className="text-lg font-semibold">{kind === 'hiring' ? 'Hiring forms are private' : 'Office access required'}</h2>
@@ -90,7 +93,7 @@ function Workspace({ kind }: { kind: Kind }) {
         void qc.invalidateQueries({ queryKey: ['website-form-history', kind] });
         void qc.invalidateQueries({ queryKey: ['website-form-public', kind] });
       }
-      toast.success(publish ? 'Published. Visitors now see this version.' : 'Draft saved');
+      toast.success(publish ? 'Version published. Check Public page below to confirm it is turned on.' : 'Draft saved');
     } catch (e) {
       if ((e as { status?: number })?.status === 409) { setConflict(true); setErr('Someone else saved this form. Your draft is kept here; reload to see their version.'); }
       else setErr(errMsg(e, 'Could not save.'));
@@ -111,7 +114,10 @@ function Workspace({ kind }: { kind: Kind }) {
     } finally { setSaving(null); }
   };
 
-  if (q.isLoading || (!draft && !q.isError)) return <div className="space-y-3">{[0, 1, 2].map(i => <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />)}</div>;
+  // A successful response without a definition is a malformed payload: show an error, never an endless skeleton.
+  if (q.isLoading) return <div className="space-y-3">{[0, 1, 2].map(i => <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />)}</div>;
+  if (q.isSuccess && !q.data?.definition) return <div className="flex items-center gap-3 text-sm text-destructive py-6" data-testid="text-form-malformed"><AlertTriangle className="w-4 h-4" />This form came back without a definition.<Button size="sm" variant="outline" onClick={() => reload()}>Retry</Button></div>;
+  if (q.isSuccess && !draft) return <div className="space-y-3">{[0, 1, 2].map(i => <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />)}</div>;
   if (q.isError || !draft) return <div className="flex items-center gap-3 text-sm text-destructive py-6"><AlertTriangle className="w-4 h-4" />{errMsg(q.error, 'Could not load this form.')}<Button size="sm" variant="outline" onClick={() => q.refetch()}>Retry</Button></div>;
 
   return (
@@ -188,7 +194,10 @@ function PublicLinkPanel({ kind }: { kind: Kind }) {
     queryKey: ['website-form-public', kind, tenantId, slug],
     enabled: !!url,
     queryFn: () => loadPublicWebsiteForm(kind === 'quote' ? { kind, tenantId: tenantId ?? undefined } : { kind, slug }),
+    retry: (n, e) => statusOf(e) !== 404 && n < 2,
   });
+  // Older servers answer 404 when the feature is off; treat that as "Turned off", not an outage.
+  const off = cfg.data ? !cfg.data.enabled : statusOf(cfg.error) === 404;
   const iframe = url ? `<iframe src="${url}" title="${kind === 'quote' ? 'Quick quote' : 'Careers'}" style="width:100%;max-width:640px;height:900px;border:0" loading="lazy"></iframe>` : '';
   const copy = (t: string, l: string) => navigator.clipboard.writeText(t).then(() => toast.success(`${l} copied`)).catch(() => toast.error('Copy failed'));
   const settingsHref = kind === 'quote' ? '/settings?tab=growth' : '/hiring';
@@ -197,9 +206,10 @@ function PublicLinkPanel({ kind }: { kind: Kind }) {
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-semibold">Public page</h3>
         {cfg.isLoading ? <Badge variant="outline">Checking…</Badge>
-          : cfg.isError ? <Badge variant="destructive">Status unavailable</Badge>
-            : cfg.data && <Badge variant={cfg.data.enabled ? 'default' : 'outline'} data-testid="status-public-enabled">{cfg.data.enabled ? 'Accepting submissions' : 'Turned off'}</Badge>}
-        {cfg.data && !cfg.data.enabled && (
+          : off ? <Badge variant="outline" data-testid="status-public-enabled">Turned off</Badge>
+            : cfg.isError ? <><Badge variant="destructive">Status unavailable</Badge><button type="button" className="text-xs underline text-muted-foreground" onClick={() => cfg.refetch()} data-testid="button-retry-public-status">Retry</button></>
+              : cfg.data && <Badge variant="default" data-testid="status-public-enabled">Accepting submissions</Badge>}
+        {off && (
           <Link href={settingsHref} className="text-xs underline text-muted-foreground" data-testid="link-enable-settings">
             Turn on in {kind === 'quote' ? 'Settings, Growth Programs' : 'Hiring, Settings'}
           </Link>

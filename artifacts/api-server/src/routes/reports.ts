@@ -167,7 +167,7 @@ router.get("/reports/job-profitability", async (req, res): Promise<void> => {
       SELECT
         j.id, j.title, j.completed_at, j.crew_id, j.assignee_id, j.property_id,
         j.total_amount,
-        COALESCE((SELECT SUM((part->>'total')::numeric) FROM jsonb_array_elements(COALESCE(j.job_parts, '[]'::jsonb)) AS part), 0) AS parts_cost,
+        COALESCE((SELECT SUM(COALESCE((part->'_stockUsage'->>'total')::numeric,(part->>'total')::numeric)) FROM jsonb_array_elements(COALESCE(j.job_parts, '[]'::jsonb)) AS part), 0) AS parts_cost, COALESCE((SELECT SUM((part->>'total')::numeric) FROM jsonb_array_elements(COALESCE(j.job_parts,'[]'::jsonb)) AS part),0) AS parts_sell,
         b.p4p_percentage AS blueprint_p4p_pct,
         i.total AS invoice_total,
         cr.name AS crew_name,
@@ -237,7 +237,7 @@ router.get("/reports/job-profitability", async (req, res): Promise<void> => {
       const revenue = j.invoice_total != null ? Number(j.invoice_total) : Number(j.total_amount ?? 0);
       const partsCost = Math.round(Number(j.parts_cost ?? 0) * 100) / 100;
       const p4pPct = j.blueprint_p4p_pct != null ? Number(j.blueprint_p4p_pct) : globalPct;
-      const netLaborRevenue = Math.max(0, revenue - partsCost);
+      const netLaborRevenue = Math.max(0, revenue - Number((j as Row & {parts_sell:string}).parts_sell??partsCost));
       const laborCost = Math.round((netLaborRevenue * p4pPct / 100) * 100) / 100;
       const fuelIsLinked = linkedFuelByJob.has(j.id);
       const rawFuelCost = fuelIsLinked ? linkedFuelByJob.get(j.id)! : unlinkedFuelPerJob;
@@ -602,7 +602,7 @@ router.get("/reports/inventory-sales", async (req, res): Promise<void> => {
     `);
 
     type JobRow = {
-      job_parts: Array<{ inventoryItemId?: number; name?: string; quantity?: number; unitPrice?: number; total?: number }>;
+      job_parts: Array<{ inventoryItemId?: number; name?: string; quantity?: number; unitPrice?: number; total?: number;_stockUsage?:{total:number} }>;
       assignee_id: number | null;
       assignee_name: string | null;
       crew_name: string | null;
@@ -653,7 +653,7 @@ router.get("/reports/inventory-sales", async (req, res): Promise<void> => {
         const sellTotal = Number(part.total ?? 0);
         const meta = itemMeta.get(itemId);
         const costPerUnit = meta?.unitPrice ?? 0;  // DB unitPrice = buy price
-        const costTotal = costPerUnit * qty;
+        const costTotal = part._stockUsage?.total??costPerUnit * qty;
         const commPct = meta?.commissionPct ?? 0;
 
         const existing = agg.get(aggKey);

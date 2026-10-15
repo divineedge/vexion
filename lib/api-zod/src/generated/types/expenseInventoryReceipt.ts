@@ -7,6 +7,12 @@
  */
 
 export interface ExpenseInventoryReceipt {
+  /** @nullable */
+  purchaseCostPrice?: number | null;
+  /** @nullable */
+  shippingAllocation?: number | null;
+  /** @nullable */
+  landedUnitCost?: number | null;
   /** @minimum 1 */
   inventoryItemId: number;
   /** @minimum 1 */

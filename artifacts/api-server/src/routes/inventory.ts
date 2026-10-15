@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db, inventoryItemsTable, inventorySuppliersTable, tenantsTable } from "@workspace/db";
-import { eq, and, ilike } from "drizzle-orm";
+import { eq, and, ilike, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { usersTable } from "@workspace/db";
 import {
@@ -560,9 +560,10 @@ router.post("/inventory/:id/adjust-stock", requireInventoryMutate, async (req, r
   }
 
   const [updated] = await db.update(inventoryItemsTable)
-    .set({ quantity: newQty, isLowStock: newQty <= existing.reorderPoint })
-    .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)))
+    .set({ quantity: sql`${inventoryItemsTable.quantity}+${delta}`, isLowStock: sql`${inventoryItemsTable.quantity}+${delta}<=${inventoryItemsTable.reorderPoint}` })
+    .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId),sql`${inventoryItemsTable.quantity}+${delta}>=0`))
     .returning();
+  if(!updated){res.status(409).json({error:'Stock changed. Refresh the item and try again.'});return;}
 
   const [markupPct, showCost] = await Promise.all([
     getTenantMarkupPct(tenantId),

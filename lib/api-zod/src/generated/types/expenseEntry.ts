@@ -22,6 +22,9 @@ export interface ExpenseEntry {
   salesTaxPct?: number;
   salesTaxAmount?: number;
   capitalizeSalesTax?: boolean;
+  /** @minimum 0 */
+  shippingAmount?: number;
+  capitalizeShipping?: boolean;
   category: string;
   /** @nullable */
   description?: string | null;

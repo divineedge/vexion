@@ -13993,6 +13993,10 @@ export const RenameExpenseCategoryResponse = zod.object({
 /**
  * @summary List vendors
  */
+export const listVendorsResponseContactPhoneMax = 80;
+
+
+
 export const ListVendorsResponseItem = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
@@ -14001,6 +14005,7 @@ export const ListVendorsResponseItem = zod.object({
   "contact": zod.string().nullish(),
   "contactName": zod.string().nullish(),
   "officePhone": zod.string().nullish(),
+  "contactPhone": zod.string().max(listVendorsResponseContactPhoneMax).nullish(),
   "notes": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
@@ -14017,6 +14022,8 @@ export const createVendorBodyContactNameMax = 200;
 
 export const createVendorBodyOfficePhoneMax = 80;
 
+export const createVendorBodyContactPhoneMax = 80;
+
 
 
 export const CreateVendorBody = zod.object({
@@ -14025,8 +14032,13 @@ export const CreateVendorBody = zod.object({
   "contact": zod.string().optional(),
   "contactName": zod.string().max(createVendorBodyContactNameMax).optional(),
   "officePhone": zod.string().max(createVendorBodyOfficePhoneMax).optional(),
+  "contactPhone": zod.string().max(createVendorBodyContactPhoneMax).optional(),
   "notes": zod.string().optional()
 })
+
+export const createVendorResponseContactPhoneMax = 80;
+
+
 
 export const CreateVendorResponse = zod.object({
   "id": zod.number(),
@@ -14036,6 +14048,7 @@ export const CreateVendorResponse = zod.object({
   "contact": zod.string().nullish(),
   "contactName": zod.string().nullish(),
   "officePhone": zod.string().nullish(),
+  "contactPhone": zod.string().max(createVendorResponseContactPhoneMax).nullish(),
   "notes": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
@@ -14049,6 +14062,10 @@ export const GetVendorParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const getVendorResponseContactPhoneMax = 80;
+
+
+
 export const GetVendorResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
@@ -14057,6 +14074,7 @@ export const GetVendorResponse = zod.object({
   "contact": zod.string().nullish(),
   "contactName": zod.string().nullish(),
   "officePhone": zod.string().nullish(),
+  "contactPhone": zod.string().max(getVendorResponseContactPhoneMax).nullish(),
   "notes": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
@@ -14076,6 +14094,8 @@ export const updateVendorBodyContactNameMax = 200;
 
 export const updateVendorBodyOfficePhoneMax = 80;
 
+export const updateVendorBodyContactPhoneMax = 80;
+
 
 
 export const UpdateVendorBody = zod.object({
@@ -14084,8 +14104,13 @@ export const UpdateVendorBody = zod.object({
   "contact": zod.string().optional(),
   "contactName": zod.string().max(updateVendorBodyContactNameMax).optional(),
   "officePhone": zod.string().max(updateVendorBodyOfficePhoneMax).optional(),
+  "contactPhone": zod.string().max(updateVendorBodyContactPhoneMax).optional(),
   "notes": zod.string().optional()
 })
+
+export const updateVendorResponseContactPhoneMax = 80;
+
+
 
 export const UpdateVendorResponse = zod.object({
   "id": zod.number(),
@@ -14095,6 +14120,7 @@ export const UpdateVendorResponse = zod.object({
   "contact": zod.string().nullish(),
   "contactName": zod.string().nullish(),
   "officePhone": zod.string().nullish(),
+  "contactPhone": zod.string().max(updateVendorResponseContactPhoneMax).nullish(),
   "notes": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
@@ -14233,10 +14259,15 @@ export const listExpensesResponseInventoryReceiptsItemCostPriceMin = 0;
 
 export const listExpensesResponseInventoryReceiptsItemMarkupPctMin = 0;
 
+export const listExpensesResponseShippingAmountMin = 0;
+
 
 
 export const ListExpensesResponseItem = zod.object({
   "inventoryReceipts": zod.array(zod.object({
+  "purchaseCostPrice": zod.number().nullish(),
+  "shippingAllocation": zod.number().nullish(),
+  "landedUnitCost": zod.number().nullish(),
   "inventoryItemId": zod.number().min(1),
   "locationId": zod.number().min(1).optional(),
   "quantity": zod.number().min(1).max(listExpensesResponseInventoryReceiptsItemQuantityMax),
@@ -14259,6 +14290,8 @@ export const ListExpensesResponseItem = zod.object({
   "salesTaxPct": zod.number().optional(),
   "salesTaxAmount": zod.number().optional(),
   "capitalizeSalesTax": zod.boolean().optional(),
+  "shippingAmount": zod.number().min(listExpensesResponseShippingAmountMin).optional(),
+  "capitalizeShipping": zod.boolean().optional(),
   "category": zod.string(),
   "description": zod.string().nullish(),
   "receiptUrl": zod.string().nullish(),
@@ -14289,11 +14322,16 @@ export const createExpenseBodySubtotalMin = 0;
 export const createExpenseBodySalesTaxPctMin = 0;
 export const createExpenseBodySalesTaxPctMax = 100;
 
+export const createExpenseBodyShippingAmountMin = 0;
+
 
 
 export const CreateExpenseBody = zod.object({
   "requestId": zod.string().min(createExpenseBodyRequestIdMin).max(createExpenseBodyRequestIdMax).optional(),
   "inventoryReceipts": zod.array(zod.object({
+  "purchaseCostPrice": zod.number().nullish(),
+  "shippingAllocation": zod.number().nullish(),
+  "landedUnitCost": zod.number().nullish(),
   "inventoryItemId": zod.number().min(1),
   "locationId": zod.number().min(1).optional(),
   "quantity": zod.number().min(1).max(createExpenseBodyInventoryReceiptsItemQuantityMax),
@@ -14312,6 +14350,8 @@ export const CreateExpenseBody = zod.object({
   "subtotal": zod.number().min(createExpenseBodySubtotalMin).optional(),
   "salesTaxPct": zod.number().min(createExpenseBodySalesTaxPctMin).max(createExpenseBodySalesTaxPctMax).optional(),
   "capitalizeSalesTax": zod.boolean().optional(),
+  "shippingAmount": zod.number().min(createExpenseBodyShippingAmountMin).optional(),
+  "capitalizeShipping": zod.boolean().optional(),
   "category": zod.string().optional(),
   "description": zod.string().optional(),
   "receiptUrl": zod.string().optional()
@@ -14325,10 +14365,15 @@ export const createExpenseResponseInventoryReceiptsItemCostPriceMin = 0;
 
 export const createExpenseResponseInventoryReceiptsItemMarkupPctMin = 0;
 
+export const createExpenseResponseShippingAmountMin = 0;
+
 
 
 export const CreateExpenseResponse = zod.object({
   "inventoryReceipts": zod.array(zod.object({
+  "purchaseCostPrice": zod.number().nullish(),
+  "shippingAllocation": zod.number().nullish(),
+  "landedUnitCost": zod.number().nullish(),
   "inventoryItemId": zod.number().min(1),
   "locationId": zod.number().min(1).optional(),
   "quantity": zod.number().min(1).max(createExpenseResponseInventoryReceiptsItemQuantityMax),
@@ -14351,6 +14396,8 @@ export const CreateExpenseResponse = zod.object({
   "salesTaxPct": zod.number().optional(),
   "salesTaxAmount": zod.number().optional(),
   "capitalizeSalesTax": zod.boolean().optional(),
+  "shippingAmount": zod.number().min(createExpenseResponseShippingAmountMin).optional(),
+  "capitalizeShipping": zod.boolean().optional(),
   "category": zod.string(),
   "description": zod.string().nullish(),
   "receiptUrl": zod.string().nullish(),
@@ -14374,10 +14421,15 @@ export const getExpenseResponseInventoryReceiptsItemCostPriceMin = 0;
 
 export const getExpenseResponseInventoryReceiptsItemMarkupPctMin = 0;
 
+export const getExpenseResponseShippingAmountMin = 0;
+
 
 
 export const GetExpenseResponse = zod.object({
   "inventoryReceipts": zod.array(zod.object({
+  "purchaseCostPrice": zod.number().nullish(),
+  "shippingAllocation": zod.number().nullish(),
+  "landedUnitCost": zod.number().nullish(),
   "inventoryItemId": zod.number().min(1),
   "locationId": zod.number().min(1).optional(),
   "quantity": zod.number().min(1).max(getExpenseResponseInventoryReceiptsItemQuantityMax),
@@ -14400,6 +14452,8 @@ export const GetExpenseResponse = zod.object({
   "salesTaxPct": zod.number().optional(),
   "salesTaxAmount": zod.number().optional(),
   "capitalizeSalesTax": zod.boolean().optional(),
+  "shippingAmount": zod.number().min(getExpenseResponseShippingAmountMin).optional(),
+  "capitalizeShipping": zod.boolean().optional(),
   "category": zod.string(),
   "description": zod.string().nullish(),
   "receiptUrl": zod.string().nullish(),
@@ -14433,11 +14487,16 @@ export const updateExpenseBodySubtotalMin = 0;
 export const updateExpenseBodySalesTaxPctMin = 0;
 export const updateExpenseBodySalesTaxPctMax = 100;
 
+export const updateExpenseBodyShippingAmountMin = 0;
+
 
 
 export const UpdateExpenseBody = zod.object({
   "requestId": zod.string().min(updateExpenseBodyRequestIdMin).max(updateExpenseBodyRequestIdMax).optional(),
   "inventoryReceipts": zod.array(zod.object({
+  "purchaseCostPrice": zod.number().nullish(),
+  "shippingAllocation": zod.number().nullish(),
+  "landedUnitCost": zod.number().nullish(),
   "inventoryItemId": zod.number().min(1),
   "locationId": zod.number().min(1).optional(),
   "quantity": zod.number().min(1).max(updateExpenseBodyInventoryReceiptsItemQuantityMax),
@@ -14456,6 +14515,8 @@ export const UpdateExpenseBody = zod.object({
   "subtotal": zod.number().min(updateExpenseBodySubtotalMin).optional(),
   "salesTaxPct": zod.number().min(updateExpenseBodySalesTaxPctMin).max(updateExpenseBodySalesTaxPctMax).optional(),
   "capitalizeSalesTax": zod.boolean().optional(),
+  "shippingAmount": zod.number().min(updateExpenseBodyShippingAmountMin).optional(),
+  "capitalizeShipping": zod.boolean().optional(),
   "category": zod.string().optional(),
   "description": zod.string().optional(),
   "receiptUrl": zod.string().optional()
@@ -14469,10 +14530,15 @@ export const updateExpenseResponseInventoryReceiptsItemCostPriceMin = 0;
 
 export const updateExpenseResponseInventoryReceiptsItemMarkupPctMin = 0;
 
+export const updateExpenseResponseShippingAmountMin = 0;
+
 
 
 export const UpdateExpenseResponse = zod.object({
   "inventoryReceipts": zod.array(zod.object({
+  "purchaseCostPrice": zod.number().nullish(),
+  "shippingAllocation": zod.number().nullish(),
+  "landedUnitCost": zod.number().nullish(),
   "inventoryItemId": zod.number().min(1),
   "locationId": zod.number().min(1).optional(),
   "quantity": zod.number().min(1).max(updateExpenseResponseInventoryReceiptsItemQuantityMax),
@@ -14495,6 +14561,8 @@ export const UpdateExpenseResponse = zod.object({
   "salesTaxPct": zod.number().optional(),
   "salesTaxAmount": zod.number().optional(),
   "capitalizeSalesTax": zod.boolean().optional(),
+  "shippingAmount": zod.number().min(updateExpenseResponseShippingAmountMin).optional(),
+  "capitalizeShipping": zod.boolean().optional(),
   "category": zod.string(),
   "description": zod.string().nullish(),
   "receiptUrl": zod.string().nullish(),

@@ -382,7 +382,7 @@ describe("rollback-only pricing, inventory and invoice recovery",()=>{
       const [updated]=await db.select().from(s.inventoryItemsTable).where(eq(s.inventoryItemsTable.id,supply.id));expect(updated.quantity).toBe(2);expect(updated.unitPrice).toBe(11);expect(updated.markedUpPrice).toBe(16.5);
       expect((await request(app).patch(`/expenses/${created.id}`).send({amount:44,subtotal:40,salesTaxPct:10})).status).toBe(409);
       await recordExpense(scope.tenant,{...input,requestId:randomUUID(),amount:11,subtotal:10,capitalizeSalesTax:false,inventoryReceipts:[{...input.inventoryReceipts[0],quantity:1}]},scope.user);
-      const [untaxedCost]=await db.select().from(s.inventoryItemsTable).where(eq(s.inventoryItemsTable.id,supply.id));expect(untaxedCost.unitPrice).toBe(10);expect(untaxedCost.markedUpPrice).toBe(15);
+      const [untaxedCost]=await db.select().from(s.inventoryItemsTable).where(eq(s.inventoryItemsTable.id,supply.id));expect(untaxedCost.unitPrice).toBe(11);expect(untaxedCost.markedUpPrice).toBe(16.5);
       await expect(recordExpense(scope.tenant,{...input,requestId:randomUUID(),amount:20},scope.user)).rejects.toThrow('subtotal plus sales tax');
       const newCategory=await request(app).post('/expense-categories').send({name:'Deleted history QA'});expect(newCategory.status).toBe(201);
       const key=newCategory.body.key;
@@ -395,6 +395,67 @@ describe("rollback-only pricing, inventory and invoice recovery",()=>{
       const [changedVendor]=await db.select().from(s.vendorsTable).where(eq(s.vendorsTable.id,vendor.body.id));expect(changedVendor.category).toBe('other');
       expect((await request(app).delete('/expense-categories/other')).status).toBe(400);
     }finally{await client.query('ROLLBACK TO SAVEPOINT vendor_tax_fixture');await client.query('RELEASE SAVEPOINT vendor_tax_fixture');}
+  });
+  it('allocates optional shipping and preserves highest remaining batch costs and historical job use',async()=>{
+    await client.query('SAVEPOINT stock_layers_fixture');
+    try{
+      const s=await import('@workspace/db'),{recordExpense}=await import('../lib/expenseInventory'),{setJobPart,publicParts}=await import('../lib/inventoryCosting');
+      const vendor=await request(app).post('/vendors').send({name:'Two phone vendor QA',contactName:'QA contact',contactPhone:'555-0101',officePhone:'555-0102'});
+      expect(vendor.status).toBe(201);expect(vendor.body.contactPhone).toBe('555-0101');expect(vendor.body.officePhone).toBe('555-0102');
+      const changed=await request(app).patch(`/vendors/${vendor.body.id}`).send({contactPhone:'555-0103'});
+      expect(changed.body.contactPhone).toBe('555-0103');expect(changed.body.officePhone).toBe('555-0102');
+      const [item]=await db.insert(s.inventoryItemsTable).values({tenantId:scope.tenant,name:'Cost layers QA',sku:randomUUID(),unit:'each',quantity:0,unitPrice:20,markedUpPrice:30}).returning();
+      const [location]=await db.insert(s.inventoryLocationsTable).values({tenantId:scope.tenant,name:'Cost layers receiving QA',type:'other'}).returning();
+      const input={vendorId:vendor.body.id,requestId:randomUUID(),date:'2026-10-15',amount:50,subtotal:40,salesTaxPct:10,capitalizeSalesTax:true,shippingAmount:6,capitalizeShipping:true,inventoryReceipts:[{inventoryItemId:item.id,locationId:location.id,quantity:2,costPrice:20,updatePrice:true}]};
+      const expense=await recordExpense(scope.tenant,input,scope.user);
+      await recordExpense(scope.tenant,input,scope.user);
+      expect(expense.shippingAmount).toBe(6);expect((expense.inventoryReceipts as any[])[0]).toMatchObject({shippingAllocation:6,landedUnitCost:25});
+      await recordExpense(scope.tenant,{...input,requestId:randomUUID(),amount:35,subtotal:30,salesTaxPct:0,capitalizeSalesTax:false,shippingAmount:5,capitalizeShipping:false,inventoryReceipts:[{...input.inventoryReceipts[0],quantity:3,costPrice:10}]},scope.user);
+      const readItem=async()=>(await db.select().from(s.inventoryItemsTable).where(eq(s.inventoryItemsTable.id,item.id)))[0];
+      expect(await readItem()).toMatchObject({quantity:5,unitPrice:25,markedUpPrice:37.5});
+      expect((await request(app).patch(`/expenses/${expense.id}`).send({shippingAmount:7,amount:51,subtotal:40,salesTaxPct:10})).status).toBe(409);
+      const [customer]=await db.select({id:s.customersTable.id}).from(s.customersTable).where(eq(s.customersTable.tenantId,scope.tenant)).limit(1);
+      const [job]=await db.insert(s.jobsTable).values({tenantId:scope.tenant,customerId:customer.id,title:'Cost layers job QA',scheduledAt:new Date('2026-10-15T14:00:00Z'),status:'scheduled'}).returning();
+      await setJobPart(scope.tenant,job.id,item.id,1);await setJobPart(scope.tenant,job.id,item.id,1);
+      expect(await readItem()).toMatchObject({quantity:4,unitPrice:25});
+      const used=await setJobPart(scope.tenant,job.id,item.id,3);
+      expect((used.jobParts as any[])[0]._stockUsage.total).toBe(60);
+      expect(await readItem()).toMatchObject({quantity:2,unitPrice:10,markedUpPrice:37.5});
+      expect(publicParts(used.jobParts)[0]).not.toHaveProperty('_stockUsage');
+      await recordExpense(scope.tenant,{...input,requestId:randomUUID(),amount:99,subtotal:99,salesTaxPct:0,capitalizeSalesTax:false,shippingAmount:0,capitalizeShipping:false,inventoryReceipts:[{...input.inventoryReceipts[0],quantity:1,costPrice:99,updatePrice:false}]},scope.user);
+      expect(((await setJobPart(scope.tenant,job.id,item.id,3)).jobParts as any[])[0]._stockUsage.total).toBe(60);
+      await expect(setJobPart(scope.tenant,job.id,item.id,99)).rejects.toThrow('Not enough stock');
+      const corrected=await setJobPart(scope.tenant,job.id,item.id,2);
+      expect((corrected.jobParts as any[])[0]._stockUsage.total).toBe(50);
+      await setJobPart(scope.tenant,job.id,item.id,0);await setJobPart(scope.tenant,job.id,item.id,0);
+      expect(await readItem()).toMatchObject({quantity:6,unitPrice:99,markedUpPrice:37.5});
+      const lots=await db.select().from(s.inventoryCostLotsTable).where(eq(s.inventoryCostLotsTable.inventoryItemId,item.id));
+      expect(lots.reduce((n,l)=>n+l.remainingQuantity,0)).toBe(6);
+      const [other]=await db.insert(s.inventoryItemsTable).values({tenantId:scope.tenant,name:'Shipping split QA',sku:randomUUID(),unit:'each',quantity:0,unitPrice:5,markedUpPrice:10}).returning();
+      const split=await recordExpense(scope.tenant,{requestId:randomUUID(),date:input.date,amount:41,subtotal:40,shippingAmount:1,capitalizeShipping:true,inventoryReceipts:[{inventoryItemId:item.id,locationId:location.id,quantity:3,costPrice:10,updatePrice:false},{inventoryItemId:other.id,locationId:location.id,quantity:2,costPrice:5,updatePrice:false}]},scope.user);
+      expect((split.inventoryReceipts as any[]).map(r=>r.shippingAllocation)).toEqual([.75,.25]);
+      expect((split.inventoryReceipts as any[]).find(r=>r.inventoryItemId===other.id).landedUnitCost).toBe(5.125);
+      await expect(recordExpense(scope.tenant,{date:input.date,amount:1,subtotal:0,shippingAmount:1,capitalizeShipping:true},scope.user)).rejects.toThrow('Choose the received supplies');
+      // An explicit count adjustment consumes highest-cost stock first too.
+      await db.update(s.inventoryItemsTable).set({quantity:8}).where(eq(s.inventoryItemsTable.id,item.id));
+      expect((await readItem()).unitPrice).toBe(25);
+    }finally{await client.query('ROLLBACK TO SAVEPOINT stock_layers_fixture');await client.query('RELEASE SAVEPOINT stock_layers_fixture');}
+  });
+  it('keeps an unpublished first draft private while existing enabled website links retain their legacy form',async()=>{
+    await client.query('SAVEPOINT private_first_draft_fixture');
+    try{
+      const s=await import('@workspace/db'),{sql}=await import('drizzle-orm'),{getWebsiteForm}=await import('../lib/websiteFlow'),{publicWebsiteConfig}=await import('../lib/websiteIntake');
+      await db.update(s.tenantsTable).set({acquisitionSettings:{quoteWidgetEnabled:true}}).where(eq(s.tenantsTable.id,scope.tenant));
+      await db.execute(sql`DELETE FROM website_intake_forms WHERE tenant_id=${scope.tenant} AND kind='quote'`);
+      const legacy=await getWebsiteForm(scope.tenant,'quote'),draft=structuredClone(legacy.definition);
+      draft.title='PRIVATE UNPUBLISHED DRAFT QA';draft.privacyNotice='PRIVATE DRAFT NOTICE QA';
+      await db.execute(sql`INSERT INTO website_intake_forms(tenant_id,kind,draft,published,revision) VALUES(${scope.tenant},'quote',${JSON.stringify(draft)}::jsonb,NULL,1)`);
+      expect((await getWebsiteForm(scope.tenant,'quote')).definition.title).toBe(draft.title);
+      const publicForm=await publicWebsiteConfig('quote',scope.tenant);
+      expect(publicForm.enabled).toBe(true);expect(publicForm.definition.title).toBe(legacy.definition.title);
+      expect(JSON.stringify(publicForm)).not.toContain('PRIVATE DRAFT');
+      expect(JSON.stringify(publicForm)).not.toContain('PRIVATE UNPUBLISHED');
+    }finally{await client.query('ROLLBACK TO SAVEPOINT private_first_draft_fixture');await client.query('RELEASE SAVEPOINT private_first_draft_fixture');}
   });
   it('only shares owned-property measurements when enabled and returns the actual referral program state',async()=>{
     await client.query('SAVEPOINT portal_visibility_fixture');

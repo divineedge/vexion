@@ -5,6 +5,8 @@ import type {HrDb} from './hrAccess';
 export const DEFAULT_EXPENSE_CATEGORIES=['supplies','fuel','equipment','insurance','payroll','rent','utilities','marketing','other'];
 export const categoryLabel=(key:string)=>key.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 export async function installVendorCategoriesSchema(){
+ await db.execute(sql`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS contact_phone text`);
+ await db.execute(sql`ALTER TABLE expense_entries ADD COLUMN IF NOT EXISTS shipping_amount real NOT NULL DEFAULT 0,ADD COLUMN IF NOT EXISTS capitalize_shipping boolean NOT NULL DEFAULT false`);
  await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS portal_show_measurements boolean NOT NULL DEFAULT true`);
  await db.execute(sql`ALTER TABLE expense_entries ADD COLUMN IF NOT EXISTS subtotal real,ADD COLUMN IF NOT EXISTS sales_tax_pct real NOT NULL DEFAULT 0,ADD COLUMN IF NOT EXISTS sales_tax_amount real NOT NULL DEFAULT 0,ADD COLUMN IF NOT EXISTS capitalize_sales_tax boolean NOT NULL DEFAULT false`);
  await db.execute(sql`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS contact_name text, ADD COLUMN IF NOT EXISTS office_phone text`);

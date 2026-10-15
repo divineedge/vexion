@@ -8,7 +8,7 @@ import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 
 const router: IRouter = Router();
-const vendorFields=z.object({name:z.string().trim().min(1).max(200),category:z.string().max(200).optional(),contact:z.string().max(2000).optional(),contactName:z.string().trim().max(200).optional(),officePhone:z.string().trim().max(80).optional(),notes:z.string().max(20000).optional()});
+const vendorFields=z.object({name:z.string().trim().min(1).max(200),category:z.string().max(200).optional(),contact:z.string().max(2000).optional(),contactName:z.string().trim().max(200).optional(),officePhone:z.string().trim().max(80).optional(),contactPhone:z.string().trim().max(80).optional(),notes:z.string().max(20000).optional()});
 
 router.use('/expense-categories',async(req,res,next)=>{
  if(!await isAdminRole(getTenantId(req),getUserId(req))){res.status(403).json({error:'Restricted to owner/admin roles'});return;}next();
@@ -78,10 +78,10 @@ router.post("/vendors", async (req, res): Promise<void> => {
 
   const parsed=vendorFields.safeParse(req.body);
   if(!parsed.success){res.status(400).json({error:'Enter a vendor name and valid contact details'});return;}
-  const { name, category, contact, notes,contactName,officePhone } = parsed.data;
+  const { name, category, contact, notes,contactName,officePhone,contactPhone } = parsed.data;
   if(category&&!(await listVendorCategories(tenantId)).some(c=>c.key===category)){res.status(400).json({error:'Choose an existing category or add it using Manage categories'});return;}
   const [v] = await db.insert(vendorsTable).values({
-    tenantId, name, category: category ?? null, contact: contact ?? null, notes: notes ?? null,contactName:contactName??null,officePhone:officePhone??null,
+    tenantId, name, category: category ?? null, contact: contact ?? null, notes: notes ?? null,contactName:contactName??null,officePhone:officePhone??null,contactPhone:contactPhone??null,
   }).returning();
   res.status(201).json(fmt(v));
 });
@@ -94,7 +94,7 @@ router.patch("/vendors/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const parsed=vendorFields.partial().safeParse(req.body);
   if(!parsed.success){res.status(400).json({error:'Enter valid vendor and contact details'});return;}
-  const { name, category, contact, notes,contactName,officePhone } = parsed.data;
+  const { name, category, contact, notes,contactName,officePhone,contactPhone } = parsed.data;
   if(category&&!(await listVendorCategories(tenantId)).some(c=>c.key===category)){res.status(400).json({error:'Choose an existing category or add it using Manage categories'});return;}
   const update: Partial<typeof vendorsTable.$inferInsert> = {};
   if (name !== undefined) update.name = name;
@@ -103,6 +103,7 @@ router.patch("/vendors/:id", async (req, res): Promise<void> => {
   if (notes !== undefined) update.notes = notes;
   if(contactName!==undefined)update.contactName=contactName;
   if(officePhone!==undefined)update.officePhone=officePhone;
+  if(contactPhone!==undefined)update.contactPhone=contactPhone;
   if(!Object.keys(update).length){res.status(400).json({error:'No vendor changes supplied'});return;}
 
   const [updated] = await db.update(vendorsTable).set(update).where(and(eq(vendorsTable.id, id), eq(vendorsTable.tenantId, tenantId))).returning();

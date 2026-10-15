@@ -126,11 +126,16 @@ router.get('/dashboard/kpis', async(req,res) => {
     jobs:jobData.rows.map(r=>{
       const parts=Array.isArray(r.job_parts)?r.job_parts as Record<string,unknown>[]:[];
       const invalid=!Array.isArray(r.job_parts)||parts.some(p=>!Number.isFinite(Number(p.total))||Number(p.total)<0);
-      const costsMissing=parts.some(p=>p.costPrice==null||p.quantity==null||!Number.isFinite(Number(p.costPrice))||Number(p.costPrice)<0||!Number.isFinite(Number(p.quantity))||Number(p.quantity)<0);
+      const costs=parts.map(p=>{
+        const snapshot=(p._stockUsage as {total?:unknown}|null)?.total;
+        if(typeof snapshot==='number'&&Number.isFinite(snapshot)&&snapshot>=0)return snapshot;
+        return p.costPrice!=null&&p.quantity!=null&&Number.isFinite(Number(p.costPrice))&&Number(p.costPrice)>=0&&Number.isFinite(Number(p.quantity))&&Number(p.quantity)>=0?num(p.costPrice)*num(p.quantity):null;
+      });
+      const costsMissing=costs.some(c=>c===null);
       return {id:num(r.id),title:r.title,customerId:r.customer_id,customerName:r.customer_name??'No customer',serviceId:r.service_id,
         crewId:r.crew_id,crewName:r.crew_name??'Unassigned crew',status:r.status,scheduledDate:r.scheduled_date,completedDate:r.completed_date,
         total:num(r.total_amount),minutes:num(r.minutes),budgetMinutes:num(r.estimated_duration),openTimers:Boolean(r.open),
-        materialSell:parts.reduce((s,p)=>s+num(p.total),0),materialCost:invalid||costsMissing?null:parts.reduce((s,p)=>s+num(p.costPrice)*num(p.quantity),0),
+        materialSell:parts.reduce((s,p)=>s+num(p.total),0),materialCost:invalid||costsMissing?null:costs.reduce<number>((sum,c)=>sum+(c??0),0),
         laborCost:r.labor_cost==null?null:num(r.labor_cost),fuelCost:num(r.fuel_cost),materialsInvalid:invalid,
         workers:r.workers};
     }),

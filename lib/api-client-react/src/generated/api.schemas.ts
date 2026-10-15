@@ -6764,6 +6764,11 @@ export interface Vendor {
   contactName?: string | null;
   /** @nullable */
   officePhone?: string | null;
+  /**
+     * @maxLength 80
+     * @nullable
+     */
+  contactPhone?: string | null;
   /** @nullable */
   notes?: string | null;
   createdAt: string;
@@ -6782,10 +6787,18 @@ export interface CreateVendorInput {
   contactName?: string;
   /** @maxLength 80 */
   officePhone?: string;
+  /** @maxLength 80 */
+  contactPhone?: string;
   notes?: string;
 }
 
 export interface ExpenseInventoryReceipt {
+  /** @nullable */
+  purchaseCostPrice?: number | null;
+  /** @nullable */
+  shippingAllocation?: number | null;
+  /** @nullable */
+  landedUnitCost?: number | null;
   /** @minimum 1 */
   inventoryItemId: number;
   /** @minimum 1 */
@@ -6822,6 +6835,9 @@ export interface ExpenseEntry {
   salesTaxPct?: number;
   salesTaxAmount?: number;
   capitalizeSalesTax?: boolean;
+  /** @minimum 0 */
+  shippingAmount?: number;
+  capitalizeShipping?: boolean;
   category: string;
   /** @nullable */
   description?: string | null;
@@ -6851,6 +6867,9 @@ export interface CreateExpenseInput {
      */
   salesTaxPct?: number;
   capitalizeSalesTax?: boolean;
+  /** @minimum 0 */
+  shippingAmount?: number;
+  capitalizeShipping?: boolean;
   category?: string;
   description?: string;
   receiptUrl?: string;

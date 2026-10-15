@@ -185,7 +185,11 @@ router.post("/inventory/locations/:id/stock", requireAdmin, async (req, res): Pr
     ));
 
   // Conflict-safe upsert using the unique constraint (tenant+item+location)
-  const [stock] = await db
+  const [stock] = await db.transaction(async tx=>{
+   await tx.execute(sql`SELECT pg_advisory_xact_lock(${tenantId},-19001)`);
+   const [lockedItem]=await tx.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.tenantId,tenantId),eq(inventoryItemsTable.id,itemId))).for('update');
+   const [prior]=await tx.select().from(inventoryLocationStockTable).where(and(eq(inventoryLocationStockTable.tenantId,tenantId),eq(inventoryLocationStockTable.inventoryItemId,itemId),eq(inventoryLocationStockTable.locationId,locationId))).for('update');
+   const saved = await tx
     .insert(inventoryLocationStockTable)
     .values({ tenantId, inventoryItemId: itemId, locationId, quantity: qty, reorderPoint: reorder })
     .onConflictDoUpdate({
@@ -200,6 +204,11 @@ router.post("/inventory/locations/:id/stock", requireAdmin, async (req, res): Pr
       },
     })
     .returning();
+   const total=await tx.execute(sql`SELECT COALESCE(SUM(quantity),0) AS quantity FROM inventory_location_stock WHERE tenant_id=${tenantId} AND inventory_item_id=${itemId}`);
+   const next=Math.max(Number(total.rows[0].quantity),lockedItem.quantity+Math.min(0,qty-(prior?.quantity??0)));
+   await tx.update(inventoryItemsTable).set({quantity:next,isLowStock:next<=lockedItem.reorderPoint}).where(eq(inventoryItemsTable.id,itemId));
+   return saved;
+  });
 
   const [item] = await db.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.id, itemId), eq(inventoryItemsTable.tenantId, tenantId)));
   const [loc] = await db.select().from(inventoryLocationsTable).where(and(eq(inventoryLocationsTable.id, locationId), eq(inventoryLocationsTable.tenantId, tenantId)));
@@ -242,6 +251,9 @@ router.post("/inventory/locations/:id/stock/adjust", requireAdmin, async (req, r
   let updated: typeof inventoryLocationStockTable.$inferSelect;
   try {
     updated = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${tenantId},-19001)`);
+      const [item]=await tx.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.tenantId,tenantId),eq(inventoryItemsTable.id,itemId))).for('update');
+      if(item.quantity+d<0)throw Object.assign(new Error('Adjustment would result in negative total stock'),{statusCode:400});
       const [locked] = await tx
         .select()
         .from(inventoryLocationStockTable)
@@ -262,6 +274,7 @@ router.post("/inventory/locations/:id/stock/adjust", requireAdmin, async (req, r
         .set({ quantity: newQty })
         .where(eq(inventoryLocationStockTable.id, locked.id))
         .returning();
+      await tx.update(inventoryItemsTable).set({quantity:item.quantity+d,isLowStock:item.quantity+d<=item.reorderPoint}).where(eq(inventoryItemsTable.id,itemId));
       return row;
     });
   } catch (err: any) {
@@ -352,6 +365,8 @@ router.post("/inventory/transfer", requireAdmin, async (req, res): Promise<void>
   let result: TransferResult;
   try {
     result = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${tenantId},-19001)`);
+      const [totalItem]=await tx.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.tenantId,tenantId),eq(inventoryItemsTable.id,itemId))).for('update');
       let fromStockRow: typeof inventoryLocationStockTable.$inferSelect | null = null;
 
       if (fromLocId) {
@@ -378,12 +393,11 @@ router.post("/inventory/transfer", requireAdmin, async (req, res): Promise<void>
         const [lockedItem] = await tx.select().from(inventoryItemsTable)
           .where(and(eq(inventoryItemsTable.id, itemId), eq(inventoryItemsTable.tenantId, tenantId)))
           .for("update");
-        if (!lockedItem || lockedItem.quantity < qty) {
+        const allocated=await tx.execute(sql`SELECT COALESCE(SUM(quantity),0) AS quantity FROM inventory_location_stock WHERE tenant_id=${tenantId} AND inventory_item_id=${itemId}`);
+        if (!lockedItem || totalItem.quantity-Number(allocated.rows[0].quantity) < qty) {
           throw Object.assign(new Error("Insufficient stock in main warehouse"), { statusCode: 400 });
         }
-        await tx.update(inventoryItemsTable)
-          .set({ quantity: lockedItem.quantity - qty })
-          .where(eq(inventoryItemsTable.id, itemId));
+        // Moving unallocated stock into a location does not consume company inventory.
       }
 
       // Conflict-safe upsert for destination stock (unique constraint: tenant+item+location)

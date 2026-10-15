@@ -42,7 +42,7 @@ router.get("/reports/pricing-review", async (req, res) => {
         (j.job_parts IS NOT NULL AND (jsonb_typeof(j.job_parts)<>'array' OR EXISTS(
           SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(j.job_parts)='array' THEN j.job_parts ELSE '[]'::jsonb END) part
           WHERE part->>'total' IS NULL OR NOT (part->>'total' ~ '^[0-9]+(\\.[0-9]+)?$')))) AS materials_missing,
-        COALESCE((SELECT SUM(CASE WHEN part->>'total' ~ '^[0-9]+(\\.[0-9]+)?$' THEN (part->>'total')::numeric ELSE 0 END)
+        COALESCE((SELECT SUM(CASE WHEN part->'_stockUsage'->>'total' ~ '^[0-9]+(\\.[0-9]+)?$' THEN (part->'_stockUsage'->>'total')::numeric WHEN part->>'total' ~ '^[0-9]+(\\.[0-9]+)?$' THEN (part->>'total')::numeric ELSE 0 END)
           FROM jsonb_array_elements(CASE WHEN jsonb_typeof(j.job_parts)='array' THEN j.job_parts ELSE '[]'::jsonb END) part),0)::float AS materials
       FROM jobs j LEFT JOIN durations d ON d.job_id=j.id
       LEFT JOIN customers c ON c.id=j.customer_id AND c.tenant_id=j.tenant_id

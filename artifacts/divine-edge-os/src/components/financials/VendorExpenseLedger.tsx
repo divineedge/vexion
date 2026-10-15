@@ -31,7 +31,9 @@ import { downloadCsv } from '@/lib/csvExport';
 export interface ReceiptRowInput { inventoryItemId: number; locationId?: number; quantity: number; costPrice: number; updatePrice: boolean; markupPct?: number }
 interface ReceiptDraft { key: string; itemId: string; locationId: string; quantity: string; costPrice: string; updatePrice: boolean; markupPct: string }
 /** purchaseCostPrice = pre-tax unit cost paid; costPrice = unit cost saved to the item (tax-inclusive when capitalized). */
-interface SavedReceipt { purchaseCostPrice?: number | null; inventoryItemId?: number; itemName?: string | null; locationName?: string | null; quantity?: number; costPrice?: number; markupPct?: number | null; updatePrice?: boolean }
+interface SavedReceipt { shippingAllocation?: number | null; landedUnitCost?: number | null; purchaseCostPrice?: number | null; inventoryItemId?: number; itemName?: string | null; locationName?: string | null; quantity?: number; costPrice?: number; markupPct?: number | null; updatePrice?: boolean }
+/** Temporary local extension until codegen adds Vendor.contactPhone. */
+type VendorX = Vendor & { contactPhone?: string | null };
 const receiptsOf = (e: ExpenseEntry | null): SavedReceipt[] =>
   ((e as unknown as { inventoryReceipts?: SavedReceipt[] | null } | null)?.inventoryReceipts ?? []);
 const newDraft = (): ReceiptDraft => ({ key: crypto.randomUUID(), itemId: '', locationId: '', quantity: '1', costPrice: '', updatePrice: false, markupPct: '' });
@@ -183,7 +185,7 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
                 <TableRow key={v.id}>
                   <TableCell className="font-medium" title={v.name}>{v.name}</TableCell>
                   <TableCell className="text-muted-foreground">{v.category ? categoryName(v.category) : '—'}</TableCell>
-                  <TableCell className="text-muted-foreground"><div>{v.contactName}</div><div>{v.officePhone&&<a href={`tel:${v.officePhone}`}>{v.officePhone}</a>}</div><div>{v.contact}</div>{!v.contactName&&!v.officePhone&&!v.contact&&'—'}</TableCell>
+                  <TableCell className="text-muted-foreground"><div>{v.contactName}</div>{(v as VendorX).contactPhone&&<div>Contact: <a href={`tel:${(v as VendorX).contactPhone}`}>{(v as VendorX).contactPhone}</a></div>}{v.officePhone&&<div>Office: <a href={`tel:${v.officePhone}`}>{v.officePhone}</a></div>}<div>{v.contact}</div>{!v.contactName&&!(v as VendorX).contactPhone&&!v.officePhone&&!v.contact&&'—'}</TableCell>
                   <TableCell className="text-muted-foreground truncate max-w-[240px]" title={v.notes ?? undefined}>{v.notes ?? '—'}</TableCell>
                   {canEdit && (
                     <TableCell className="text-right">
@@ -316,10 +318,10 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
             categories={categories}
             onSubmit={async (values) => {
               if (editingVendor) {
-                await updateVendor.mutateAsync({ id: editingVendor.id, data: values });
+                await updateVendor.mutateAsync({ id: editingVendor.id, data: values as Parameters<typeof updateVendor.mutateAsync>[0]['data'] });
                 toast.success('Vendor updated');
               } else {
-                await createVendor.mutateAsync({ data: values });
+                await createVendor.mutateAsync({ data: values as Parameters<typeof createVendor.mutateAsync>[0]['data'] });
                 toast.success('Vendor created');
               }
               invalidateVendors();
@@ -424,12 +426,13 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
   );
 }
 
-function VendorForm({ editing, categories,onSubmit }: { editing: Vendor | null;categories:ExpenseCategory[]; onSubmit: (values: { name: string; category?: string; contact?: string; notes?: string;contactName?:string;officePhone?:string }) => Promise<void> }) {
+function VendorForm({ editing, categories,onSubmit }: { editing: Vendor | null;categories:ExpenseCategory[]; onSubmit: (values: { name: string; category?: string; contact?: string; notes?: string;contactName?:string;contactPhone?:string;officePhone?:string }) => Promise<void> }) {
   const [name, setName] = useState(editing?.name ?? '');
   const [category, setCategory] = useState(editing?.category ?? '');
   const [contact, setContact] = useState(editing?.contact ?? '');
   const [contactName,setContactName]=useState(editing?.contactName??'');
   const [officePhone,setOfficePhone]=useState(editing?.officePhone??'');
+  const [contactPhone,setContactPhone]=useState((editing as VendorX|null)?.contactPhone??'');
   const [notes, setNotes] = useState(editing?.notes ?? '');
   const [saving, setSaving] = useState(false);
 
@@ -437,7 +440,7 @@ function VendorForm({ editing, categories,onSubmit }: { editing: Vendor | null;c
     if (!name.trim()) { toast.error('Vendor name is required'); return; }
     setSaving(true);
     try {
-      await onSubmit({ name: name.trim(), category, contact: contact.trim(), notes: notes.trim(),contactName:contactName.trim(),officePhone:officePhone.trim() });
+      await onSubmit({ name: name.trim(), category, contact: contact.trim(), notes: notes.trim(),contactName:contactName.trim(),contactPhone:contactPhone.trim(),officePhone:officePhone.trim() });
     } catch(error){
       toast.error((error as {data?:{error?:string}})?.data?.error??'Could not save vendor');
     } finally {
@@ -453,6 +456,7 @@ function VendorForm({ editing, categories,onSubmit }: { editing: Vendor | null;c
       </div>
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="space-y-1.5"><label className="text-sm font-medium" htmlFor="vendor-contact-name">Contact name</label><Input id="vendor-contact-name" value={contactName} maxLength={200} onChange={e=>setContactName(e.target.value)} placeholder="Your contact at this vendor" data-testid="input-vendor-contact-name"/></div>
+        <div className="space-y-1.5"><label className="text-sm font-medium" htmlFor="vendor-contact-phone">Contact phone</label><Input id="vendor-contact-phone" type="tel" maxLength={80} value={contactPhone} onChange={e=>setContactPhone(e.target.value)} placeholder="Your contact's direct or mobile number" data-testid="input-vendor-contact-phone"/></div>
         <div className="space-y-1.5"><label className="text-sm font-medium" htmlFor="vendor-office-phone">Office phone</label><Input id="vendor-office-phone" type="tel" maxLength={80} value={officePhone} onChange={e=>setOfficePhone(e.target.value)} placeholder="Office phone number" data-testid="input-vendor-office-phone"/></div>
       </div>
       <div className="space-y-1.5">
@@ -485,7 +489,7 @@ function ExpenseForm({ editing, vendors,categories,categoryName, inventoryItems,
   inventoryItems: InventoryItem[];
   inventoryLocations: InventoryLocation[];
   onSubmit: (
-    values: { vendorId?: number|null; date: string; amount: number; category: string; description?: string; subtotal?: number; salesTaxPct?: number; capitalizeSalesTax?: boolean },
+    values: { vendorId?: number|null; date: string; amount: number; category: string; description?: string; subtotal?: number; salesTaxPct?: number; capitalizeSalesTax?: boolean; shippingAmount?: number; capitalizeShipping?: boolean },
     receiptFile: File | null,
     removeReceipt: boolean,
     inventoryReceipts: ReceiptRowInput[],
@@ -498,17 +502,32 @@ function ExpenseForm({ editing, vendors,categories,categoryName, inventoryItems,
   const patchReceipt = (key: string, patch: Partial<ReceiptDraft>) => setReceipts(rs => rs.map(r => r.key === key ? { ...r, ...patch } : r));
   const [vendorId, setVendorId] = useState<string>(editing?.vendorId ? String(editing.vendorId) : '');
   const [date, setDate] = useState(editing?.date ?? new Date().toISOString().slice(0, 10));
-  const ex = editing as (ExpenseEntry & { subtotal?: number | null; salesTaxPct?: number | null; capitalizeSalesTax?: boolean | null; salesTaxAmount?: number | null }) | null;
+  const ex = editing as (ExpenseEntry & { subtotal?: number | null; salesTaxPct?: number | null; capitalizeSalesTax?: boolean | null; salesTaxAmount?: number | null; shippingAmount?: number | null; capitalizeShipping?: boolean | null }) | null;
   // Subtotal is pre-tax; legacy expenses without a subtotal treat amount as the subtotal (no double tax).
   const [amount, setAmount] = useState(ex ? String(ex.subtotal ?? ex.amount) : '');
   const [taxPct, setTaxPct] = useState(ex?.salesTaxPct != null ? String(ex.salesTaxPct) : '0');
   const [capitalizeTax, setCapitalizeTax] = useState(!!ex?.capitalizeSalesTax);
+  const [shipping, setShipping] = useState(ex?.shippingAmount != null ? String(ex.shippingAmount) : '0');
+  const [capitalizeShipping, setCapitalizeShipping] = useState(!!ex?.capitalizeShipping);
   const financialLocked = savedReceipts.length > 0;
   const subCents = Math.round((parseFloat(amount) || 0) * 100);
   const rate = Math.min(100, Math.max(0, parseFloat(taxPct) || 0));
   const taxCents = Math.round(subCents * rate / 100);
-  const totalCents = subCents + taxCents;
+  const shipCents = Math.max(0, Math.round((parseFloat(shipping) || 0) * 100));
+  const totalCents = subCents + taxCents + shipCents;
   const taxFactor = capitalizeTax ? 1 + rate / 100 : 1;
+  // Preview only; the server does the authoritative allocation (by pre-tax value, or quantity when all values are 0).
+  const draftBases = receipts.map(r => { const q = Number(r.quantity), c = Number(r.costPrice); const okQ = Number.isFinite(q) && q > 0 ? q : 0; return { q: okQ, base: okQ * (Number.isFinite(c) && c > 0 ? c : 0) }; });
+  const baseTotal = draftBases.reduce((t, d) => t + d.base, 0);
+  const qtyTotal = draftBases.reduce((t, d) => t + d.q, 0);
+  const landedUnit = (i: number, cost: number) => {
+    const d = draftBases[i]; let ship = 0;
+    if (capitalizeShipping && shipCents > 0 && d && d.q > 0) {
+      const share = baseTotal > 0 ? d.base / baseTotal : qtyTotal > 0 ? d.q / qtyTotal : 0;
+      ship = (shipCents / 100) * share / d.q;
+    }
+    return cost * taxFactor + ship;
+  };
   const [category, setCategory] = useState(editing?.category ?? 'other');
   const [description, setDescription] = useState(editing?.description ?? '');
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -532,6 +551,9 @@ function ExpenseForm({ editing, vendors,categories,categoryName, inventoryItems,
     if (!date || !amt || amt <= 0) { toast.error('Enter a valid date and subtotal'); return; }
     const pct = Number(taxPct || 0);
     if (!Number.isFinite(pct) || pct < 0 || pct > 100) { toast.error('Sales tax rate must be between 0 and 100'); return; }
+    const shipVal = Number(shipping || 0);
+    if (!Number.isFinite(shipVal) || shipVal < 0) { toast.error('Shipping must be 0 or more'); return; }
+    if (!financialLocked && capitalizeShipping && shipVal > 0 && !editing && receipts.length === 0) { toast.error('Add at least one received supply to allocate shipping to'); return; }
     const rows: ReceiptRowInput[] = [];
     if (!editing) {
       for (const [i, r] of receipts.entries()) {
@@ -550,7 +572,7 @@ function ExpenseForm({ editing, vendors,categories,categoryName, inventoryItems,
         rows.push({
           inventoryItemId: Number(r.itemId),
           ...(r.locationId ? { locationId: Number(r.locationId) } : {}),
-          quantity: qty, costPrice: r.updatePrice ? Math.round(cost * taxFactor * 100) / 100 : cost, updatePrice: r.updatePrice,
+          quantity: qty, costPrice: cost, updatePrice: r.updatePrice,
           ...(markup !== undefined ? { markupPct: markup } : {}),
         });
       }
@@ -565,7 +587,7 @@ function ExpenseForm({ editing, vendors,categories,categoryName, inventoryItems,
           description: description.trim() || undefined,
           ...(financialLocked && ex
             ? { amount: ex.amount }
-            : { amount: totalCents / 100, subtotal: subCents / 100, salesTaxPct: pct, capitalizeSalesTax: capitalizeTax }),
+            : { amount: totalCents / 100, subtotal: subCents / 100, salesTaxPct: pct, capitalizeSalesTax: capitalizeTax, shippingAmount: shipCents / 100, capitalizeShipping: capitalizeShipping && shipCents > 0 }),
         },
         receiptFile,
         receiptRemoved,
@@ -606,12 +628,22 @@ function ExpenseForm({ editing, vendors,categories,categoryName, inventoryItems,
       <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-1" data-testid="panel-expense-totals">
         <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span className="tabular-nums">${(subCents / 100).toFixed(2)}</span></div>
         <div className="flex justify-between"><span className="text-muted-foreground">Sales tax ({rate}%)</span><span className="tabular-nums">${(taxCents / 100).toFixed(2)}</span></div>
+        <div className="flex justify-between"><span className="text-muted-foreground">Shipping / delivery (not taxed)</span><span className="tabular-nums">${(shipCents / 100).toFixed(2)}</span></div>
         <div className="flex justify-between font-semibold border-t pt-1"><span>Total paid</span><span className="tabular-nums" data-testid="text-expense-total">${(totalCents / 100).toFixed(2)}</span></div>
-        {financialLocked && <p className="text-xs text-muted-foreground pt-1">Amounts are locked because stock was received on this expense.</p>}
+        {financialLocked && <p className="text-xs text-muted-foreground pt-1">Subtotal, tax and shipping are locked because stock was received on this expense. You can still change the date, vendor, category and description.</p>}
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium" htmlFor="expense-shipping">Shipping / delivery</label>
+        <Input id="expense-shipping" type="number" step="0.01" min={0} disabled={financialLocked} value={shipping} onChange={e => setShipping(e.target.value)} placeholder="0.00" data-testid="input-expense-shipping" />
+        <p className="text-xs text-muted-foreground">Added to the total after tax. Sales tax is never applied to shipping.</p>
       </div>
       <label className="flex items-start gap-2 text-sm">
+        <input type="checkbox" className="mt-0.5" checked={capitalizeShipping} disabled={financialLocked} onChange={e => setCapitalizeShipping(e.target.checked)} data-testid="checkbox-capitalize-shipping" />
+        <span>Add shipping to the cost of received supplies<span className="block text-xs text-muted-foreground">The whole shipping charge is spread across the supplies received below, in proportion to their pre-tax value (or by quantity if they're all $0). Requires at least one received supply.</span></span>
+      </label>
+      <label className="flex items-start gap-2 text-sm">
         <input type="checkbox" className="mt-0.5" checked={capitalizeTax} disabled={financialLocked} onChange={e => setCapitalizeTax(e.target.checked)} data-testid="checkbox-capitalize-sales-tax" />
-        <span>Include sales tax in supply cost<span className="block text-xs text-muted-foreground">When updating an item's cost price below, the saved unit cost includes tax, so markup is based on the tax-inclusive cost.</span></span>
+        <span>Include sales tax in supply cost<span className="block text-xs text-muted-foreground">The received unit cost includes tax, so stock cost and markup are based on the tax-inclusive cost.</span></span>
       </label>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Category</label>
@@ -696,7 +728,7 @@ function ExpenseForm({ editing, vendors,categories,categoryName, inventoryItems,
             <p className="text-sm font-medium flex items-center gap-1.5"><PackagePlus className="w-4 h-4" /> Inventory received</p>
             {savedReceipts.map((r, i) => (
               <p key={i} className="text-xs text-muted-foreground">
-                {r.quantity ?? 0} x {r.itemName ?? `Item #${r.inventoryItemId}`}{r.locationName ? ` to ${r.locationName}` : ''} at ${Number(r.purchaseCostPrice ?? r.costPrice ?? 0).toFixed(2)} each{r.purchaseCostPrice != null && Number(r.purchaseCostPrice) !== Number(r.costPrice ?? 0) ? ` before tax, saved as $${Number(r.costPrice ?? 0).toFixed(2)} with tax` : ''}{r.updatePrice ? ' (cost price updated' + (r.markupPct != null ? `, markup ${r.markupPct}%` : '') + ')' : ''}
+                {r.quantity ?? 0} x {r.itemName ?? `Item #${r.inventoryItemId}`}{r.locationName ? ` to ${r.locationName}` : ''} at ${Number(r.purchaseCostPrice ?? r.costPrice ?? 0).toFixed(2)} each{r.purchaseCostPrice != null && Number(r.purchaseCostPrice) !== Number(r.costPrice ?? 0) ? ` before tax, stock cost $${Number(r.costPrice ?? 0).toFixed(2)}` : ''}{r.shippingAllocation != null && Number(r.shippingAllocation) > 0 ? `, shipping share $${Number(r.shippingAllocation).toFixed(2)}` : ''}{r.landedUnitCost != null ? `, landed $${Number(r.landedUnitCost).toFixed(2)} each` : ''}{r.updatePrice ? ' (selling price updated' + (r.markupPct != null ? `, markup ${r.markupPct}%` : '') + ')' : ''}
               </p>
             ))}
             <p className="text-xs text-muted-foreground">Stock was already applied when this expense was logged. Editing the expense does not change inventory, and this expense cannot be deleted. Adjust stock from Inventory if needed.</p>
@@ -710,7 +742,7 @@ function ExpenseForm({ editing, vendors,categories,categoryName, inventoryItems,
               <PackagePlus className="w-3.5 h-3.5" /> Add item
             </Button>
           </div>
-          {receipts.length > 0 && <p className="text-xs text-muted-foreground">Stock is added once when the expense is saved and cannot be edited on the expense later.</p>}
+          {receipts.length > 0 && <p className="text-xs text-muted-foreground">Stock is added once when the expense is saved and cannot be edited on the expense later. Job costing uses the highest paid cost among batches still in stock, so a cheaper new delivery won't lower the cost until the pricier stock is used up.</p>}
           {receipts.map((r, i) => {
             const item = inventoryItems.find(it => String(it.id) === r.itemId);
             return (
@@ -735,16 +767,17 @@ function ExpenseForm({ editing, vendors,categories,categoryName, inventoryItems,
                 </div>
                 <label className="flex items-center gap-2 text-xs">
                   <input type="checkbox" checked={r.updatePrice} onChange={e => patchReceipt(r.key, { updatePrice: e.target.checked })} data-testid={`checkbox-receipt-update-${i}`} />
-                  Update item cost price
+                  Update selling price (keeps the item's markup)
                 </label>
                 {r.updatePrice && (
                   <Input type="number" min={0} step="0.1" className="h-8 text-xs"
                     placeholder={`Markup % override (blank keeps ${item?.markupPct ?? 'existing'}%)`}
                     value={r.markupPct} onChange={e => patchReceipt(r.key, { markupPct: e.target.value })} data-testid={`input-receipt-markup-${i}`} />
                 )}
-                {r.updatePrice && r.costPrice.trim() !== '' && Number.isFinite(Number(r.costPrice)) && (
+                {r.costPrice.trim() !== '' && Number.isFinite(Number(r.costPrice)) && (
                   <p className="text-xs text-muted-foreground" data-testid={`text-receipt-effective-cost-${i}`}>
-                    Saved unit cost: ${(Math.round(Number(r.costPrice) * taxFactor * 100) / 100).toFixed(2)}{capitalizeTax && rate > 0 ? ` (includes ${rate}% tax)` : ''}
+                    Estimated landed unit cost: ${landedUnit(i, Number(r.costPrice)).toFixed(2)}
+                    {[capitalizeTax && rate > 0 ? `${rate}% tax` : '', capitalizeShipping && shipCents > 0 ? 'shipping share' : ''].filter(Boolean).length ? ` (includes ${[capitalizeTax && rate > 0 ? `${rate}% tax` : '', capitalizeShipping && shipCents > 0 ? 'shipping share' : ''].filter(Boolean).join(' and ')})` : ''}
                   </p>
                 )}
               </div>

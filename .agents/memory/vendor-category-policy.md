@@ -13,3 +13,9 @@ Deleting a category removes it from future choices, not historical expenses. Ret
 **Why:** The user wants to delete categories without losing or silently reclassifying recorded spending.
 
 **How to apply:** Keep historical classification keys and labels readable even when their category is no longer selectable.
+
+Vendors have separate contact and office phone numbers.
+
+**Why:** The user explicitly requested both numbers rather than replacing the office number with the contact number.
+
+**How to apply:** Keep both editable and preserve either number when only the other changes.

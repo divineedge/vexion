@@ -325,6 +325,7 @@ export * from './getRepairLogSummaryParams';
 export * from './getRouteDayDetailParams';
 export * from './getRoutesDashboardParams';
 export * from './getSalesTaxReportParams';
+export * from './getScheduleWeatherParams';
 export * from './getTodayScheduleParams';
 export * from './getWebsiteCustomerChoices200';
 export * from './getWebsiteCustomerChoices200CustomersItem';
@@ -758,6 +759,9 @@ export * from './saveWebsiteIntakeFormBodyDefinitionStepsItemQuestionsItemCondit
 export * from './saveWebsiteIntakeFormBodyDefinitionStepsItemQuestionsItemConditionOperator';
 export * from './saveWebsiteIntakeFormBodyDefinitionStepsItemQuestionsItemType';
 export * from './saveWebsiteIntakeFormBodyDefinitionUploads';
+export * from './scheduleForecast';
+export * from './scheduleForecastDay';
+export * from './scheduleForecastHour';
 export * from './scheduleItem';
 export * from './scheduleItemKind';
 export * from './sendBroadcastInput';

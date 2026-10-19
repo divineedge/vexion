@@ -8,6 +8,51 @@
 import * as zod from 'zod';
 
 
+/**
+ * @summary Fourteen-day planning forecast at a company property's saved map pin
+ */
+
+
+
+export const GetScheduleWeatherQueryParams = zod.object({
+  "propertyId": zod.coerce.number().min(1)
+})
+
+export const getScheduleWeatherResponseDailyItemDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
+
+export const GetScheduleWeatherResponse = zod.object({
+  "propertyId": zod.number(),
+  "location": zod.string(),
+  "latitude": zod.number(),
+  "longitude": zod.number(),
+  "timezone": zod.string(),
+  "fetchedAt": zod.coerce.date(),
+  "source": zod.string(),
+  "daily": zod.array(zod.object({
+  "date": zod.string().regex(getScheduleWeatherResponseDailyItemDateRegExp),
+  "weatherCode": zod.number().nullable(),
+  "highF": zod.number().nullable(),
+  "lowF": zod.number().nullable(),
+  "rainProbability": zod.number().nullable(),
+  "precipitationIn": zod.number().nullable(),
+  "windMph": zod.number().nullable(),
+  "gustMph": zod.number().nullable(),
+  "windDirectionDeg": zod.number().nullable()
+})),
+  "hourly": zod.array(zod.object({
+  "time": zod.string(),
+  "temperatureF": zod.number().nullable(),
+  "rainProbability": zod.number().nullable(),
+  "precipitationIn": zod.number().nullable(),
+  "windMph": zod.number().nullable(),
+  "gustMph": zod.number().nullable(),
+  "windDirectionDeg": zod.number().nullable(),
+  "humidityPct": zod.number().nullable()
+}))
+})
+
+
 export const GetPortalPropertyMeasurementsParams = zod.object({
   "id": zod.coerce.number()
 })

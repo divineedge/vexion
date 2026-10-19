@@ -62,6 +62,7 @@ import MediaGallery from '@/components/media/MediaGallery';
 import { StaffNotesPanel } from '@/components/StaffNotesPanel';
 import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '@/components/jobs/JobFormFields';
 import { useAuth } from '@/contexts/AuthContext';
+import { ScheduleWeather } from '@/components/schedule/ScheduleWeather';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -382,7 +383,7 @@ export default function SchedulePage() {
   }, [customerProperties]);
 
   const { data: users } = useListUsers({
-    query: { enabled: createOpen || chemFormOpen, queryKey: getListUsersQueryKey() },
+    query: { enabled: createOpen || chemFormOpen || !isTechnician, queryKey: getListUsersQueryKey() },
   });
 
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
@@ -869,6 +870,8 @@ export default function SchedulePage() {
   const [unassignedFilter, setUnassignedFilter] = useState(false);
   const [noRouteFilter, setNoRouteFilter] = useState(false);
   const [crewFilter, setCrewFilter] = useState<string>('all');
+  const [employeeFilter, setEmployeeFilter] = useState<string>('all');
+  const canSeeWeather = ['company_owner', 'office_manager', 'department_manager', 'crew_manager'].includes((user as any)?.role ?? '');
   const { data: crews = [] } = useListCrews({ query: { queryKey: getListCrewsQueryKey() } });
   const jobSearchLower = jobSearch.toLowerCase();
   const filteredJobs = (jobs ?? [])
@@ -878,15 +881,19 @@ export default function SchedulePage() {
     .filter(j => !myJobsFilter || j.assigneeId === (user as any)?.id)
     .filter(j => !unassignedFilter || !j.assigneeId)
     .filter(j => crewFilter === 'all' || (j as any).crewName === crewFilter)
+    .filter(j => employeeFilter === 'all' || String(j.assigneeId ?? '') === employeeFilter
+      || crews.some(crew => crew.id === j.crewId && (crew.members ?? []).some(member => String(member.id) === employeeFilter)))
     .filter(j => priorityFilter === 'all' || (j as any).priority === priorityFilter)
     .filter(j => statusFilter === 'all' || j.status === statusFilter)
     .filter(j => !overdueFilter || (j.status !== 'completed' && j.status !== 'cancelled' && new Date(j.scheduledAt) < new Date()))
     .filter(j => !noRouteFilter || !(j as any).routeTemplateId);
   const getJobsForDay = (date: Date) => filteredJobs.filter(j => isSameDay(new Date(j.scheduledAt), date)).sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
   const getEstimatesForDay = (date: Date) =>
-    (estimates ?? []).filter(e => e.scheduledAt && isSameDay(new Date(e.scheduledAt), date));
+    (estimates ?? []).filter(e => e.scheduledAt && isSameDay(new Date(e.scheduledAt), date)
+      && (employeeFilter === 'all' || String(e.assigneeId ?? '') === employeeFilter));
   const getVisitsForDay = (date: Date) =>
-    (visits ?? []).filter(v => v.scheduledAt && isSameDay(new Date(v.scheduledAt), date));
+    (visits ?? []).filter(v => v.scheduledAt && isSameDay(new Date(v.scheduledAt), date)
+      && (employeeFilter === 'all' || String(v.assigneeId ?? '') === employeeFilter));
 
   const nextRange = () => setCurrentDate(p => view === 'week' ? addWeeks(p, 1) : addMonths(p, 1));
   const prevRange = () => setCurrentDate(p => view === 'week' ? subWeeks(p, 1) : subMonths(p, 1));
@@ -1171,6 +1178,20 @@ export default function SchedulePage() {
               </SelectContent>
             </Select>
           )}
+          {!isTechnician && (users ?? []).length > 0 && (
+            <Select value={employeeFilter} onValueChange={setEmployeeFilter}>
+              <SelectTrigger className="h-8 text-xs w-40 gap-1" title="Filter by assigned employee" aria-label="Filter by employee" data-testid="select-employee-filter">
+                <User className="w-3 h-3 shrink-0" />
+                <SelectValue placeholder="All employees" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">All employees</SelectItem>
+                {(users ?? []).map(u => (
+                  <SelectItem key={u.id} value={String(u.id)} className="text-xs">{u.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="h-8 text-xs w-36 gap-1" title="Filter by job status">
               <SelectValue placeholder="All statuses" />
@@ -1183,13 +1204,13 @@ export default function SchedulePage() {
               <SelectItem value="cancelled" className="text-xs">Cancelled</SelectItem>
             </SelectContent>
           </Select>
-          {(jobSearch || propertyFilter || routeFilter !== 'all' || priorityFilter !== 'all' || statusFilter !== 'all' || holdFilter || myJobsFilter || unassignedFilter || crewFilter !== 'all' || overdueFilter) && (
+          {(jobSearch || propertyFilter || routeFilter !== 'all' || priorityFilter !== 'all' || statusFilter !== 'all' || holdFilter || myJobsFilter || unassignedFilter || crewFilter !== 'all' || employeeFilter !== 'all' || overdueFilter) && (
             <Button
               variant="ghost"
               size="sm"
               className="h-8 text-xs px-2 text-muted-foreground"
               title="Reset all filters"
-              onClick={() => { setJobSearch(''); setPropertyFilter(''); setRouteFilter('all'); setPriorityFilter('all'); setStatusFilter('all'); setHoldFilter(false); setMyJobsFilter(false); setUnassignedFilter(false); setCrewFilter('all'); setOverdueFilter(false); setNoRouteFilter(false); }}
+              onClick={() => { setJobSearch(''); setPropertyFilter(''); setRouteFilter('all'); setPriorityFilter('all'); setStatusFilter('all'); setHoldFilter(false); setMyJobsFilter(false); setUnassignedFilter(false); setCrewFilter('all'); setEmployeeFilter('all'); setOverdueFilter(false); setNoRouteFilter(false); }}
             >
               Clear filters
             </Button>
@@ -1249,10 +1270,21 @@ export default function SchedulePage() {
         </Card>
       )}
 
+      {canSeeWeather && view !== 'series' && (
+        <ScheduleWeather
+          tenantId={(user as any)?.tenantId}
+          jobs={filteredJobs as any}
+          referenceDate={currentDate}
+          onNavigateDate={d => { setCurrentDate(d); setView('week'); }}
+        />
+      )}
+
       {/* Job count summary (shown when any filter is active and not in series view) */}
-      {view !== 'series' && (jobSearch || propertyFilter || routeFilter !== 'all' || priorityFilter !== 'all' || statusFilter !== 'all' || holdFilter || myJobsFilter || unassignedFilter || crewFilter !== 'all' || overdueFilter || noRouteFilter) && (
+      {view !== 'series' && (jobSearch || propertyFilter || routeFilter !== 'all' || priorityFilter !== 'all' || statusFilter !== 'all' || holdFilter || myJobsFilter || unassignedFilter || crewFilter !== 'all' || employeeFilter !== 'all' || overdueFilter || noRouteFilter) && (
         <div className="px-1 py-1 text-xs text-muted-foreground" title={`${filteredJobs.length} of ${(jobs ?? []).length} jobs match the active filters`}>
           Showing {filteredJobs.length} of {(jobs ?? []).length} job{(jobs ?? []).length !== 1 ? 's' : ''} in view
+          {crewFilter !== 'all' && <> · Crew: {crewFilter}</>}
+          {employeeFilter !== 'all' && <> · Employee: {(users ?? []).find(u => String(u.id) === employeeFilter)?.name ?? 'Selected employee'}</>}
         </div>
       )}
 

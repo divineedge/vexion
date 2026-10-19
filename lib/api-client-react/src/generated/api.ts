@@ -187,6 +187,7 @@ import type {
   GetRouteDayDetailParams,
   GetRoutesDashboardParams,
   GetSalesTaxReportParams,
+  GetScheduleWeatherParams,
   GetTodayScheduleParams,
   GetWebsiteCustomerChoices200,
   GetWebsiteCustomerChoicesParams,
@@ -376,6 +377,7 @@ import type {
   SavePaymentPolicy200,
   SaveWebsiteIntakeForm200,
   SaveWebsiteIntakeFormBody,
+  ScheduleForecast,
   ScheduleItem,
   SendBroadcastInput,
   SendInvoiceReminder200,
@@ -505,6 +507,90 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getGetScheduleWeatherUrl = (params: GetScheduleWeatherParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/schedule/weather?${stringifiedParams}` : `/api/schedule/weather`
+}
+
+/**
+ * @summary Fourteen-day planning forecast at a company property's saved map pin
+ */
+export const getScheduleWeather = async (params: GetScheduleWeatherParams, options?: RequestInit): Promise<ScheduleForecast> => {
+
+  return customFetch<ScheduleForecast>(getGetScheduleWeatherUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetScheduleWeatherQueryKey = (params?: GetScheduleWeatherParams,) => {
+    return [
+    `/api/schedule/weather`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetScheduleWeatherQueryOptions = <TData = Awaited<ReturnType<typeof getScheduleWeather>>, TError = ErrorType<void>>(params: GetScheduleWeatherParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getScheduleWeather>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetScheduleWeatherQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getScheduleWeather>>> = ({ signal }) => getScheduleWeather(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getScheduleWeather>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetScheduleWeatherQueryResult = NonNullable<Awaited<ReturnType<typeof getScheduleWeather>>>
+export type GetScheduleWeatherQueryError = ErrorType<void>
+
+
+/**
+ * @summary Fourteen-day planning forecast at a company property's saved map pin
+ */
+
+export function useGetScheduleWeather<TData = Awaited<ReturnType<typeof getScheduleWeather>>, TError = ErrorType<void>>(
+ params: GetScheduleWeatherParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getScheduleWeather>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetScheduleWeatherQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetPortalPropertyMeasurementsUrl = (id: number,) => {
 

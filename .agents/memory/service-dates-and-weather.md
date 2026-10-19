@@ -14,3 +14,9 @@ Chemical conditions belong to the actual application time regardless of the serv
 **Why:** The user explicitly requires current weather, not weather for the scheduled day. Current weather must not be attached to a historical application.
 
 **How to apply:** Distinguish estimated current conditions from on-site observations, allow manual correction, retain observation timestamps, and reject stale provider data. Changing application time must clear automatically loaded weather; a slow initial weather request must not refill a backdated form.
+
+The scheduler's fourteen-day forecast is for admins and managers planning crews and individual employees, especially spraying. It is not evidence of conditions at application time or permission to spray.
+
+**Why:** The user wants weather and crew schedules together for planning, but separately requires chemical records to reflect actual application-time conditions.
+
+**How to apply:** Use the selected property's saved map pin and clearly identify the company timezone. Preserve crew/employee filters when navigating forecast dates, identify extended-range uncertainty, and never copy planning forecasts into chemical application records or label a forecast as automatic spray approval.

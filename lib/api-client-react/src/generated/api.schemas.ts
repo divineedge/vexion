@@ -5,6 +5,57 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+export interface ScheduleForecastDay {
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  date: string;
+  /** @nullable */
+  weatherCode: number | null;
+  /** @nullable */
+  highF: number | null;
+  /** @nullable */
+  lowF: number | null;
+  /** @nullable */
+  rainProbability: number | null;
+  /** @nullable */
+  precipitationIn: number | null;
+  /** @nullable */
+  windMph: number | null;
+  /** @nullable */
+  gustMph: number | null;
+  /** @nullable */
+  windDirectionDeg: number | null;
+}
+
+export interface ScheduleForecastHour {
+  time: string;
+  /** @nullable */
+  temperatureF: number | null;
+  /** @nullable */
+  rainProbability: number | null;
+  /** @nullable */
+  precipitationIn: number | null;
+  /** @nullable */
+  windMph: number | null;
+  /** @nullable */
+  gustMph: number | null;
+  /** @nullable */
+  windDirectionDeg: number | null;
+  /** @nullable */
+  humidityPct: number | null;
+}
+
+export interface ScheduleForecast {
+  propertyId: number;
+  location: string;
+  latitude: number;
+  longitude: number;
+  timezone: string;
+  fetchedAt: string;
+  source: string;
+  daily: ScheduleForecastDay[];
+  hourly: ScheduleForecastHour[];
+}
+
 export interface JobCostVoidInput {
   /**
      * @minLength 1
@@ -7585,6 +7636,13 @@ export interface ExternalAccessAuditRow {
   requestId: string | null;
   createdAt: string;
 }
+
+export type GetScheduleWeatherParams = {
+/**
+ * @minimum 1
+ */
+propertyId: number;
+};
 
 export type GetPortalPropertyMeasurements200 = {
   id: number;

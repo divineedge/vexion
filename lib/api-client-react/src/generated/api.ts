@@ -343,6 +343,7 @@ import type {
   RecoveredJobInvoice,
   RecurringInvoiceTemplate,
   RecurringSeries,
+  RememberedStaffDeviceStatus,
   ReorderListReport,
   RepairLog,
   RepairLogInput,
@@ -2414,6 +2415,78 @@ export const useLogin = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getLoginMutationOptions(options));
+    }
+
+export const getRememberStaffDeviceUrl = () => {
+
+
+
+
+  return `/api/auth/remember-device`
+}
+
+/**
+ * Called by the native app after phone authentication. Requires an active, valid staff session; never restores expired or revoked credentials.
+ * @summary Keep the current staff session until sign-out or revocation
+ */
+export const rememberStaffDevice = async ( options?: RequestInit): Promise<RememberedStaffDeviceStatus> => {
+
+  return customFetch<RememberedStaffDeviceStatus>(getRememberStaffDeviceUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRememberStaffDeviceMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rememberStaffDevice>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof rememberStaffDevice>>, TError,void, TContext> => {
+
+const mutationKey = ['rememberStaffDevice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof rememberStaffDevice>>, void> = () => {
+
+
+          return  rememberStaffDevice(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RememberStaffDeviceMutationResult = NonNullable<Awaited<ReturnType<typeof rememberStaffDevice>>>
+
+    export type RememberStaffDeviceMutationError = ErrorType<void>
+
+    /**
+ * @summary Keep the current staff session until sign-out or revocation
+ */
+export const useRememberStaffDevice = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rememberStaffDevice>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof rememberStaffDevice>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRememberStaffDeviceMutationOptions(options));
     }
 
 export const getLogoutUrl = () => {

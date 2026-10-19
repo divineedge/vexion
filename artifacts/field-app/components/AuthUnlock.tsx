@@ -41,7 +41,7 @@ export function UnlockScreen() {
     <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top + 48 }]}>
       <View style={[styles.icon, { backgroundColor: colors.primary }]}><Ionicons name="lock-closed" size={32} color="#fff" /></View>
       <Text style={[styles.title, { color: colors.foreground }]}>App Locked</Text>
-      <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Unlock your saved, authenticated work session.</Text>
+      <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>This device is remembered. Unlock to continue—no username or password needed.</Text>
       {biometricEnabled && <PrimaryButton label="Unlock with phone" icon="finger-print" busy={busy} onPress={() => void run(unlockWithBiometrics)} />}
       {Platform.OS !== 'web' && <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Use the same fingerprint, face recognition, or PIN/passcode you use to unlock your phone. Your phone controls the prompt; the app never sees your phone PIN.</Text>}
       {pinEnabled && (
@@ -93,18 +93,13 @@ export function UnlockEnrollment() {
         <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
           No separate app PIN. Use your phone’s fingerprint, face recognition, or PIN/passcode. If biometrics fail, use the phone’s passcode option.
         </Text>
-        {!biometricAvailable && <Text style={[styles.message, { color: colors.mutedForeground }]}>Set up a screen lock in your phone’s settings, then reopen the app. You can also sign in with your account password.</Text>}
-        {biometricAvailable && <PrimaryButton label="Enable phone unlock" icon="shield-checkmark" busy={busy} onPress={() => {
+        {!biometricAvailable && <Text style={[styles.message, { color: colors.mutedForeground }]}>Set up biometrics or a screen lock in your phone’s settings, then return and tap Enable phone unlock.</Text>}
+        <PrimaryButton label="Enable phone unlock" icon="shield-checkmark" busy={busy} onPress={() => {
           setBusy(true);
           setMessage('');
           void configureUnlock({ biometric: true }).catch(error => setMessage(error instanceof Error ? error.message : 'Could not enable phone unlock.')).finally(() => setBusy(false));
-        }} />}
-        <TouchableOpacity disabled={busy} onPress={() => {
-          setBusy(true);
-          void configureUnlock({ biometric: false }).catch(() => setMessage('Could not save settings. Try again.')).finally(() => setBusy(false));
-        }}>
-          <Text style={[styles.link, { color: colors.mutedForeground }]}>Use account password on next launch instead</Text>
-        </TouchableOpacity>
+        }} />
+        <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>You only need your account password to sign in on a new device, after signing out, or if your saved access is revoked.</Text>
         {message ? <Text style={[styles.message, { color: colors.destructive }]}>{message}</Text> : null}
       </View>
     );

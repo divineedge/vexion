@@ -10,11 +10,13 @@ import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   getMe,
+  rememberStaffDevice,
   setDefaultHeaders,
   setAuthTokenGetter,
   setUnauthorizedHandler,
 } from '@workspace/api-client-react';
 import { endRemoteStaffSession } from '@/utils/authSessionCleanup';
+import { canRestoreSavedSession, parseSavedAuthUser } from '@/utils/savedDeviceSession';
 
 export interface AuthUser {
   id: number;
@@ -69,7 +71,7 @@ async function secureSet(key: string, value: string): Promise<void> {
     globalThis.sessionStorage?.setItem(key, value);
     return;
   }
-  await SecureStore.setItemAsync(key, value);
+  await SecureStore.setItemAsync(key, value, { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY });
 }
 
 async function secureDelete(key: string): Promise<void> {
@@ -143,13 +145,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await clearLocalAuth();
   }, [clearLocalAuth]);
 
-  const validateSession = useCallback(async (storedToken: string, storedUser: AuthUser): Promise<UnlockResult> => {
+  const validateSession = useCallback(async (storedToken: string, storedUser: AuthUser | null): Promise<UnlockResult> => {
     setAuthTokenGetter(() => storedToken);
     try {
       const current = normalizeUser(await getMe());
-      if (current.id !== storedUser.id || current.tenantId !== storedUser.tenantId) {
+      if (storedUser && (current.id !== storedUser.id || current.tenantId !== storedUser.tenantId)) {
         await endSavedSession(storedToken, storedUser);
         return { ok: false, message: 'Your saved session is no longer valid. Please sign in again.', wiped: true };
+      }
+      if (Platform.OS !== 'web') {
+        // This path is reached only after the OS has verified the phone owner.
+        // Upgrade existing still-valid phone sessions too, without another login.
+        await rememberStaffDevice();
+        await secureSet(TOKEN_KEY, storedToken);
       }
       await AsyncStorage.setItem(USER_KEY, JSON.stringify(current));
       await secureSet(PIN_ATTEMPTS_KEY, '0');
@@ -158,6 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setToken(storedToken);
       setUser(current);
       setIsLocked(false);
+      setNeedsEnrollment(false);
       return { ok: true };
     } catch (error) {
       if (errorStatus(error) === 401 || errorStatus(error) === 403) {
@@ -177,6 +186,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     async function restore() {
       try {
+        setAuthTokenGetter(null);
+        setDefaultHeaders({});
         queryClient.clear();
         await Promise.all([
           AsyncStorage.removeItem(LEGACY_TOKEN_KEY),
@@ -189,10 +200,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           secureGet(PIN_VERIFIER_KEY),
           secureGet(PIN_ATTEMPTS_KEY),
         ]);
-        const enrolled = Platform.OS !== 'web' &&
-          await LocalAuthentication.getEnrolledLevelAsync() !== LocalAuthentication.SecurityLevel.NONE;
+        const native = Platform.OS !== 'web';
+        const enrolled = native &&
+          await LocalAuthentication.getEnrolledLevelAsync().catch(() => LocalAuthentication.SecurityLevel.NONE) !== LocalAuthentication.SecurityLevel.NONE;
         setBiometricAvailable(enrolled);
-        const usePhoneUnlock = Platform.OS !== 'web' && enrolled && (biometric === 'true' || Boolean(verifier));
+        const usePhoneUnlock = native && Boolean(storedToken);
         setBiometricEnabled(usePhoneUnlock || (Platform.OS === 'web' && biometric === 'true'));
         setPinEnabled(Platform.OS === 'web' && Boolean(verifier));
         if (usePhoneUnlock) {
@@ -201,16 +213,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         const failedAttempts = Number(attempts ?? '0');
         setPinAttemptsRemaining(Math.max(0, MAX_PIN_ATTEMPTS - failedAttempts));
-        if (storedToken && storedUserJson && (biometric === 'true' || verifier)) {
+        if (canRestoreSavedSession({ native, token: storedToken, userJson: storedUserJson, biometric, verifier })) {
           setIsLocked(true);
         } else if (storedToken || storedUserJson) {
           await endSavedSession(
             storedToken,
-            storedUserJson ? normalizeUser(JSON.parse(storedUserJson)) : null,
+            parseSavedAuthUser(storedUserJson),
           );
         }
       } catch {
-        await clearLocalAuth();
+        if (Platform.OS !== 'web') {
+          // A temporary Keychain/device-unlock failure is not a sign-out.
+          // Keep the credential and let the user retry the phone prompt.
+          setBiometricEnabled(true);
+          setIsLocked(true);
+        } else await clearLocalAuth();
       } finally {
         setIsLoading(false);
       }
@@ -225,16 +242,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       secureSet(TOKEN_KEY, secureToken),
       AsyncStorage.setItem(USER_KEY, JSON.stringify(normalized)),
       secureSet(PIN_ATTEMPTS_KEY, '0'),
+      ...(Platform.OS !== 'web' ? [secureSet(BIOMETRIC_KEY, 'true')] : []),
     ]);
     queryClient.clear();
     setAuthTokenGetter(() => secureToken);
     setToken(secureToken);
     setUser(normalized);
     setIsLocked(false);
+    if (Platform.OS !== 'web') {
+      setBiometricEnabled(true);
+      setPinEnabled(false);
+    }
     setNeedsEnrollment(true);
   }, [queryClient]);
 
   const configureUnlock = useCallback(async ({ biometric, pin }: { biometric: boolean; pin?: string }) => {
+    if (Platform.OS !== 'web' && !biometric) throw new Error('Use your phone’s unlock to remember this device.');
     if (Platform.OS !== 'web' && biometric) {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: 'Enable phone unlock for Divine Edge Field',
@@ -243,6 +266,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         disableDeviceFallback: false,
       });
       if (!result.success) throw new Error('Phone verification was cancelled or unsuccessful. Please try again.');
+      await rememberStaffDevice();
+      setBiometricAvailable(true);
       pin = undefined;
     }
     if (Platform.OS === 'web' && !biometric && !pin) throw new Error('Choose an app PIN.');
@@ -272,7 +297,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       secureGet(TOKEN_KEY),
       AsyncStorage.getItem(USER_KEY),
     ]);
-    if (!storedToken || !storedUserJson) {
+    if (!storedToken) {
       await clearLocalAuth();
       return { ok: false, message: 'No saved session was found. Please sign in again.', wiped: true };
     }
@@ -288,7 +313,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { ok: false, message: 'Phone unlock is unavailable. Try again or sign in with your password.' };
     }
     if (!result.success) return { ok: false, message: 'Phone unlock was not completed. Try again and use your phone PIN/passcode, or sign in with your password.' };
-    return validateSession(storedToken, normalizeUser(JSON.parse(storedUserJson)));
+    return validateSession(storedToken, parseSavedAuthUser(storedUserJson));
   }, [clearLocalAuth, validateSession]);
 
   const unlockWithPin = useCallback(async (pin: string): Promise<UnlockResult> => {

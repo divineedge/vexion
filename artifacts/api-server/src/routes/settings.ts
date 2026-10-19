@@ -3,7 +3,7 @@ import { publicAppUrl } from "../lib/publicSite";
 import { Router, type IRouter } from "express";
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
-import { db, tenantsTable, usersTable, servicesTable } from "@workspace/db";
+import { db, tenantsTable, usersTable, servicesTable, staffSessionsTable } from "@workspace/db";
 import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { budgetServiceLinks } from "../lib/budgetServiceLinks";
@@ -848,7 +848,13 @@ router.patch("/settings/users/:id", async (req, res): Promise<void> => {
   if (hireDate !== undefined) updates.hireDate = hireDate ? new Date(hireDate) : null;
   if (applicatorLicense !== undefined) updates.applicatorLicense = applicatorLicense || null;
 
-  const [updated] = await db.update(usersTable).set(updates).where(and(eq(usersTable.id, id), eq(usersTable.tenantId, tenantId))).returning();
+  const updated = await db.transaction(async tx => {
+    const [record] = await tx.update(usersTable).set(updates).where(and(eq(usersTable.id, id), eq(usersTable.tenantId, tenantId))).returning();
+    if (record && (updates.passwordHash || updates.isActive === false)) {
+      await tx.delete(staffSessionsTable).where(and(eq(staffSessionsTable.userId, id), eq(staffSessionsTable.tenantId, tenantId)));
+    }
+    return record;
+  });
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
 
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));

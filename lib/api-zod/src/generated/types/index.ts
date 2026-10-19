@@ -640,6 +640,7 @@ export * from './recurringInvoiceTemplate';
 export * from './recurringInvoiceTemplateBillingCycleType';
 export * from './recurringInvoiceTemplateBillingMode';
 export * from './recurringSeries';
+export * from './rememberedStaffDeviceStatus';
 export * from './reminderFailure';
 export * from './reorderListReport';
 export * from './reorderListReportGroupsItem';

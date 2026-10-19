@@ -1174,6 +1174,15 @@ export const LoginResponse = zod.object({
 
 
 /**
+ * Called by the native app after phone authentication. Requires an active, valid staff session; never restores expired or revoked credentials.
+ * @summary Keep the current staff session until sign-out or revocation
+ */
+export const RememberStaffDeviceResponse = zod.object({
+  "remembered": zod.boolean()
+})
+
+
+/**
  * @summary Logout current user
  */
 export const LogoutResponse = zod.unknown()

@@ -1611,6 +1611,10 @@ export interface HealthStatus {
   status: string;
 }
 
+export interface RememberedStaffDeviceStatus {
+  remembered: boolean;
+}
+
 export interface LoginInput {
   email: string;
   password: string;

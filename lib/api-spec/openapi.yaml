@@ -416,6 +416,20 @@ paths:
         "401":
           description: Unauthorized
 
+  /auth/remember-device:
+    post:
+      operationId: rememberStaffDevice
+      summary: Keep the current staff session until sign-out or revocation
+      description: Called by the native app after phone authentication. Requires an active, valid staff session; never restores expired or revoked credentials.
+      responses:
+        "200":
+          description: Current session remembered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RememberedStaffDeviceStatus"
+        "401":
+          description: Active staff session required
   /auth/logout:
     post:
       operationId: logout
@@ -10884,6 +10898,12 @@ components:
       required:
         - status
 
+    RememberedStaffDeviceStatus:
+      type: object
+      required: [remembered]
+      properties:
+        remembered:
+          type: boolean
     LoginInput:
       type: object
       required: [email, password]

@@ -9408,8 +9408,89 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/JobOtherCost" }
+  /public/document-portal/{kind}/{token}:
+    get:
+      operationId: getGuestDocumentPortal
+      parameters:
+        - { name: kind, in: path, required: true, schema: { type: string, enum: [invoice, estimate] } }
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Document-scoped guest portal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GuestDocumentPortal" }
+        "404":
+          description: Invalid document link
+    post:
+      operationId: confirmGuestDocumentPortal
+      parameters:
+        - { name: kind, in: path, required: true, schema: { type: string, enum: [invoice, estimate] } }
+        - { name: token, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GuestDocumentConfirmation" }
+      responses:
+        "200":
+          description: Confirmation recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GuestDocumentConfirmationResult" }
+        "400":
+          description: Invalid confirmation
+        "404":
+          description: Invalid document link
 components:
   schemas:
+    GuestDocumentConfirmation:
+      type: object
+      required: [email, phone, address, confirmed, propertyIds]
+      properties:
+        email: { type: string, maxLength: 254 }
+        phone: { type: string, maxLength: 80 }
+        address: { type: string, maxLength: 1000 }
+        confirmed: { type: boolean }
+        propertyIds:
+          type: array
+          maxItems: 100
+          items: { type: integer }
+        corrections: { type: string, maxLength: 4000 }
+    GuestDocumentConfirmationResult:
+      type: object
+      required: [ok, message]
+      properties:
+        ok: { type: boolean }
+        message: { type: string }
+    GuestDocumentProperty:
+      type: object
+      required: [id, address, lat, lng, measurementZones]
+      properties:
+        id: { type: integer }
+        address: { type: string }
+        lat: { type: [number, "null"] }
+        lng: { type: [number, "null"] }
+        measurementZones:
+          type: array
+          items: { $ref: "#/components/schemas/MeasurementZone" }
+    GuestDocumentPortal:
+      type: object
+      required: [kind, documentNumber, companyName, customerName, email, phone, address, properties, showMeasurements]
+      properties:
+        kind: { type: string, enum: [invoice, estimate] }
+        documentNumber: { type: string }
+        companyName: { type: string }
+        logoUrl: { type: [string, "null"] }
+        companyPhone: { type: [string, "null"] }
+        customerName: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        address: { type: string }
+        showMeasurements: { type: boolean }
+        properties:
+          type: array
+          items: { $ref: "#/components/schemas/GuestDocumentProperty" }
     ScheduleForecast:
       type: object
       required: [propertyId, location, latitude, longitude, timezone, fetchedAt, source, daily, hourly]
@@ -13892,6 +13973,9 @@ components:
       required: [id, tenantId]
       properties:
         portalShowMeasurements: {type: boolean}
+        documentLinkDestination:
+          type: string
+          enum: [document, portal]
         defaultInvoiceTerms:
           type: ["string", "null"]
         defaultInvoiceNotes:
@@ -14474,6 +14558,9 @@ components:
     TenantSettingsUpdate:
       type: object
       properties:
+        documentLinkDestination:
+          type: string
+          enum: [document, portal]
         defaultInvoiceTerms:
           type: ["string", "null"]
         defaultInvoiceNotes:

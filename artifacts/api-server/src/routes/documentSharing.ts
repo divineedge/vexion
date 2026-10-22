@@ -5,7 +5,7 @@ import { db, estimatesTable, invoicesTable, customersTable } from "@workspace/db
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { requireVerifiedStaff } from "../lib/verifiedStaff";
-import { publicAppUrl } from "../lib/publicSite";
+import { companyDocumentLink } from "../lib/documentLinks";
 
 const router: IRouter = Router();
 
@@ -48,7 +48,7 @@ for (const kind of ["estimates", "invoices"] as const) {
       const [customer] = document.customerId ? await db.select({ name: customersTable.name, phone: customersTable.phone }).from(customersTable)
         .where(and(eq(customersTable.id, document.customerId), eq(customersTable.tenantId, tenantId))) : [];
       res.json({
-        publicLink: token ? `${publicAppUrl}/${kind === "estimates" ? "estimate" : "invoice"}/${token}` : null,
+        publicLink: token ? await companyDocumentLink(tenantId, kind === "estimates" ? "estimate" : "invoice", token) : null,
         customerName: customer?.name ?? null, customerPhone: customer?.phone ?? null,
       });
     });

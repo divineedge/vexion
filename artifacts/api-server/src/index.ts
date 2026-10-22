@@ -1,4 +1,4 @@
-import app from "./app";
+import app, { startBackgroundSchedulers } from "./app";
 import { logger } from "./lib/logger";
 import { pool } from "@workspace/db";
 import { readFile } from "node:fs/promises";
@@ -53,6 +53,7 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+  startBackgroundSchedulers();
   // The scan must start after payroll trigger installation releases schema locks.
   startCredentialReminderScheduler();
 });

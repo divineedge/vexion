@@ -5,6 +5,88 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+export interface GuestDocumentConfirmation {
+  /** @maxLength 254 */
+  email: string;
+  /** @maxLength 80 */
+  phone: string;
+  /** @maxLength 1000 */
+  address: string;
+  confirmed: boolean;
+  /** @maxItems 100 */
+  propertyIds: number[];
+  /** @maxLength 4000 */
+  corrections?: string;
+}
+
+export interface GuestDocumentConfirmationResult {
+  ok: boolean;
+  message: string;
+}
+
+/**
+ * Measurement mode this zone was drawn in. Defaults to 'area' when absent (pre-existing zones).
+ */
+export type MeasurementZoneMode = typeof MeasurementZoneMode[keyof typeof MeasurementZoneMode];
+
+
+export const MeasurementZoneMode = {
+  area: 'area',
+  linear: 'linear',
+} as const;
+
+export interface MeasurementZone {
+  id: string;
+  label: string;
+  /** Array of [lat, lng] coordinate pairs. For mode 'linear' this is an open polyline path; for 'area' (default) it is a closed polygon ring. */
+  vertices: number[][];
+  /** Computed polygon area in square feet. 0 for linear zones. */
+  areaSqft: number;
+  /**
+     * Computed polyline length in feet. Only set for mode 'linear' zones (fence lines, edging, hedges, etc).
+     * @nullable
+     */
+  lengthFt?: number | null;
+  /** Measurement mode this zone was drawn in. Defaults to 'area' when absent (pre-existing zones). */
+  mode?: MeasurementZoneMode;
+  enabled: boolean;
+  color: string;
+}
+
+export interface GuestDocumentProperty {
+  id: number;
+  address: string;
+  /** @nullable */
+  lat: number | null;
+  /** @nullable */
+  lng: number | null;
+  measurementZones: MeasurementZone[];
+}
+
+export type GuestDocumentPortalKind = typeof GuestDocumentPortalKind[keyof typeof GuestDocumentPortalKind];
+
+
+export const GuestDocumentPortalKind = {
+  invoice: 'invoice',
+  estimate: 'estimate',
+} as const;
+
+export interface GuestDocumentPortal {
+  kind: GuestDocumentPortalKind;
+  documentNumber: string;
+  companyName: string;
+  /** @nullable */
+  logoUrl?: string | null;
+  /** @nullable */
+  companyPhone?: string | null;
+  customerName: string;
+  email: string;
+  phone: string;
+  address: string;
+  showMeasurements: boolean;
+  properties: GuestDocumentProperty[];
+}
+
 export interface ScheduleForecastDay {
   /** @pattern ^\d{4}-\d{2}-\d{2}$ */
   date: string;
@@ -2053,35 +2135,6 @@ export interface CustomerListResponse {
   limit: number;
 }
 
-/**
- * Measurement mode this zone was drawn in. Defaults to 'area' when absent (pre-existing zones).
- */
-export type MeasurementZoneMode = typeof MeasurementZoneMode[keyof typeof MeasurementZoneMode];
-
-
-export const MeasurementZoneMode = {
-  area: 'area',
-  linear: 'linear',
-} as const;
-
-export interface MeasurementZone {
-  id: string;
-  label: string;
-  /** Array of [lat, lng] coordinate pairs. For mode 'linear' this is an open polyline path; for 'area' (default) it is a closed polygon ring. */
-  vertices: number[][];
-  /** Computed polygon area in square feet. 0 for linear zones. */
-  areaSqft: number;
-  /**
-     * Computed polyline length in feet. Only set for mode 'linear' zones (fence lines, edging, hedges, etc).
-     * @nullable
-     */
-  lengthFt?: number | null;
-  /** Measurement mode this zone was drawn in. Defaults to 'area' when absent (pre-existing zones). */
-  mode?: MeasurementZoneMode;
-  enabled: boolean;
-  color: string;
-}
-
 export interface Property {
   id: number;
   tenantId: number;
@@ -4030,6 +4083,14 @@ export interface AiZoneInput {
   materials: AiZoneMaterial[];
 }
 
+export type TenantSettingsDocumentLinkDestination = typeof TenantSettingsDocumentLinkDestination[keyof typeof TenantSettingsDocumentLinkDestination];
+
+
+export const TenantSettingsDocumentLinkDestination = {
+  document: 'document',
+  portal: 'portal',
+} as const;
+
 /**
  * Whether job duration is displayed/entered in minutes or hours
  */
@@ -4222,6 +4283,7 @@ export interface PreTripChecklistItem {
 
 export interface TenantSettings {
   portalShowMeasurements?: boolean;
+  documentLinkDestination?: TenantSettingsDocumentLinkDestination;
   /** @nullable */
   defaultInvoiceTerms?: string | null;
   /** @nullable */
@@ -4622,6 +4684,14 @@ export interface RescheduleOnceResult {
   exceptionFeeCharged: number;
 }
 
+export type TenantSettingsUpdateDocumentLinkDestination = typeof TenantSettingsUpdateDocumentLinkDestination[keyof typeof TenantSettingsUpdateDocumentLinkDestination];
+
+
+export const TenantSettingsUpdateDocumentLinkDestination = {
+  document: 'document',
+  portal: 'portal',
+} as const;
+
 export type TenantSettingsUpdateDurationUnit = typeof TenantSettingsUpdateDurationUnit[keyof typeof TenantSettingsUpdateDurationUnit];
 
 
@@ -4699,6 +4769,7 @@ export const TenantSettingsUpdatePaymentReminderChannelsItem = {
 } as const;
 
 export interface TenantSettingsUpdate {
+  documentLinkDestination?: TenantSettingsUpdateDocumentLinkDestination;
   /** @nullable */
   defaultInvoiceTerms?: string | null;
   /** @nullable */

@@ -19,6 +19,7 @@ import Estimates from '@/pages/estimates';
 import Profile from '@/pages/profile';
 import Messages from '@/pages/messages';
 import Referrals from '@/pages/referrals';
+import ShareDocument from '@/pages/share-document';
 
 function NotFound() {
   return (
@@ -44,6 +45,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Login} />
       <Route path="/business/:slug" component={Login} />
+      <Route path="/share/:kind/:token" component={ShareDocument} />
       
       {/* Protected Routes inside AppShell */}
       <Route path="/home">

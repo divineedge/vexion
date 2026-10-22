@@ -55,6 +55,12 @@ app.use(express.urlencoded({ extended: true }));
 app.use(oauthDiscoveryRouter);
 app.use("/api", router);
 
+// Bootstrap calls this only after schema installation; importing the app for
+// routes/tests must not start scans against a partly upgraded database.
+let backgroundSchedulersStarted = false;
+export function startBackgroundSchedulers() {
+if (backgroundSchedulersStarted) return;
+backgroundSchedulersStarted = true;
 // Start automated reminder scheduler
 startReminderScheduler();
 
@@ -86,5 +92,6 @@ startCardExpiryReminderScheduler();
 startSupplyShortageScheduler();
 startExpoPushReceiptPolling();
 startStaffPushRecoveryPolling();
+}
 
 export default app;

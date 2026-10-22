@@ -190,6 +190,7 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     // Cancellation policy
     cancellationFeeEnabled: tenant.cancellationFeeEnabled ?? false,
     portalShowMeasurements: tenant.portalShowMeasurements ?? true,
+    documentLinkDestination: tenant.documentLinkDestination === "portal" ? "portal" : "document",
     cancellationFeeAmount: tenant.cancellationFeeAmount ?? 0,
     // Chemical / Rainfast weather alerts
     rainfastRainThresholdPct: tenant.rainfastRainThresholdPct ?? 40,
@@ -511,6 +512,12 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (callbackDueHoursLow !== undefined) updates.callbackDueHoursLow = parseInt(callbackDueHoursLow, 10);
   if (renewalWarningDays !== undefined) updates.renewalWarningDays = parseInt(renewalWarningDays, 10);
   if (cancellationFeeEnabled !== undefined) updates.cancellationFeeEnabled = cancellationFeeEnabled;
+  if (req.body.documentLinkDestination !== undefined) {
+    if (!["document", "portal"].includes(req.body.documentLinkDestination)) {
+      res.status(400).json({ error: "Choose direct document or guest customer portal" }); return;
+    }
+    updates.documentLinkDestination = req.body.documentLinkDestination;
+  }
   if(req.body.portalShowMeasurements!==undefined){
    if(typeof req.body.portalShowMeasurements!=='boolean'){res.status(400).json({error:'Choose whether portal measurements are visible'});return;}
    updates.portalShowMeasurements=req.body.portalShowMeasurements;

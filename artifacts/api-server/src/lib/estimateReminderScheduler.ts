@@ -4,7 +4,7 @@ import {sendDocumentEmail} from "./documentDelivery";
 import type {EmailProviderConfig} from "./emailProvider";
 import {sendSms,type SmsProviderConfig} from "./smsProvider";
 import {reminderActions,type ReminderActions} from "./documentReminderActions";
-import {publicAppUrl} from "./publicSite";
+import {companyDocumentLink} from "./documentLinks";
 import {logger} from "./logger";
 export type EstimateReminderConfig={enabled:boolean;rules:ReminderActions[]};
 export async function processEstimateReminders(tenant:typeof tenantsTable.$inferSelect){
@@ -21,7 +21,8 @@ export async function processEstimateReminders(tenant:typeof tenantsTable.$infer
     if(!rule)continue;
     const link=`/estimates?estimateId=${estimate.id}`;
     const step=await reminderActions({tenantId:tenant.id,kind:"estimate",id:estimate.id,customerId:customer.id,customerName:customer.name,link},rule);
-    const body=`Hi ${customer.name},\n\nA reminder to review your estimate #${estimate.id} from ${tenant.name}.\nYou can accept or decline it and tell us why in your customer portal:\n${publicAppUrl}/portal/estimates?tenant=${encodeURIComponent(tenant.slug??String(tenant.id))}\n\nThank you,\n${tenant.name}`;
+    if (!estimate.approvalToken) continue;
+    const body=`Hi ${customer.name},\n\nA reminder to review your estimate #${estimate.id} from ${tenant.name}.\nYou can accept or decline it and tell us why using this link:\n${await companyDocumentLink(tenant.id,"estimate",estimate.approvalToken)}\n\nThank you,\n${tenant.name}`;
     for(const channel of rule.channels??[]){
       const state=channel==="email"?step.emailState:step.smsState;
       if(state!=="pending" && state!=="failed")continue; // never automatically redeliver uncertain sends

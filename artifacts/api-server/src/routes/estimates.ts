@@ -1,5 +1,6 @@
 import { sendDocumentEmail } from "../lib/documentDelivery";
 import { publicAppUrl } from "../lib/publicSite";
+import { companyDocumentLink } from "../lib/documentLinks";
 import { paymentGuardedJobInsert, effectivePaymentPolicy, estimatePaymentTerms } from "../lib/paymentPolicy";
 import { creditedInvoiceInsert } from "../lib/customerCredit";
 import { Router, type IRouter } from "express";
@@ -710,7 +711,7 @@ router.post("/estimates/:id/send", async (req, res): Promise<void> => {
       const domain = new URL(publicAppUrl).host;
 
       if (domain) {
-        const approvalUrl = `${publicAppUrl}/estimate/${token}`;
+        const approvalUrl = await companyDocumentLink(tenantId, "estimate", token);
         const companyName = tenant.name ?? "Your service provider";
         const firstName = customer.name.split(" ")[0] ?? customer.name;
 
@@ -943,7 +944,7 @@ router.post("/estimates/:id/resend", async (req, res): Promise<void> => {
       const domain = new URL(publicAppUrl).host;
 
       if (domain) {
-        const approvalUrl = `${publicAppUrl}/estimate/${token}`;
+        const approvalUrl = await companyDocumentLink(tenantId, "estimate", token);
         const companyName = tenant.name ?? "Your service provider";
         const firstName = customer.name.split(" ")[0] ?? customer.name;
 

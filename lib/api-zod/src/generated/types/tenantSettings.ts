@@ -12,6 +12,7 @@ import type { PaymentReminderRule } from './paymentReminderRule';
 import type { PreTripChecklistItem } from './preTripChecklistItem';
 import type { TenantSettingsAutoInvoiceFrequency } from './tenantSettingsAutoInvoiceFrequency';
 import type { TenantSettingsDefaultGeofenceUnit } from './tenantSettingsDefaultGeofenceUnit';
+import type { TenantSettingsDocumentLinkDestination } from './tenantSettingsDocumentLinkDestination';
 import type { TenantSettingsDurationUnit } from './tenantSettingsDurationUnit';
 import type { TenantSettingsInvoiceDeliveryMode } from './tenantSettingsInvoiceDeliveryMode';
 import type { TenantSettingsMeasurementZoneTypesItem } from './tenantSettingsMeasurementZoneTypesItem';
@@ -23,6 +24,7 @@ import type { TenantSettingsRolePermissions } from './tenantSettingsRolePermissi
 
 export interface TenantSettings {
   portalShowMeasurements?: boolean;
+  documentLinkDestination?: TenantSettingsDocumentLinkDestination;
   /** @nullable */
   defaultInvoiceTerms?: string | null;
   /** @nullable */

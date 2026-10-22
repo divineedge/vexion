@@ -15,6 +15,7 @@ import { eq, and, sql, inArray, isNull } from "drizzle-orm";
 import {reminderActions} from "./documentReminderActions";
 import { logger } from "./logger";
 import { sendSms, type SmsProviderConfig } from "./smsProvider";
+import { companyDocumentLink } from "./documentLinks";
 import { sendEmail, applyTemplate, type EmailProviderConfig } from "./emailProvider";
 
 export interface ReminderRule {
@@ -167,7 +168,9 @@ export async function sendPaymentReminder(params: {
       companyName,
     ].join("\n");
     const subject = notifTemplates.paymentReminderEmailSubject ? applyTemplate(notifTemplates.paymentReminderEmailSubject, templateVars) : defaultSubject;
-    const body = notifTemplates.paymentReminderEmailBody ? applyTemplate(notifTemplates.paymentReminderEmailBody, templateVars) : defaultBody;
+    const reminderLink = invoice.publicToken ? await companyDocumentLink(tenant.id, "invoice", invoice.publicToken) : null;
+    const body = (notifTemplates.paymentReminderEmailBody ? applyTemplate(notifTemplates.paymentReminderEmailBody, templateVars) : defaultBody)
+      + (reminderLink ? `\n\nView your invoice: ${reminderLink}` : "");
 
     const emailProviderConfig: EmailProviderConfig = {
       provider: (tenant.emailProvider as "smtp" | "sendgrid" | "mailgun" | "resend" | null) ?? null,
@@ -189,7 +192,9 @@ export async function sendPaymentReminder(params: {
     const defaultSms = isOverdue
       ? `Hi ${firstName}, invoice ${invoice.invoiceNumber} balance ($${invoiceBalance(invoice).toFixed(2)}) from ${companyName} is overdue. Please arrange payment. Reply STOP to opt out.`
       : `Hi ${firstName}, reminder: invoice ${invoice.invoiceNumber} balance ($${invoiceBalance(invoice).toFixed(2)}) from ${companyName} is due soon. Reply STOP to opt out.`;
-    const smsBody = notifTemplates.paymentReminderSms ? applyTemplate(notifTemplates.paymentReminderSms, templateVars) : defaultSms;
+    const reminderLink = invoice.publicToken ? await companyDocumentLink(tenant.id, "invoice", invoice.publicToken) : null;
+    const smsBody = (notifTemplates.paymentReminderSms ? applyTemplate(notifTemplates.paymentReminderSms, templateVars) : defaultSms)
+      + (reminderLink ? `\n${reminderLink}` : "");
 
     const smsProviderConfig: SmsProviderConfig = {
       platform: (tenant.phonePlatform as "openphone" | "grasshopper" | "twilio" | "quo" | null) ?? null,

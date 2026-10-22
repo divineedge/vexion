@@ -1,4 +1,5 @@
 import { sendDocumentEmail } from "./documentDelivery";
+import { companyDocumentLink } from "./documentLinks";
 import { auditAllBilling } from "./billingCoverage";
 import { creditedInvoiceInsert } from "./customerCredit";
 /**
@@ -686,7 +687,7 @@ export async function processEmailQueue(tenantId?: number) {
       `Dear ${row.customerName ?? "Valued Customer"},`,
       "",
       `Your invoice ${row.invoiceNumber} is for $${(row.invoiceTotal ?? 0).toFixed(2)}.`,
-      `View your invoice: https://divine-edge--divineedgepm.replit.app/invoice/${row.invoiceToken}`,
+      `View your invoice: ${await companyDocumentLink(row.queue.tenantId, "invoice", row.invoiceToken!)}`,
       "",
       "Payment is due within 30 days.",
       "",

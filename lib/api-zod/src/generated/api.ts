@@ -6484,6 +6484,7 @@ export const getTenantSettingsResponsePreTripChecklistNameMax = 80;
 
 export const GetTenantSettingsResponse = zod.object({
   "portalShowMeasurements": zod.boolean().optional(),
+  "documentLinkDestination": zod.enum(['document', 'portal']).optional(),
   "defaultInvoiceTerms": zod.string().nullish(),
   "defaultInvoiceNotes": zod.string().nullish(),
   "defaultEstimateTerms": zod.string().nullish(),
@@ -6632,6 +6633,7 @@ export const updateTenantSettingsBodyPreTripChecklistNameMax = 80;
 
 
 export const UpdateTenantSettingsBody = zod.object({
+  "documentLinkDestination": zod.enum(['document', 'portal']).optional(),
   "defaultInvoiceTerms": zod.string().nullish(),
   "defaultInvoiceNotes": zod.string().nullish(),
   "defaultEstimateTerms": zod.string().nullish(),
@@ -6753,6 +6755,7 @@ export const updateTenantSettingsResponsePreTripChecklistNameMax = 80;
 
 export const UpdateTenantSettingsResponse = zod.object({
   "portalShowMeasurements": zod.boolean().optional(),
+  "documentLinkDestination": zod.enum(['document', 'portal']).optional(),
   "defaultInvoiceTerms": zod.string().nullish(),
   "defaultInvoiceNotes": zod.string().nullish(),
   "defaultEstimateTerms": zod.string().nullish(),
@@ -16671,6 +16674,73 @@ export const VoidJobOtherCostResponse = zod.object({
   "createdByName": zod.string(),
   "voidedAt": zod.string().nullable(),
   "voidReason": zod.string().nullable()
+})
+
+
+export const GetGuestDocumentPortalParams = zod.object({
+  "kind": zod.enum(['invoice', 'estimate']),
+  "token": zod.coerce.string()
+})
+
+export const GetGuestDocumentPortalResponse = zod.object({
+  "kind": zod.enum(['invoice', 'estimate']),
+  "documentNumber": zod.string(),
+  "companyName": zod.string(),
+  "logoUrl": zod.string().nullish(),
+  "companyPhone": zod.string().nullish(),
+  "customerName": zod.string(),
+  "email": zod.string(),
+  "phone": zod.string(),
+  "address": zod.string(),
+  "showMeasurements": zod.boolean(),
+  "properties": zod.array(zod.object({
+  "id": zod.number(),
+  "address": zod.string(),
+  "lat": zod.number().nullable(),
+  "lng": zod.number().nullable(),
+  "measurementZones": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs. For mode \'linear\' this is an open polyline path; for \'area\' (default) it is a closed polygon ring.'),
+  "areaSqft": zod.number().describe('Computed polygon area in square feet. 0 for linear zones.'),
+  "lengthFt": zod.number().nullish().describe('Computed polyline length in feet. Only set for mode \'linear\' zones (fence lines, edging, hedges, etc).'),
+  "mode": zod.enum(['area', 'linear']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
+  "enabled": zod.boolean(),
+  "color": zod.string()
+}))
+}))
+})
+
+
+export const ConfirmGuestDocumentPortalParams = zod.object({
+  "kind": zod.enum(['invoice', 'estimate']),
+  "token": zod.coerce.string()
+})
+
+export const confirmGuestDocumentPortalBodyEmailMax = 254;
+
+export const confirmGuestDocumentPortalBodyPhoneMax = 80;
+
+export const confirmGuestDocumentPortalBodyAddressMax = 1000;
+
+export const confirmGuestDocumentPortalBodyPropertyIdsMax = 100;
+
+export const confirmGuestDocumentPortalBodyCorrectionsMax = 4000;
+
+
+
+export const ConfirmGuestDocumentPortalBody = zod.object({
+  "email": zod.string().max(confirmGuestDocumentPortalBodyEmailMax),
+  "phone": zod.string().max(confirmGuestDocumentPortalBodyPhoneMax),
+  "address": zod.string().max(confirmGuestDocumentPortalBodyAddressMax),
+  "confirmed": zod.boolean(),
+  "propertyIds": zod.array(zod.number()).max(confirmGuestDocumentPortalBodyPropertyIdsMax),
+  "corrections": zod.string().max(confirmGuestDocumentPortalBodyCorrectionsMax).optional()
+})
+
+export const ConfirmGuestDocumentPortalResponse = zod.object({
+  "ok": zod.boolean(),
+  "message": zod.string()
 })
 
 

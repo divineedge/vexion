@@ -192,6 +192,9 @@ import type {
   GetWebsiteCustomerChoices200,
   GetWebsiteCustomerChoicesParams,
   GetWebsiteIntakeForm200,
+  GuestDocumentConfirmation,
+  GuestDocumentConfirmationResult,
+  GuestDocumentPortal,
   HealthStatus,
   ImportBankTransactionInput,
   IntegrationDetail,
@@ -35793,5 +35796,149 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getVoidJobOtherCostMutationOptions(options));
+    }
+
+export const getGetGuestDocumentPortalUrl = (kind: 'invoice' | 'estimate',
+    token: string,) => {
+
+
+
+
+  return `/api/public/document-portal/${kind}/${token}`
+}
+
+export const getGuestDocumentPortal = async (kind: 'invoice' | 'estimate',
+    token: string, options?: RequestInit): Promise<GuestDocumentPortal> => {
+
+  return customFetch<GuestDocumentPortal>(getGetGuestDocumentPortalUrl(kind,token),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGuestDocumentPortalQueryKey = (kind: 'invoice' | 'estimate',
+    token: string,) => {
+    return [
+    `/api/public/document-portal/${kind}/${token}`
+    ] as const;
+    }
+
+
+export const getGetGuestDocumentPortalQueryOptions = <TData = Awaited<ReturnType<typeof getGuestDocumentPortal>>, TError = ErrorType<void>>(kind: 'invoice' | 'estimate',
+    token: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGuestDocumentPortal>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGuestDocumentPortalQueryKey(kind,token);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGuestDocumentPortal>>> = ({ signal }) => getGuestDocumentPortal(kind,token, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: kind !== null && kind !== undefined && token !== null && token !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGuestDocumentPortal>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetGuestDocumentPortalQueryResult = NonNullable<Awaited<ReturnType<typeof getGuestDocumentPortal>>>
+export type GetGuestDocumentPortalQueryError = ErrorType<void>
+
+
+
+export function useGetGuestDocumentPortal<TData = Awaited<ReturnType<typeof getGuestDocumentPortal>>, TError = ErrorType<void>>(
+ kind: 'invoice' | 'estimate',
+    token: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGuestDocumentPortal>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetGuestDocumentPortalQueryOptions(kind,token,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getConfirmGuestDocumentPortalUrl = (kind: 'invoice' | 'estimate',
+    token: string,) => {
+
+
+
+
+  return `/api/public/document-portal/${kind}/${token}`
+}
+
+export const confirmGuestDocumentPortal = async (kind: 'invoice' | 'estimate',
+    token: string,
+    guestDocumentConfirmation: GuestDocumentConfirmation, options?: RequestInit): Promise<GuestDocumentConfirmationResult> => {
+
+  return customFetch<GuestDocumentConfirmationResult>(getConfirmGuestDocumentPortalUrl(kind,token),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(guestDocumentConfirmation)
+  }
+);}
+
+
+
+
+
+export const getConfirmGuestDocumentPortalMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmGuestDocumentPortal>>, TError,{kind: 'invoice' | 'estimate';token: string;data: BodyType<GuestDocumentConfirmation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof confirmGuestDocumentPortal>>, TError,{kind: 'invoice' | 'estimate';token: string;data: BodyType<GuestDocumentConfirmation>}, TContext> => {
+
+const mutationKey = ['confirmGuestDocumentPortal'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof confirmGuestDocumentPortal>>, {kind: 'invoice' | 'estimate';token: string;data: BodyType<GuestDocumentConfirmation>}> = (props) => {
+          const {kind,token,data} = props ?? {};
+
+          return  confirmGuestDocumentPortal(kind,token,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConfirmGuestDocumentPortalMutationResult = NonNullable<Awaited<ReturnType<typeof confirmGuestDocumentPortal>>>
+    export type ConfirmGuestDocumentPortalMutationBody = BodyType<GuestDocumentConfirmation>
+    export type ConfirmGuestDocumentPortalMutationError = ErrorType<void>
+
+    export const useConfirmGuestDocumentPortal = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmGuestDocumentPortal>>, TError,{kind: 'invoice' | 'estimate';token: string;data: BodyType<GuestDocumentConfirmation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof confirmGuestDocumentPortal>>,
+        TError,
+        {kind: 'invoice' | 'estimate';token: string;data: BodyType<GuestDocumentConfirmation>},
+        TContext
+      > => {
+      return useMutation(getConfirmGuestDocumentPortalMutationOptions(options));
     }
 

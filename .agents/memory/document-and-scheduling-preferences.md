@@ -20,3 +20,9 @@ Every drag-and-drop or manual reschedule asks whether to charge a rescheduling f
 **Why:** The user explicitly requested the choice, not an automatic fee.
 
 **How to apply:** Confirm the amount, save the date and fee together, and do not interpret the choice as permission to charge a card.
+
+Companies choose whether shared invoice/estimate links open the document directly or a no-sign-in guest customer portal. The guest view asks customers to review email, phone, address, and the document's property satellite imagery and labeled measurements.
+
+**Why:** The user wants company control over document delivery, and customers to review their details without signing in.
+
+**How to apply:** Apply the company choice consistently to copied, emailed, and texted document links. Guest links authorize only the specific document and its related properties, never the full account. Treat submitted corrections as office-review requests, not verified identity changes; preserve the company measurement-visibility setting.

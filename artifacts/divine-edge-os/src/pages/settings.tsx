@@ -1811,6 +1811,27 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="space-y-1.5">
+                <label className="text-sm font-medium" htmlFor="select-document-link-destination">Invoice &amp; estimate shared links</label>
+                <Select
+                  value={settings?.documentLinkDestination === 'portal' ? 'portal' : 'document'}
+                  disabled={!settings || updateSettings.isPending}
+                  onValueChange={v => updateSettings.mutate(
+                    { data: { documentLinkDestination: v as 'document' | 'portal' } },
+                    {
+                      onSuccess: () => { qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); toast.success(v === 'portal' ? 'Shared links now open the guest customer portal' : 'Shared links now open the document directly'); },
+                      onError: () => toast.error('Failed to save shared link setting'),
+                    },
+                  )}
+                >
+                  <SelectTrigger id="select-document-link-destination" data-testid="select-document-link-destination"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="document">Direct document</SelectItem>
+                    <SelectItem value="portal">Guest customer portal (no sign-in)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Applies to invoice and estimate links in texts, emails, and copy-link. Direct document opens the invoice or estimate without asking for contact confirmation. Guest customer portal shows the document and lets the customer review their contact details and property.</p>
+              </div>
+              <div className="space-y-1.5">
                 <label className="text-sm font-medium">Invoice Net Terms (days)</label>
                 <p className="text-xs text-muted-foreground">Default due date on new invoices. 0 = due on receipt.</p>
                 <Input type="number" min={0} value={invoiceDueDays} onChange={e => setInvoiceDueDays(e.target.value)} className="w-28" data-testid="input-invoice-due-days" />

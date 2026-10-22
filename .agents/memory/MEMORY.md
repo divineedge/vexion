@@ -68,7 +68,7 @@
 - [Bulk fuel costing](bulk-fuel-costing.md) — blended tank costs are snapshotted per fill; receipts and allocated equipment fuel must not become duplicate expenses
 - [Estimate declines and campaign consent](estimate-declines-campaign-consent.md) — snapshot feedback; not-now campaign routing is separate from acquisition and never overrides unsubscribe
 - [Service dates and weather](service-dates-and-weather.md) — configurable invoice service dates; scheduler forecasts are planning-only; chemical weather follows actual application time.
-- [Document and scheduling preferences](document-and-scheduling-preferences.md) — adjacent document navigation, shared recurring rules, wording snapshots, and explicit rescheduling-fee choices
+- [Document and scheduling preferences](document-and-scheduling-preferences.md) — company-selected direct or guest-portal links, shared recurring rules, wording snapshots, and rescheduling-fee choices
 - [Billing email recovery](billing-email-recovery.md) — uncertain sends require provider verification; missing receipts never justify automatic redelivery
 - [Payroll history boundary](payroll-history-boundary.md) — rates take effect when saved; approvals are immutable and corrections separate; legacy rates are baselines, not reconstructed history.
 - [P4P damage responsibility](p4p-damage-policy.md) — manual employee allocations reduce approved period P4P only; protect hourly guarantees and immutable finalized pay.

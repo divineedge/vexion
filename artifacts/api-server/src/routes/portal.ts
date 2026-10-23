@@ -1,5 +1,6 @@
 import { acquisitionSettings, processAcquisitionRewards } from "../lib/acquisitionRewards";
 import { publicAppUrl } from "../lib/publicSite";
+import { createCustomerPushRouter } from "../lib/customerPush";
 import { estimatePaymentTerms } from "../lib/paymentPolicy";
 import { paymentGuardedJobInsert } from "../lib/paymentPolicy";
 import { invoiceBalance } from "../lib/customerCredit";
@@ -501,6 +502,7 @@ router.get("/portal/me", requirePortalAuth, async (req: any, res): Promise<void>
     profilePhotoUrl: null,
   });
 });
+router.use(createCustomerPushRouter(requirePortalAuth));
 
 router.get("/portal/referrals",requirePortalAuth,async(req:any,res)=>{
   const {portalCustomerId,portalTenantId}=req.portalLocals as PortalLocals;

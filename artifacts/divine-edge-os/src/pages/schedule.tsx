@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { JobFormPanel, useMissingRequiredForms } from '@/components/forms/JobFormPanel';
 import { directionsUrl } from '@/lib/directions';
 import { serverErrorMessage } from '@/lib/serverError';
+import { CapacityOverrideDialog, isCapacityConflict, capacityConflictMessage, capacityConflictWarnings } from '@/components/schedule/CapacityOverrideDialog';
 import { RescheduleFeeDialog, defaultRescheduleFee, moveToDay, apiErrorMessage, type RescheduleFeeChoice } from '@/components/schedule/RescheduleFeeDialog';
 import { useLocation, Link } from 'wouter';
 import {
@@ -314,6 +315,7 @@ export default function SchedulePage() {
   const [chemFormOpen, setChemFormOpen] = useState(false);
   const [chemForm, setChemForm] = useState({ ...EMPTY_CHEMICAL_FORM });
   const [chemFormErrors, setChemFormErrors] = useState<Record<string, string>>({});
+  const [chemServiceId, setChemServiceId] = useState('');
 
 
   // Sub-timer (clock in/out on job)
@@ -391,8 +393,21 @@ export default function SchedulePage() {
   const chemicalRequirements = normalizeChemicalRecordRequirements(settings?.chemicalRecordRequirements);
   const chemicalFieldIsRequired = (key: ChemicalRequirementKey) => chemicalRequirements[key];
 
+  // Services on this job that a chemical record may be tied to: primary service + line-item services.
+  const chemJobServices = (() => {
+    const out: Array<{ id: number; name: string }> = [];
+    const j = selectedJob as any;
+    if (j?.serviceId) out.push({ id: j.serviceId, name: j.serviceName ?? `Service #${j.serviceId}` });
+    for (const li of (j?.lineItems ?? []) as Array<{ serviceId?: number | null; serviceName?: string | null; name?: string }>) {
+      if (li.serviceId && !out.some(o => o.id === li.serviceId)) out.push({ id: li.serviceId, name: li.serviceName ?? li.name ?? `Service #${li.serviceId}` });
+    }
+    return out;
+  })();
+  const chemServiceChoice = chemJobServices.length === 1 ? String(chemJobServices[0].id) : chemServiceId;
+
   const validateChemicalForm = (): boolean => {
     const errors: Record<string, string> = {};
+    if (chemJobServices.length > 1 && !chemServiceId) errors.serviceId = 'Choose which service on this job the application was for';
     const selectedMixture = chemForm.mixtureId && chemForm.mixtureId !== 'none';
     if ((!selectedMixture && !chemForm.productId) || (selectedMixture && chemForm.productId)) {
       errors.productOrMixture = 'Select one product or tank mixture';
@@ -543,7 +558,9 @@ export default function SchedulePage() {
     setMoveError(null);
     setPendingMove({ kind: 'job', jobId: job.id, title: job.title, from: job.scheduledAt, to });
   };
-  const confirmMove = (choice: RescheduleFeeChoice) => {
+  const [capConflict, setCapConflict] = useState<null | { kind: 'move'; choice: RescheduleFeeChoice; message: string; warnings: string[] } | { kind: 'create'; message: string; warnings: string[] }>(null);
+  const [capError, setCapError] = useState<string | null>(null);
+  const confirmMove = (choice: RescheduleFeeChoice, capacityOverrideReason?: string) => {
     if (!pendingMove) return;
     const done = (msg: string) => {
       toast.success(msg);
@@ -559,9 +576,17 @@ export default function SchedulePage() {
       });
       return;
     }
-    updateJob.mutate({ id: pendingMove.jobId, data: { scheduledAt: pendingMove.to.toISOString(), ...choice } as Parameters<typeof updateJob.mutate>[0]['data'] }, {
-      onSuccess: () => done(choice.chargeRescheduleFee ? `Rescheduled, $${choice.rescheduleFeeAmount.toFixed(2)} fee added` : 'Rescheduled'),
-      onError: (err) => { setMoveError(apiErrorMessage(err, 'Failed to reschedule.')); qc.invalidateQueries({ queryKey: getListJobsQueryKey() }); },
+    updateJob.mutate({ id: pendingMove.jobId, data: { scheduledAt: pendingMove.to.toISOString(), ...choice, ...(capacityOverrideReason ? { capacityOverrideReason } : {}) } as Parameters<typeof updateJob.mutate>[0]['data'] }, {
+      onSuccess: () => { setCapConflict(null); setCapError(null); done(choice.chargeRescheduleFee ? `Rescheduled, $${choice.rescheduleFeeAmount.toFixed(2)} fee added` : 'Rescheduled'); },
+      onError: (err) => {
+        if (isCapacityConflict(err)) {
+          if (capacityOverrideReason) setCapError(apiErrorMessage(err, 'Override was not accepted.'));
+          else setCapConflict({ kind: 'move', choice, message: capacityConflictMessage(err), warnings: capacityConflictWarnings(err) });
+          return;
+        }
+        setCapConflict(null);
+        setMoveError(apiErrorMessage(err, 'Failed to reschedule.')); qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+      },
     });
   };
   const [rescheduleApproveOpen, setRescheduleApproveOpen] = useState(false);
@@ -918,7 +943,7 @@ export default function SchedulePage() {
 
   const [noCardJobWarning, setNoCardJobWarning] = useState(false);
 
-  const doCreateJob = () => {
+  const doCreateJob = (capacityOverrideReason?: string) => {
     const durationMins = newJob.estimatedDuration
       ? newJob.estimatedDurationUnit === 'hours'
         ? Math.round(parseFloat(newJob.estimatedDuration) * 60)
@@ -943,16 +968,25 @@ export default function SchedulePage() {
         smsReminderEnabled: newJob.smsReminderEnabled,
         tags: newJob.tags.length ? newJob.tags : undefined,
         ...(newJob.offSeasonEnabled ? { offSeasonStart: newJob.offSeasonStart, offSeasonEnd: newJob.offSeasonEnd } : {}),
+        ...(capacityOverrideReason ? { capacityOverrideReason } : {}),
       } as any,
     }, {
       onSuccess: () => {
+        setCapConflict(null); setCapError(null);
         toast.success(recurrenceRule ? 'Recurring job series created' : 'Job created');
         qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
         qc.invalidateQueries({ queryKey: getListRecurringSeriesQueryKey() });
         setCreateOpen(false);
         setNewJob(EMPTY_JOB);
       },
-      onError: (err: unknown) => toast.error(serverErrorMessage(err, 'Failed to create job')),
+      onError: (err: unknown) => {
+        if (isCapacityConflict(err)) {
+          if (capacityOverrideReason) setCapError(serverErrorMessage(err, 'Override was not accepted.'));
+          else setCapConflict({ kind: 'create', message: capacityConflictMessage(err), warnings: capacityConflictWarnings(err) });
+          return;
+        }
+        toast.error(serverErrorMessage(err, 'Failed to create job'));
+      },
     });
   };
 
@@ -985,6 +1019,20 @@ export default function SchedulePage() {
 
   return (
     <div className="space-y-6 h-full flex flex-col animate-in fade-in duration-500">
+      <CapacityOverrideDialog
+        open={capConflict != null}
+        message={capConflict?.message ?? ''}
+        warnings={capConflict?.warnings}
+        pending={updateJob.isPending || createJob.isPending}
+        error={capError}
+        onCancel={() => { setCapConflict(null); setCapError(null); }}
+        onOverride={reason => {
+          if (!capConflict) return;
+          setCapError(null);
+          if (capConflict.kind === 'move') confirmMove(capConflict.choice, reason);
+          else doCreateJob(reason);
+        }}
+      />
       <RescheduleFeeDialog
         open={!!pendingMove}
         title={pendingMove?.title}
@@ -3027,6 +3075,7 @@ export default function SchedulePage() {
                             <div className="flex-1 min-w-0">
                               <span className="font-medium" title={app.mixtureName ?? app.productName ?? undefined}>{app.mixtureName ?? app.productName ?? 'Unknown'}</span>
                               <span className="text-xs text-muted-foreground ml-2" title={`Volume applied: ${app.volumeApplied} ${app.volumeUnit}`}>{app.volumeApplied} {app.volumeUnit}</span>
+                              {app.serviceName && <span className="block text-xs text-muted-foreground" data-testid={`text-chem-service-${app.id}`}>For {app.serviceName}</span>}
                             </div>
                             {canManageJobs && (
                               <button onClick={() => {
@@ -3309,6 +3358,21 @@ export default function SchedulePage() {
             <SheetDescription>Record a pesticide or fertilizer application for compliance.</SheetDescription>
           </SheetHeader>
           <div className="space-y-4 pb-6">
+            {chemJobServices.length > 1 && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Service on this job <span className="text-destructive">*</span></label>
+                <Select value={chemServiceId} onValueChange={setChemServiceId}>
+                  <SelectTrigger data-testid="select-chem-service" title="Which service on this job this application belongs to"><SelectValue placeholder="Choose service…" /></SelectTrigger>
+                  <SelectContent>
+                    {chemJobServices.map(sv => <SelectItem key={sv.id} value={String(sv.id)}>{sv.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {chemFormErrors.serviceId && <p className="text-xs text-destructive">{chemFormErrors.serviceId}</p>}
+              </div>
+            )}
+            {chemJobServices.length === 1 && (
+              <p className="text-xs text-muted-foreground">Recorded for <span className="font-medium text-foreground">{chemJobServices[0].name}</span>.</p>
+            )}
             {/* Empty state when no products or mixtures configured */}
             {(chemMixtures?.length ?? 0) === 0 && (chemProducts?.length ?? 0) === 0 && (
               <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground text-center space-y-1">
@@ -3474,6 +3538,7 @@ export default function SchedulePage() {
                   createChemApp.mutate({
                     id: selectedJobId!,
                     data: {
+                      ...(chemServiceChoice ? { serviceId: Number(chemServiceChoice) } : {}),
                       mixtureId: chemForm.mixtureId && chemForm.mixtureId !== 'none' ? parseInt(chemForm.mixtureId, 10) : undefined,
                       productId: chemForm.productId ? parseInt(chemForm.productId, 10) : undefined,
                       volumeApplied: parseFloat(chemForm.volumeApplied),
@@ -3497,6 +3562,7 @@ export default function SchedulePage() {
                       setChemFormOpen(false);
                       setChemForm({ ...EMPTY_CHEMICAL_FORM });
                       setChemFormErrors({});
+                      setChemServiceId('');
                       qc.invalidateQueries({ queryKey: getListJobChemicalApplicationsQueryKey(selectedJobId!) });
                     },
                     onError: (error: any) => {

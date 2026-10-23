@@ -603,7 +603,8 @@ export default function JobDetailScreen() {
   const jobScheduledAt = availableJob?.scheduledAt;
   const jobDateStr = jobScheduledAt ? jobScheduledAt.slice(0, 10) : '';
   const fieldRequirements = availableJob?.fieldRequirements;
-  const requiresChemicalApplication = fieldRequirements?.requiresChemicalApplication === true;
+  const requiresChemicalApplication = fieldRequirements?.requiresChemicalApplication === true
+    || (availableJob?.lineItems ?? []).some(li => li.chemicalTracking === true);
   const showMaterialsOrParts = fieldRequirements?.showMaterialsOrParts === true;
 
   const { data: routeDay } = useGetRouteDayDetail(
@@ -1136,6 +1137,11 @@ function AppCard({ app, colors }: { app: ChemApp; colors: ReturnType<typeof useC
           <Text style={[styles.appCardMeta, { color: colors.mutedForeground }]}>
             {app.volumeApplied} {app.volumeUnit} · {formatDate(app.appliedAt)}
           </Text>
+          {(app as { serviceName?: string | null }).serviceName ? (
+            <Text style={[styles.appCardMeta, { color: colors.mutedForeground }]}>
+              For: {(app as { serviceName?: string | null }).serviceName}
+            </Text>
+          ) : null}
           {app.targetPest ? (
             <Text style={[styles.appCardMeta, { color: colors.mutedForeground }]}>
               Target: {app.targetPest}

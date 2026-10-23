@@ -7,8 +7,12 @@
  */
 import type { PlanTemplate } from './planTemplate';
 import type { PlanVisitPreview } from './planVisitPreview';
+import type { PlanVisitSchedule } from './planVisitSchedule';
 
 export interface CustomerPlanPreview {
+  capacityWarnings?: string[];
+  visitSchedule?: PlanVisitSchedule;
+  timeZone?: string;
   template: PlanTemplate;
   visits: PlanVisitPreview[];
 }

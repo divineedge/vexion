@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { capacityCheckedJobUpdate } from "../lib/crewCapacity";
 import {
   db,
   divisionsTable,
@@ -499,7 +500,7 @@ router.patch("/jobs/:id/route", async (req, res): Promise<void> => {
   }
   if (scheduledAt !== undefined) updates.scheduledAt = new Date(scheduledAt);
 
-  const [updated] = await db.update(jobsTable).set(updates).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId))).returning();
+  const [updated] = await capacityCheckedJobUpdate(and(eq(jobsTable.id,id),eq(jobsTable.tenantId,tenantId))!,updates,{actorId:getUserId(req),reason:req.body.capacityOverrideReason});
   res.json({ id: updated.id, routeTemplateId: updated.routeTemplateId, sequenceOrder: updated.sequenceOrder, scheduledAt: updated.scheduledAt.toISOString() });
 });
 
@@ -540,13 +541,13 @@ router.post("/jobs/:id/reschedule-once", async (req, res): Promise<void> => {
     : existingLineItems;
   const feeTotal = fee > 0 ? fee : 0;
 
-  const [updated] = await db.update(jobsTable).set({
+  const [updated] = await capacityCheckedJobUpdate(and(eq(jobsTable.id,id),eq(jobsTable.tenantId,tenantId),eq(jobsTable.scheduledAt,job.scheduledAt))!,{
     scheduledAt: new Date(newScheduledAt),
     originalScheduledDate: job.originalScheduledDate ?? job.scheduledAt,
     isOneTimeReschedule: 1,
     ...feeChanges,
     sequenceOrder: null,
-  }).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId), eq(jobsTable.scheduledAt, job.scheduledAt))).returning();
+  },{actorId:getUserId(req),reason:req.body.capacityOverrideReason});
   if (!updated) { res.status(409).json({ error: "Job changed; refresh before rescheduling" }); return; }
 
   await db.insert(activityLogTable).values({

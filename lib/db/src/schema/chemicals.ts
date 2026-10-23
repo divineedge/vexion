@@ -66,6 +66,8 @@ export const chemicalApplicationsTable = pgTable("chemical_applications", {
   id: serial("id").primaryKey(),
   tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   jobId: integer("job_id").references(() => jobsTable.id, { onDelete: "set null" }),
+  serviceId: integer("service_id"),
+  serviceName: text("service_name"),
   applicatorId: integer("applicator_id").references(() => usersTable.id, { onDelete: "set null" }),
   applicatorName: text("applicator_name"), // stored for reporting even if user deleted
   applicatorLicenseNumber: text("applicator_license_number"),

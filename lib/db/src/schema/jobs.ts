@@ -26,6 +26,10 @@ export const jobsTable = pgTable("jobs", {
   planId: integer("plan_id"),
   /** Stable identity for a finite plan visit, retained when its date changes. */
   planVisitIndex: integer("plan_visit_index"),
+  planVisitGroupKey: text("plan_visit_group_key").notNull().default("main"),
+  capacityOverrideReason: text("capacity_override_reason"),
+  capacityOverrideBy: integer("capacity_override_by"),
+  capacityOverrideAt: timestamp("capacity_override_at",{withTimezone:true}),
   /** Required note when a single plan visit is cancelled (office must explain why). */
   cancelReason: text("cancel_reason"),
   scheduledAt: timestamp("scheduled_at", { withTimezone: true }).notNull(),
@@ -49,6 +53,8 @@ export const jobsTable = pgTable("jobs", {
   remindersSent: jsonb("reminders_sent").default("{}"),
   /** When true, the scheduler sends an SMS reminder to the customer before this job. Staff opt-in per job at scheduling time. */
   smsReminderEnabled: boolean("sms_reminder_enabled").notNull().default(false),
+  emailReminderEnabled: boolean("email_reminder_enabled").notNull().default(true),
+  pushReminderEnabled: boolean("push_reminder_enabled").notNull().default(false),
 
   // ── Recurrence ────────────────────────────────────────────────────────────
   /**

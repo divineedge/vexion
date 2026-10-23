@@ -2442,6 +2442,8 @@ export const ListJobsResponseItem = zod.object({
 }).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "chemicalTracking": zod.boolean().optional(),
   "id": zod.number(),
   "name": zod.string(),
   "inventoryItemId": zod.number().nullish(),
@@ -2510,6 +2512,7 @@ export const createJobBodyOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
 
 
 export const CreateJobBody = zod.object({
+  "capacityOverrideReason": zod.string().optional(),
   "title": zod.string(),
   "description": zod.string().optional(),
   "status": zod.enum(['scheduled', 'in_progress', 'completed', 'cancelled', 'on_hold']).optional(),
@@ -2522,6 +2525,8 @@ export const CreateJobBody = zod.object({
   "scheduledAt": zod.string(),
   "estimatedDuration": zod.number().optional(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "chemicalTracking": zod.boolean().optional(),
   "id": zod.number(),
   "name": zod.string(),
   "inventoryItemId": zod.number().nullish(),
@@ -2588,6 +2593,8 @@ export const CreateJobResponse = zod.object({
 }).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "chemicalTracking": zod.boolean().optional(),
   "id": zod.number(),
   "name": zod.string(),
   "inventoryItemId": zod.number().nullish(),
@@ -2689,6 +2696,8 @@ export const GetJobResponse = zod.object({
 }).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "chemicalTracking": zod.boolean().optional(),
   "id": zod.number(),
   "name": zod.string(),
   "inventoryItemId": zod.number().nullish(),
@@ -2762,6 +2771,7 @@ export const updateJobBodyOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
 
 
 export const UpdateJobBody = zod.object({
+  "capacityOverrideReason": zod.string().optional(),
   "chargeRescheduleFee": zod.boolean().optional(),
   "rescheduleFeeAmount": zod.number().min(updateJobBodyRescheduleFeeAmountMin).optional(),
   "title": zod.string().optional(),
@@ -2832,6 +2842,8 @@ export const UpdateJobResponse = zod.object({
 }).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "chemicalTracking": zod.boolean().optional(),
   "id": zod.number(),
   "name": zod.string(),
   "inventoryItemId": zod.number().nullish(),
@@ -2980,6 +2992,8 @@ export const SkipNextOccurrenceResponse = zod.object({
 }).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "chemicalTracking": zod.boolean().optional(),
   "id": zod.number(),
   "name": zod.string(),
   "inventoryItemId": zod.number().nullish(),
@@ -3086,6 +3100,8 @@ export const PauseRecurringSeriesResponse = zod.object({
 }).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "chemicalTracking": zod.boolean().optional(),
   "id": zod.number(),
   "name": zod.string(),
   "inventoryItemId": zod.number().nullish(),
@@ -3201,6 +3217,8 @@ export const CompleteJobResponse = zod.object({
 }).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "chemicalTracking": zod.boolean().optional(),
   "id": zod.number(),
   "name": zod.string(),
   "inventoryItemId": zod.number().nullish(),
@@ -3302,6 +3320,8 @@ export const ReopenJobResponse = zod.object({
 }).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "chemicalTracking": zod.boolean().optional(),
   "id": zod.number(),
   "name": zod.string(),
   "inventoryItemId": zod.number().nullish(),
@@ -3478,6 +3498,8 @@ export const AddJobPartResponse = zod.object({
 }).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "chemicalTracking": zod.boolean().optional(),
   "id": zod.number(),
   "name": zod.string(),
   "inventoryItemId": zod.number().nullish(),
@@ -3580,6 +3602,8 @@ export const RemoveJobPartResponse = zod.object({
 }).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "chemicalTracking": zod.boolean().optional(),
   "id": zod.number(),
   "name": zod.string(),
   "inventoryItemId": zod.number().nullish(),
@@ -4034,6 +4058,8 @@ export const CreateStaffMessageResponse = zod.object({
  * @summary List all crews
  */
 export const ListCrewsResponseItem = zod.object({
+  "dailyCapacityMinutes": zod.number().optional(),
+  "travelBufferMinutes": zod.number().optional(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -4055,13 +4081,24 @@ export const ListCrewsResponse = zod.array(ListCrewsResponseItem)
 /**
  * @summary Create a new crew
  */
+export const createCrewBodyDailyCapacityMinutesMax = 1440;
+
+export const createCrewBodyTravelBufferMinutesMin = 0;
+export const createCrewBodyTravelBufferMinutesMax = 240;
+
+
+
 export const CreateCrewBody = zod.object({
+  "dailyCapacityMinutes": zod.number().min(1).max(createCrewBodyDailyCapacityMinutesMax).optional(),
+  "travelBufferMinutes": zod.number().min(createCrewBodyTravelBufferMinutesMin).max(createCrewBodyTravelBufferMinutesMax).optional(),
   "name": zod.string(),
   "description": zod.string().optional(),
   "managerId": zod.number().nullish()
 })
 
 export const CreateCrewResponse = zod.object({
+  "dailyCapacityMinutes": zod.number().optional(),
+  "travelBufferMinutes": zod.number().optional(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -4087,6 +4124,8 @@ export const GetCrewParams = zod.object({
 })
 
 export const GetCrewResponse = zod.object({
+  "dailyCapacityMinutes": zod.number().optional(),
+  "travelBufferMinutes": zod.number().optional(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -4111,13 +4150,24 @@ export const UpdateCrewParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const updateCrewBodyDailyCapacityMinutesMax = 1440;
+
+export const updateCrewBodyTravelBufferMinutesMin = 0;
+export const updateCrewBodyTravelBufferMinutesMax = 240;
+
+
+
 export const UpdateCrewBody = zod.object({
+  "dailyCapacityMinutes": zod.number().min(1).max(updateCrewBodyDailyCapacityMinutesMax).optional(),
+  "travelBufferMinutes": zod.number().min(updateCrewBodyTravelBufferMinutesMin).max(updateCrewBodyTravelBufferMinutesMax).optional(),
   "name": zod.string().optional(),
   "description": zod.string().optional(),
   "managerId": zod.number().nullish()
 })
 
 export const UpdateCrewResponse = zod.object({
+  "dailyCapacityMinutes": zod.number().optional(),
+  "travelBufferMinutes": zod.number().optional(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -4157,6 +4207,8 @@ export const AddCrewMemberBody = zod.object({
 })
 
 export const AddCrewMemberResponse = zod.object({
+  "dailyCapacityMinutes": zod.number().optional(),
+  "travelBufferMinutes": zod.number().optional(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -7271,6 +7323,8 @@ export const ListChemicalApplicationsQueryParams = zod.object({
 })
 
 export const ListChemicalApplicationsResponseItem = zod.object({
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "jobId": zod.number(),
@@ -7333,6 +7387,8 @@ export const ListJobChemicalApplicationsParams = zod.object({
 })
 
 export const ListJobChemicalApplicationsResponseItem = zod.object({
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "jobId": zod.number(),
@@ -7379,6 +7435,7 @@ export const CreateJobChemicalApplicationParams = zod.object({
 })
 
 export const CreateJobChemicalApplicationBody = zod.union([zod.unknown(),zod.unknown()]).and(zod.object({
+  "serviceId": zod.number().optional(),
   "mixtureId": zod.number().optional(),
   "productId": zod.number().optional(),
   "volumeApplied": zod.number(),
@@ -7398,6 +7455,8 @@ export const CreateJobChemicalApplicationBody = zod.union([zod.unknown(),zod.unk
 })).describe('New applications require exactly one of mixtureId or productId.')
 
 export const CreateJobChemicalApplicationResponse = zod.object({
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "jobId": zod.number(),
@@ -9322,6 +9381,8 @@ export const PortalGetSummaryResponse = zod.object({
   "paymentCardBrand": zod.string().nullish(),
   "paymentCardLast4": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "chemicalTracking": zod.boolean().optional(),
   "id": zod.number(),
   "name": zod.string(),
   "inventoryItemId": zod.number().nullish(),
@@ -9440,6 +9501,8 @@ export const DismissJobRescheduleRequestResponse = zod.object({
 }).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "chemicalTracking": zod.boolean().optional(),
   "id": zod.number(),
   "name": zod.string(),
   "inventoryItemId": zod.number().nullish(),
@@ -9541,6 +9604,8 @@ export const ApproveJobCancellationResponse = zod.object({
 }).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "chemicalTracking": zod.boolean().optional(),
   "id": zod.number(),
   "name": zod.string(),
   "inventoryItemId": zod.number().nullish(),
@@ -9646,6 +9711,8 @@ export const DenyJobCancellationResponse = zod.object({
 }).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "chemicalTracking": zod.boolean().optional(),
   "id": zod.number(),
   "name": zod.string(),
   "inventoryItemId": zod.number().nullish(),
@@ -9725,6 +9792,8 @@ export const PortalListInvoicesResponseItem = zod.object({
   "paymentCardBrand": zod.string().nullish(),
   "paymentCardLast4": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "chemicalTracking": zod.boolean().optional(),
   "id": zod.number(),
   "name": zod.string(),
   "inventoryItemId": zod.number().nullish(),
@@ -9768,6 +9837,8 @@ export const PortalGetInvoiceResponse = zod.object({
   "paymentCardBrand": zod.string().nullish(),
   "paymentCardLast4": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "chemicalTracking": zod.boolean().optional(),
   "id": zod.number(),
   "name": zod.string(),
   "inventoryItemId": zod.number().nullish(),
@@ -12308,9 +12379,9 @@ export const ResolvePlanPriceResponse = zod.object({
 /**
  * @summary Preview the visit schedule a plan would generate before selling it
  */
+
 export const previewCustomerPlanBodyVisitScheduleFirstServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const previewCustomerPlanBodyVisitScheduleLastServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
-export const previewCustomerPlanBodyVisitScheduleTotalVisitsMin = 2;
 export const previewCustomerPlanBodyVisitScheduleTotalVisitsMax = 366;
 
 export const previewCustomerPlanBodyVisitScheduleSpacingUnitDefault = `weeks`;
@@ -12321,9 +12392,26 @@ export const previewCustomerPlanBodyVisitSchedulePreferredWeekdayMax = 6;
 
 export const PreviewCustomerPlanBody = zod.object({
   "visitSchedule": zod.object({
+  "alignToPlanId": zod.number().optional(),
+  "defaultCrewId": zod.number().optional(),
+  "routeTemplateId": zod.number().optional(),
+  "capacityOverrideReason": zod.string().optional(),
+  "visitServices": zod.array(zod.object({
+  "visitNumber": zod.number().min(1),
+  "serviceIds": zod.array(zod.number())
+})).optional(),
+  "serviceCrews": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "crewId": zod.number()
+})).optional(),
+  "chemicalServiceIds": zod.array(zod.number()).optional(),
+  "emailReminder": zod.boolean().optional(),
+  "smsReminder": zod.boolean().optional(),
+  "pushReminder": zod.boolean().optional(),
+  "timeZone": zod.string().optional(),
   "firstServiceDate": zod.string().regex(previewCustomerPlanBodyVisitScheduleFirstServiceDateRegExp),
   "lastServiceDate": zod.string().regex(previewCustomerPlanBodyVisitScheduleLastServiceDateRegExp),
-  "totalVisits": zod.number().min(previewCustomerPlanBodyVisitScheduleTotalVisitsMin).max(previewCustomerPlanBodyVisitScheduleTotalVisitsMax),
+  "totalVisits": zod.number().min(1).max(previewCustomerPlanBodyVisitScheduleTotalVisitsMax).describe('At least two for independent date ranges; one remaining aligned round is allowed.'),
   "spacingUnit": zod.enum(['weeks', 'days']).default(previewCustomerPlanBodyVisitScheduleSpacingUnitDefault),
   "preferredWeekday": zod.number().min(previewCustomerPlanBodyVisitSchedulePreferredWeekdayMin).max(previewCustomerPlanBodyVisitSchedulePreferredWeekdayMax).describe('Sunday=0 through Saturday=6; first and last service dates stay fixed.')
 }).optional(),
@@ -12332,7 +12420,44 @@ export const PreviewCustomerPlanBody = zod.object({
   "startDate": zod.string()
 })
 
+
+export const previewCustomerPlanResponseVisitScheduleFirstServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const previewCustomerPlanResponseVisitScheduleLastServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const previewCustomerPlanResponseVisitScheduleTotalVisitsMax = 366;
+
+export const previewCustomerPlanResponseVisitScheduleSpacingUnitDefault = `weeks`;
+export const previewCustomerPlanResponseVisitSchedulePreferredWeekdayMin = 0;
+export const previewCustomerPlanResponseVisitSchedulePreferredWeekdayMax = 6;
+
+
+
 export const PreviewCustomerPlanResponse = zod.object({
+  "capacityWarnings": zod.array(zod.string()).optional(),
+  "visitSchedule": zod.object({
+  "alignToPlanId": zod.number().optional(),
+  "defaultCrewId": zod.number().optional(),
+  "routeTemplateId": zod.number().optional(),
+  "capacityOverrideReason": zod.string().optional(),
+  "visitServices": zod.array(zod.object({
+  "visitNumber": zod.number().min(1),
+  "serviceIds": zod.array(zod.number())
+})).optional(),
+  "serviceCrews": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "crewId": zod.number()
+})).optional(),
+  "chemicalServiceIds": zod.array(zod.number()).optional(),
+  "emailReminder": zod.boolean().optional(),
+  "smsReminder": zod.boolean().optional(),
+  "pushReminder": zod.boolean().optional(),
+  "timeZone": zod.string().optional(),
+  "firstServiceDate": zod.string().regex(previewCustomerPlanResponseVisitScheduleFirstServiceDateRegExp),
+  "lastServiceDate": zod.string().regex(previewCustomerPlanResponseVisitScheduleLastServiceDateRegExp),
+  "totalVisits": zod.number().min(1).max(previewCustomerPlanResponseVisitScheduleTotalVisitsMax).describe('At least two for independent date ranges; one remaining aligned round is allowed.'),
+  "spacingUnit": zod.enum(['weeks', 'days']).default(previewCustomerPlanResponseVisitScheduleSpacingUnitDefault),
+  "preferredWeekday": zod.number().min(previewCustomerPlanResponseVisitSchedulePreferredWeekdayMin).max(previewCustomerPlanResponseVisitSchedulePreferredWeekdayMax).describe('Sunday=0 through Saturday=6; first and last service dates stay fixed.')
+}).optional(),
+  "timeZone": zod.string().optional(),
   "template": zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
@@ -12359,6 +12484,10 @@ export const PreviewCustomerPlanResponse = zod.object({
   "updatedAt": zod.string()
 }),
   "visits": zod.array(zod.object({
+  "crewId": zod.number().nullish(),
+  "roundNumber": zod.number().optional(),
+  "serviceNames": zod.array(zod.string()).optional(),
+  "estimatedDuration": zod.number().optional(),
   "serviceId": zod.number(),
   "serviceName": zod.string(),
   "date": zod.string(),
@@ -12378,9 +12507,9 @@ export const ListCustomerPlansQueryParams = zod.object({
   "status": zod.coerce.string().optional()
 })
 
+
 export const listCustomerPlansResponseVisitScheduleFirstServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const listCustomerPlansResponseVisitScheduleLastServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
-export const listCustomerPlansResponseVisitScheduleTotalVisitsMin = 2;
 export const listCustomerPlansResponseVisitScheduleTotalVisitsMax = 366;
 
 export const listCustomerPlansResponseVisitScheduleSpacingUnitDefault = `weeks`;
@@ -12397,9 +12526,26 @@ export const ListCustomerPlansResponseItem = zod.object({
   "templateId": zod.number(),
   "templateName": zod.string(),
   "visitSchedule": zod.object({
+  "alignToPlanId": zod.number().optional(),
+  "defaultCrewId": zod.number().optional(),
+  "routeTemplateId": zod.number().optional(),
+  "capacityOverrideReason": zod.string().optional(),
+  "visitServices": zod.array(zod.object({
+  "visitNumber": zod.number().min(1),
+  "serviceIds": zod.array(zod.number())
+})).optional(),
+  "serviceCrews": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "crewId": zod.number()
+})).optional(),
+  "chemicalServiceIds": zod.array(zod.number()).optional(),
+  "emailReminder": zod.boolean().optional(),
+  "smsReminder": zod.boolean().optional(),
+  "pushReminder": zod.boolean().optional(),
+  "timeZone": zod.string().optional(),
   "firstServiceDate": zod.string().regex(listCustomerPlansResponseVisitScheduleFirstServiceDateRegExp),
   "lastServiceDate": zod.string().regex(listCustomerPlansResponseVisitScheduleLastServiceDateRegExp),
-  "totalVisits": zod.number().min(listCustomerPlansResponseVisitScheduleTotalVisitsMin).max(listCustomerPlansResponseVisitScheduleTotalVisitsMax),
+  "totalVisits": zod.number().min(1).max(listCustomerPlansResponseVisitScheduleTotalVisitsMax).describe('At least two for independent date ranges; one remaining aligned round is allowed.'),
   "spacingUnit": zod.enum(['weeks', 'days']).default(listCustomerPlansResponseVisitScheduleSpacingUnitDefault),
   "preferredWeekday": zod.number().min(listCustomerPlansResponseVisitSchedulePreferredWeekdayMin).max(listCustomerPlansResponseVisitSchedulePreferredWeekdayMax).describe('Sunday=0 through Saturday=6; first and last service dates stay fixed.')
 }).optional(),
@@ -12432,9 +12578,9 @@ export const ListCustomerPlansResponse = zod.array(ListCustomerPlansResponseItem
 /**
  * @summary Sell/activate a plan for a customer
  */
+
 export const createCustomerPlanBodyVisitScheduleFirstServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const createCustomerPlanBodyVisitScheduleLastServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
-export const createCustomerPlanBodyVisitScheduleTotalVisitsMin = 2;
 export const createCustomerPlanBodyVisitScheduleTotalVisitsMax = 366;
 
 export const createCustomerPlanBodyVisitScheduleSpacingUnitDefault = `weeks`;
@@ -12445,9 +12591,26 @@ export const createCustomerPlanBodyVisitSchedulePreferredWeekdayMax = 6;
 
 export const CreateCustomerPlanBody = zod.object({
   "visitSchedule": zod.object({
+  "alignToPlanId": zod.number().optional(),
+  "defaultCrewId": zod.number().optional(),
+  "routeTemplateId": zod.number().optional(),
+  "capacityOverrideReason": zod.string().optional(),
+  "visitServices": zod.array(zod.object({
+  "visitNumber": zod.number().min(1),
+  "serviceIds": zod.array(zod.number())
+})).optional(),
+  "serviceCrews": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "crewId": zod.number()
+})).optional(),
+  "chemicalServiceIds": zod.array(zod.number()).optional(),
+  "emailReminder": zod.boolean().optional(),
+  "smsReminder": zod.boolean().optional(),
+  "pushReminder": zod.boolean().optional(),
+  "timeZone": zod.string().optional(),
   "firstServiceDate": zod.string().regex(createCustomerPlanBodyVisitScheduleFirstServiceDateRegExp),
   "lastServiceDate": zod.string().regex(createCustomerPlanBodyVisitScheduleLastServiceDateRegExp),
-  "totalVisits": zod.number().min(createCustomerPlanBodyVisitScheduleTotalVisitsMin).max(createCustomerPlanBodyVisitScheduleTotalVisitsMax),
+  "totalVisits": zod.number().min(1).max(createCustomerPlanBodyVisitScheduleTotalVisitsMax).describe('At least two for independent date ranges; one remaining aligned round is allowed.'),
   "spacingUnit": zod.enum(['weeks', 'days']).default(createCustomerPlanBodyVisitScheduleSpacingUnitDefault),
   "preferredWeekday": zod.number().min(createCustomerPlanBodyVisitSchedulePreferredWeekdayMin).max(createCustomerPlanBodyVisitSchedulePreferredWeekdayMax).describe('Sunday=0 through Saturday=6; first and last service dates stay fixed.')
 }).optional(),
@@ -12466,9 +12629,9 @@ export const CreateCustomerPlanBody = zod.object({
 })).optional()
 })
 
+
 export const createCustomerPlanResponseVisitScheduleFirstServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const createCustomerPlanResponseVisitScheduleLastServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
-export const createCustomerPlanResponseVisitScheduleTotalVisitsMin = 2;
 export const createCustomerPlanResponseVisitScheduleTotalVisitsMax = 366;
 
 export const createCustomerPlanResponseVisitScheduleSpacingUnitDefault = `weeks`;
@@ -12485,9 +12648,26 @@ export const CreateCustomerPlanResponse = zod.object({
   "templateId": zod.number(),
   "templateName": zod.string(),
   "visitSchedule": zod.object({
+  "alignToPlanId": zod.number().optional(),
+  "defaultCrewId": zod.number().optional(),
+  "routeTemplateId": zod.number().optional(),
+  "capacityOverrideReason": zod.string().optional(),
+  "visitServices": zod.array(zod.object({
+  "visitNumber": zod.number().min(1),
+  "serviceIds": zod.array(zod.number())
+})).optional(),
+  "serviceCrews": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "crewId": zod.number()
+})).optional(),
+  "chemicalServiceIds": zod.array(zod.number()).optional(),
+  "emailReminder": zod.boolean().optional(),
+  "smsReminder": zod.boolean().optional(),
+  "pushReminder": zod.boolean().optional(),
+  "timeZone": zod.string().optional(),
   "firstServiceDate": zod.string().regex(createCustomerPlanResponseVisitScheduleFirstServiceDateRegExp),
   "lastServiceDate": zod.string().regex(createCustomerPlanResponseVisitScheduleLastServiceDateRegExp),
-  "totalVisits": zod.number().min(createCustomerPlanResponseVisitScheduleTotalVisitsMin).max(createCustomerPlanResponseVisitScheduleTotalVisitsMax),
+  "totalVisits": zod.number().min(1).max(createCustomerPlanResponseVisitScheduleTotalVisitsMax).describe('At least two for independent date ranges; one remaining aligned round is allowed.'),
   "spacingUnit": zod.enum(['weeks', 'days']).default(createCustomerPlanResponseVisitScheduleSpacingUnitDefault),
   "preferredWeekday": zod.number().min(createCustomerPlanResponseVisitSchedulePreferredWeekdayMin).max(createCustomerPlanResponseVisitSchedulePreferredWeekdayMax).describe('Sunday=0 through Saturday=6; first and last service dates stay fixed.')
 }).optional(),
@@ -12523,9 +12703,9 @@ export const GetCustomerPlanParams = zod.object({
   "id": zod.coerce.number()
 })
 
+
 export const getCustomerPlanResponseOneVisitScheduleFirstServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const getCustomerPlanResponseOneVisitScheduleLastServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
-export const getCustomerPlanResponseOneVisitScheduleTotalVisitsMin = 2;
 export const getCustomerPlanResponseOneVisitScheduleTotalVisitsMax = 366;
 
 export const getCustomerPlanResponseOneVisitScheduleSpacingUnitDefault = `weeks`;
@@ -12542,9 +12722,26 @@ export const GetCustomerPlanResponse = zod.object({
   "templateId": zod.number(),
   "templateName": zod.string(),
   "visitSchedule": zod.object({
+  "alignToPlanId": zod.number().optional(),
+  "defaultCrewId": zod.number().optional(),
+  "routeTemplateId": zod.number().optional(),
+  "capacityOverrideReason": zod.string().optional(),
+  "visitServices": zod.array(zod.object({
+  "visitNumber": zod.number().min(1),
+  "serviceIds": zod.array(zod.number())
+})).optional(),
+  "serviceCrews": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "crewId": zod.number()
+})).optional(),
+  "chemicalServiceIds": zod.array(zod.number()).optional(),
+  "emailReminder": zod.boolean().optional(),
+  "smsReminder": zod.boolean().optional(),
+  "pushReminder": zod.boolean().optional(),
+  "timeZone": zod.string().optional(),
   "firstServiceDate": zod.string().regex(getCustomerPlanResponseOneVisitScheduleFirstServiceDateRegExp),
   "lastServiceDate": zod.string().regex(getCustomerPlanResponseOneVisitScheduleLastServiceDateRegExp),
-  "totalVisits": zod.number().min(getCustomerPlanResponseOneVisitScheduleTotalVisitsMin).max(getCustomerPlanResponseOneVisitScheduleTotalVisitsMax),
+  "totalVisits": zod.number().min(1).max(getCustomerPlanResponseOneVisitScheduleTotalVisitsMax).describe('At least two for independent date ranges; one remaining aligned round is allowed.'),
   "spacingUnit": zod.enum(['weeks', 'days']).default(getCustomerPlanResponseOneVisitScheduleSpacingUnitDefault),
   "preferredWeekday": zod.number().min(getCustomerPlanResponseOneVisitSchedulePreferredWeekdayMin).max(getCustomerPlanResponseOneVisitSchedulePreferredWeekdayMax).describe('Sunday=0 through Saturday=6; first and last service dates stay fixed.')
 }).optional(),
@@ -12612,9 +12809,9 @@ export const UpdateCustomerPlanBody = zod.object({
 })).optional()
 })
 
+
 export const updateCustomerPlanResponseVisitScheduleFirstServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const updateCustomerPlanResponseVisitScheduleLastServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
-export const updateCustomerPlanResponseVisitScheduleTotalVisitsMin = 2;
 export const updateCustomerPlanResponseVisitScheduleTotalVisitsMax = 366;
 
 export const updateCustomerPlanResponseVisitScheduleSpacingUnitDefault = `weeks`;
@@ -12631,9 +12828,26 @@ export const UpdateCustomerPlanResponse = zod.object({
   "templateId": zod.number(),
   "templateName": zod.string(),
   "visitSchedule": zod.object({
+  "alignToPlanId": zod.number().optional(),
+  "defaultCrewId": zod.number().optional(),
+  "routeTemplateId": zod.number().optional(),
+  "capacityOverrideReason": zod.string().optional(),
+  "visitServices": zod.array(zod.object({
+  "visitNumber": zod.number().min(1),
+  "serviceIds": zod.array(zod.number())
+})).optional(),
+  "serviceCrews": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "crewId": zod.number()
+})).optional(),
+  "chemicalServiceIds": zod.array(zod.number()).optional(),
+  "emailReminder": zod.boolean().optional(),
+  "smsReminder": zod.boolean().optional(),
+  "pushReminder": zod.boolean().optional(),
+  "timeZone": zod.string().optional(),
   "firstServiceDate": zod.string().regex(updateCustomerPlanResponseVisitScheduleFirstServiceDateRegExp),
   "lastServiceDate": zod.string().regex(updateCustomerPlanResponseVisitScheduleLastServiceDateRegExp),
-  "totalVisits": zod.number().min(updateCustomerPlanResponseVisitScheduleTotalVisitsMin).max(updateCustomerPlanResponseVisitScheduleTotalVisitsMax),
+  "totalVisits": zod.number().min(1).max(updateCustomerPlanResponseVisitScheduleTotalVisitsMax).describe('At least two for independent date ranges; one remaining aligned round is allowed.'),
   "spacingUnit": zod.enum(['weeks', 'days']).default(updateCustomerPlanResponseVisitScheduleSpacingUnitDefault),
   "preferredWeekday": zod.number().min(updateCustomerPlanResponseVisitSchedulePreferredWeekdayMin).max(updateCustomerPlanResponseVisitSchedulePreferredWeekdayMax).describe('Sunday=0 through Saturday=6; first and last service dates stay fixed.')
 }).optional(),
@@ -12694,6 +12908,7 @@ export const reschedulePlanVisitBodyRescheduleFeeAmountMin = 0;
 
 
 export const ReschedulePlanVisitBody = zod.object({
+  "capacityOverrideReason": zod.string().optional(),
   "chargeRescheduleFee": zod.boolean().optional(),
   "rescheduleFeeAmount": zod.number().min(reschedulePlanVisitBodyRescheduleFeeAmountMin).optional(),
   "newScheduledAt": zod.string(),
@@ -12716,9 +12931,9 @@ export const RenewCustomerPlanParams = zod.object({
   "id": zod.coerce.number()
 })
 
+
 export const renewCustomerPlanResponseVisitScheduleFirstServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const renewCustomerPlanResponseVisitScheduleLastServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
-export const renewCustomerPlanResponseVisitScheduleTotalVisitsMin = 2;
 export const renewCustomerPlanResponseVisitScheduleTotalVisitsMax = 366;
 
 export const renewCustomerPlanResponseVisitScheduleSpacingUnitDefault = `weeks`;
@@ -12735,9 +12950,26 @@ export const RenewCustomerPlanResponse = zod.object({
   "templateId": zod.number(),
   "templateName": zod.string(),
   "visitSchedule": zod.object({
+  "alignToPlanId": zod.number().optional(),
+  "defaultCrewId": zod.number().optional(),
+  "routeTemplateId": zod.number().optional(),
+  "capacityOverrideReason": zod.string().optional(),
+  "visitServices": zod.array(zod.object({
+  "visitNumber": zod.number().min(1),
+  "serviceIds": zod.array(zod.number())
+})).optional(),
+  "serviceCrews": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "crewId": zod.number()
+})).optional(),
+  "chemicalServiceIds": zod.array(zod.number()).optional(),
+  "emailReminder": zod.boolean().optional(),
+  "smsReminder": zod.boolean().optional(),
+  "pushReminder": zod.boolean().optional(),
+  "timeZone": zod.string().optional(),
   "firstServiceDate": zod.string().regex(renewCustomerPlanResponseVisitScheduleFirstServiceDateRegExp),
   "lastServiceDate": zod.string().regex(renewCustomerPlanResponseVisitScheduleLastServiceDateRegExp),
-  "totalVisits": zod.number().min(renewCustomerPlanResponseVisitScheduleTotalVisitsMin).max(renewCustomerPlanResponseVisitScheduleTotalVisitsMax),
+  "totalVisits": zod.number().min(1).max(renewCustomerPlanResponseVisitScheduleTotalVisitsMax).describe('At least two for independent date ranges; one remaining aligned round is allowed.'),
   "spacingUnit": zod.enum(['weeks', 'days']).default(renewCustomerPlanResponseVisitScheduleSpacingUnitDefault),
   "preferredWeekday": zod.number().min(renewCustomerPlanResponseVisitSchedulePreferredWeekdayMin).max(renewCustomerPlanResponseVisitSchedulePreferredWeekdayMax).describe('Sunday=0 through Saturday=6; first and last service dates stay fixed.')
 }).optional(),
@@ -12769,9 +13001,9 @@ export const RenewCustomerPlanResponse = zod.object({
 /**
  * @summary Get the service plans overview dashboard
  */
+
 export const getPlansDashboardResponsePlansItemOneVisitScheduleFirstServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const getPlansDashboardResponsePlansItemOneVisitScheduleLastServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
-export const getPlansDashboardResponsePlansItemOneVisitScheduleTotalVisitsMin = 2;
 export const getPlansDashboardResponsePlansItemOneVisitScheduleTotalVisitsMax = 366;
 
 export const getPlansDashboardResponsePlansItemOneVisitScheduleSpacingUnitDefault = `weeks`;
@@ -12794,9 +13026,26 @@ export const GetPlansDashboardResponse = zod.object({
   "templateId": zod.number(),
   "templateName": zod.string(),
   "visitSchedule": zod.object({
+  "alignToPlanId": zod.number().optional(),
+  "defaultCrewId": zod.number().optional(),
+  "routeTemplateId": zod.number().optional(),
+  "capacityOverrideReason": zod.string().optional(),
+  "visitServices": zod.array(zod.object({
+  "visitNumber": zod.number().min(1),
+  "serviceIds": zod.array(zod.number())
+})).optional(),
+  "serviceCrews": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "crewId": zod.number()
+})).optional(),
+  "chemicalServiceIds": zod.array(zod.number()).optional(),
+  "emailReminder": zod.boolean().optional(),
+  "smsReminder": zod.boolean().optional(),
+  "pushReminder": zod.boolean().optional(),
+  "timeZone": zod.string().optional(),
   "firstServiceDate": zod.string().regex(getPlansDashboardResponsePlansItemOneVisitScheduleFirstServiceDateRegExp),
   "lastServiceDate": zod.string().regex(getPlansDashboardResponsePlansItemOneVisitScheduleLastServiceDateRegExp),
-  "totalVisits": zod.number().min(getPlansDashboardResponsePlansItemOneVisitScheduleTotalVisitsMin).max(getPlansDashboardResponsePlansItemOneVisitScheduleTotalVisitsMax),
+  "totalVisits": zod.number().min(1).max(getPlansDashboardResponsePlansItemOneVisitScheduleTotalVisitsMax).describe('At least two for independent date ranges; one remaining aligned round is allowed.'),
   "spacingUnit": zod.enum(['weeks', 'days']).default(getPlansDashboardResponsePlansItemOneVisitScheduleSpacingUnitDefault),
   "preferredWeekday": zod.number().min(getPlansDashboardResponsePlansItemOneVisitSchedulePreferredWeekdayMin).max(getPlansDashboardResponsePlansItemOneVisitSchedulePreferredWeekdayMax).describe('Sunday=0 through Saturday=6; first and last service dates stay fixed.')
 }).optional(),
@@ -15210,6 +15459,7 @@ export const rescheduleJobOnceBodyRescheduleFeeAmountMin = 0;
 
 
 export const RescheduleJobOnceBody = zod.object({
+  "capacityOverrideReason": zod.string().optional(),
   "chargeRescheduleFee": zod.boolean().optional(),
   "rescheduleFeeAmount": zod.number().min(rescheduleJobOnceBodyRescheduleFeeAmountMin).optional(),
   "newScheduledAt": zod.string()
@@ -15221,6 +15471,8 @@ export const RescheduleJobOnceResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "isOneTimeReschedule": zod.boolean(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "chemicalTracking": zod.boolean().optional(),
   "id": zod.number(),
   "name": zod.string(),
   "inventoryItemId": zod.number().nullish(),
@@ -16939,6 +17191,33 @@ export const ChargeInvoiceCardParams = zod.object({
 export const ChargeInvoiceCardResponse = zod.object({
   "status": zod.enum(['paid', 'failed', 'pending', 'unavailable']),
   "message": zod.string()
+})
+
+
+export const GetPortalPushKeyResponse = zod.object({
+  "publicKey": zod.string()
+})
+
+
+export const SubscribePortalPushBody = zod.object({
+  "endpoint": zod.string(),
+  "keys": zod.object({
+  "p256dh": zod.string(),
+  "auth": zod.string()
+})
+})
+
+export const SubscribePortalPushResponse = zod.object({
+  "enabled": zod.boolean()
+})
+
+
+export const UnsubscribePortalPushBody = zod.object({
+  "endpoint": zod.string()
+})
+
+export const UnsubscribePortalPushResponse = zod.object({
+  "enabled": zod.boolean()
 })
 
 

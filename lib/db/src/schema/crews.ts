@@ -9,6 +9,8 @@ export const crewsTable = pgTable("crews", {
   tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   name: text("name").notNull(),
   description: text("description"),
+  dailyCapacityMinutes: integer("daily_capacity_minutes").notNull().default(480),
+  travelBufferMinutes: integer("travel_buffer_minutes").notNull().default(15),
   managerId: integer("manager_id").references(() => usersTable.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

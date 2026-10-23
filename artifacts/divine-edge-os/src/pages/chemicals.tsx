@@ -505,7 +505,7 @@ export default function ChemicalsPage() {
                                 <p className="text-sm font-medium truncate">
                                   {app.mixtureName ?? app.productName ?? 'Application'}
                                 </p>
-                                <p className="text-xs text-muted-foreground">Job #{app.jobId} · {app.propertyAddress ?? 'Unknown property'}</p>
+                                <p className="text-xs text-muted-foreground">Job #{app.jobId} · {app.propertyAddress ?? 'Unknown property'}{app.serviceName ? ` · ${app.serviceName}` : ''}</p>
                               </div>
                             </div>
                             <div className="flex items-center gap-4 text-xs text-muted-foreground shrink-0">

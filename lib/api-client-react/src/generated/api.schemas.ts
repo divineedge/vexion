@@ -5,6 +5,28 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+export interface PortalPushKey {
+  publicKey: string;
+}
+
+export interface PortalPushStatus {
+  enabled: boolean;
+}
+
+export interface PortalPushRemoval {
+  endpoint: string;
+}
+
+export type PortalPushSubscriptionKeys = {
+  p256dh: string;
+  auth: string;
+};
+
+export interface PortalPushSubscription {
+  endpoint: string;
+  keys: PortalPushSubscriptionKeys;
+}
+
 export interface CardPaymentChoice {
   saveCard: boolean;
   authorizationAccepted: boolean;
@@ -1603,6 +1625,11 @@ export interface ResolvePlanPriceResult {
 }
 
 export interface PlanVisitPreview {
+  /** @nullable */
+  crewId?: number | null;
+  roundNumber?: number;
+  serviceNames?: string[];
+  estimatedDuration?: number;
   serviceId: number;
   serviceName: string;
   date: string;
@@ -1614,6 +1641,17 @@ export interface PlanVisitPreview {
   clustered: boolean;
 }
 
+export interface PlanRoundServices {
+  /** @minimum 1 */
+  visitNumber: number;
+  serviceIds: number[];
+}
+
+export interface PlanServiceCrew {
+  serviceId: number;
+  crewId: number;
+}
+
 export type PlanVisitScheduleSpacingUnit = typeof PlanVisitScheduleSpacingUnit[keyof typeof PlanVisitScheduleSpacingUnit];
 
 
@@ -1623,12 +1661,24 @@ export const PlanVisitScheduleSpacingUnit = {
 } as const;
 
 export interface PlanVisitSchedule {
+  alignToPlanId?: number;
+  defaultCrewId?: number;
+  routeTemplateId?: number;
+  capacityOverrideReason?: string;
+  visitServices?: PlanRoundServices[];
+  serviceCrews?: PlanServiceCrew[];
+  chemicalServiceIds?: number[];
+  emailReminder?: boolean;
+  smsReminder?: boolean;
+  pushReminder?: boolean;
+  readonly timeZone?: string;
   /** @pattern ^\d{4}-\d{2}-\d{2}$ */
   firstServiceDate: string;
   /** @pattern ^\d{4}-\d{2}-\d{2}$ */
   lastServiceDate: string;
   /**
-     * @minimum 2
+     * At least two for independent date ranges; one remaining aligned round is allowed.
+     * @minimum 1
      * @maximum 366
      */
   totalVisits: number;
@@ -1649,6 +1699,9 @@ export interface PreviewCustomerPlanInput {
 }
 
 export interface CustomerPlanPreview {
+  capacityWarnings?: string[];
+  visitSchedule?: PlanVisitSchedule;
+  timeZone?: string;
   template: PlanTemplate;
   visits: PlanVisitPreview[];
 }
@@ -2527,6 +2580,8 @@ export interface ServiceFieldRequirements {
 }
 
 export interface JobLineItem {
+  serviceId?: number;
+  chemicalTracking?: boolean;
   id: number;
   name: string;
   /** @nullable */
@@ -2919,6 +2974,7 @@ export const JobInputPriority = {
 } as const;
 
 export interface JobInput {
+  capacityOverrideReason?: string;
   title: string;
   description?: string;
   status?: JobInputStatus;
@@ -2984,6 +3040,7 @@ export const JobUpdateEditScope = {
 } as const;
 
 export interface JobUpdate {
+  capacityOverrideReason?: string;
   chargeRescheduleFee?: boolean;
   /** @minimum 0 */
   rescheduleFeeAmount?: number;
@@ -3028,6 +3085,8 @@ export interface CrewMember {
 }
 
 export interface Crew {
+  dailyCapacityMinutes?: number;
+  travelBufferMinutes?: number;
   id: number;
   tenantId: number;
   name: string;
@@ -3047,6 +3106,16 @@ export interface AddCrewMemberInput {
 }
 
 export interface CrewInput {
+  /**
+     * @minimum 1
+     * @maximum 1440
+     */
+  dailyCapacityMinutes?: number;
+  /**
+     * @minimum 0
+     * @maximum 240
+     */
+  travelBufferMinutes?: number;
   name: string;
   description?: string;
   /** @nullable */
@@ -3054,6 +3123,16 @@ export interface CrewInput {
 }
 
 export interface CrewUpdate {
+  /**
+     * @minimum 1
+     * @maximum 1440
+     */
+  dailyCapacityMinutes?: number;
+  /**
+     * @minimum 0
+     * @maximum 240
+     */
+  travelBufferMinutes?: number;
   name?: string;
   description?: string;
   /** @nullable */
@@ -4541,6 +4620,7 @@ export const CancelSeriesScope = {
 } as const;
 
 export interface ReschedulePlanVisitInput {
+  capacityOverrideReason?: string;
   chargeRescheduleFee?: boolean;
   /** @minimum 0 */
   rescheduleFeeAmount?: number;
@@ -4743,6 +4823,7 @@ export interface JobRouteAssignment {
 }
 
 export interface RescheduleOnceInput {
+  capacityOverrideReason?: string;
   chargeRescheduleFee?: boolean;
   /** @minimum 0 */
   rescheduleFeeAmount?: number;
@@ -5294,6 +5375,10 @@ export interface ChemicalApplicationBreakdownItem {
 }
 
 export interface ChemicalApplication {
+  /** @nullable */
+  serviceId?: number | null;
+  /** @nullable */
+  serviceName?: string | null;
   id: number;
   tenantId: number;
   jobId: number;
@@ -5341,6 +5426,7 @@ export interface ChemicalApplication {
  * New applications require exactly one of mixtureId or productId.
  */
 export type ChemicalApplicationInput = (unknown & {
+  serviceId?: number;
   mixtureId?: number;
   productId?: number;
   volumeApplied: number;
@@ -5361,6 +5447,7 @@ export type ChemicalApplicationInput = (unknown & {
   applicatorLicenseNumber?: string;
   notes?: string;
 }) | (unknown & {
+  serviceId?: number;
   mixtureId?: number;
   productId?: number;
   volumeApplied: number;

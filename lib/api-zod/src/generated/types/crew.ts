@@ -8,6 +8,8 @@
 import type { CrewMember } from './crewMember';
 
 export interface Crew {
+  dailyCapacityMinutes?: number;
+  travelBufferMinutes?: number;
   id: number;
   tenantId: number;
   name: string;

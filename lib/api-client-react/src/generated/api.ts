@@ -322,6 +322,10 @@ import type {
   PortalPlan,
   PortalPlanDetail,
   PortalProperty,
+  PortalPushKey,
+  PortalPushRemoval,
+  PortalPushStatus,
+  PortalPushSubscription,
   PortalRequestJobCancellation201,
   PortalRequestJobCancellationBody,
   PortalRequestJobReschedule201,
@@ -26054,7 +26058,7 @@ export const getPreviewCustomerPlanUrl = () => {
 /**
  * @summary Preview the visit schedule a plan would generate before selling it
  */
-export const previewCustomerPlan = async (previewCustomerPlanInput: PreviewCustomerPlanInput, options?: RequestInit): Promise<CustomerPlanPreview> => {
+export const previewCustomerPlan = async (previewCustomerPlanInput: NonReadonly<PreviewCustomerPlanInput>, options?: RequestInit): Promise<CustomerPlanPreview> => {
 
   return customFetch<CustomerPlanPreview>(getPreviewCustomerPlanUrl(),
   {
@@ -26070,8 +26074,8 @@ export const previewCustomerPlan = async (previewCustomerPlanInput: PreviewCusto
 
 
 export const getPreviewCustomerPlanMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewCustomerPlan>>, TError,{data: BodyType<PreviewCustomerPlanInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof previewCustomerPlan>>, TError,{data: BodyType<PreviewCustomerPlanInput>}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewCustomerPlan>>, TError,{data: BodyType<NonReadonly<PreviewCustomerPlanInput>>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof previewCustomerPlan>>, TError,{data: BodyType<NonReadonly<PreviewCustomerPlanInput>>}, TContext> => {
 
 const mutationKey = ['previewCustomerPlan'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -26083,7 +26087,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewCustomerPlan>>, {data: BodyType<PreviewCustomerPlanInput>}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewCustomerPlan>>, {data: BodyType<NonReadonly<PreviewCustomerPlanInput>>}> = (props) => {
           const {data} = props ?? {};
 
           return  previewCustomerPlan(data,requestOptions)
@@ -26097,18 +26101,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type PreviewCustomerPlanMutationResult = NonNullable<Awaited<ReturnType<typeof previewCustomerPlan>>>
-    export type PreviewCustomerPlanMutationBody = BodyType<PreviewCustomerPlanInput>
+    export type PreviewCustomerPlanMutationBody = BodyType<NonReadonly<PreviewCustomerPlanInput>>
     export type PreviewCustomerPlanMutationError = ErrorType<unknown>
 
     /**
  * @summary Preview the visit schedule a plan would generate before selling it
  */
 export const usePreviewCustomerPlan = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewCustomerPlan>>, TError,{data: BodyType<PreviewCustomerPlanInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewCustomerPlan>>, TError,{data: BodyType<NonReadonly<PreviewCustomerPlanInput>>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof previewCustomerPlan>>,
         TError,
-        {data: BodyType<PreviewCustomerPlanInput>},
+        {data: BodyType<NonReadonly<PreviewCustomerPlanInput>>},
         TContext
       > => {
       return useMutation(getPreviewCustomerPlanMutationOptions(options));
@@ -26209,7 +26213,7 @@ export const getCreateCustomerPlanUrl = () => {
 /**
  * @summary Sell/activate a plan for a customer
  */
-export const createCustomerPlan = async (createCustomerPlanInput: CreateCustomerPlanInput, options?: RequestInit): Promise<CustomerPlan> => {
+export const createCustomerPlan = async (createCustomerPlanInput: NonReadonly<CreateCustomerPlanInput>, options?: RequestInit): Promise<CustomerPlan> => {
 
   return customFetch<CustomerPlan>(getCreateCustomerPlanUrl(),
   {
@@ -26225,8 +26229,8 @@ export const createCustomerPlan = async (createCustomerPlanInput: CreateCustomer
 
 
 export const getCreateCustomerPlanMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCustomerPlan>>, TError,{data: BodyType<CreateCustomerPlanInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof createCustomerPlan>>, TError,{data: BodyType<CreateCustomerPlanInput>}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCustomerPlan>>, TError,{data: BodyType<NonReadonly<CreateCustomerPlanInput>>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCustomerPlan>>, TError,{data: BodyType<NonReadonly<CreateCustomerPlanInput>>}, TContext> => {
 
 const mutationKey = ['createCustomerPlan'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -26238,7 +26242,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCustomerPlan>>, {data: BodyType<CreateCustomerPlanInput>}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCustomerPlan>>, {data: BodyType<NonReadonly<CreateCustomerPlanInput>>}> = (props) => {
           const {data} = props ?? {};
 
           return  createCustomerPlan(data,requestOptions)
@@ -26252,18 +26256,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type CreateCustomerPlanMutationResult = NonNullable<Awaited<ReturnType<typeof createCustomerPlan>>>
-    export type CreateCustomerPlanMutationBody = BodyType<CreateCustomerPlanInput>
+    export type CreateCustomerPlanMutationBody = BodyType<NonReadonly<CreateCustomerPlanInput>>
     export type CreateCustomerPlanMutationError = ErrorType<unknown>
 
     /**
  * @summary Sell/activate a plan for a customer
  */
 export const useCreateCustomerPlan = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCustomerPlan>>, TError,{data: BodyType<CreateCustomerPlanInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCustomerPlan>>, TError,{data: BodyType<NonReadonly<CreateCustomerPlanInput>>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof createCustomerPlan>>,
         TError,
-        {data: BodyType<CreateCustomerPlanInput>},
+        {data: BodyType<NonReadonly<CreateCustomerPlanInput>>},
         TContext
       > => {
       return useMutation(getCreateCustomerPlanMutationOptions(options));
@@ -36142,5 +36146,206 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getChargeInvoiceCardMutationOptions(options));
+    }
+
+export const getGetPortalPushKeyUrl = () => {
+
+
+
+
+  return `/api/portal/push-key`
+}
+
+export const getPortalPushKey = async ( options?: RequestInit): Promise<PortalPushKey> => {
+
+  return customFetch<PortalPushKey>(getGetPortalPushKeyUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPortalPushKeyQueryKey = () => {
+    return [
+    `/api/portal/push-key`
+    ] as const;
+    }
+
+
+export const getGetPortalPushKeyQueryOptions = <TData = Awaited<ReturnType<typeof getPortalPushKey>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalPushKey>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPortalPushKeyQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPortalPushKey>>> = ({ signal }) => getPortalPushKey({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortalPushKey>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPortalPushKeyQueryResult = NonNullable<Awaited<ReturnType<typeof getPortalPushKey>>>
+export type GetPortalPushKeyQueryError = ErrorType<unknown>
+
+
+
+export function useGetPortalPushKey<TData = Awaited<ReturnType<typeof getPortalPushKey>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalPushKey>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPortalPushKeyQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSubscribePortalPushUrl = () => {
+
+
+
+
+  return `/api/portal/push-subscription`
+}
+
+export const subscribePortalPush = async (portalPushSubscription: PortalPushSubscription, options?: RequestInit): Promise<PortalPushStatus> => {
+
+  return customFetch<PortalPushStatus>(getSubscribePortalPushUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(portalPushSubscription)
+  }
+);}
+
+
+
+
+
+export const getSubscribePortalPushMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof subscribePortalPush>>, TError,{data: BodyType<PortalPushSubscription>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof subscribePortalPush>>, TError,{data: BodyType<PortalPushSubscription>}, TContext> => {
+
+const mutationKey = ['subscribePortalPush'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof subscribePortalPush>>, {data: BodyType<PortalPushSubscription>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  subscribePortalPush(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubscribePortalPushMutationResult = NonNullable<Awaited<ReturnType<typeof subscribePortalPush>>>
+    export type SubscribePortalPushMutationBody = BodyType<PortalPushSubscription>
+    export type SubscribePortalPushMutationError = ErrorType<unknown>
+
+    export const useSubscribePortalPush = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof subscribePortalPush>>, TError,{data: BodyType<PortalPushSubscription>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof subscribePortalPush>>,
+        TError,
+        {data: BodyType<PortalPushSubscription>},
+        TContext
+      > => {
+      return useMutation(getSubscribePortalPushMutationOptions(options));
+    }
+
+export const getUnsubscribePortalPushUrl = () => {
+
+
+
+
+  return `/api/portal/push-subscription`
+}
+
+export const unsubscribePortalPush = async (portalPushRemoval: PortalPushRemoval, options?: RequestInit): Promise<PortalPushStatus> => {
+
+  return customFetch<PortalPushStatus>(getUnsubscribePortalPushUrl(),
+  {
+    ...options,
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(portalPushRemoval)
+  }
+);}
+
+
+
+
+
+export const getUnsubscribePortalPushMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unsubscribePortalPush>>, TError,{data: BodyType<PortalPushRemoval>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof unsubscribePortalPush>>, TError,{data: BodyType<PortalPushRemoval>}, TContext> => {
+
+const mutationKey = ['unsubscribePortalPush'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof unsubscribePortalPush>>, {data: BodyType<PortalPushRemoval>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  unsubscribePortalPush(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UnsubscribePortalPushMutationResult = NonNullable<Awaited<ReturnType<typeof unsubscribePortalPush>>>
+    export type UnsubscribePortalPushMutationBody = BodyType<PortalPushRemoval>
+    export type UnsubscribePortalPushMutationError = ErrorType<unknown>
+
+    export const useUnsubscribePortalPush = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unsubscribePortalPush>>, TError,{data: BodyType<PortalPushRemoval>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof unsubscribePortalPush>>,
+        TError,
+        {data: BodyType<PortalPushRemoval>},
+        TContext
+      > => {
+      return useMutation(getUnsubscribePortalPushMutationOptions(options));
     }
 

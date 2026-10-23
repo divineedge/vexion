@@ -12,6 +12,7 @@ import type { RecurrenceRule } from './recurrenceRule';
 import type { SupplyItem } from './supplyItem';
 
 export interface JobInput {
+  capacityOverrideReason?: string;
   title: string;
   description?: string;
   status?: JobInputStatus;

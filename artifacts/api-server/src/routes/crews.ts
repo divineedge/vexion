@@ -30,6 +30,8 @@ function formatCrew(
     tenantId: c.tenantId,
     name: c.name,
     description: c.description ?? null,
+    dailyCapacityMinutes:c.dailyCapacityMinutes,
+    travelBufferMinutes:c.travelBufferMinutes,
     managerId: c.managerId ?? null,
     managerName: extras?.managerName ?? null,
     memberCount: extras?.memberCount ?? 0,
@@ -99,6 +101,10 @@ router.post("/crews", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
   const { name, description, managerId } = req.body;
+  if((req.body.dailyCapacityMinutes!==undefined&&(!Number.isInteger(req.body.dailyCapacityMinutes)||req.body.dailyCapacityMinutes<1||req.body.dailyCapacityMinutes>1440))||
+    (req.body.travelBufferMinutes!==undefined&&(!Number.isInteger(req.body.travelBufferMinutes)||req.body.travelBufferMinutes<0||req.body.travelBufferMinutes>240))){
+    res.status(400).json({error:"Enter a daily capacity of 1–1440 minutes and a travel buffer of 0–240 minutes."});return;
+  }
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
   const parsedManagerId = managerId ? parseInt(managerId, 10) : null;
   if (parsedManagerId && !(await getCrewEligibleUser(tenantId, parsedManagerId))) {
@@ -110,6 +116,8 @@ router.post("/crews", async (req, res): Promise<void> => {
     name,
     description: description ?? null,
     managerId: parsedManagerId,
+    dailyCapacityMinutes:req.body.dailyCapacityMinutes??480,
+    travelBufferMinutes:req.body.travelBufferMinutes??15,
   }).returning();
 
   await db.insert(activityLogTable).values({ tenantId, userId, type: "crew_created", message: `Crew "${name}" created`, entityId: crew.id });
@@ -119,6 +127,10 @@ router.post("/crews", async (req, res): Promise<void> => {
 
 // Update crew
 router.patch("/crews/:id", async (req, res): Promise<void> => {
+  if((req.body.dailyCapacityMinutes!==undefined&&(!Number.isInteger(req.body.dailyCapacityMinutes)||req.body.dailyCapacityMinutes<1||req.body.dailyCapacityMinutes>1440))||
+    (req.body.travelBufferMinutes!==undefined&&(!Number.isInteger(req.body.travelBufferMinutes)||req.body.travelBufferMinutes<0||req.body.travelBufferMinutes>240))){
+    res.status(400).json({error:"Enter a daily capacity of 1–1440 minutes and a travel buffer of 0–240 minutes."});return;
+  }
   const tenantId = getTenantId(req);
   const id = parseInt(req.params.id, 10);
   const { name, description, managerId } = req.body;
@@ -129,6 +141,8 @@ router.patch("/crews/:id", async (req, res): Promise<void> => {
   }
 
   const updates: Partial<typeof crewsTable.$inferInsert> = {};
+  if(req.body.dailyCapacityMinutes!==undefined)updates.dailyCapacityMinutes=req.body.dailyCapacityMinutes;
+  if(req.body.travelBufferMinutes!==undefined)updates.travelBufferMinutes=req.body.travelBufferMinutes;
   if (name !== undefined) updates.name = String(name).trim();
   if (description !== undefined) updates.description = description || null;
   if (managerId !== undefined) updates.managerId = parsedManagerId;

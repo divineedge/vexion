@@ -8,6 +8,10 @@
 import type { ChemicalApplicationBreakdownItem } from './chemicalApplicationBreakdownItem';
 
 export interface ChemicalApplication {
+  /** @nullable */
+  serviceId?: number | null;
+  /** @nullable */
+  serviceName?: string | null;
   id: number;
   tenantId: number;
   jobId: number;

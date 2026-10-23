@@ -12,6 +12,7 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { loadStripe, type Stripe as StripeInstance } from "@stripe/stripe-js";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
+import { PushReminders } from "@/components/notifications/PushReminders";
 import { CardAuthorizationTerms } from "@/components/payments/CardAuthorization";
 
 // ── Stripe card setup sub-component ─────────────────────────────────────────
@@ -292,6 +293,8 @@ export default function Profile() {
           )}
         </CardContent>
       </Card>
+
+      <PushReminders />
 
       {/* ── Payment Method ──────────────────────────────────────────────── */}
       <Card className="shadow-sm">

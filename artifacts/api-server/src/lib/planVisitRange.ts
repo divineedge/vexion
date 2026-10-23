@@ -8,6 +8,17 @@ export interface VisitRange {
   spacingUnit:"weeks"|"days";
   preferredWeekday:number;
   timeZone?:string;
+  alignToPlanId?:number;
+  defaultCrewId?:number;
+  routeTemplateId?:number;
+  capacityOverrideReason?:string;
+  overrideApprovedBy?:number;
+  visitServices?:Array<{visitNumber:number;serviceIds:number[]}>;
+  serviceCrews?:Array<{serviceId:number;crewId:number}>;
+  chemicalServiceIds?:number[];
+  emailReminder?:boolean;
+  smsReminder?:boolean;
+  pushReminder?:boolean;
 }
 export class VisitRangeError extends Error {}
 function calendarDate(key:unknown):Date {
@@ -21,15 +32,48 @@ export function validateVisitRange(input:unknown):VisitRange {
   const value=input as Record<string,unknown>;
   const start=calendarDate(value.firstServiceDate),end=calendarDate(value.lastServiceDate);
   const span=(end.getTime()-start.getTime())/DAY;
-  if(span<=0||span>3660)throw new VisitRangeError("The last service must be after the first and within ten years.");
-  if(!Number.isInteger(value.totalVisits)||Number(value.totalVisits)<2||Number(value.totalVisits)>366)
+  const singleAligned=value.alignToPlanId && value.totalVisits===1 && span===0;
+  if((span<=0&&!singleAligned)||span>3660)throw new VisitRangeError("The last service must be after the first and within ten years.");
+  if(!Number.isInteger(value.totalVisits)||Number(value.totalVisits)<(singleAligned?1:2)||Number(value.totalVisits)>366)
     throw new VisitRangeError("Choose between 2 and 366 total services, including the first and last.");
   if(!Number.isInteger(value.preferredWeekday)||Number(value.preferredWeekday)<0||Number(value.preferredWeekday)>6)
     throw new VisitRangeError("Choose a preferred weekday.");
   const unit=value.spacingUnit??"weeks";
   if(unit!=="days"&&unit!=="weeks")throw new VisitRangeError("Choose days or weeks.");
-  return {firstServiceDate:value.firstServiceDate as string,lastServiceDate:value.lastServiceDate as string,
+  const result:VisitRange={firstServiceDate:value.firstServiceDate as string,lastServiceDate:value.lastServiceDate as string,
     totalVisits:Number(value.totalVisits),preferredWeekday:Number(value.preferredWeekday),spacingUnit:unit};
+  for(const field of ["alignToPlanId","defaultCrewId","routeTemplateId"] as const){
+    if(value[field]!=null){if(!Number.isSafeInteger(value[field])||Number(value[field])<=0)throw new VisitRangeError("Choose a valid plan, crew, or route.");result[field]=Number(value[field]);}
+  }
+  for(const field of ["emailReminder","smsReminder","pushReminder"] as const){
+    if(value[field]!==undefined&&typeof value[field]!=="boolean")throw new VisitRangeError("Choose valid reminder channels.");
+    result[field]=value[field]===undefined?field==="emailReminder":value[field] as boolean;
+  }
+  if(value.capacityOverrideReason!==undefined){
+    if(typeof value.capacityOverrideReason!=="string"||value.capacityOverrideReason.length>1000)throw new VisitRangeError("Enter a capacity override reason of at most 1000 characters.");
+    result.capacityOverrideReason=value.capacityOverrideReason.trim();
+  }
+  if(value.visitServices!==undefined){
+    if(!Array.isArray(value.visitServices)||value.visitServices.length>366)throw new VisitRangeError("Invalid services-per-visit configuration.");
+    result.visitServices=value.visitServices.map((r:any)=>{
+      if(!r||!Number.isInteger(r.visitNumber)||r.visitNumber<1||r.visitNumber>366||!Array.isArray(r.serviceIds)||!r.serviceIds.length||
+        r.serviceIds.length>100||r.serviceIds.some((id:unknown)=>!Number.isSafeInteger(id)||Number(id)<=0))throw new VisitRangeError("Choose at least one valid service for each visit.");
+      return {visitNumber:r.visitNumber,serviceIds:[...new Set<number>(r.serviceIds)]};
+    });
+  }
+  if(value.serviceCrews!==undefined){
+    if(!Array.isArray(value.serviceCrews)||value.serviceCrews.length>100)throw new VisitRangeError("Invalid service crew assignments.");
+    result.serviceCrews=value.serviceCrews.map((r:any)=>{
+      if(!r||![r.serviceId,r.crewId].every(n=>Number.isSafeInteger(n)&&n>0))throw new VisitRangeError("Choose a valid service and crew.");
+      return {serviceId:r.serviceId,crewId:r.crewId};
+    });
+  }
+  if(value.chemicalServiceIds!==undefined){
+    if(!Array.isArray(value.chemicalServiceIds)||value.chemicalServiceIds.length>100||value.chemicalServiceIds.some(id=>!Number.isSafeInteger(id)||id<=0))
+      throw new VisitRangeError("Choose valid services for chemical tracking.");
+    result.chemicalServiceIds=[...new Set<number>(value.chemicalServiceIds)];
+  }
+  return result;
 }
 /** Calendar noon in the company's timezone, independent of device/server timezone and DST. */
 export function planDateInZone(key:string,timeZone:string):Date {
@@ -52,7 +96,7 @@ export function generateRangeVisits(input:unknown,services:PlanServiceRule[],tim
   const result:PlanVisitCandidate[]=[];
   let previous=-1;
   for(let i=0;i<range.totalVisits;i++){
-    const idealOffset=span*i/(range.totalVisits-1);
+    const idealOffset=range.totalVisits===1?0:span*i/(range.totalVisits-1);
     let offset:number;
     if(i===0)offset=0;
     else if(i===range.totalVisits-1)offset=span;

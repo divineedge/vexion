@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, chemicalProductsTable, chemicalMixturesTable, chemicalMixtureItemsTable, chemicalApplicationsTable, jobsTable, propertiesTable, tenantsTable, usersTable, mediaAttachmentsTable } from "@workspace/db";
+import { db, chemicalProductsTable, chemicalMixturesTable, chemicalMixtureItemsTable, chemicalApplicationsTable, jobsTable, propertiesTable, tenantsTable, usersTable, mediaAttachmentsTable,servicesTable } from "@workspace/db";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
@@ -389,6 +389,13 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
     .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
     .where(and(eq(jobsTable.id, jobId), eq(jobsTable.tenantId, tenantId)));
   if (!jobRow) { res.status(404).json({ error: "Job not found" }); return; }
+  const lineServices=((jobRow.job.lineItems??[]) as Array<{serviceId?:number}>).map(item=>item.serviceId).filter((id):id is number=>Number.isSafeInteger(id));
+  const available=[...new Set([jobRow.job.serviceId,...lineServices].filter((id):id is number=>id!=null))];
+  let applicationServiceId:number|null=req.body.serviceId!=null?Number(req.body.serviceId):(available.length===1?available[0]:null);
+  if((available.length>1&&applicationServiceId==null)||(applicationServiceId!=null&&!available.includes(applicationServiceId))){
+    res.status(400).json({error:"Choose the service on this visit that this chemical application was used for."});return;
+  }
+  const [applicationService]=applicationServiceId?await db.select({name:servicesTable.name}).from(servicesTable).where(and(eq(servicesTable.id,applicationServiceId),eq(servicesTable.tenantId,tenantId))):[];
 
   const {
     mixtureId, productId, volumeApplied, volumeUnit,
@@ -520,6 +527,8 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
 
   const [app] = await db.insert(chemicalApplicationsTable).values({
     tenantId,
+    serviceId:applicationServiceId,
+    serviceName:applicationService?.name??null,
     jobId,
     applicatorId: userId,
     applicatorName: typeof resolvedApplicatorName === "string" ? resolvedApplicatorName.trim() : null,

@@ -1,5 +1,6 @@
 import { formsGuardedJobUpdate,FormError,assertCompletedJobCreationAllowed } from "../lib/jobForms";
 import { paymentGuardedJobInsert, ensureScheduledJobPayment } from "../lib/paymentPolicy";
+import { capacityCheckedJobUpdate } from "../lib/crewCapacity";
 import { creditedInvoiceInsert } from "../lib/customerCredit";
 import { Router, type IRouter } from "express";
 import {publicParts,setJobPart} from '../lib/inventoryCosting';
@@ -211,16 +212,21 @@ function notifyJobAssignment(
 
 /** Returns the completion blocker, if this job's tenant service requires an application. */
 async function chemicalCompletionBlocker(tenantId: number, jobId: number): Promise<string | null> {
-  const [row] = await db.select({ requirements: servicesTable.fieldRequirements })
+  const [row] = await db.select({ requirements: servicesTable.fieldRequirements,lineItems:jobsTable.lineItems,serviceId:jobsTable.serviceId })
     .from(jobsTable)
     .leftJoin(servicesTable, and(eq(jobsTable.serviceId, servicesTable.id), eq(servicesTable.tenantId, tenantId)))
     .where(and(eq(jobsTable.id, jobId), eq(jobsTable.tenantId, tenantId)));
-  if (!normalizeFieldRequirements(row?.requirements).requiresChemicalApplication) return null;
-  const [application] = await db.select({ id: chemicalApplicationsTable.id })
+  const chemicalServices=((row?.lineItems??[]) as Array<{serviceId?:number;description?:string;chemicalTracking?:boolean}>).filter(s=>s.chemicalTracking&&s.serviceId);
+  if (!chemicalServices.length&&!normalizeFieldRequirements(row?.requirements).requiresChemicalApplication) return null;
+  const applications = await db.select({ id: chemicalApplicationsTable.id,serviceId:chemicalApplicationsTable.serviceId })
     .from(chemicalApplicationsTable)
     .where(and(eq(chemicalApplicationsTable.tenantId, tenantId), eq(chemicalApplicationsTable.jobId, jobId)))
-    .limit(1);
-  return chemicalCompletionError(row?.requirements, !!application);
+    ;
+  for(const service of chemicalServices){
+    if(!applications.some(a=>a.serviceId===service.serviceId||(a.serviceId===null&&chemicalServices.length===1&&service.serviceId===row?.serviceId)))
+      return `Log the chemical application for ${service.description??"each chemical service"} before completing this visit.`;
+  }
+  return chemicalCompletionError(row?.requirements, applications.some(a=>a.serviceId===row?.serviceId||a.serviceId===null));
 }
 
 function isValidMonthDay(value: unknown): value is string {
@@ -706,7 +712,7 @@ router.post("/jobs", requireVerifiedStaff, async (req, res): Promise<void> => {
   const callerSuppliedLineItems = Array.isArray(lineItems);
   const callerSuppliedTotal = totalAmount !== undefined && totalAmount !== null && totalAmount !== "";
 
-  const [job] = await paymentGuardedJobInsert(db).values({
+  const [job] = await paymentGuardedJobInsert(db,{actorId:getUserId(req),reason:req.body.capacityOverrideReason}).values({
     tenantId,
     title,
     description: description ?? null,
@@ -976,33 +982,25 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     }
 
     // Update root
-    await db.update(jobsTable)
-      .set(baseUpdate)
-      .where(and(eq(jobsTable.id, rootId), eq(jobsTable.tenantId, tenantId)));
+    await capacityCheckedJobUpdate(and(eq(jobsTable.id,rootId),eq(jobsTable.tenantId,tenantId))!,baseUpdate,{actorId:getUserId(req),reason:req.body.capacityOverrideReason});
 
     if (editScope === "forward") {
       // Update all future instances (status = scheduled, same series)
       const currentIndex = currentJob.recurrenceIndex ?? 0;
-      await db.update(jobsTable)
-        .set(baseUpdate)
-        .where(
+      await capacityCheckedJobUpdate(
           and(
             eq(jobsTable.recurrenceParentId, rootId),
             eq(jobsTable.tenantId, tenantId),
             eq(jobsTable.status, "scheduled"),
             sql`${jobsTable.recurrenceIndex} >= ${currentIndex}`,
-          )
-        );
+          )!,baseUpdate,{actorId:getUserId(req),reason:req.body.capacityOverrideReason});
     } else {
       // All: update every instance
-      await db.update(jobsTable)
-        .set(baseUpdate)
-        .where(
+      await capacityCheckedJobUpdate(
           and(
             eq(jobsTable.recurrenceParentId, rootId),
             eq(jobsTable.tenantId, tenantId),
-          )
-        );
+          )!,baseUpdate,{actorId:getUserId(req),reason:req.body.capacityOverrideReason});
     }
 
     const [updated] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
@@ -1028,10 +1026,8 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     baseUpdate.recurrenceRule = recurrenceRule;
   }
 
-  const [updated] = await formsGuardedJobUpdate(db)
-    .set(baseUpdate)
-    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId), eq(jobsTable.scheduledAt, currentJob.scheduledAt)))
-    .returning();
+  const [updated] = await capacityCheckedJobUpdate(and(eq(jobsTable.id,id),eq(jobsTable.tenantId,tenantId),eq(jobsTable.scheduledAt,currentJob.scheduledAt))!,
+    baseUpdate,{actorId:getUserId(req),reason:req.body.capacityOverrideReason});
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
   if (didChangeAssignment) {

@@ -12,6 +12,7 @@ import type { RecurrenceRule } from './recurrenceRule';
 import type { SupplyItem } from './supplyItem';
 
 export interface JobUpdate {
+  capacityOverrideReason?: string;
   chargeRescheduleFee?: boolean;
   /** @minimum 0 */
   rescheduleFeeAmount?: number;

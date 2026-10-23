@@ -7,6 +7,11 @@
  */
 
 export interface PlanVisitPreview {
+  /** @nullable */
+  crewId?: number | null;
+  roundNumber?: number;
+  serviceNames?: string[];
+  estimatedDuration?: number;
   serviceId: number;
   serviceName: string;
   date: string;

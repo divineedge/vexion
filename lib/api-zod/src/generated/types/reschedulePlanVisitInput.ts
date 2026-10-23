@@ -7,6 +7,7 @@
  */
 
 export interface ReschedulePlanVisitInput {
+  capacityOverrideReason?: string;
   chargeRescheduleFee?: boolean;
   /** @minimum 0 */
   rescheduleFeeAmount?: number;

@@ -23,16 +23,61 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { Plus, Users, Trash2, UserMinus, UserPlus, Edit } from 'lucide-react';
 
+type CapForm = { capHours: string; capMinutes: string; travelBuffer: string };
+
+function fmtMinutes(total: number): string {
+  const h = Math.floor(total / 60); const m = total % 60;
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
+
+function splitCapacity(daily?: number, buffer?: number): CapForm {
+  const d = daily ?? 480;
+  return { capHours: String(Math.floor(d / 60)), capMinutes: String(d % 60), travelBuffer: String(buffer ?? 15) };
+}
+
+/** Returns API fields, or an error message when out of range. */
+function readCapacity(f: CapForm): { dailyCapacityMinutes: number; travelBufferMinutes: number } | string {
+  const h = Number(f.capHours || 0); const m = Number(f.capMinutes || 0); const b = Number(f.travelBuffer || 0);
+  if (![h, m, b].every(n => Number.isInteger(n) && n >= 0)) return 'Capacity and buffer must be whole numbers';
+  const daily = h * 60 + m;
+  if (daily < 1 || daily > 1440) return 'Workday capacity must be between 1 minute and 24 hours';
+  if (b > 240) return 'Travel buffer must be 0–240 minutes';
+  return { dailyCapacityMinutes: daily, travelBufferMinutes: b };
+}
+
+function CapacityFields({ form, onChange, idPrefix }: { form: CapForm; onChange: (patch: Partial<CapForm>) => void; idPrefix: string }) {
+  return (
+    <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+      <p className="text-sm font-medium">Workday capacity</p>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Hours</label>
+          <Input type="number" min={0} max={24} step={1} value={form.capHours} onChange={e => onChange({ capHours: e.target.value })} data-testid={`input-${idPrefix}-capacity-hours`} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Minutes</label>
+          <Input type="number" min={0} max={59} step={5} value={form.capMinutes} onChange={e => onChange({ capMinutes: e.target.value })} data-testid={`input-${idPrefix}-capacity-minutes`} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Travel buffer (min)</label>
+          <Input type="number" min={0} max={240} step={1} value={form.travelBuffer} onChange={e => onChange({ travelBuffer: e.target.value })} data-testid={`input-${idPrefix}-travel-buffer`} />
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">Booking warns when a day's jobs plus the travel buffer between stops would exceed this crew's capacity.</p>
+    </div>
+  );
+}
+
 export default function CrewsPage() {
   const { canManageOffice } = useAuth();
   const qc = useQueryClient();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedCrewId, setSelectedCrewId] = useState<number | null>(null);
-  const [newCrewForm, setNewCrewForm] = useState({ name: '', description: '' });
+  const [newCrewForm, setNewCrewForm] = useState({ name: '', description: '', capHours: '8', capMinutes: '0', travelBuffer: '15' });
   const [addMemberUserId, setAddMemberUserId] = useState('');
   const [editingCrew, setEditingCrew] = useState(false);
-  const [editCrewForm, setEditCrewForm] = useState({ name: '', description: '', managerId: '' });
+  const [editCrewForm, setEditCrewForm] = useState({ name: '', description: '', managerId: '', capHours: '8', capMinutes: '0', travelBuffer: '15' });
 
   const { data: crews, isLoading } = useListCrews({
     query: { queryKey: getListCrewsQueryKey() },
@@ -62,12 +107,14 @@ export default function CrewsPage() {
 
   const handleCreate = () => {
     if (!newCrewForm.name) { toast.error('Crew name is required'); return; }
-    createCrew.mutate({ data: { name: newCrewForm.name, description: newCrewForm.description || undefined } }, {
+    const cap = readCapacity(newCrewForm);
+    if (typeof cap === 'string') { toast.error(cap); return; }
+    createCrew.mutate({ data: { name: newCrewForm.name, description: newCrewForm.description || undefined, ...cap } }, {
       onSuccess: () => {
         toast.success('Crew created');
         qc.invalidateQueries({ queryKey: getListCrewsQueryKey() });
         setCreateOpen(false);
-        setNewCrewForm({ name: '', description: '' });
+        setNewCrewForm({ name: '', description: '', capHours: '8', capMinutes: '0', travelBuffer: '15' });
       },
       onError: () => toast.error('Failed to create crew'),
     });
@@ -79,6 +126,7 @@ export default function CrewsPage() {
       name: selectedCrew.name,
       description: selectedCrew.description ?? '',
       managerId: selectedCrew.managerId ? String(selectedCrew.managerId) : '',
+      ...splitCapacity(selectedCrew.dailyCapacityMinutes, selectedCrew.travelBufferMinutes),
     });
     setEditingCrew(false);
   }, [selectedCrew?.id]);
@@ -88,12 +136,15 @@ export default function CrewsPage() {
       toast.error('Crew name is required');
       return;
     }
+    const cap = readCapacity(editCrewForm);
+    if (typeof cap === 'string') { toast.error(cap); return; }
     updateCrew.mutate({
       id: selectedCrewId,
       data: {
         name: editCrewForm.name.trim(),
         description: editCrewForm.description || undefined,
         managerId: editCrewForm.managerId ? parseInt(editCrewForm.managerId, 10) : null,
+        ...cap,
       },
     }, {
       onSuccess: () => {
@@ -203,6 +254,7 @@ export default function CrewsPage() {
               </CardHeader>
               <CardContent>
                 {crew.description && <p className="text-sm text-muted-foreground mb-3">{crew.description}</p>}
+                <p className="text-xs text-muted-foreground mb-2">{fmtMinutes(crew.dailyCapacityMinutes ?? 480)}/day · {crew.travelBufferMinutes ?? 15} min buffer</p>
                 <div className="flex flex-wrap gap-1">
                   {(crew.members ?? []).slice(0, 4).map((m: { id: number; name: string }) => (
                     <Badge key={m.id} variant="outline" className="text-xs">{m.name}</Badge>
@@ -238,7 +290,7 @@ export default function CrewsPage() {
       )}
 
       {/* Create Crew Sheet */}
-      <Sheet open={createOpen} onOpenChange={open => { if (!open) { setCreateOpen(false); setNewCrewForm({ name: '', description: '' }); } }}>
+      <Sheet open={createOpen} onOpenChange={open => { if (!open) { setCreateOpen(false); setNewCrewForm({ name: '', description: '', capHours: '8', capMinutes: '0', travelBuffer: '15' }); } }}>
         <SheetContent className="w-full sm:max-w-[66vw]">
           <SheetHeader className="pb-4">
             <SheetTitle>New Crew</SheetTitle>
@@ -261,6 +313,7 @@ export default function CrewsPage() {
                 onChange={e => setNewCrewForm(f => ({ ...f, description: e.target.value }))}
               />
             </div>
+            <CapacityFields form={newCrewForm} onChange={patch => setNewCrewForm(f => ({ ...f, ...patch }))} idPrefix="new" />
             <Separator />
             <div className="flex gap-3 justify-end">
               <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
@@ -323,6 +376,7 @@ export default function CrewsPage() {
                             </SelectContent>
                           </Select>
                         </div>
+                        <CapacityFields form={editCrewForm} onChange={patch => setEditCrewForm(f => ({ ...f, ...patch }))} idPrefix="edit" />
                         <div className="flex justify-end gap-2">
                           <Button variant="outline" size="sm" onClick={() => setEditingCrew(false)}>Cancel</Button>
                           <Button size="sm" onClick={handleUpdateCrew} disabled={updateCrew.isPending} data-testid="button-save-crew">
@@ -334,6 +388,7 @@ export default function CrewsPage() {
                       <div>
                         <p className="font-medium">{selectedCrew.name}</p>
                         <p className="text-sm text-muted-foreground">{selectedCrew.description || 'No description'}</p>
+                        <p className="text-xs text-muted-foreground mt-1" data-testid="text-crew-capacity">Workday capacity {fmtMinutes(selectedCrew.dailyCapacityMinutes ?? 480)} · {selectedCrew.travelBufferMinutes ?? 15} min travel buffer between stops</p>
                       </div>
                     )}
                   </div>

@@ -5,15 +5,29 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { PlanRoundServices } from './planRoundServices';
+import type { PlanServiceCrew } from './planServiceCrew';
 import type { PlanVisitScheduleSpacingUnit } from './planVisitScheduleSpacingUnit';
 
 export interface PlanVisitSchedule {
+  alignToPlanId?: number;
+  defaultCrewId?: number;
+  routeTemplateId?: number;
+  capacityOverrideReason?: string;
+  visitServices?: PlanRoundServices[];
+  serviceCrews?: PlanServiceCrew[];
+  chemicalServiceIds?: number[];
+  emailReminder?: boolean;
+  smsReminder?: boolean;
+  pushReminder?: boolean;
+  readonly timeZone?: string;
   /** @pattern ^\d{4}-\d{2}-\d{2}$ */
   firstServiceDate: string;
   /** @pattern ^\d{4}-\d{2}-\d{2}$ */
   lastServiceDate: string;
   /**
-     * @minimum 2
+     * At least two for independent date ranges; one remaining aligned round is allowed.
+     * @minimum 1
      * @maximum 366
      */
   totalVisits: number;

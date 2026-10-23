@@ -9495,8 +9495,73 @@ paths:
               schema: { $ref: "#/components/schemas/InvoiceCardPaymentResult" }
         "403": { description: Office access required }
         "409": { description: Payment unavailable }
+  /portal/push-key:
+    get:
+      operationId: getPortalPushKey
+      tags: [portal]
+      responses:
+        "200":
+          description: Browser push public key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PortalPushKey" }
+  /portal/push-subscription:
+    post:
+      operationId: subscribePortalPush
+      tags: [portal]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PortalPushSubscription" }
+      responses:
+        "200":
+          description: Device registered
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PortalPushStatus" }
+    delete:
+      operationId: unsubscribePortalPush
+      tags: [portal]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PortalPushRemoval" }
+      responses:
+        "200":
+          description: Device unregistered
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PortalPushStatus" }
 components:
   schemas:
+    PortalPushKey:
+      type: object
+      required: [publicKey]
+      properties:
+        publicKey: { type: string }
+    PortalPushStatus:
+      type: object
+      required: [enabled]
+      properties:
+        enabled: { type: boolean }
+    PortalPushRemoval:
+      type: object
+      required: [endpoint]
+      properties:
+        endpoint: { type: string }
+    PortalPushSubscription:
+      type: object
+      required: [endpoint, keys]
+      properties:
+        endpoint: { type: string }
+        keys:
+          type: object
+          required: [p256dh, auth]
+          properties:
+            p256dh: { type: string }
+            auth: { type: string }
     CardPaymentChoice:
       type: object
       required: [saveCard, authorizationAccepted]
@@ -10886,6 +10951,12 @@ components:
       type: object
       required: [serviceId, serviceName, date, idealDate, clustered]
       properties:
+        crewId: { type: ["integer", "null"] }
+        roundNumber: { type: integer }
+        serviceNames:
+          type: array
+          items: { type: string }
+        estimatedDuration: { type: integer }
         serviceId:
           type: integer
         serviceName:
@@ -10918,6 +10989,11 @@ components:
       type: object
       required: [template, visits]
       properties:
+        capacityWarnings:
+          type: array
+          items: { type: string }
+        visitSchedule:
+          $ref: "#/components/schemas/PlanVisitSchedule"
         timeZone:
           type: string
         template:
@@ -10927,10 +11003,40 @@ components:
           items:
             $ref: "#/components/schemas/PlanVisitPreview"
 
+    PlanRoundServices:
+      type: object
+      required: [visitNumber, serviceIds]
+      properties:
+        visitNumber: { type: integer, minimum: 1 }
+        serviceIds:
+          type: array
+          items: { type: integer }
+    PlanServiceCrew:
+      type: object
+      required: [serviceId, crewId]
+      properties:
+        serviceId: { type: integer }
+        crewId: { type: integer }
     PlanVisitSchedule:
       type: object
       required: [firstServiceDate, lastServiceDate, totalVisits, spacingUnit, preferredWeekday]
       properties:
+        alignToPlanId: { type: integer }
+        defaultCrewId: { type: integer }
+        routeTemplateId: { type: integer }
+        capacityOverrideReason: { type: string }
+        visitServices:
+          type: array
+          items: { $ref: "#/components/schemas/PlanRoundServices" }
+        serviceCrews:
+          type: array
+          items: { $ref: "#/components/schemas/PlanServiceCrew" }
+        chemicalServiceIds:
+          type: array
+          items: { type: integer }
+        emailReminder: { type: boolean }
+        smsReminder: { type: boolean }
+        pushReminder: { type: boolean }
         timeZone:
           type: string
           readOnly: true
@@ -10942,8 +11048,9 @@ components:
           pattern: '^\d{4}-\d{2}-\d{2}$'
         totalVisits:
           type: integer
-          minimum: 2
+          minimum: 1
           maximum: 366
+          description: At least two for independent date ranges; one remaining aligned round is allowed.
         spacingUnit:
           type: string
           enum: [weeks, days]
@@ -12212,6 +12319,8 @@ components:
       type: object
       required: [id, name, quantity, unitPrice, total]
       properties:
+        serviceId: { type: integer }
+        chemicalTracking: { type: boolean }
         id:
           type: integer
         name:
@@ -12457,6 +12566,7 @@ components:
       type: object
       required: [title, scheduledAt]
       properties:
+        capacityOverrideReason: { type: string }
         title:
           type: string
         description:
@@ -12510,6 +12620,7 @@ components:
     JobUpdate:
       type: object
       properties:
+        capacityOverrideReason: { type: string }
         chargeRescheduleFee:
           type: boolean
         rescheduleFeeAmount:
@@ -12565,6 +12676,8 @@ components:
       type: object
       required: [id, tenantId, name, createdAt]
       properties:
+        dailyCapacityMinutes: { type: integer }
+        travelBufferMinutes: { type: integer }
         id:
           type: integer
         tenantId:
@@ -12610,6 +12723,8 @@ components:
       type: object
       required: [name]
       properties:
+        dailyCapacityMinutes: { type: integer, minimum: 1, maximum: 1440 }
+        travelBufferMinutes: { type: integer, minimum: 0, maximum: 240 }
         name:
           type: string
         description:
@@ -12620,6 +12735,8 @@ components:
     CrewUpdate:
       type: object
       properties:
+        dailyCapacityMinutes: { type: integer, minimum: 1, maximum: 1440 }
+        travelBufferMinutes: { type: integer, minimum: 0, maximum: 240 }
         name:
           type: string
         description:
@@ -14359,6 +14476,7 @@ components:
       type: object
       required: [newScheduledAt]
       properties:
+        capacityOverrideReason: { type: string }
         chargeRescheduleFee:
           type: boolean
         rescheduleFeeAmount:
@@ -14629,6 +14747,7 @@ components:
       type: object
       required: [newScheduledAt]
       properties:
+        capacityOverrideReason: { type: string }
         chargeRescheduleFee:
           type: boolean
         rescheduleFeeAmount:
@@ -15328,6 +15447,8 @@ components:
       type: object
       required: [id, tenantId, jobId, volumeApplied, volumeUnit, appliedAt, createdAt, updatedAt, breakdown]
       properties:
+        serviceId: { type: ["integer", "null"] }
+        serviceName: { type: ["string", "null"] }
         id:
           type: integer
         tenantId:
@@ -15389,6 +15510,7 @@ components:
         - required: [mixtureId]
         - required: [productId]
       properties:
+        serviceId: { type: integer }
         mixtureId:
           type: integer
         productId:

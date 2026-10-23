@@ -4,10 +4,15 @@ import {
   useListCustomerPlans, getListCustomerPlansQueryKey,
   useListPlanTemplates, getListPlanTemplatesQueryKey,
   usePreviewCustomerPlan, useCreateCustomerPlan,
+  useListCrews, getListCrewsQueryKey,
+  useListRouteTemplates, getListRouteTemplatesQueryKey,
   customFetch,
 } from '@workspace/api-client-react';
 import type { PlanVisitSchedule } from '@workspace/api-client-react';
 import { PlanVisitScheduleFields, spacingSummary, formatDateKey, addMonthsToKey, weekdayOfKey } from './PlanVisitScheduleFields';
+import { PlanProgramFields, DEFAULT_PROGRAM, programToSchedule, programProblems, type ProgramConfig } from './PlanProgramFields';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import { apiErrorMessage } from '@/components/schedule/RescheduleFeeDialog';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
@@ -57,6 +62,11 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
   const [priceOverride, setPriceOverride] = useState<string>('');
   const [priceResolution, setPriceResolution] = useState<PriceResolution | null>(null);
   const [resolvingPrice, setResolvingPrice] = useState(false);
+  const [program, setProgram] = useState<ProgramConfig>(DEFAULT_PROGRAM);
+  const [overrideChecked, setOverrideChecked] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
+  const [appliedOverride, setAppliedOverride] = useState('');
+  const [lastWarnings, setLastWarnings] = useState<string[]>([]);
 
   const { data: plans, isLoading } = useListCustomerPlans(
     { customerId },
@@ -64,6 +74,11 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
   );
   const { data: templates } = useListPlanTemplates({ query: { queryKey: getListPlanTemplatesQueryKey() } });
   const activeTemplates = useMemo(() => (templates ?? []).filter(t => t.isActive), [templates]);
+  const { data: crews } = useListCrews({ query: { queryKey: getListCrewsQueryKey(), enabled: sellOpen } });
+  const { data: routeTemplates } = useListRouteTemplates(undefined, { query: { queryKey: getListRouteTemplatesQueryKey(), enabled: sellOpen } });
+  // Tenant-wide plans (not customer-filtered) for "join an existing program".
+  const { data: allPlans } = useListCustomerPlans(undefined, { query: { queryKey: getListCustomerPlansQueryKey(), enabled: sellOpen && program.alignEnabled } });
+  const crewName = (id?: number | null) => (id == null ? null : (crews ?? []).find(c => c.id === id)?.name ?? `Crew #${id}`);
 
   const previewMutation = usePreviewCustomerPlan();
   const createMutation = useCreateCustomerPlan();
@@ -110,13 +125,28 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
     }
   }, [templateId]);
 
-  const visitSchedule: PlanVisitSchedule | undefined = mode === 'range' ? { ...sched, firstServiceDate: startDate } : undefined;
-  const requestKey = JSON.stringify({ templateId, propertyId, startDate, visitSchedule: visitSchedule ?? null });
-  const scheduleValid = mode === 'interval' || (visitSchedule != null && spacingSummary(visitSchedule) != null && visitSchedule.totalVisits <= 366);
+  const templateServices = selectedTemplate?.services ?? [];
+  const alignCandidates = useMemo(
+    () => (allPlans ?? []).filter(p => String(p.templateId) === templateId && p.status === 'active'),
+    [allPlans, templateId],
+  );
+  const baseSchedule: PlanVisitSchedule | undefined = mode === 'range'
+    ? { ...sched, firstServiceDate: startDate, ...programToSchedule(program, templateServices, sched.totalVisits) }
+    : undefined;
+  const baseKey = JSON.stringify({ templateId, propertyId, startDate, visitSchedule: baseSchedule ?? null });
+  const visitSchedule: PlanVisitSchedule | undefined = baseSchedule && appliedOverride
+    ? { ...baseSchedule, capacityOverrideReason: appliedOverride }
+    : baseSchedule;
+  const requestKey = JSON.stringify({ base: baseKey, override: appliedOverride });
+  const programProblem = mode === 'range' ? programProblems(program, sched.totalVisits) : null;
+  const scheduleValid = mode === 'interval' || (visitSchedule != null && spacingSummary(visitSchedule) != null && visitSchedule.totalVisits <= 366 && !programProblem);
   const previewFresh = !!previewMutation.data && previewedKey === requestKey && !previewMutation.isPending && !previewMutation.isError;
+  const previewWarnings = previewFresh ? (previewMutation.data?.capacityWarnings ?? []) : [];
+  const overrideReady = previewWarnings.length === 0 || appliedOverride.length > 0;
+  const canConfirm = previewFresh && overrideReady;
 
-  // Any scheduling/template/property change invalidates the preview
-  useEffect(() => { previewMutation.reset(); setPreviewedKey(null); }, [requestKey]);
+  // Any scheduling/template/property/program change invalidates the preview and any override
+  useEffect(() => { previewMutation.reset(); setPreviewedKey(null); setAppliedOverride(''); setLastWarnings([]); setOverrideChecked(false); setOverrideReason(''); }, [baseKey]);
 
   // Seed count and default last date from the template when it changes
   useEffect(() => {
@@ -137,22 +167,34 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
     setPriceOverride('');
     setPriceResolution(null);
     setResolvingPrice(false);
+    setProgram(DEFAULT_PROGRAM);
+    setOverrideChecked(false); setOverrideReason(''); setAppliedOverride(''); setLastWarnings([]);
     previewMutation.reset();
     setSellOpen(true);
   };
 
-  const runPreview = () => {
+  const runPreview = (override?: string) => {
     if (!templateId || !propertyId) { toast.error('Choose a plan template and property'); return; }
+    if (programProblem) { toast.error(programProblem); return; }
     if (!scheduleValid) { toast.error('Fix the service date range first'); return; }
-    const key = requestKey;
+    const ov = override ?? appliedOverride;
+    const vs = baseSchedule ? (ov ? { ...baseSchedule, capacityOverrideReason: ov } : baseSchedule) : undefined;
+    const key = JSON.stringify({ base: baseKey, override: ov });
     previewMutation.mutate(
-      { data: { templateId: Number(templateId), propertyId: Number(propertyId), startDate, ...(visitSchedule ? { visitSchedule } : {}) } },
-      { onSuccess: () => setPreviewedKey(key) },
+      { data: { templateId: Number(templateId), propertyId: Number(propertyId), startDate, ...(vs ? { visitSchedule: vs } : {}) } },
+      { onSuccess: (res) => { setPreviewedKey(key); setLastWarnings(res.capacityWarnings ?? []); } },
     );
   };
 
+  const applyOverride = () => {
+    const reason = overrideReason.trim();
+    if (!overrideChecked || !reason) return;
+    setAppliedOverride(reason);
+    runPreview(reason);
+  };
+
   const confirmSale = () => {
-    if (!templateId || !propertyId || !previewFresh) return;
+    if (!templateId || !propertyId || !canConfirm) return;
     const preview = previewMutation.data;
     const finalPrice = parseFloat(priceOverride) || selectedTemplate?.price || 0;
     createMutation.mutate({
@@ -218,7 +260,7 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
       )}
 
       <Dialog open={sellOpen} onOpenChange={setSellOpen}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Sell a Service Plan</DialogTitle>
             <DialogDescription>Preview the auto-generated visit schedule before activating the plan.</DialogDescription>
@@ -278,7 +320,30 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
               </div>
             </div>
             {mode === 'range' && (
-              <PlanVisitScheduleFields value={{ ...sched, firstServiceDate: startDate }} onChange={v => { setStartDate(v.firstServiceDate); setSched(v); }} />
+              <>
+                {program.alignEnabled ? (
+                  <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground" data-testid="text-align-dates">
+                    Visit dates come from the chosen plan's remaining rounds and continue its treatment sequence (it does not restart at treatment 1). One remaining round is enough. Preview to see the resolved dates and count.
+                  </div>
+                ) : (
+                  <PlanVisitScheduleFields value={{ ...sched, firstServiceDate: startDate }} onChange={v => { setStartDate(v.firstServiceDate); setSched(v); }} />
+                )}
+                {templateId && (
+                  <PlanProgramFields
+                    value={program}
+                    onChange={setProgram}
+                    services={templateServices}
+                    crews={crews ?? []}
+                    routes={routeTemplates ?? []}
+                    alignCandidates={alignCandidates}
+                    totalVisits={sched.totalVisits}
+                  />
+                )}
+                {programProblem && <p className="text-xs text-destructive" data-testid="text-program-problem">{programProblem}</p>}
+              </>
+            )}
+            {mode === 'interval' && (
+              <p className="text-xs text-muted-foreground">Crew, route, per-round services and reminders are set with the date-range option.</p>
             )}
 
             {/* Warning: area-based template selected but property has no satellite measurements */}
@@ -334,7 +399,7 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
               </div>
             )}
 
-            <Button variant="outline" title="Preview the visit schedule this plan will generate before confirming" onClick={runPreview} disabled={previewMutation.isPending || !templateId || !propertyId || !scheduleValid} className="w-full">
+            <Button variant="outline" title="Preview the visit schedule this plan will generate before confirming" onClick={() => runPreview()} disabled={previewMutation.isPending || !templateId || !propertyId || !scheduleValid} className="w-full">
               {previewMutation.isPending ? 'Building preview...' : 'Preview Schedule'}
             </Button>
 
@@ -345,28 +410,91 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
               </div>
             )}
 
-            {previewMutation.data && previewFresh && (
-              <>
-                <Separator />
-                <div className="space-y-2 max-h-56 overflow-y-auto">
-                  <p className="text-sm font-medium">{previewMutation.data.visits.length} visit(s) {mode === 'range' ? `from ${formatDateKey(startDate)} to ${formatDateKey(sched.lastServiceDate)}` : 'this period'}</p>
-                  {previewMutation.data.visits.map((v, i) => (
-                    <div key={i} className="flex items-center justify-between text-sm border rounded-md px-3 py-2">
-                      <span>{v.serviceName}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground">{formatDateKey(v.date, undefined, (previewMutation.data as { timeZone?: string | null }).timeZone)}</span>
-                        {v.clustered && <Badge variant="outline" className="text-xs">Clustered nearby</Badge>}
-                      </div>
-                    </div>
-                  ))}
+            {lastWarnings.length > 0 && !previewMutation.isPending && (
+              <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900" data-testid="panel-capacity-warnings">
+                <p className="flex items-center gap-1.5 font-medium"><AlertTriangle className="w-4 h-4" />Capacity warnings</p>
+                <ul className="list-disc pl-5 text-xs space-y-0.5">
+                  {lastWarnings.map((w, i) => <li key={i} data-testid={`text-capacity-warning-${i}`}>{w}</li>)}
+                </ul>
+                <p className="text-xs">Budgets count every other job on that crew and day plus travel buffer, not just this plan. Move the dates or pick another crew above, then preview again.</p>
+                <div className="flex flex-wrap gap-2">
+                  {mode === 'range' && !program.alignEnabled && (
+                    <Button type="button" size="sm" variant="outline" className="h-7 text-xs bg-white" data-testid="button-shift-week"
+                      onClick={() => { const n = addDaysToKey(startDate, 7); const l = addDaysToKey(sched.lastServiceDate, 7); setStartDate(n); setSched(s => ({ ...s, firstServiceDate: n, lastServiceDate: l })); }}>
+                      Shift all dates +1 week
+                    </Button>
+                  )}
+                  {(crews ?? []).length > 1 && (
+                    <Select value={program.crewId || 'none'} onValueChange={v => setProgram(p => ({ ...p, crewId: v === 'none' ? '' : v }))}>
+                      <SelectTrigger className="h-7 w-48 text-xs bg-white" data-testid="select-warning-crew"><SelectValue placeholder="Try another crew" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No default crew</SelectItem>
+                        {(crews ?? []).map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
-              </>
+                {mode === 'range' && (
+                  <div className="space-y-1.5 border-t border-amber-200 pt-2">
+                    <label className="flex items-start gap-2 text-xs cursor-pointer">
+                      <Checkbox checked={overrideChecked} onCheckedChange={v => setOverrideChecked(v === true)} className="mt-0.5 bg-white" data-testid="checkbox-plan-override" />
+                      <span>Manager override: book these visits even though the crew is over capacity.</span>
+                    </label>
+                    <Textarea rows={2} className="bg-white text-xs" placeholder="Reason (required)" value={overrideReason} disabled={!overrideChecked}
+                      onChange={e => setOverrideReason(e.target.value)} data-testid="input-plan-override-reason" />
+                    <div className="flex items-center gap-2">
+                      <Button type="button" size="sm" className="h-7 text-xs" disabled={!overrideChecked || !overrideReason.trim() || previewMutation.isPending} onClick={applyOverride} data-testid="button-apply-override">
+                        Apply override and re-preview
+                      </Button>
+                      {appliedOverride && <span className="text-xs">Override applied{appliedOverride !== overrideReason.trim() ? ' (reason edited, re-apply to use it)' : ''}.</span>}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
+
+            {previewMutation.data && previewFresh && (() => {
+              const pv = previewMutation.data;
+              const tz = pv.timeZone ?? null;
+              const resolved = pv.visitSchedule;
+              return (
+                <>
+                  <Separator />
+                  <div className="space-y-2 max-h-72 overflow-y-auto">
+                    <p className="text-sm font-medium" data-testid="text-preview-summary">
+                      {pv.visits.length} visit(s) {mode === 'range'
+                        ? resolved ? `from ${formatDateKey(resolved.firstServiceDate)} to ${formatDateKey(resolved.lastServiceDate)}${program.alignEnabled ? ` · ${resolved.totalVisits} remaining round(s), continuing the source plan's treatment sequence` : ''}` : `from ${formatDateKey(startDate)} to ${formatDateKey(sched.lastServiceDate)}`
+                        : 'this period'}
+                    </p>
+                    {pv.visits.map((v, i) => (
+                      <div key={i} className="flex items-center justify-between gap-3 text-sm border rounded-md px-3 py-2" data-testid={`row-preview-visit-${i}`}>
+                        <div className="min-w-0">
+                          <span className="flex items-center gap-1.5">
+                            {v.roundNumber != null && <Badge variant="secondary" className="text-[10px] px-1.5">R{v.roundNumber}</Badge>}
+                            <span className="truncate">{(v.serviceNames && v.serviceNames.length ? v.serviceNames : [v.serviceName]).join(' + ')}</span>
+                          </span>
+                          <span className="block text-xs text-muted-foreground">
+                            {crewName(v.crewId) ?? 'No crew'}{v.estimatedDuration ? ` · ${v.estimatedDuration} min` : ''}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-muted-foreground">{formatDateKey(v.date, undefined, tz)}</span>
+                          {v.clustered && <Badge variant="outline" className="text-xs">Clustered nearby</Badge>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {previewWarnings.length > 0 && !appliedOverride && (
+                    <p className="text-xs text-amber-700" data-testid="text-confirm-blocked">Resolve the capacity warnings or apply a manager override to activate.</p>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           <DialogFooter>
             <Button variant="outline" title="Cancel and close the plan sale dialog" onClick={() => setSellOpen(false)}>Cancel</Button>
-            <Button title="Confirm the plan sale and activate it for this customer" onClick={confirmSale} disabled={!previewFresh || createMutation.isPending}>
+            <Button title="Confirm the plan sale and activate it for this customer" onClick={confirmSale} disabled={!canConfirm || createMutation.isPending}>
               {createMutation.isPending ? 'Activating...' : 'Confirm & Activate Plan'}
             </Button>
           </DialogFooter>

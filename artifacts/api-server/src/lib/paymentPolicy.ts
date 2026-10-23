@@ -2,6 +2,7 @@ import { db, tenantsTable, servicesTable, customersTable, jobsTable, estimatesTa
 import { and, eq, sql, inArray } from "drizzle-orm";
 import { firstMatchingDepositRule, validateDepositRules, type DepositRule } from "./companyDepositRules";
 import { creditBalance, creditedInvoiceInsert, invoiceBalance } from "./customerCredit";
+import { enforceCrewCapacity,type CapacityApproval } from "./crewCapacity";
 import { invoiceDocumentDefaults } from "./invoiceDocumentDefaults";
 import { randomUUID } from "node:crypto";
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -116,13 +117,14 @@ export async function ensureScheduledJobPayment(tx: Tx, job: typeof jobsTable.$i
   return { ...job, invoiceId: invoice.id };
 }
 /** Every production job insertion goes through the same transactional scheduling/payment boundary. */
-export function paymentGuardedJobInsert(handle: Tx | typeof db) {
+export function paymentGuardedJobInsert(handle: Tx | typeof db,capacity:CapacityApproval={}) {
   return { values(input: typeof jobsTable.$inferInsert) {
     const promise = handle.transaction(async tx => {
       // Historical completed/cancelled imports do not place work on the schedule.
       if (["completed","cancelled"].includes(input.status ?? "")) return tx.insert(jobsTable).values(input).returning();
-      await schedulingPaymentCheck(tx, input);
-      const [job] = await tx.insert(jobsTable).values(input).returning();
+      const checked=await enforceCrewCapacity(tx,input,capacity);
+      await schedulingPaymentCheck(tx, checked);
+      const [job] = await tx.insert(jobsTable).values(checked).returning();
       return [await ensureScheduledJobPayment(tx, job)];
     });
     return Object.assign(promise, { returning: (..._args: unknown[]) => promise });

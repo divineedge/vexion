@@ -13,6 +13,7 @@ import { eq, and, or, inArray, isNull } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { logger } from "./logger";
 import { sendSms, type SmsProviderConfig } from "./smsProvider";
+import { sendCustomerVisitPush } from "./customerPush";
 import { sendEmail, buildReminderEmailBody, buildReminderSmsBody, applyTemplate, type EmailProviderConfig } from "./emailProvider";
 
 interface RemindersSent {
@@ -89,7 +90,7 @@ async function processReminders() {
   for (const row of jobs) {
     const { job, customer, tenant, propertyAddress } = row;
     if (!customer || !tenant) continue;
-    if (customer.smsOptOut && customer.emailOptOut) continue;
+    if (customer.smsOptOut && customer.emailOptOut && !job.pushReminderEnabled) continue;
 
     const remindersSent = (job.remindersSent as RemindersSent) ?? {};
     const msSinceNow = job.scheduledAt.getTime() - now.getTime();
@@ -183,7 +184,7 @@ async function sendReminder(params: {
   }
 
   // Send email if customer has an email and hasn't opted out
-  if (customer.email && !customer.emailOptOut) {
+  if (customer.email && !customer.emailOptOut && job.emailReminderEnabled) {
     const defaultEmail = buildReminderEmailBody({ customerName: firstName, jobTitle: job.title, scheduledAt: job.scheduledAt, propertyAddress, companyName });
     const subject = notifTemplates.serviceReminderEmailSubject ? applyTemplate(notifTemplates.serviceReminderEmailSubject, templateVars) : defaultEmail.subject;
     const body = notifTemplates.serviceReminderEmailBody ? applyTemplate(notifTemplates.serviceReminderEmailBody, templateVars) : defaultEmail.body;
@@ -214,6 +215,13 @@ async function sendReminder(params: {
     }
   }
 
+  if(job.pushReminderEnabled){
+    try{
+      const pushed=await sendCustomerVisitPush(tenant.id,customer.id,`${tenant.name}: upcoming service`,`${job.title} is scheduled for ${new Intl.DateTimeFormat("en-US",{timeZone:tenant.timezone,dateStyle:"medium"}).format(job.scheduledAt)}. Please prepare your property for the visit.`);
+      if(pushed.sent)results.push("push");
+      if(pushed.failed)failures.push("push: a device could not receive this reminder");
+    }catch{failures.push("push: delivery unavailable");}
+  }
   // Update the timestamp on the job now that we've attempted the send.
   // The sent flag was already set atomically by claimReminderSlot before we sent.
   const sentAtField = reminderType === "7d" ? "sentAt7d" : "sentAt24h";

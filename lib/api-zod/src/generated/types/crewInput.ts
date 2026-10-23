@@ -7,6 +7,16 @@
  */
 
 export interface CrewInput {
+  /**
+     * @minimum 1
+     * @maximum 1440
+     */
+  dailyCapacityMinutes?: number;
+  /**
+     * @minimum 0
+     * @maximum 240
+     */
+  travelBufferMinutes?: number;
   name: string;
   description?: string;
   /** @nullable */

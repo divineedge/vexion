@@ -7,6 +7,8 @@
  */
 
 export interface JobLineItem {
+  serviceId?: number;
+  chemicalTracking?: boolean;
   id: number;
   name: string;
   /** @nullable */

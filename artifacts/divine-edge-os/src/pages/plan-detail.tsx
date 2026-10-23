@@ -5,7 +5,9 @@ import {
   useGetCustomerPlan, getGetCustomerPlanQueryKey,
   useUpdateCustomerPlan, useRenewCustomerPlan, useCancelPlanVisit,
   useReschedulePlanVisit, useListUsers, useUpdateVisit,
+  useListCrews, getListCrewsQueryKey, useListRouteTemplates, getListRouteTemplatesQueryKey,
 } from '@workspace/api-client-react';
+import { CapacityOverrideDialog, isCapacityConflict, capacityConflictMessage, capacityConflictWarnings } from '@/components/schedule/CapacityOverrideDialog';
 import { customFetch } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -86,6 +88,10 @@ export default function PlanDetailPage() {
   // Sync notes value when plan loads
   React.useEffect(() => { if (plan) { setNotesVal(plan.notes ?? ''); setEditingNotes(false); } }, [plan?.id]);
   const { data: users = [] } = useListUsers();
+  const { data: crews = [] } = useListCrews({ query: { queryKey: getListCrewsQueryKey() } });
+  const { data: routeTemplates = [] } = useListRouteTemplates(undefined, { query: { queryKey: getListRouteTemplatesQueryKey() } });
+  const [capConflict, setCapConflict] = useState<null | { choice: RescheduleFeeChoice; message: string; warnings: string[] }>(null);
+  const [capError, setCapError] = useState<string | null>(null);
 
   // Fetch the current resolved price from the template's pricing matrix so staff
   // can see what the next renewal will cost even if property areas changed.
@@ -178,14 +184,16 @@ export default function PlanDetailPage() {
     setVisitFeeAskOpen(true);
   };
 
-  const submitRescheduleVisit = (choice: RescheduleFeeChoice) => {
+  const submitRescheduleVisit = (choice: RescheduleFeeChoice, capacityOverrideReason?: string) => {
     if (!rescheduleVisitId || !rescheduleDate) return;
     // Keep the visit's original time of day in the tenant timezone (DST-aware).
     const tz = tenantSettings?.timezone ?? null;
     const newScheduledAt = rescheduleOriginalAt
       ? moveToDay(rescheduleOriginalAt, rescheduleDate, tz).toISOString()
       : moveToDay(new Date().toISOString(), rescheduleDate, tz).toISOString();
-    const data: { newScheduledAt: string; assigneeId?: number | null } & RescheduleFeeChoice = { newScheduledAt, ...choice };
+    // capacityOverrideReason is accepted by the API even though this endpoint's generated type predates it.
+    const data: { newScheduledAt: string; assigneeId?: number | null; capacityOverrideReason?: string } & RescheduleFeeChoice = { newScheduledAt, ...choice };
+    if (capacityOverrideReason) data.capacityOverrideReason = capacityOverrideReason;
     if (rescheduleAssigneeId === '_unassign') {
       data.assigneeId = null;
     } else if (rescheduleAssigneeId !== '_keep') {
@@ -193,6 +201,7 @@ export default function PlanDetailPage() {
     }
     rescheduleVisitMutation.mutate({ id: planId, jobId: rescheduleVisitId, data }, {
       onSuccess: () => {
+        setCapConflict(null); setCapError(null);
         toast.success(choice.chargeRescheduleFee ? `Visit rescheduled, $${choice.rescheduleFeeAmount.toFixed(2)} fee added` : 'Visit rescheduled, no fee');
         setVisitFeeAskOpen(false);
         invalidate();
@@ -200,7 +209,14 @@ export default function PlanDetailPage() {
         setRescheduleDate('');
         setRescheduleAssigneeId('_keep');
       },
-      onError: (err) => setVisitFeeError(apiErrorMessage(err, 'Failed to reschedule visit.')),
+      onError: (err) => {
+        if (isCapacityConflict(err)) {
+          if (capacityOverrideReason) setCapError(apiErrorMessage(err, 'Override was not accepted.'));
+          else { setVisitFeeAskOpen(false); setCapConflict({ choice, message: capacityConflictMessage(err), warnings: capacityConflictWarnings(err) }); }
+          return;
+        }
+        setVisitFeeError(apiErrorMessage(err, 'Failed to reschedule visit.'));
+      },
     });
   };
 
@@ -352,6 +368,47 @@ export default function PlanDetailPage() {
               </div>
               {sum && <p className="text-xs text-muted-foreground">{sum.text}.</p>}
               <p className="text-xs text-muted-foreground">Visit dates don't change billing and don't restart when billing renews. Reschedule individual visits below if needed.</p>
+              {(() => {
+                const crew = vs.defaultCrewId != null ? crews.find(c => c.id === vs.defaultCrewId) : undefined;
+                const route = vs.routeTemplateId != null ? routeTemplates.find(r => r.id === vs.routeTemplateId) : undefined;
+                const nextVisit = [...plan.visits].filter(x => x.status === 'scheduled' && new Date(x.scheduledAt) >= new Date()).sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))[0];
+                const nextKey = nextVisit ? nextVisit.scheduledAt.slice(0, 10) : '';
+                const channels = [vs.emailReminder !== false && 'Email', vs.smsReminder && 'SMS', vs.pushReminder && 'Push'].filter(Boolean) as string[];
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm border-t pt-3" data-testid="panel-plan-program">
+                    <div>
+                      <p className="text-muted-foreground text-xs">Crew</p>
+                      <p className="font-medium" data-testid="text-plan-crew">{crew?.name ?? (vs.defaultCrewId != null ? `Crew #${vs.defaultCrewId}` : 'No default crew')}</p>
+                      {crew && <p className="text-xs text-muted-foreground">{Math.floor((crew.dailyCapacityMinutes ?? 480) / 60)}h{(crew.dailyCapacityMinutes ?? 480) % 60 ? ` ${(crew.dailyCapacityMinutes ?? 480) % 60}m` : ''}/day · {crew.travelBufferMinutes ?? 15} min buffer</p>}
+                      {(vs.serviceCrews?.length ?? 0) > 0 && <p className="text-xs text-muted-foreground">{vs.serviceCrews!.length} service-specific crew override(s)</p>}
+                      <Link href="/crews" className="text-xs text-primary hover:underline" data-testid="link-plan-crews">Manage crews</Link>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground text-xs">Route</p>
+                      {route ? (
+                        <>
+                          <p className="font-medium" data-testid="text-plan-route">{route.name}</p>
+                          <p className="text-xs text-muted-foreground capitalize">{WEEKDAYS[route.dayOfWeek]} · {route.frequency.replace(/_/g, ' ')}{route.divisionName ? ` · ${route.divisionName}` : ''}</p>
+                          <Link href={nextKey ? `/routes?routeTemplateId=${route.id}&date=${nextKey}` : '/routes'} className="text-xs text-primary hover:underline" data-testid="link-plan-route">
+                            {nextKey ? `Open route day ${formatDateKey(nextKey, { month: 'short', day: 'numeric' })} to reorder` : 'Open routes'}
+                          </Link>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-medium">{vs.routeTemplateId != null ? `Route #${vs.routeTemplateId}` : 'Not on a route'}</p>
+                          <Link href={nextKey ? `/routes?date=${nextKey}` : '/routes'} className="text-xs text-primary hover:underline">Open routes</Link>
+                        </>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground text-xs">Reminders</p>
+                      <p className="font-medium">{channels.length ? channels.join(', ') : 'Off'}</p>
+                      <p className="text-xs text-muted-foreground">7 days and 24 hours ahead · customer opt-outs respected</p>
+                      {(vs.chemicalServiceIds?.length ?? 0) > 0 && <p className="text-xs text-muted-foreground">{vs.chemicalServiceIds!.length} service(s) with chemical tracking</p>}
+                    </div>
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
         );
@@ -660,6 +717,15 @@ export default function PlanDetailPage() {
         error={visitFeeError}
         onConfirm={submitRescheduleVisit}
         onCancel={() => { setVisitFeeAskOpen(false); setVisitFeeError(null); }}
+      />
+      <CapacityOverrideDialog
+        open={capConflict != null}
+        message={capConflict?.message ?? ''}
+        warnings={capConflict?.warnings}
+        pending={rescheduleVisitMutation.isPending}
+        error={capError}
+        onCancel={() => { setCapConflict(null); setCapError(null); }}
+        onOverride={reason => { if (capConflict) { setCapError(null); submitRescheduleVisit(capConflict.choice, reason); } }}
       />
 
       {/* ── Cancel Visit Dialog ── */}

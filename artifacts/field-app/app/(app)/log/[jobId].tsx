@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -512,6 +512,20 @@ export default function LogApplicationScreen() {
 
   // Modal state
   const [showMixturePicker, setShowMixturePicker] = useState(false);
+  const [showServicePicker, setShowServicePicker] = useState(false);
+  const [pickedServiceId, setPickedServiceId] = useState<number | null>(null);
+  // Services on this job eligible for a chemical record: primary service + line-item services.
+  const jobServices = useMemo(() => {
+    const out: Array<{ id: number; name: string }> = [];
+    const j = job as any;
+    if (j?.serviceId) out.push({ id: j.serviceId, name: j.serviceName ?? `Service #${j.serviceId}` });
+    for (const li of (j?.lineItems ?? []) as Array<{ serviceId?: number | null; serviceName?: string | null; name?: string }>) {
+      if (li.serviceId && !out.some(o => o.id === li.serviceId)) out.push({ id: li.serviceId, name: li.serviceName ?? li.name ?? `Service #${li.serviceId}` });
+    }
+    return out;
+  }, [job]);
+  const effectiveServiceId = jobServices.length === 1 ? jobServices[0].id : pickedServiceId;
+  const effectiveServiceName = jobServices.find(sv => sv.id === effectiveServiceId)?.name ?? '';
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [showUnitPicker, setShowUnitPicker] = useState(false);
   const [showAreaUnitPicker, setShowAreaUnitPicker] = useState(false);
@@ -540,6 +554,7 @@ export default function LogApplicationScreen() {
     if (!volumeApplied || isNaN(Number(volumeApplied)) || Number(volumeApplied) <= 0) {
       e.volumeApplied = 'Enter a valid volume';
     }
+    if (jobServices.length > 1 && !pickedServiceId) e.serviceId = 'Choose which service this application was for';
     if (mode === 'mixture' && !selectedMixture) e.mixture = 'Select a mixture';
     if (mode === 'product' && !selectedProduct) e.product = 'Select a product';
     if (!appliedAt || Number.isNaN(new Date(appliedAt).getTime())) e.appliedAt = 'Enter a valid application date and time';
@@ -570,7 +585,7 @@ export default function LogApplicationScreen() {
   }, [
     volumeApplied, mode, selectedMixture, selectedProduct, appliedAt, treatedArea,
     treatedZoneName, targetPest, applicationMethod, windSpeed, windDirection,
-    temperature, applicatorName, licenseNumber, notes, chemicalRequirements,
+    temperature, applicatorName, licenseNumber, notes, chemicalRequirements, jobServices, pickedServiceId,
   ]);
 
   const handleSubmit = useCallback(async () => {
@@ -590,6 +605,7 @@ export default function LogApplicationScreen() {
         volumeUnit,
         appliedAt: new Date(appliedAt).toISOString(),
       };
+      if (effectiveServiceId) body.serviceId = effectiveServiceId;
       if (mode === 'mixture' && selectedMixture) body.mixtureId = selectedMixture.id;
       if (mode === 'product' && selectedProduct) body.productId = selectedProduct.id;
       if (treatedArea && !isNaN(Number(treatedArea)) && Number(treatedArea) > 0) {
@@ -668,6 +684,19 @@ export default function LogApplicationScreen() {
         </View>
 
         <View style={styles.form}>
+          {jobServices.length > 1 && (
+            <Field label="Service on this job" required colors={colors}>
+              <SelectButton
+                value={effectiveServiceName}
+                placeholder="Select service…"
+                onPress={() => setShowServicePicker(true)}
+                colors={colors}
+              />
+              {errors.serviceId && (
+                <Text style={[styles.errMsg, { color: colors.destructive }]}>{errors.serviceId}</Text>
+              )}
+            </Field>
+          )}
           {/* Mixture/Product Picker */}
           {mode === 'mixture' ? (
             <Field label="Mixture / Tank Mix" required colors={colors}>
@@ -1025,6 +1054,14 @@ export default function LogApplicationScreen() {
       </View>
 
       {/* Modals */}
+      <PickerModal
+        visible={showServicePicker}
+        title="Select Service"
+        items={jobServices}
+        onSelect={(sv: { id?: number }) => setPickedServiceId(sv.id ?? null)}
+        onClose={() => setShowServicePicker(false)}
+        colors={colors}
+      />
       <PickerModal
         visible={showMixturePicker}
         title="Select Mixture"

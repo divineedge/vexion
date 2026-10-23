@@ -20,6 +20,8 @@ import { sendEmail } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
 import { generateRangeVisits, validateVisitRange, VisitRangeError, type VisitRange } from "../lib/planVisitRange";
 import { isInOffSeason } from "../lib/offSeasonUtils";
+import { buildPlanProgram,type ProgramJob } from "../lib/planProgram";
+import { enforceCrewCapacity,CrewCapacityError,capacityCheckedJobUpdate,capacityDate } from "../lib/crewCapacity";
 
 const router: IRouter = Router();
 
@@ -52,6 +54,7 @@ function fmtPlan(
 
 function fmtVisit(v: PlanVisitCandidate) {
   return {
+    ...v,
     serviceId: v.serviceId,
     serviceName: v.serviceName,
     date: v.date.toISOString(),
@@ -62,7 +65,7 @@ function fmtVisit(v: PlanVisitCandidate) {
   };
 }
 
-async function requestedRange(tenantId:number,template:typeof planTemplatesTable.$inferSelect,input:unknown,startDate:string,res:import("express").Response) {
+async function requestedRange(tenantId:number,template:typeof planTemplatesTable.$inferSelect,input:unknown,startDate:string,res:import("express").Response,actorId:number) {
   if(input===undefined||input===null)return null;
   try{
     const schedule=validateVisitRange(input);
@@ -70,20 +73,38 @@ async function requestedRange(tenantId:number,template:typeof planTemplatesTable
     const [tenant]=await db.select({timezone:tenantsTable.timezone}).from(tenantsTable).where(eq(tenantsTable.id,tenantId));
     schedule.timeZone=tenant.timezone;
     const services=(template.services??[]) as PlanServiceRule[];
-    const visits=generateRangeVisits(schedule,services,tenant.timezone);
     const rows=await db.select().from(servicesTable).where(and(eq(servicesTable.tenantId,tenantId),inArray(servicesTable.id,services.map(s=>s.serviceId))));
     if(new Set(rows.map(s=>s.id)).size!==new Set(services.map(s=>s.serviceId)).size)
       throw new VisitRangeError("One of the plan's services is no longer available. Update the template first.");
+    const visits=await buildPlanProgram(tenantId,services,rows,schedule,tenant.timezone);
+    if(schedule.capacityOverrideReason){
+      if(!await isAdminRole(tenantId,actorId))throw new VisitRangeError("Only an owner or authorized manager may approve a capacity override.");
+      schedule.overrideApprovedBy=actorId;
+    }
     const localDate=new Intl.DateTimeFormat("en-CA",{timeZone:tenant.timezone,year:"numeric",month:"2-digit",day:"2-digit"});
     for(const visit of visits){
       const dateKey=localDate.format(visit.date);
       const day=new Date(`${dateKey}T12:00:00Z`);
-      const service=rows.find(s=>s.id===visit.serviceId)!;
-      if((service.offSeasonStart&&service.offSeasonEnd&&isInOffSeason(day,service.offSeasonStart,service.offSeasonEnd))||
+      const visitServices=rows.filter(s=>visit.serviceIds.includes(s.id));
+      if(visitServices.some(service=>service.offSeasonStart&&service.offSeasonEnd&&isInOffSeason(day,service.offSeasonStart,service.offSeasonEnd))||
         (template.offSeasonStart&&template.offSeasonEnd&&isInOffSeason(day,template.offSeasonStart,template.offSeasonEnd)))
         throw new VisitRangeError(`A visit for ${visit.serviceName} falls in its off-season. Change the service dates or preferred weekday.`);
     }
-    return {schedule,visits};
+    const capacityWarnings:string[]=[];
+    await db.transaction(async tx=>{
+      const virtualJobs:Array<typeof jobsTable.$inferInsert & {id:number}>=[];
+      for(const visit of visits){
+        const input={id:-virtualJobs.length-1,tenantId,title:visit.serviceName,crewId:visit.crewId,scheduledAt:visit.date,estimatedDuration:visit.estimatedDuration};
+        try {
+          const checked=await enforceCrewCapacity(tx,input,{autoPlace:true,preview:true,virtualJobs});
+          visit.date=checked.scheduledAt;virtualJobs.push({...input,scheduledAt:checked.scheduledAt});
+        }catch(error){
+          if(!(error instanceof CrewCapacityError))throw error;
+          capacityWarnings.push(error.message);virtualJobs.push(input);
+        }
+      }
+    });
+    return {schedule,visits,capacityWarnings};
   }catch(error){
     if(!(error instanceof VisitRangeError))throw error;
     res.status(400).json({error:error.message});return false;
@@ -457,7 +478,7 @@ router.post("/customer-plans/preview", async (req, res): Promise<void> => {
   if (!property) { res.status(404).json({ error: "Property not found" }); return; }
 
   const services = ((template.services as unknown[]) ?? []) as PlanServiceRule[];
-  const range=await requestedRange(tenantId,template,req.body.visitSchedule,startDate,res);
+  const range=await requestedRange(tenantId,template,req.body.visitSchedule,startDate,res,getUserId(req));
   if(range===false)return;
   const visits = range?.visits??await generatePlanPreview({
     services,
@@ -473,6 +494,8 @@ router.post("/customer-plans/preview", async (req, res): Promise<void> => {
   res.json({
     template: fmtTemplate(template),
     timeZone:range?.schedule.timeZone,
+    visitSchedule:range?.schedule,
+    capacityWarnings:range?.capacityWarnings??[],
     visits: visits.map(fmtVisit),
   });
 });
@@ -498,7 +521,7 @@ router.post("/customer-plans", async (req, res): Promise<void> => {
   const [property] = await db.select().from(propertiesTable).where(and(eq(propertiesTable.id, propertyId), eq(propertiesTable.tenantId, tenantId), eq(propertiesTable.customerId, customerId)));
   if (!property) { res.status(404).json({ error: "Property not found for this customer" }); return; }
 
-  const range=await requestedRange(tenantId,template,req.body.visitSchedule,startDate,res);
+  const range=await requestedRange(tenantId,template,req.body.visitSchedule,startDate,res,getUserId(req));
   if(range===false)return;
   const start = range?.visits[0].date??new Date(startDate);
   const periodDays = billingCycleDays(template.billingCycle, template.customCycleDays);
@@ -577,8 +600,9 @@ router.post("/customer-plans", async (req, res): Promise<void> => {
     planId = plan.id;
 
     for (const [visitIndex,v] of finalVisits.entries()) {
+      const program=range?v as ProgramJob:undefined;
       try {
-        await paymentGuardedJobInsert(tx).values({
+        await paymentGuardedJobInsert(tx,{autoPlace:!!range,actorId:userId,reason:range?.schedule.capacityOverrideReason}).values({
         tenantId,
         title: `${v.serviceName} — Plan Visit`,
         status: "scheduled",
@@ -586,9 +610,19 @@ router.post("/customer-plans", async (req, res): Promise<void> => {
         customerId,
         propertyId,
         assigneeId: v.assigneeId,
+        crewId:program?.crewId,
+        estimatedDuration:program?.estimatedDuration,
+        lineItems:program?.lineItems,
+        routeTemplateId:program?.routeTemplateId,
+        offSeasonStart:program?.offSeasonStart,
+        offSeasonEnd:program?.offSeasonEnd,
+        emailReminderEnabled:range?.schedule.emailReminder??true,
+        smsReminderEnabled:range?.schedule.smsReminder??false,
+        pushReminderEnabled:range?.schedule.pushReminder??false,
         serviceId: v.serviceId,
         planId: plan.id,
-        planVisitIndex:range?visitIndex:null,
+        planVisitIndex:program?.planVisitIndex??null,
+        planVisitGroupKey:program?.planVisitGroupKey??"main",
         scheduledAt: v.date,
         });
       } catch (error) {
@@ -848,14 +882,14 @@ router.post("/customer-plans/:id/visits/:jobId/reschedule", async (req, res): Pr
 
   // Guard: new date must fall within the plan's active period
   const serviceRange=plan.visitSchedule?validateVisitRange(plan.visitSchedule):null;
-  const firstAllowed=serviceRange?new Date(`${serviceRange.firstServiceDate}T00:00:00Z`):plan.startDate;
-  const lastAllowed=serviceRange?new Date(`${serviceRange.lastServiceDate}T23:59:59Z`):plan.endDate;
-  if (firstAllowed && newDate < firstAllowed) {
-    res.status(400).json({ error: `Visit cannot be rescheduled before the plan start date (${plan.startDate.toISOString().slice(0, 10)})` });
+  const rangeZone=serviceRange?(plan.visitSchedule as {timeZone?:string}).timeZone??"UTC":"UTC";
+  const movedDay=capacityDate(newDate,rangeZone);
+  if (serviceRange?movedDay<serviceRange.firstServiceDate:newDate<plan.startDate) {
+    res.status(400).json({ error: `Visit cannot be rescheduled before the service start date (${serviceRange?.firstServiceDate??plan.startDate.toISOString().slice(0, 10)})` });
     return;
   }
-  if (lastAllowed && newDate > lastAllowed) {
-    res.status(400).json({ error: `Visit cannot be rescheduled after the plan end date (${plan.endDate.toISOString().slice(0, 10)})` });
+  if (serviceRange?movedDay>serviceRange.lastServiceDate:newDate>plan.endDate) {
+    res.status(400).json({ error: `Visit cannot be rescheduled after the service end date (${serviceRange?.lastServiceDate??plan.endDate.toISOString().slice(0, 10)})` });
     return;
   }
 
@@ -883,16 +917,15 @@ router.post("/customer-plans/:id/visits/:jobId/reschedule", async (req, res): Pr
   const updatePayload: Partial<typeof jobsTable.$inferInsert> = {
     scheduledAt: newDate,
     assigneeId: resolvedAssigneeId,
+    ...(assigneeId!==undefined?{crewId:null}:{}),
   };
   try {
     if (job.scheduledAt.getTime() !== newDate.getTime()) Object.assign(updatePayload, rescheduleFee(job, req.body));
   } catch (error) { res.status(400).json({ error: (error as Error).message }); return; }
 
-  const [updated] = await db
-    .update(jobsTable)
-    .set(updatePayload)
-    .where(and(eq(jobsTable.id, jobId), eq(jobsTable.planId, id), eq(jobsTable.tenantId, tenantId), eq(jobsTable.scheduledAt, job.scheduledAt)))
-    .returning();
+  const [updated] = await capacityCheckedJobUpdate(
+    and(eq(jobsTable.id,jobId),eq(jobsTable.planId,id),eq(jobsTable.tenantId,tenantId),eq(jobsTable.scheduledAt,job.scheduledAt))!,
+    updatePayload,{actorId:getUserId(req),reason:req.body.capacityOverrideReason});
   if (!updated) { res.status(409).json({ error: "Visit changed; refresh before rescheduling" }); return; }
 
   // Advance the plan's serviceState cursor for this service if the new date is later,

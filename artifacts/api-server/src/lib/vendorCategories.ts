@@ -8,7 +8,18 @@ export const categoryLabel=(key:string)=>key.replace(/_/g,' ').replace(/\b\w/g,c
 export async function installVendorCategoriesSchema(){
  await db.execute(sql`ALTER TABLE customer_plans ADD COLUMN IF NOT EXISTS visit_schedule jsonb`);
  await db.execute(sql`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS plan_visit_index integer`);
- await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS jobs_plan_visit_slot ON jobs(plan_id,plan_visit_index) WHERE plan_visit_index IS NOT NULL`);
+ await db.execute(sql`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS plan_visit_group_key text NOT NULL DEFAULT 'main',
+   ADD COLUMN IF NOT EXISTS capacity_override_reason text, ADD COLUMN IF NOT EXISTS capacity_override_by integer,
+   ADD COLUMN IF NOT EXISTS capacity_override_at timestamptz, ADD COLUMN IF NOT EXISTS email_reminder_enabled boolean NOT NULL DEFAULT true,
+   ADD COLUMN IF NOT EXISTS push_reminder_enabled boolean NOT NULL DEFAULT false`);
+ await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS jobs_plan_visit_group_slot ON jobs(plan_id,plan_visit_index,plan_visit_group_key) WHERE plan_visit_index IS NOT NULL`);
+ await db.execute(sql`DROP INDEX IF EXISTS jobs_plan_visit_slot`);
+ await db.execute(sql`ALTER TABLE crews ADD COLUMN IF NOT EXISTS daily_capacity_minutes integer NOT NULL DEFAULT 480,
+   ADD COLUMN IF NOT EXISTS travel_buffer_minutes integer NOT NULL DEFAULT 15`);
+ await db.execute(sql`ALTER TABLE chemical_applications ADD COLUMN IF NOT EXISTS service_id integer, ADD COLUMN IF NOT EXISTS service_name text`);
+ await db.execute(sql`CREATE TABLE IF NOT EXISTS customer_push_keys(tenant_id integer PRIMARY KEY REFERENCES tenants(id),public_key text NOT NULL,encrypted_private text NOT NULL)`);
+ await db.execute(sql`CREATE TABLE IF NOT EXISTS customer_push_subscriptions(id serial PRIMARY KEY,tenant_id integer NOT NULL REFERENCES tenants(id),
+   customer_id integer NOT NULL REFERENCES customers(id),endpoint text NOT NULL UNIQUE,keys jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now())`);
  await installVendorExpenseDefaultsSchema();
  await db.execute(sql`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS contact_phone text`);
  await db.execute(sql`ALTER TABLE expense_entries ADD COLUMN IF NOT EXISTS shipping_amount real NOT NULL DEFAULT 0,ADD COLUMN IF NOT EXISTS capitalize_shipping boolean NOT NULL DEFAULT false`);

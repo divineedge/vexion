@@ -4,6 +4,7 @@ import jobEconomicsRouter from "./jobEconomics";
 import websiteIntakeRouter,{publicWebsiteIntakeRouter} from "./websiteIntake";
 import type { Request, Response, NextFunction } from "express";
 import { SchedulingPaymentError } from "../lib/paymentPolicy";
+import { CrewCapacityError } from "../lib/crewCapacity";
 import healthRouter from "./health";
 import pricingReviewRouter from "./pricingReview";
 import estimateRemindersRouter from "./estimateReminders";
@@ -201,6 +202,7 @@ router.use(jobEquipmentUsesRouter);
 router.use(externalAccessRouter);
 
 router.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
+  if (error instanceof CrewCapacityError) { res.status(409).json({code:"crew_capacity_exceeded",error:error.message,capacityWarnings:[error.message]});return; }
   if (error instanceof SchedulingPaymentError) { res.status(422).json({ error: error.message }); return; }
   next(error);
 });

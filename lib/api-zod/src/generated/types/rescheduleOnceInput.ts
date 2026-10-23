@@ -7,6 +7,7 @@
  */
 
 export interface RescheduleOnceInput {
+  capacityOverrideReason?: string;
   chargeRescheduleFee?: boolean;
   /** @minimum 0 */
   rescheduleFeeAmount?: number;

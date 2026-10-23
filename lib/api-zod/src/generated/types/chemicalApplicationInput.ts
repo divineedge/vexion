@@ -10,6 +10,7 @@
  * New applications require exactly one of mixtureId or productId.
  */
 export type ChemicalApplicationInput = (unknown & {
+  serviceId?: number;
   mixtureId?: number;
   productId?: number;
   volumeApplied: number;
@@ -30,6 +31,7 @@ export type ChemicalApplicationInput = (unknown & {
   applicatorLicenseNumber?: string;
   notes?: string;
 }) | (unknown & {
+  serviceId?: number;
   mixtureId?: number;
   productId?: number;
   volumeApplied: number;

@@ -12308,7 +12308,25 @@ export const ResolvePlanPriceResponse = zod.object({
 /**
  * @summary Preview the visit schedule a plan would generate before selling it
  */
+export const previewCustomerPlanBodyVisitScheduleFirstServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const previewCustomerPlanBodyVisitScheduleLastServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const previewCustomerPlanBodyVisitScheduleTotalVisitsMin = 2;
+export const previewCustomerPlanBodyVisitScheduleTotalVisitsMax = 366;
+
+export const previewCustomerPlanBodyVisitScheduleSpacingUnitDefault = `weeks`;
+export const previewCustomerPlanBodyVisitSchedulePreferredWeekdayMin = 0;
+export const previewCustomerPlanBodyVisitSchedulePreferredWeekdayMax = 6;
+
+
+
 export const PreviewCustomerPlanBody = zod.object({
+  "visitSchedule": zod.object({
+  "firstServiceDate": zod.string().regex(previewCustomerPlanBodyVisitScheduleFirstServiceDateRegExp),
+  "lastServiceDate": zod.string().regex(previewCustomerPlanBodyVisitScheduleLastServiceDateRegExp),
+  "totalVisits": zod.number().min(previewCustomerPlanBodyVisitScheduleTotalVisitsMin).max(previewCustomerPlanBodyVisitScheduleTotalVisitsMax),
+  "spacingUnit": zod.enum(['weeks', 'days']).default(previewCustomerPlanBodyVisitScheduleSpacingUnitDefault),
+  "preferredWeekday": zod.number().min(previewCustomerPlanBodyVisitSchedulePreferredWeekdayMin).max(previewCustomerPlanBodyVisitSchedulePreferredWeekdayMax).describe('Sunday=0 through Saturday=6; first and last service dates stay fixed.')
+}).optional(),
   "templateId": zod.number(),
   "propertyId": zod.number(),
   "startDate": zod.string()
@@ -12360,6 +12378,17 @@ export const ListCustomerPlansQueryParams = zod.object({
   "status": zod.coerce.string().optional()
 })
 
+export const listCustomerPlansResponseVisitScheduleFirstServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const listCustomerPlansResponseVisitScheduleLastServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const listCustomerPlansResponseVisitScheduleTotalVisitsMin = 2;
+export const listCustomerPlansResponseVisitScheduleTotalVisitsMax = 366;
+
+export const listCustomerPlansResponseVisitScheduleSpacingUnitDefault = `weeks`;
+export const listCustomerPlansResponseVisitSchedulePreferredWeekdayMin = 0;
+export const listCustomerPlansResponseVisitSchedulePreferredWeekdayMax = 6;
+
+
+
 export const ListCustomerPlansResponseItem = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
@@ -12367,6 +12396,13 @@ export const ListCustomerPlansResponseItem = zod.object({
   "propertyId": zod.number(),
   "templateId": zod.number(),
   "templateName": zod.string(),
+  "visitSchedule": zod.object({
+  "firstServiceDate": zod.string().regex(listCustomerPlansResponseVisitScheduleFirstServiceDateRegExp),
+  "lastServiceDate": zod.string().regex(listCustomerPlansResponseVisitScheduleLastServiceDateRegExp),
+  "totalVisits": zod.number().min(listCustomerPlansResponseVisitScheduleTotalVisitsMin).max(listCustomerPlansResponseVisitScheduleTotalVisitsMax),
+  "spacingUnit": zod.enum(['weeks', 'days']).default(listCustomerPlansResponseVisitScheduleSpacingUnitDefault),
+  "preferredWeekday": zod.number().min(listCustomerPlansResponseVisitSchedulePreferredWeekdayMin).max(listCustomerPlansResponseVisitSchedulePreferredWeekdayMax).describe('Sunday=0 through Saturday=6; first and last service dates stay fixed.')
+}).optional(),
   "customerName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
   "startDate": zod.string(),
@@ -12396,7 +12432,25 @@ export const ListCustomerPlansResponse = zod.array(ListCustomerPlansResponseItem
 /**
  * @summary Sell/activate a plan for a customer
  */
+export const createCustomerPlanBodyVisitScheduleFirstServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const createCustomerPlanBodyVisitScheduleLastServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const createCustomerPlanBodyVisitScheduleTotalVisitsMin = 2;
+export const createCustomerPlanBodyVisitScheduleTotalVisitsMax = 366;
+
+export const createCustomerPlanBodyVisitScheduleSpacingUnitDefault = `weeks`;
+export const createCustomerPlanBodyVisitSchedulePreferredWeekdayMin = 0;
+export const createCustomerPlanBodyVisitSchedulePreferredWeekdayMax = 6;
+
+
+
 export const CreateCustomerPlanBody = zod.object({
+  "visitSchedule": zod.object({
+  "firstServiceDate": zod.string().regex(createCustomerPlanBodyVisitScheduleFirstServiceDateRegExp),
+  "lastServiceDate": zod.string().regex(createCustomerPlanBodyVisitScheduleLastServiceDateRegExp),
+  "totalVisits": zod.number().min(createCustomerPlanBodyVisitScheduleTotalVisitsMin).max(createCustomerPlanBodyVisitScheduleTotalVisitsMax),
+  "spacingUnit": zod.enum(['weeks', 'days']).default(createCustomerPlanBodyVisitScheduleSpacingUnitDefault),
+  "preferredWeekday": zod.number().min(createCustomerPlanBodyVisitSchedulePreferredWeekdayMin).max(createCustomerPlanBodyVisitSchedulePreferredWeekdayMax).describe('Sunday=0 through Saturday=6; first and last service dates stay fixed.')
+}).optional(),
   "templateId": zod.number(),
   "customerId": zod.number(),
   "propertyId": zod.number(),
@@ -12412,6 +12466,17 @@ export const CreateCustomerPlanBody = zod.object({
 })).optional()
 })
 
+export const createCustomerPlanResponseVisitScheduleFirstServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const createCustomerPlanResponseVisitScheduleLastServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const createCustomerPlanResponseVisitScheduleTotalVisitsMin = 2;
+export const createCustomerPlanResponseVisitScheduleTotalVisitsMax = 366;
+
+export const createCustomerPlanResponseVisitScheduleSpacingUnitDefault = `weeks`;
+export const createCustomerPlanResponseVisitSchedulePreferredWeekdayMin = 0;
+export const createCustomerPlanResponseVisitSchedulePreferredWeekdayMax = 6;
+
+
+
 export const CreateCustomerPlanResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
@@ -12419,6 +12484,13 @@ export const CreateCustomerPlanResponse = zod.object({
   "propertyId": zod.number(),
   "templateId": zod.number(),
   "templateName": zod.string(),
+  "visitSchedule": zod.object({
+  "firstServiceDate": zod.string().regex(createCustomerPlanResponseVisitScheduleFirstServiceDateRegExp),
+  "lastServiceDate": zod.string().regex(createCustomerPlanResponseVisitScheduleLastServiceDateRegExp),
+  "totalVisits": zod.number().min(createCustomerPlanResponseVisitScheduleTotalVisitsMin).max(createCustomerPlanResponseVisitScheduleTotalVisitsMax),
+  "spacingUnit": zod.enum(['weeks', 'days']).default(createCustomerPlanResponseVisitScheduleSpacingUnitDefault),
+  "preferredWeekday": zod.number().min(createCustomerPlanResponseVisitSchedulePreferredWeekdayMin).max(createCustomerPlanResponseVisitSchedulePreferredWeekdayMax).describe('Sunday=0 through Saturday=6; first and last service dates stay fixed.')
+}).optional(),
   "customerName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
   "startDate": zod.string(),
@@ -12451,6 +12523,17 @@ export const GetCustomerPlanParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const getCustomerPlanResponseOneVisitScheduleFirstServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getCustomerPlanResponseOneVisitScheduleLastServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getCustomerPlanResponseOneVisitScheduleTotalVisitsMin = 2;
+export const getCustomerPlanResponseOneVisitScheduleTotalVisitsMax = 366;
+
+export const getCustomerPlanResponseOneVisitScheduleSpacingUnitDefault = `weeks`;
+export const getCustomerPlanResponseOneVisitSchedulePreferredWeekdayMin = 0;
+export const getCustomerPlanResponseOneVisitSchedulePreferredWeekdayMax = 6;
+
+
+
 export const GetCustomerPlanResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
@@ -12458,6 +12541,13 @@ export const GetCustomerPlanResponse = zod.object({
   "propertyId": zod.number(),
   "templateId": zod.number(),
   "templateName": zod.string(),
+  "visitSchedule": zod.object({
+  "firstServiceDate": zod.string().regex(getCustomerPlanResponseOneVisitScheduleFirstServiceDateRegExp),
+  "lastServiceDate": zod.string().regex(getCustomerPlanResponseOneVisitScheduleLastServiceDateRegExp),
+  "totalVisits": zod.number().min(getCustomerPlanResponseOneVisitScheduleTotalVisitsMin).max(getCustomerPlanResponseOneVisitScheduleTotalVisitsMax),
+  "spacingUnit": zod.enum(['weeks', 'days']).default(getCustomerPlanResponseOneVisitScheduleSpacingUnitDefault),
+  "preferredWeekday": zod.number().min(getCustomerPlanResponseOneVisitSchedulePreferredWeekdayMin).max(getCustomerPlanResponseOneVisitSchedulePreferredWeekdayMax).describe('Sunday=0 through Saturday=6; first and last service dates stay fixed.')
+}).optional(),
   "customerName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
   "startDate": zod.string(),
@@ -12522,6 +12612,17 @@ export const UpdateCustomerPlanBody = zod.object({
 })).optional()
 })
 
+export const updateCustomerPlanResponseVisitScheduleFirstServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const updateCustomerPlanResponseVisitScheduleLastServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const updateCustomerPlanResponseVisitScheduleTotalVisitsMin = 2;
+export const updateCustomerPlanResponseVisitScheduleTotalVisitsMax = 366;
+
+export const updateCustomerPlanResponseVisitScheduleSpacingUnitDefault = `weeks`;
+export const updateCustomerPlanResponseVisitSchedulePreferredWeekdayMin = 0;
+export const updateCustomerPlanResponseVisitSchedulePreferredWeekdayMax = 6;
+
+
+
 export const UpdateCustomerPlanResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
@@ -12529,6 +12630,13 @@ export const UpdateCustomerPlanResponse = zod.object({
   "propertyId": zod.number(),
   "templateId": zod.number(),
   "templateName": zod.string(),
+  "visitSchedule": zod.object({
+  "firstServiceDate": zod.string().regex(updateCustomerPlanResponseVisitScheduleFirstServiceDateRegExp),
+  "lastServiceDate": zod.string().regex(updateCustomerPlanResponseVisitScheduleLastServiceDateRegExp),
+  "totalVisits": zod.number().min(updateCustomerPlanResponseVisitScheduleTotalVisitsMin).max(updateCustomerPlanResponseVisitScheduleTotalVisitsMax),
+  "spacingUnit": zod.enum(['weeks', 'days']).default(updateCustomerPlanResponseVisitScheduleSpacingUnitDefault),
+  "preferredWeekday": zod.number().min(updateCustomerPlanResponseVisitSchedulePreferredWeekdayMin).max(updateCustomerPlanResponseVisitSchedulePreferredWeekdayMax).describe('Sunday=0 through Saturday=6; first and last service dates stay fixed.')
+}).optional(),
   "customerName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
   "startDate": zod.string(),
@@ -12608,6 +12716,17 @@ export const RenewCustomerPlanParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const renewCustomerPlanResponseVisitScheduleFirstServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const renewCustomerPlanResponseVisitScheduleLastServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const renewCustomerPlanResponseVisitScheduleTotalVisitsMin = 2;
+export const renewCustomerPlanResponseVisitScheduleTotalVisitsMax = 366;
+
+export const renewCustomerPlanResponseVisitScheduleSpacingUnitDefault = `weeks`;
+export const renewCustomerPlanResponseVisitSchedulePreferredWeekdayMin = 0;
+export const renewCustomerPlanResponseVisitSchedulePreferredWeekdayMax = 6;
+
+
+
 export const RenewCustomerPlanResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
@@ -12615,6 +12734,13 @@ export const RenewCustomerPlanResponse = zod.object({
   "propertyId": zod.number(),
   "templateId": zod.number(),
   "templateName": zod.string(),
+  "visitSchedule": zod.object({
+  "firstServiceDate": zod.string().regex(renewCustomerPlanResponseVisitScheduleFirstServiceDateRegExp),
+  "lastServiceDate": zod.string().regex(renewCustomerPlanResponseVisitScheduleLastServiceDateRegExp),
+  "totalVisits": zod.number().min(renewCustomerPlanResponseVisitScheduleTotalVisitsMin).max(renewCustomerPlanResponseVisitScheduleTotalVisitsMax),
+  "spacingUnit": zod.enum(['weeks', 'days']).default(renewCustomerPlanResponseVisitScheduleSpacingUnitDefault),
+  "preferredWeekday": zod.number().min(renewCustomerPlanResponseVisitSchedulePreferredWeekdayMin).max(renewCustomerPlanResponseVisitSchedulePreferredWeekdayMax).describe('Sunday=0 through Saturday=6; first and last service dates stay fixed.')
+}).optional(),
   "customerName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
   "startDate": zod.string(),
@@ -12643,6 +12769,17 @@ export const RenewCustomerPlanResponse = zod.object({
 /**
  * @summary Get the service plans overview dashboard
  */
+export const getPlansDashboardResponsePlansItemOneVisitScheduleFirstServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getPlansDashboardResponsePlansItemOneVisitScheduleLastServiceDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getPlansDashboardResponsePlansItemOneVisitScheduleTotalVisitsMin = 2;
+export const getPlansDashboardResponsePlansItemOneVisitScheduleTotalVisitsMax = 366;
+
+export const getPlansDashboardResponsePlansItemOneVisitScheduleSpacingUnitDefault = `weeks`;
+export const getPlansDashboardResponsePlansItemOneVisitSchedulePreferredWeekdayMin = 0;
+export const getPlansDashboardResponsePlansItemOneVisitSchedulePreferredWeekdayMax = 6;
+
+
+
 export const GetPlansDashboardResponse = zod.object({
   "activeCount": zod.number(),
   "mrr": zod.number(),
@@ -12656,6 +12793,13 @@ export const GetPlansDashboardResponse = zod.object({
   "propertyId": zod.number(),
   "templateId": zod.number(),
   "templateName": zod.string(),
+  "visitSchedule": zod.object({
+  "firstServiceDate": zod.string().regex(getPlansDashboardResponsePlansItemOneVisitScheduleFirstServiceDateRegExp),
+  "lastServiceDate": zod.string().regex(getPlansDashboardResponsePlansItemOneVisitScheduleLastServiceDateRegExp),
+  "totalVisits": zod.number().min(getPlansDashboardResponsePlansItemOneVisitScheduleTotalVisitsMin).max(getPlansDashboardResponsePlansItemOneVisitScheduleTotalVisitsMax),
+  "spacingUnit": zod.enum(['weeks', 'days']).default(getPlansDashboardResponsePlansItemOneVisitScheduleSpacingUnitDefault),
+  "preferredWeekday": zod.number().min(getPlansDashboardResponsePlansItemOneVisitSchedulePreferredWeekdayMin).max(getPlansDashboardResponsePlansItemOneVisitSchedulePreferredWeekdayMax).describe('Sunday=0 through Saturday=6; first and last service dates stay fixed.')
+}).optional(),
   "customerName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
   "startDate": zod.string(),

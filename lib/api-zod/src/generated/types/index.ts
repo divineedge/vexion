@@ -571,6 +571,8 @@ export * from './planTemplatePricingMode';
 export * from './planTemplateServiceRule';
 export * from './planTier';
 export * from './planVisitPreview';
+export * from './planVisitSchedule';
+export * from './planVisitScheduleSpacingUnit';
 export * from './plStatementReport';
 export * from './plStatementReportCostOfGoodsSold';
 export * from './plStatementReportOperatingExpenses';

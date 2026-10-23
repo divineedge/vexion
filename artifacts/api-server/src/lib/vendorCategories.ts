@@ -6,6 +6,9 @@ import { installVendorExpenseDefaultsSchema } from './vendorExpenseDefaults';
 export const DEFAULT_EXPENSE_CATEGORIES=['supplies','fuel','equipment','insurance','payroll','rent','utilities','marketing','other'];
 export const categoryLabel=(key:string)=>key.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 export async function installVendorCategoriesSchema(){
+ await db.execute(sql`ALTER TABLE customer_plans ADD COLUMN IF NOT EXISTS visit_schedule jsonb`);
+ await db.execute(sql`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS plan_visit_index integer`);
+ await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS jobs_plan_visit_slot ON jobs(plan_id,plan_visit_index) WHERE plan_visit_index IS NOT NULL`);
  await installVendorExpenseDefaultsSchema();
  await db.execute(sql`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS contact_phone text`);
  await db.execute(sql`ALTER TABLE expense_entries ADD COLUMN IF NOT EXISTS shipping_amount real NOT NULL DEFAULT 0,ADD COLUMN IF NOT EXISTS capitalize_shipping boolean NOT NULL DEFAULT false`);

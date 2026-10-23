@@ -6,8 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CreateCustomerPlanInputVisitsItem } from './createCustomerPlanInputVisitsItem';
+import type { PlanVisitSchedule } from './planVisitSchedule';
 
 export interface CreateCustomerPlanInput {
+  visitSchedule?: PlanVisitSchedule;
   templateId: number;
   customerId: number;
   propertyId: number;

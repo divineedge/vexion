@@ -10905,6 +10905,8 @@ components:
       type: object
       required: [templateId, propertyId, startDate]
       properties:
+        visitSchedule:
+          $ref: "#/components/schemas/PlanVisitSchedule"
         templateId:
           type: integer
         propertyId:
@@ -10916,12 +10918,41 @@ components:
       type: object
       required: [template, visits]
       properties:
+        timeZone:
+          type: string
         template:
           $ref: "#/components/schemas/PlanTemplate"
         visits:
           type: array
           items:
             $ref: "#/components/schemas/PlanVisitPreview"
+
+    PlanVisitSchedule:
+      type: object
+      required: [firstServiceDate, lastServiceDate, totalVisits, spacingUnit, preferredWeekday]
+      properties:
+        timeZone:
+          type: string
+          readOnly: true
+        firstServiceDate:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        lastServiceDate:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        totalVisits:
+          type: integer
+          minimum: 2
+          maximum: 366
+        spacingUnit:
+          type: string
+          enum: [weeks, days]
+          default: weeks
+        preferredWeekday:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: Sunday=0 through Saturday=6; first and last service dates stay fixed.
 
     CustomerPlan:
       type: object
@@ -10939,6 +10970,8 @@ components:
           type: integer
         templateName:
           type: string
+        visitSchedule:
+          $ref: "#/components/schemas/PlanVisitSchedule"
         customerName:
           type: ["string", "null"]
         propertyAddress:
@@ -10991,6 +11024,8 @@ components:
       type: object
       required: [templateId, customerId, propertyId, startDate]
       properties:
+        visitSchedule:
+          $ref: "#/components/schemas/PlanVisitSchedule"
         templateId:
           type: integer
         customerId:

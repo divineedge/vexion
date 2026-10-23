@@ -8,6 +8,7 @@
 import type { CustomerPlanBillingCycle } from './customerPlanBillingCycle';
 import type { CustomerPlanServiceStateItem } from './customerPlanServiceStateItem';
 import type { CustomerPlanStatus } from './customerPlanStatus';
+import type { PlanVisitSchedule } from './planVisitSchedule';
 
 export interface CustomerPlan {
   id: number;
@@ -16,6 +17,7 @@ export interface CustomerPlan {
   propertyId: number;
   templateId: number;
   templateName: string;
+  visitSchedule?: PlanVisitSchedule;
   /** @nullable */
   customerName?: string | null;
   /** @nullable */

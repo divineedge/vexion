@@ -35,6 +35,8 @@ export const customerPlansTable = pgTable("customer_plans", {
    * [{ serviceId, serviceName, frequencyDays, lastScheduledAt: string | null }]
    */
   serviceState: jsonb("service_state").notNull().default("[]"),
+  /** Optional finite service dates, independent of the invoice renewal cycle. */
+  visitSchedule: jsonb("visit_schedule"),
   /** Days before nextBillingDate a renewal reminder is sent when autoRenew is off. */
   renewalReminderDaysBefore: integer("renewal_reminder_days_before").notNull().default(14),
   renewalReminderSentAt: timestamp("renewal_reminder_sent_at", { withTimezone: true }),

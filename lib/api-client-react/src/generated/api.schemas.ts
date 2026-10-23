@@ -1614,7 +1614,35 @@ export interface PlanVisitPreview {
   clustered: boolean;
 }
 
+export type PlanVisitScheduleSpacingUnit = typeof PlanVisitScheduleSpacingUnit[keyof typeof PlanVisitScheduleSpacingUnit];
+
+
+export const PlanVisitScheduleSpacingUnit = {
+  weeks: 'weeks',
+  days: 'days',
+} as const;
+
+export interface PlanVisitSchedule {
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  firstServiceDate: string;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  lastServiceDate: string;
+  /**
+     * @minimum 2
+     * @maximum 366
+     */
+  totalVisits: number;
+  spacingUnit: PlanVisitScheduleSpacingUnit;
+  /**
+     * Sunday=0 through Saturday=6; first and last service dates stay fixed.
+     * @minimum 0
+     * @maximum 6
+     */
+  preferredWeekday: number;
+}
+
 export interface PreviewCustomerPlanInput {
+  visitSchedule?: PlanVisitSchedule;
   templateId: number;
   propertyId: number;
   startDate: string;
@@ -1660,6 +1688,7 @@ export interface CustomerPlan {
   propertyId: number;
   templateId: number;
   templateName: string;
+  visitSchedule?: PlanVisitSchedule;
   /** @nullable */
   customerName?: string | null;
   /** @nullable */
@@ -1696,6 +1725,7 @@ export type CreateCustomerPlanInputVisitsItem = {
 };
 
 export interface CreateCustomerPlanInput {
+  visitSchedule?: PlanVisitSchedule;
   templateId: number;
   customerId: number;
   propertyId: number;

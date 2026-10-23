@@ -24,6 +24,8 @@ export const jobsTable = pgTable("jobs", {
   serviceId: integer("service_id"),
   /** Set when this job was auto-scheduled from a customer_plans row. */
   planId: integer("plan_id"),
+  /** Stable identity for a finite plan visit, retained when its date changes. */
+  planVisitIndex: integer("plan_visit_index"),
   /** Required note when a single plan visit is cancelled (office must explain why). */
   cancelReason: text("cancel_reason"),
   scheduledAt: timestamp("scheduled_at", { withTimezone: true }).notNull(),

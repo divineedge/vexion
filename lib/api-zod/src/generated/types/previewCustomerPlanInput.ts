@@ -5,8 +5,10 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { PlanVisitSchedule } from './planVisitSchedule';
 
 export interface PreviewCustomerPlanInput {
+  visitSchedule?: PlanVisitSchedule;
   templateId: number;
   propertyId: number;
   startDate: string;

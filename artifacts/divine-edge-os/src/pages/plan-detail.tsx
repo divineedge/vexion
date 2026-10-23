@@ -20,6 +20,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, CalendarClock, MapPin, DollarSign, X, CalendarDays, Snowflake, Pencil, AlertTriangle, CheckCircle2, TrendingUp, Copy, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
+import { WEEKDAYS, formatDateKey, spacingSummary } from '@/components/customer/PlanVisitScheduleFields';
 import { useGetTenantSettings, getGetTenantSettingsQueryKey } from '@workspace/api-client-react';
 import { RescheduleFeeDialog, defaultRescheduleFee, apiErrorMessage, moveToDay, type RescheduleFeeChoice } from '@/components/schedule/RescheduleFeeDialog';
 
@@ -332,6 +333,30 @@ export default function PlanDetailPage() {
         </CardContent></Card>
       </div>
 
+      {plan.visitSchedule && (() => {
+        const vs = plan.visitSchedule;
+        const sum = spacingSummary(vs);
+        return (
+          <Card data-testid="card-visit-schedule">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><CalendarDays className="w-4 h-4" />Service Date Range</CardTitle>
+              <CardDescription>Visits evenly spaced between fixed first and last service dates. Separate from the billing period ({formatDateKey(plan.startDate)} – {formatDateKey(plan.endDate)}).</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                <div><p className="text-muted-foreground text-xs">First service</p><p className="font-medium" data-testid="text-first-service">{formatDateKey(vs.firstServiceDate)}</p></div>
+                <div><p className="text-muted-foreground text-xs">Last service</p><p className="font-medium" data-testid="text-last-service">{formatDateKey(vs.lastServiceDate)}</p></div>
+                <div><p className="text-muted-foreground text-xs">Total services</p><p className="font-medium">{vs.totalVisits}</p></div>
+                <div><p className="text-muted-foreground text-xs">Preferred weekday</p><p className="font-medium">{WEEKDAYS[vs.preferredWeekday] ?? '—'}</p></div>
+                <div><p className="text-muted-foreground text-xs">Spacing unit</p><p className="font-medium capitalize">{vs.spacingUnit}</p></div>
+              </div>
+              {sum && <p className="text-xs text-muted-foreground">{sum.text}.</p>}
+              <p className="text-xs text-muted-foreground">Visit dates don't change billing and don't restart when billing renews. Reschedule individual visits below if needed.</p>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-3 flex-wrap">
           <div>
@@ -389,7 +414,9 @@ export default function PlanDetailPage() {
                     )}
                   </TableCell>
                   <TableCell className={`text-sm ${isPast ? 'text-muted-foreground' : 'font-medium'}`} title={new Date(v.scheduledAt).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}>
-                    {new Date(v.scheduledAt).toLocaleDateString()}
+                    {plan.visitSchedule
+                      ? formatDateKey(v.scheduledAt, { month: 'short', day: 'numeric', year: 'numeric' }, (plan.visitSchedule as { timeZone?: string | null }).timeZone)
+                      : new Date(v.scheduledAt).toLocaleDateString()}
                     {!isPast && v.status !== 'completed' && (() => {
                       const daysUntil = Math.ceil((new Date(v.scheduledAt).getTime() - Date.now()) / 86400000);
                       return daysUntil <= 7 && daysUntil >= 0

@@ -18,6 +18,8 @@ import {
 import { enqueueInvoiceEmail } from "../lib/billingScheduler";
 import { sendEmail } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
+import { generateRangeVisits, validateVisitRange, VisitRangeError, type VisitRange } from "../lib/planVisitRange";
+import { isInOffSeason } from "../lib/offSeasonUtils";
 
 const router: IRouter = Router();
 
@@ -58,6 +60,34 @@ function fmtVisit(v: PlanVisitCandidate) {
     assigneeName: v.assigneeName,
     clustered: v.clustered,
   };
+}
+
+async function requestedRange(tenantId:number,template:typeof planTemplatesTable.$inferSelect,input:unknown,startDate:string,res:import("express").Response) {
+  if(input===undefined||input===null)return null;
+  try{
+    const schedule=validateVisitRange(input);
+    if(startDate.slice(0,10)!==schedule.firstServiceDate)throw new VisitRangeError("The plan start must match the first service date.");
+    const [tenant]=await db.select({timezone:tenantsTable.timezone}).from(tenantsTable).where(eq(tenantsTable.id,tenantId));
+    schedule.timeZone=tenant.timezone;
+    const services=(template.services??[]) as PlanServiceRule[];
+    const visits=generateRangeVisits(schedule,services,tenant.timezone);
+    const rows=await db.select().from(servicesTable).where(and(eq(servicesTable.tenantId,tenantId),inArray(servicesTable.id,services.map(s=>s.serviceId))));
+    if(new Set(rows.map(s=>s.id)).size!==new Set(services.map(s=>s.serviceId)).size)
+      throw new VisitRangeError("One of the plan's services is no longer available. Update the template first.");
+    const localDate=new Intl.DateTimeFormat("en-CA",{timeZone:tenant.timezone,year:"numeric",month:"2-digit",day:"2-digit"});
+    for(const visit of visits){
+      const dateKey=localDate.format(visit.date);
+      const day=new Date(`${dateKey}T12:00:00Z`);
+      const service=rows.find(s=>s.id===visit.serviceId)!;
+      if((service.offSeasonStart&&service.offSeasonEnd&&isInOffSeason(day,service.offSeasonStart,service.offSeasonEnd))||
+        (template.offSeasonStart&&template.offSeasonEnd&&isInOffSeason(day,template.offSeasonStart,template.offSeasonEnd)))
+        throw new VisitRangeError(`A visit for ${visit.serviceName} falls in its off-season. Change the service dates or preferred weekday.`);
+    }
+    return {schedule,visits};
+  }catch(error){
+    if(!(error instanceof VisitRangeError))throw error;
+    res.status(400).json({error:error.message});return false;
+  }
 }
 
 /** Looks up already-scheduled jobs for a service, with property geo + assignee name, for clustering. */
@@ -427,7 +457,9 @@ router.post("/customer-plans/preview", async (req, res): Promise<void> => {
   if (!property) { res.status(404).json({ error: "Property not found" }); return; }
 
   const services = ((template.services as unknown[]) ?? []) as PlanServiceRule[];
-  const visits = await generatePlanPreview({
+  const range=await requestedRange(tenantId,template,req.body.visitSchedule,startDate,res);
+  if(range===false)return;
+  const visits = range?.visits??await generatePlanPreview({
     services,
     startDate: new Date(startDate),
     billingCycle: template.billingCycle,
@@ -440,6 +472,7 @@ router.post("/customer-plans/preview", async (req, res): Promise<void> => {
 
   res.json({
     template: fmtTemplate(template),
+    timeZone:range?.schedule.timeZone,
     visits: visits.map(fmtVisit),
   });
 });
@@ -465,7 +498,9 @@ router.post("/customer-plans", async (req, res): Promise<void> => {
   const [property] = await db.select().from(propertiesTable).where(and(eq(propertiesTable.id, propertyId), eq(propertiesTable.tenantId, tenantId), eq(propertiesTable.customerId, customerId)));
   if (!property) { res.status(404).json({ error: "Property not found for this customer" }); return; }
 
-  const start = new Date(startDate);
+  const range=await requestedRange(tenantId,template,req.body.visitSchedule,startDate,res);
+  if(range===false)return;
+  const start = range?.visits[0].date??new Date(startDate);
   const periodDays = billingCycleDays(template.billingCycle, template.customCycleDays);
   const endDate = new Date(start.getTime() + periodDays * 24 * 60 * 60 * 1000);
   const services = ((template.services as unknown[]) ?? []) as PlanServiceRule[];
@@ -473,7 +508,9 @@ router.post("/customer-plans", async (req, res): Promise<void> => {
   // Use the office-confirmed visit list if provided (they may have shifted dates/techs in the
   // preview), otherwise fall back to computing a fresh preview server-side.
   let finalVisits: PlanVisitCandidate[];
-  if (Array.isArray(visits) && visits.length > 0) {
+  if(range) {
+    finalVisits=range.visits;
+  } else if (Array.isArray(visits) && visits.length > 0) {
     const requestedAssigneeIds = [...new Set(
       visits.map((v: { assigneeId?: number | null }) => v.assigneeId).filter((v: number | null | undefined): v is number => v != null),
     )];
@@ -535,10 +572,11 @@ router.post("/customer-plans", async (req, res): Promise<void> => {
       status: "active",
       nextBillingDate: endDate.toISOString().slice(0, 10),
       serviceState,
+      visitSchedule: range?.schedule??null,
     }).returning();
     planId = plan.id;
 
-    for (const v of finalVisits) {
+    for (const [visitIndex,v] of finalVisits.entries()) {
       try {
         await paymentGuardedJobInsert(tx).values({
         tenantId,
@@ -550,6 +588,7 @@ router.post("/customer-plans", async (req, res): Promise<void> => {
         assigneeId: v.assigneeId,
         serviceId: v.serviceId,
         planId: plan.id,
+        planVisitIndex:range?visitIndex:null,
         scheduledAt: v.date,
         });
       } catch (error) {
@@ -808,11 +847,14 @@ router.post("/customer-plans/:id/visits/:jobId/reschedule", async (req, res): Pr
   }
 
   // Guard: new date must fall within the plan's active period
-  if (plan.startDate && newDate < plan.startDate) {
+  const serviceRange=plan.visitSchedule?validateVisitRange(plan.visitSchedule):null;
+  const firstAllowed=serviceRange?new Date(`${serviceRange.firstServiceDate}T00:00:00Z`):plan.startDate;
+  const lastAllowed=serviceRange?new Date(`${serviceRange.lastServiceDate}T23:59:59Z`):plan.endDate;
+  if (firstAllowed && newDate < firstAllowed) {
     res.status(400).json({ error: `Visit cannot be rescheduled before the plan start date (${plan.startDate.toISOString().slice(0, 10)})` });
     return;
   }
-  if (plan.endDate && newDate > plan.endDate) {
+  if (lastAllowed && newDate > lastAllowed) {
     res.status(400).json({ error: `Visit cannot be rescheduled after the plan end date (${plan.endDate.toISOString().slice(0, 10)})` });
     return;
   }

@@ -1,4 +1,5 @@
 import { paymentGuardedJobInsert } from "./paymentPolicy";
+import { generateRangeJobs } from "./planRangeJobs";
 /**
  * Plan Scheduler
  * Runs daily and handles two automation pipelines for customer_plans:
@@ -52,6 +53,9 @@ function makeClusterLookup(tenantId: number) {
 }
 
 async function generateVisitsForPlan(plan: typeof customerPlansTable.$inferSelect): Promise<number> {
+  // Date-range programs are fully materialized at sale. Billing renewals must
+  // not silently add visits beyond the customer's chosen last service.
+  if(plan.visitSchedule)return generateRangeJobs(plan.id,plan.tenantId);
   const lookahead = new Date(Date.now() + LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000);
   const serviceState = ((plan.serviceState as unknown[]) ?? []) as ServiceStateEntry[];
   if (serviceState.length === 0) return 0;

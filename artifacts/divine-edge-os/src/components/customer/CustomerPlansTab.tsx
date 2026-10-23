@@ -6,6 +6,9 @@ import {
   usePreviewCustomerPlan, useCreateCustomerPlan,
   customFetch,
 } from '@workspace/api-client-react';
+import type { PlanVisitSchedule } from '@workspace/api-client-react';
+import { PlanVisitScheduleFields, spacingSummary, formatDateKey, addMonthsToKey, weekdayOfKey } from './PlanVisitScheduleFields';
+import { apiErrorMessage } from '@/components/schedule/RescheduleFeeDialog';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,6 +21,11 @@ import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { CalendarClock, Plus, Repeat, MapPin, ChevronRight, Info, Loader2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+
+const todayKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const addDaysToKey = (key: string, days: number) => { const [y, m, d] = key.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10); };
+const CYCLE_MONTHS: Record<string, number> = { monthly: 1, quarterly: 3, annual: 12 };
+type ScheduleMode = 'range' | 'interval';
 
 interface Property { id: number; address: string; }
 
@@ -41,7 +49,10 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
   const [sellOpen, setSellOpen] = useState(false);
   const [templateId, setTemplateId] = useState<string>('');
   const [propertyId, setPropertyId] = useState<string>(properties[0] ? String(properties[0].id) : '');
-  const [startDate, setStartDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState<string>(todayKey());
+  const [mode, setMode] = useState<ScheduleMode>('range');
+  const [sched, setSched] = useState<PlanVisitSchedule>({ firstServiceDate: todayKey(), lastServiceDate: addMonthsToKey(todayKey(), 12), totalVisits: 4, spacingUnit: 'weeks', preferredWeekday: weekdayOfKey(todayKey()) });
+  const [previewedKey, setPreviewedKey] = useState<string | null>(null);
   const [autoRenew, setAutoRenew] = useState(true);
   const [priceOverride, setPriceOverride] = useState<string>('');
   const [priceResolution, setPriceResolution] = useState<PriceResolution | null>(null);
@@ -99,10 +110,29 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
     }
   }, [templateId]);
 
+  const visitSchedule: PlanVisitSchedule | undefined = mode === 'range' ? { ...sched, firstServiceDate: startDate } : undefined;
+  const requestKey = JSON.stringify({ templateId, propertyId, startDate, visitSchedule: visitSchedule ?? null });
+  const scheduleValid = mode === 'interval' || (visitSchedule != null && spacingSummary(visitSchedule) != null && visitSchedule.totalVisits <= 366);
+  const previewFresh = !!previewMutation.data && previewedKey === requestKey && !previewMutation.isPending && !previewMutation.isError;
+
+  // Any scheduling/template/property change invalidates the preview
+  useEffect(() => { previewMutation.reset(); setPreviewedKey(null); }, [requestKey]);
+
+  // Seed count and default last date from the template when it changes
+  useEffect(() => {
+    if (!selectedTemplate) return;
+    const customDays = selectedTemplate.billingCycle === 'custom' ? selectedTemplate.customCycleDays : null;
+    const lastServiceDate = customDays && customDays > 0
+      ? addDaysToKey(startDate, customDays)
+      : addMonthsToKey(startDate, CYCLE_MONTHS[selectedTemplate.billingCycle] ?? 12);
+    setSched(s => ({ ...s, totalVisits: Math.max(2, Math.min(366, selectedTemplate.visitCount ?? s.totalVisits)), lastServiceDate }));
+  }, [templateId]);
+
   const openSell = () => {
     setTemplateId('');
     setPropertyId(properties[0] ? String(properties[0].id) : '');
-    setStartDate(new Date().toISOString().slice(0, 10));
+    const t = todayKey(); setStartDate(t); setMode('range'); setPreviewedKey(null);
+    setSched({ firstServiceDate: t, lastServiceDate: addMonthsToKey(t, 12), totalVisits: 4, spacingUnit: 'weeks', preferredWeekday: weekdayOfKey(t) });
     setAutoRenew(true);
     setPriceOverride('');
     setPriceResolution(null);
@@ -113,11 +143,16 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
 
   const runPreview = () => {
     if (!templateId || !propertyId) { toast.error('Choose a plan template and property'); return; }
-    previewMutation.mutate({ data: { templateId: Number(templateId), propertyId: Number(propertyId), startDate } });
+    if (!scheduleValid) { toast.error('Fix the service date range first'); return; }
+    const key = requestKey;
+    previewMutation.mutate(
+      { data: { templateId: Number(templateId), propertyId: Number(propertyId), startDate, ...(visitSchedule ? { visitSchedule } : {}) } },
+      { onSuccess: () => setPreviewedKey(key) },
+    );
   };
 
   const confirmSale = () => {
-    if (!templateId || !propertyId) return;
+    if (!templateId || !propertyId || !previewFresh) return;
     const preview = previewMutation.data;
     const finalPrice = parseFloat(priceOverride) || selectedTemplate?.price || 0;
     createMutation.mutate({
@@ -128,15 +163,16 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
         startDate,
         autoRenew,
         price: finalPrice,
-        visits: preview?.visits,
+        ...(visitSchedule ? { visitSchedule } : { visits: preview?.visits }),
       },
     }, {
       onSuccess: () => {
         toast.success('Plan sold and visits scheduled');
         qc.invalidateQueries({ queryKey: getListCustomerPlansQueryKey({ customerId }) });
+        qc.invalidateQueries({ predicate: q => { const k = String(q.queryKey[0] ?? ''); return /jobs|schedule|plans|visits/.test(k); } });
         setSellOpen(false);
       },
-      onError: () => toast.error('Failed to sell plan'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to sell plan')),
     });
   };
 
@@ -218,8 +254,8 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Start Date</label>
-                <Input type="date" title="Date the plan becomes active and the first billing period begins" value={startDate} onChange={e => { setStartDate(e.target.value); previewMutation.reset(); }} />
+                <label className="text-sm font-medium">{mode === 'range' ? 'Start / First Service' : 'Start Date'}</label>
+                <Input type="date" title="Date the plan becomes active and the first billing period begins" value={startDate} onChange={e => setStartDate(e.target.value)} />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Auto-Renew</label>
@@ -228,6 +264,22 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
                 </div>
               </div>
             </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Visit Scheduling</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {([['range', 'Evenly space between dates', 'Fixed first & last service, N total visits'], ['interval', 'Template interval', 'Legacy frequency from the plan template']] as const).map(([v, title, sub]) => (
+                  <button key={v} type="button" data-testid={`button-mode-${v}`} onClick={() => setMode(v)}
+                    className={`text-left rounded-md border px-3 py-2 transition-colors ${mode === v ? 'border-primary bg-primary/5' : 'hover:border-primary/40'}`}>
+                    <p className="text-sm font-medium">{title}</p>
+                    <p className="text-xs text-muted-foreground">{sub}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+            {mode === 'range' && (
+              <PlanVisitScheduleFields value={{ ...sched, firstServiceDate: startDate }} onChange={v => { setStartDate(v.firstServiceDate); setSched(v); }} />
+            )}
 
             {/* Warning: area-based template selected but property has no satellite measurements */}
             {!resolvingPrice && priceResolution && priceResolution.pricingMode !== 'flat' && priceResolution.resolvedPrice === 0 && (
@@ -282,20 +334,27 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
               </div>
             )}
 
-            <Button variant="outline" title="Preview the visit schedule this plan will generate before confirming" onClick={runPreview} disabled={previewMutation.isPending || !templateId || !propertyId} className="w-full">
+            <Button variant="outline" title="Preview the visit schedule this plan will generate before confirming" onClick={runPreview} disabled={previewMutation.isPending || !templateId || !propertyId || !scheduleValid} className="w-full">
               {previewMutation.isPending ? 'Building preview...' : 'Preview Schedule'}
             </Button>
 
-            {previewMutation.data && (
+            {previewMutation.isError && (
+              <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive" data-testid="text-preview-error">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>{apiErrorMessage(previewMutation.error, 'Could not build the preview.')}</span>
+              </div>
+            )}
+
+            {previewMutation.data && previewFresh && (
               <>
                 <Separator />
                 <div className="space-y-2 max-h-56 overflow-y-auto">
-                  <p className="text-sm font-medium">{previewMutation.data.visits.length} visit(s) this period</p>
+                  <p className="text-sm font-medium">{previewMutation.data.visits.length} visit(s) {mode === 'range' ? `from ${formatDateKey(startDate)} to ${formatDateKey(sched.lastServiceDate)}` : 'this period'}</p>
                   {previewMutation.data.visits.map((v, i) => (
                     <div key={i} className="flex items-center justify-between text-sm border rounded-md px-3 py-2">
                       <span>{v.serviceName}</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground">{new Date(v.date).toLocaleDateString()}</span>
+                        <span className="text-muted-foreground">{formatDateKey(v.date, undefined, (previewMutation.data as { timeZone?: string | null }).timeZone)}</span>
                         {v.clustered && <Badge variant="outline" className="text-xs">Clustered nearby</Badge>}
                       </div>
                     </div>
@@ -307,7 +366,7 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
 
           <DialogFooter>
             <Button variant="outline" title="Cancel and close the plan sale dialog" onClick={() => setSellOpen(false)}>Cancel</Button>
-            <Button title="Confirm the plan sale and activate it for this customer" onClick={confirmSale} disabled={!previewMutation.data || createMutation.isPending}>
+            <Button title="Confirm the plan sale and activate it for this customer" onClick={confirmSale} disabled={!previewFresh || createMutation.isPending}>
               {createMutation.isPending ? 'Activating...' : 'Confirm & Activate Plan'}
             </Button>
           </DialogFooter>

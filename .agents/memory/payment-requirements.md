@@ -23,3 +23,15 @@ Changes to deposit rules must not rewrite the terms of an already collected esti
 **Why:** A customer payment was authorized for its recorded terms and selected work; later company configuration is not permission to change that payment.
 
 **How to apply:** Refresh unpaid estimate requirements from current policy, but preserve paid terms and selection snapshots.
+
+Direct documents need working Pay Now / Accept-and-pay actions. Default card saving on, but give customers a visible opt-out and explicit authorization terms for future invoices. Sensitive card details belong only to the payment platform; the app can manage provider-backed cards and display safe summaries.
+
+**Why:** The user explicitly requested saving by default with opt-out, future-payment terms, and no payment credentials stored in this software.
+
+**How to apply:** Respect independent deposit/full-payment rules when accepting estimates; never charge the full estimate merely because Stripe is enabled. Existing saved cards do not imply consent to future automatic charges.
+
+Companies choose staff-initiated charging, charging when an invoice is sent, or automatic charging on its due date. Sent invoices must show successful processing only after the payment platform confirms it.
+
+**Why:** The user chose company control over staff/send timing, then specifically added the due-date option.
+
+**How to apply:** Interpret the due date as a calendar date, using company time for today's date. Skip already paid or fully covered balances. Uncertain payment outcomes must remain unconfirmed, never cause a second charge with a fresh key, and never be inferred from a browser return URL.

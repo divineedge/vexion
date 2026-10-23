@@ -9,6 +9,7 @@ import {
   useGetFinancialsSummary, getGetFinancialsSummaryQueryKey,
   useUpdateInvoice,
   useMarkInvoicePaid,
+  useChargeInvoiceCard,
   useArchiveInvoice,
   useRestoreInvoice,
   useDeleteInvoice,
@@ -756,6 +757,9 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
   });
   const updateInvoice = useUpdateInvoice();
   const markPaid = useMarkInvoicePaid();
+  const chargeCard = useChargeInvoiceCard();
+  const [chargeConfirmOpen, setChargeConfirmOpen] = useState(false);
+  const [chargeResult, setChargeResult] = useState<{ status: string; message: string } | null>(null);
   const archiveInvoice = useArchiveInvoice();
   const restoreInvoice = useRestoreInvoice();
   const deleteInvoice = useDeleteInvoice();
@@ -933,6 +937,26 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
     });
   };
 
+  const handleChargeCard = () => {
+    if (!invoiceId) return;
+    setChargeResult(null);
+    chargeCard.mutate({ id: invoiceId }, {
+      onSuccess: res => {
+        setChargeResult(res);
+        if (res.status === 'paid') toast.success(res.message);
+        else if (res.status === 'pending') toast.info(res.message);
+        else toast.error(res.message);
+        invalidateInvoice();
+      },
+      onError: (err: any) => {
+        const message = err?.data?.error ?? err?.data?.message ?? err?.message ?? 'Charge failed. The invoice was not marked paid.';
+        setChargeResult({ status: 'failed', message });
+        toast.error(message);
+        invalidateInvoice();
+      },
+    });
+  };
+
   const runLifecycle = (action: 'archive' | 'restore') => {
     if (!invoiceId) return;
     const mutation = action === 'archive' ? archiveInvoice : restoreInvoice;
@@ -990,6 +1014,12 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
                   {action.label}
                 </Button>
               ))}
+              {canManageLifecycle && ((invoice as any).status === 'sent' || (invoice as any).status === 'overdue') && Number((invoice as any).balanceDue ?? (invoice as any).total ?? 0) > 0 && (
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setChargeResult(null); setChargeConfirmOpen(true); }}
+                  disabled={chargeCard.isPending} data-testid="button-charge-saved-card">
+                  <DollarSign className="w-3.5 h-3.5" /> Charge saved card
+                </Button>
+              )}
               {canManageLifecycle && (invoice as any).status !== 'paid' && (invoice as any).status !== 'cancelled' && (
                 <Button size="sm" variant="outline" className="text-destructive border-destructive/50 hover:bg-destructive/5"
                   onClick={() => handleStatusChange('cancelled')} disabled={updateInvoice.isPending}>
@@ -1306,6 +1336,30 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
               onSuccess: () => { toast.success('Invoice deleted'); setDeleteDialogOpen(false); invalidateInvoice(); onClose(); },
               onError: (err: any) => toast.error(err?.response?.data?.error ?? err?.message ?? 'Invoice cannot be deleted'),
             })}>{deleteInvoice.isPending ? 'Deleting…' : 'Permanently delete'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={chargeConfirmOpen} onOpenChange={o => { if (!chargeCard.isPending) setChargeConfirmOpen(o); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Charge saved card</DialogTitle>
+            <DialogDescription>
+              Charge ${Number((invoice as any)?.balanceDue ?? (invoice as any)?.total ?? 0).toFixed(2)} to the customer's saved card for invoice {(invoice as any)?.invoiceNumber ?? ''}. The invoice is only marked paid if the payment provider confirms the charge.
+            </DialogDescription>
+          </DialogHeader>
+          {chargeResult && (
+            <div data-testid="status-charge-result" className={`rounded-md border p-3 text-sm ${chargeResult.status === 'paid' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : chargeResult.status === 'pending' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-red-200 bg-red-50 text-red-800'}`}>
+              <p className="font-semibold capitalize">{chargeResult.status}</p>
+              <p>{chargeResult.message}</p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setChargeConfirmOpen(false)} disabled={chargeCard.isPending}>{chargeResult ? 'Close' : 'Cancel'}</Button>
+            {!chargeResult && (
+              <Button onClick={handleChargeCard} disabled={chargeCard.isPending} data-testid="button-confirm-charge">
+                {chargeCard.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Charging…</> : 'Charge now'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

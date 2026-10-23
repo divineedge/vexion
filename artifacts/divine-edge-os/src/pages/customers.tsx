@@ -1,3 +1,4 @@
+import { StaffAuthorizationCheckbox } from '@/components/payments/CardAuthorization';
 import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import {
   useListCustomers, getListCustomersQueryKey,
@@ -210,6 +211,7 @@ const CardSetupSectionInner = forwardRef<CardSetupSectionHandle, object>(
     const stripe = useStripe();
     const elements = useElements();
     const [cardComplete, setCardComplete] = useState(false);
+  const [authConfirmed, setAuthConfirmed] = useState(false);
 
     useImperativeHandle(ref, () => ({
       cardComplete,
@@ -218,8 +220,7 @@ const CardSetupSectionInner = forwardRef<CardSetupSectionHandle, object>(
         const cardEl = elements.getElement(CardElement);
         if (!cardEl) throw new Error('Card element not found');
         const si = await customFetch<{ clientSecret: string }>(
-          `/api/customers/${customerId}/setup-intent`,
-          { method: 'POST' },
+          `/api/customers/${customerId}/setup-intent`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ saveCard: true, authorizationAccepted: authConfirmed }) },
         );
         const result = await stripe.confirmCardSetup(si.clientSecret, {
           payment_method: { card: cardEl },
@@ -230,10 +231,10 @@ const CardSetupSectionInner = forwardRef<CardSetupSectionHandle, object>(
         await customFetch(`/api/customers/${customerId}/attach-payment-method`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ paymentMethodId: pmId }),
+          body: JSON.stringify({ paymentMethodId: pmId, saveCard: true, authorizationAccepted: authConfirmed }),
         });
       },
-    }), [stripe, elements, cardComplete]);
+    }), [stripe, elements, cardComplete, authConfirmed]);
 
     return (
       <div className="space-y-2">
@@ -246,6 +247,7 @@ const CardSetupSectionInner = forwardRef<CardSetupSectionHandle, object>(
         <p className="text-xs text-muted-foreground flex items-center gap-1">
           <CreditCard className="w-3 h-3" /> Secured by Stripe — card details are never stored on our servers
         </p>
+        <StaffAuthorizationCheckbox checked={authConfirmed} onChange={setAuthConfirmed} />
       </div>
     );
   },

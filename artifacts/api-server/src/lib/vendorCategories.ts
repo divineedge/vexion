@@ -11,6 +11,17 @@ export async function installVendorCategoriesSchema(){
  await db.execute(sql`ALTER TABLE expense_entries ADD COLUMN IF NOT EXISTS shipping_amount real NOT NULL DEFAULT 0,ADD COLUMN IF NOT EXISTS capitalize_shipping boolean NOT NULL DEFAULT false`);
  await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS portal_show_measurements boolean NOT NULL DEFAULT true`);
  await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS document_link_destination text NOT NULL DEFAULT 'document'`);
+ await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS automatic_invoice_payment_mode text NOT NULL DEFAULT 'manual'`);
+ await db.execute(sql`ALTER TABLE customers ADD COLUMN IF NOT EXISTS automatic_payment_authorized_at timestamptz, ADD COLUMN IF NOT EXISTS payment_authorization_method_id text`);
+ await db.execute(sql`CREATE TABLE IF NOT EXISTS invoice_card_attempts (
+   invoice_id integer PRIMARY KEY REFERENCES invoices(id), tenant_id integer NOT NULL REFERENCES tenants(id),
+   status text NOT NULL, attempt_key text NOT NULL, amount_cents integer NOT NULL,
+   payment_method_id text, payment_intent_id text, checkout_session_id text, checkout_url text,
+   error text, updated_at timestamptz NOT NULL DEFAULT now()
+ )`);
+ await db.execute(sql`ALTER TABLE invoice_card_attempts ADD COLUMN IF NOT EXISTS request_payload jsonb`);
+ await db.execute(sql`ALTER TABLE invoice_card_attempts ADD COLUMN IF NOT EXISTS reserved_at timestamptz NOT NULL DEFAULT now()`);
+ await db.execute(sql`ALTER TABLE invoice_card_attempts ADD COLUMN IF NOT EXISTS checkout_authorization_saved boolean NOT NULL DEFAULT false`);
  await db.execute(sql`ALTER TABLE expense_entries ADD COLUMN IF NOT EXISTS subtotal real,ADD COLUMN IF NOT EXISTS sales_tax_pct real NOT NULL DEFAULT 0,ADD COLUMN IF NOT EXISTS sales_tax_amount real NOT NULL DEFAULT 0,ADD COLUMN IF NOT EXISTS capitalize_sales_tax boolean NOT NULL DEFAULT false`);
  await db.execute(sql`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS contact_name text, ADD COLUMN IF NOT EXISTS office_phone text`);
  await db.execute(sql`CREATE TABLE IF NOT EXISTS expense_categories(tenant_id integer NOT NULL REFERENCES tenants(id),key text NOT NULL,name text NOT NULL,PRIMARY KEY(tenant_id,key))`);

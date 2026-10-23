@@ -11,6 +11,7 @@ import type { FollowupTriggerConfig } from './followupTriggerConfig';
 import type { PaymentReminderRule } from './paymentReminderRule';
 import type { PreTripChecklistItem } from './preTripChecklistItem';
 import type { TenantSettingsAutoInvoiceFrequency } from './tenantSettingsAutoInvoiceFrequency';
+import type { TenantSettingsAutomaticInvoicePaymentMode } from './tenantSettingsAutomaticInvoicePaymentMode';
 import type { TenantSettingsDefaultGeofenceUnit } from './tenantSettingsDefaultGeofenceUnit';
 import type { TenantSettingsDocumentLinkDestination } from './tenantSettingsDocumentLinkDestination';
 import type { TenantSettingsDurationUnit } from './tenantSettingsDurationUnit';
@@ -23,6 +24,7 @@ import type { TenantSettingsPreferredAreaUnit } from './tenantSettingsPreferredA
 import type { TenantSettingsRolePermissions } from './tenantSettingsRolePermissions';
 
 export interface TenantSettings {
+  automaticInvoicePaymentMode?: TenantSettingsAutomaticInvoicePaymentMode;
   portalShowMeasurements?: boolean;
   documentLinkDestination?: TenantSettingsDocumentLinkDestination;
   /** @nullable */

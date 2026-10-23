@@ -6483,6 +6483,7 @@ export const getTenantSettingsResponsePreTripChecklistNameMax = 80;
 
 
 export const GetTenantSettingsResponse = zod.object({
+  "automaticInvoicePaymentMode": zod.enum(['manual', 'when_sent', 'due_date']).optional(),
   "portalShowMeasurements": zod.boolean().optional(),
   "documentLinkDestination": zod.enum(['document', 'portal']).optional(),
   "defaultInvoiceTerms": zod.string().nullish(),
@@ -6633,6 +6634,7 @@ export const updateTenantSettingsBodyPreTripChecklistNameMax = 80;
 
 
 export const UpdateTenantSettingsBody = zod.object({
+  "automaticInvoicePaymentMode": zod.enum(['manual', 'when_sent', 'due_date']).optional(),
   "documentLinkDestination": zod.enum(['document', 'portal']).optional(),
   "defaultInvoiceTerms": zod.string().nullish(),
   "defaultInvoiceNotes": zod.string().nullish(),
@@ -6754,6 +6756,7 @@ export const updateTenantSettingsResponsePreTripChecklistNameMax = 80;
 
 
 export const UpdateTenantSettingsResponse = zod.object({
+  "automaticInvoicePaymentMode": zod.enum(['manual', 'when_sent', 'due_date']).optional(),
   "portalShowMeasurements": zod.boolean().optional(),
   "documentLinkDestination": zod.enum(['document', 'portal']).optional(),
   "defaultInvoiceTerms": zod.string().nullish(),
@@ -9802,6 +9805,7 @@ export const PortalCreatePaySessionParams = zod.object({
 
 export const PortalCreatePaySessionBody = zod.object({
   "saveCard": zod.boolean().optional(),
+  "authorizationAccepted": zod.boolean().optional(),
   "returnUrl": zod.string()
 })
 
@@ -11432,6 +11436,9 @@ export const RespondToEstimateParams = zod.object({
 })
 
 export const RespondToEstimateBody = zod.object({
+  "saveCard": zod.boolean().optional(),
+  "authorizationAccepted": zod.boolean().optional(),
+  "setupIntentId": zod.string().optional(),
   "action": zod.enum(['approve', 'decline']),
   "acceptedOptionalItemIds": zod.array(zod.string()).optional(),
   "declineReason": zod.string().optional(),
@@ -11503,6 +11510,11 @@ export const RespondToEstimateResponse = zod.object({
  */
 export const CreateEstimateSetupIntentParams = zod.object({
   "token": zod.coerce.string()
+})
+
+export const CreateEstimateSetupIntentBody = zod.object({
+  "saveCard": zod.boolean(),
+  "authorizationAccepted": zod.boolean()
 })
 
 export const CreateEstimateSetupIntentResponse = zod.object({
@@ -16740,6 +16752,48 @@ export const ConfirmGuestDocumentPortalBody = zod.object({
 
 export const ConfirmGuestDocumentPortalResponse = zod.object({
   "ok": zod.boolean(),
+  "message": zod.string()
+})
+
+
+export const CreatePublicInvoicePaymentParams = zod.object({
+  "token": zod.coerce.string()
+})
+
+export const CreatePublicInvoicePaymentBody = zod.object({
+  "saveCard": zod.boolean(),
+  "authorizationAccepted": zod.boolean()
+})
+
+export const CreatePublicInvoicePaymentResponse = zod.object({
+  "checkoutUrl": zod.string()
+})
+
+
+export const PayPublicEstimateDepositParams = zod.object({
+  "token": zod.coerce.string()
+})
+
+export const PayPublicEstimateDepositBody = zod.object({
+  "saveCard": zod.boolean(),
+  "authorizationAccepted": zod.boolean(),
+  "paymentMethodId": zod.string().optional(),
+  "acceptedOptionalItemIds": zod.array(zod.string()).optional()
+})
+
+export const PayPublicEstimateDepositResponse = zod.object({
+  "ok": zod.boolean(),
+  "chargedAmount": zod.number(),
+  "paymentIntentId": zod.string().optional()
+})
+
+
+export const ChargeInvoiceCardParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ChargeInvoiceCardResponse = zod.object({
+  "status": zod.enum(['paid', 'failed', 'pending', 'unavailable']),
   "message": zod.string()
 })
 

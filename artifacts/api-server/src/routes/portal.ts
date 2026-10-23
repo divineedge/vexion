@@ -3,6 +3,9 @@ import { publicAppUrl } from "../lib/publicSite";
 import { estimatePaymentTerms } from "../lib/paymentPolicy";
 import { paymentGuardedJobInsert } from "../lib/paymentPolicy";
 import { invoiceBalance } from "../lib/customerCredit";
+import { invoiceCheckout } from "../lib/invoiceCheckout";
+import { settleInvoiceCheckout } from "../lib/invoiceSettlement";
+import { validCardChoice, authorizeSavedCard, CARD_AUTHORIZATION_VERSION } from "../lib/cardAuthorization";
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable, customerPlansTable, usersTable, planCancelRequestsTable, estimatesTable, taskNotificationsTable, portalMessagesTable, internalTasksTable, chemicalApplicationsTable } from "@workspace/db";
 import { eq, and, gt, desc, lte, isNotNull, ne, sql, isNull, inArray, or } from "drizzle-orm";
@@ -583,6 +586,7 @@ router.get("/portal/me/payment-method", requirePortalAuth, async (req: any, res)
 });
 
 router.post("/portal/me/setup-intent", requirePortalAuth, async (req: any, res): Promise<void> => {
+  if(!validCardChoice(req.body)){res.status(400).json({error:"Review the saved-card authorization."});return;}
   const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
   const [customer] = await db.select().from(customersTable)
     .where(and(eq(customersTable.id, portalCustomerId), eq(customersTable.tenantId, portalTenantId)));
@@ -597,7 +601,9 @@ router.post("/portal/me/setup-intent", requirePortalAuth, async (req: any, res):
   const setupIntent = await stripe.setupIntents.create({
     customer: stripeCustomerId,
     payment_method_types: ["card"],
-    usage: "off_session",
+    usage: req.body.saveCard ? "off_session" : "on_session",
+    metadata:{tenantId:String(portalTenantId),customerId:String(portalCustomerId),saveCard:req.body.saveCard?"true":"false",
+      authorizationVersion:req.body.saveCard?CARD_AUTHORIZATION_VERSION:"none"},
   });
 
   const publishableKey = getStripePublishableKey();
@@ -607,6 +613,7 @@ router.post("/portal/me/setup-intent", requirePortalAuth, async (req: any, res):
 });
 
 router.post("/portal/me/attach-payment-method", requirePortalAuth, async (req: any, res): Promise<void> => {
+  if(!validCardChoice(req.body)||req.body.saveCard!==true){res.status(400).json({error:"Accept the authorization to save this card."});return;}
   const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
   const { paymentMethodId } = req.body as { paymentMethodId?: string };
   if (!paymentMethodId) { res.status(400).json({ error: "paymentMethodId required" }); return; }
@@ -634,25 +641,29 @@ router.post("/portal/me/attach-payment-method", requirePortalAuth, async (req: a
     return;
   }
 
-  await stripe.paymentMethods.attach(paymentMethodId, { customer: stripeCustomerId });
-  await stripe.customers.update(stripeCustomerId, {
-    invoice_settings: { default_payment_method: paymentMethodId },
-  });
-  await db.update(customersTable)
-    .set({
-      stripeDefaultPaymentMethodId: paymentMethodId,
-      cardExpiresAt: cardExpiry.toISOString().split("T")[0],
-      cardExpiryReminderSentAt: null,
-    })
-    .where(and(eq(customersTable.id, portalCustomerId), eq(customersTable.tenantId, portalTenantId)));
+  const owner=typeof pm.customer==="string"?pm.customer:pm.customer?.id;
+  if(owner!==stripeCustomerId){res.status(422).json({error:"Card setup does not belong to this customer."});return;}
+  const setups=await stripe.setupIntents.list({customer:stripeCustomerId,limit:20});
+  const confirmed=setups.data.some(setup=>setup.status==="succeeded" &&
+    (typeof setup.payment_method==="string"?setup.payment_method:setup.payment_method?.id)===paymentMethodId &&
+    setup.metadata?.authorizationVersion===CARD_AUTHORIZATION_VERSION && setup.metadata?.saveCard==="true");
+  if(!confirmed){res.status(422).json({error:"Confirmed card setup and authorization are required."});return;}
+  await authorizeSavedCard(portalTenantId,portalCustomerId,paymentMethodId,"customer-profile");
 
   res.json({ success: true });
 });
 
 router.delete("/portal/me/payment-method", requirePortalAuth, async (req: any, res): Promise<void> => {
   const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const [customer]=await db.select().from(customersTable).where(and(eq(customersTable.id,portalCustomerId),eq(customersTable.tenantId,portalTenantId)));
+  const stripe=getStripeClient();
+  if(customer?.stripeDefaultPaymentMethodId){
+    if(!stripe){res.status(503).json({error:"The payment provider is unavailable; card removal was not completed."});return;}
+    await stripe.paymentMethods.detach(customer.stripeDefaultPaymentMethodId);
+    if(customer.stripeCustomerId)await stripe.customers.update(customer.stripeCustomerId,{invoice_settings:{default_payment_method:""},metadata:{automatic_payment_authorization:"revoked",automatic_payment_method:""}});
+  }
   await db.update(customersTable)
-    .set({ stripeDefaultPaymentMethodId: null, cardExpiresAt: null, cardExpiryReminderSentAt: null })
+    .set({ stripeDefaultPaymentMethodId: null, cardExpiresAt: null, cardExpiryReminderSentAt: null,automaticPaymentAuthorizedAt:null,paymentAuthorizationMethodId:null })
     .where(and(eq(customersTable.id, portalCustomerId), eq(customersTable.tenantId, portalTenantId)));
   res.sendStatus(204);
 });
@@ -1799,7 +1810,8 @@ router.post("/portal/invoices/:id/pay-session", requirePortalAuth, async (req: a
   const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
   const invoiceId = parseInt(req.params.id, 10);
   if (req.body.saveCard !== undefined && typeof req.body.saveCard !== "boolean") {res.status(400).json({error:"Invalid save-card choice"});return;}
-  const saveCard = req.body.saveCard === true;
+  const saveCard = req.body.saveCard !== false;
+  if(!validCardChoice(req.body)){res.status(400).json({error:"Choose whether to save your card and authorize future invoice payments."});return;}
   const { returnUrl } = req.body as { returnUrl?: string };
 
   if (!returnUrl) {
@@ -1851,40 +1863,8 @@ router.post("/portal/invoices/:id/pay-session", requirePortalAuth, async (req: a
     if (!payer) {res.status(404).json({error:"Customer not found"});return;}
     const {ensureStripeCustomer} = await import("../lib/stripe");
     const stripeCustomerId = await ensureStripeCustomer(payer.id,payer.name,payer.email,payer.stripeCustomerId);
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      customer: stripeCustomerId,
-      payment_method_types: ["card"],
-      line_items: [
-        {
-          price_data: {
-            currency: "usd",
-            unit_amount: amountCents,
-            product_data: {
-              name: `Invoice ${invoice.invoiceNumber}`,
-              description: invoice.notes ?? undefined,
-            },
-          },
-          quantity: 1,
-        },
-      ],
-      success_url: successUrl,
-      cancel_url: returnUrl,
-      metadata: {
-        invoiceId: String(invoiceId),
-        tenantId: String(portalTenantId),
-        saveCard: saveCard ? "true" : "false",
-      },
-      payment_intent_data: {
-        ...(saveCard ? {setup_future_usage: "off_session" as const} : {}),
-        metadata: {
-          invoiceId: String(invoiceId),
-          tenantId: String(portalTenantId),
-        },
-      },
-    });
-
-    res.json({ checkoutUrl: session.url });
+    const session = await invoiceCheckout(portalTenantId,portalCustomerId,invoiceId,saveCard,`${publicAppUrl}/portal/invoices/${invoiceId}`);
+    res.json(session);
   } catch (err) {
     logger.error({ err, invoiceId }, "Stripe Checkout session creation failed");
     res.status(500).json({ error: "Failed to create payment session. Please try again." });
@@ -1930,7 +1910,22 @@ router.post("/portal/stripe-webhook", async (req: any, res): Promise<void> => {
     return;
   }
 
-  if (event.type === "checkout.session.completed") {
+  if(event.type==="payment_intent.succeeded"){
+    const intent=event.data.object;
+    if(intent.metadata?.invoiceId){
+      try {
+        await settleInvoiceCheckout({
+          id:`intent:${intent.id}`,payment_status:"paid",payment_intent:intent.id,customer:intent.customer,
+          amount_total:intent.amount_received,metadata:{...intent.metadata,saveCard:"false"},
+        });
+      }catch(error){logger.error({error},"Invoice payment settlement needs retry");res.status(500).json({error:"Settlement needs retry"});return;}
+    }
+  }
+  if(event.type==="checkout.session.expired"){
+    await db.execute(sql`UPDATE invoice_card_attempts SET status='failed',updated_at=now()
+      WHERE checkout_session_id=${event.data.object.id} AND status='checkout_open'`);
+  }
+  if (event.type === "checkout.session.completed" || event.type==="checkout.session.async_payment_succeeded") {
     const session = event.data.object;
     const invoiceId = session.metadata?.invoiceId ? parseInt(session.metadata.invoiceId, 10) : null;
     const tenantId = session.metadata?.tenantId ? parseInt(session.metadata.tenantId, 10) : null;
@@ -1943,36 +1938,7 @@ router.post("/portal/stripe-webhook", async (req: any, res): Promise<void> => {
 
     if (session.payment_status === "paid") {
       try {
-        await db
-          .update(invoicesTable)
-          .set({
-            status: "paid",
-            paidAt: new Date(),
-            paymentMethod: "card",
-            paymentReference: typeof session.payment_intent === "string" ? session.payment_intent : null,
-          })
-          .where(
-            and(
-              eq(invoicesTable.id, invoiceId),
-              eq(invoicesTable.tenantId, tenantId),
-              sql`${invoicesTable.status}<>'paid'`,
-            ),
-          );
-        logger.info({ invoiceId, tenantId }, "Invoice marked paid via Stripe webhook");
-        // Save only after an authenticated Stripe success and explicit checkout consent.
-        if (session.metadata?.saveCard === "true" && typeof session.payment_intent === "string") {
-          const [paidInvoice]=await db.select().from(invoicesTable).where(and(eq(invoicesTable.id,invoiceId),eq(invoicesTable.tenantId,tenantId)));
-          const [payer]=paidInvoice ? await db.select().from(customersTable).where(and(eq(customersTable.id,paidInvoice.customerId),eq(customersTable.tenantId,tenantId))) : [];
-          const intent=await stripe.paymentIntents.retrieve(session.payment_intent);
-          const pmId=typeof intent.payment_method==="string"?intent.payment_method:intent.payment_method?.id;
-          if(payer?.stripeCustomerId && intent.customer===payer.stripeCustomerId && pmId){
-            const method=await stripe.paymentMethods.retrieve(pmId);
-            const owner=typeof method.customer==="string"?method.customer:method.customer?.id;
-            if(owner===payer.stripeCustomerId && method.card)await db.update(customersTable).set({
-              stripeDefaultPaymentMethodId:pmId,cardExpiresAt:new Date(Date.UTC(method.card.exp_year,method.card.exp_month,0)).toISOString().slice(0,10),cardExpiryReminderSentAt:null,
-            }).where(and(eq(customersTable.id,payer.id),eq(customersTable.tenantId,tenantId)));
-          }
-        }
+        await settleInvoiceCheckout(session);
 
         // Fire-and-forget: push payment record to QuickBooks if connected
         syncInvoicePaymentToQBO(tenantId, invoiceId).catch(err =>
@@ -2174,7 +2140,8 @@ router.patch("/portal/estimates/:id/optional-items", requirePortalAuth, async (r
 // Charges the customer's saved card for the deposit/full amount required on
 // acceptance.  Call this BEFORE the /public/estimates/:token/respond endpoint.
 // ---------------------------------------------------------------------------
-router.post("/portal/estimates/:id/pay-deposit", requirePortalAuth, async (req: any, res): Promise<void> => {
+export const payEstimateDeposit = async (req: any, res: import("express").Response): Promise<void> => {
+  if(req.body?.saveCard!==undefined && !validCardChoice(req.body)){res.status(400).json({error:"Review the card-saving authorization."});return;}
   const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
   const estimateId = parseInt(req.params.id, 10);
   if (isNaN(estimateId)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -2197,8 +2164,20 @@ router.post("/portal/estimates/:id/pay-deposit", requirePortalAuth, async (req: 
     return;
   }
   if (estimate.depositPaidAt) {
-    // Already paid — idempotent success
-    res.json({ ok: true, alreadyPaid: true });
+    // A retry after provider cleanup/save failed must finish that work without
+    // collecting the deposit a second time.
+    const [payer]=await db.select().from(customersTable).where(and(eq(customersTable.id,portalCustomerId),eq(customersTable.tenantId,portalTenantId)));
+    const methodId=req.body?.paymentMethodId;
+    if(methodId && req.body?.saveCard===false && methodId!==payer?.stripeDefaultPaymentMethodId){
+      const provider=getStripeClient();
+      if(!provider){res.status(503).json({error:"Payment was collected; card cleanup needs retry."});return;}
+      const method=await provider.paymentMethods.retrieve(methodId);
+      const owner=typeof method.customer==="string"?method.customer:method.customer?.id;
+      if(owner===payer?.stripeCustomerId)await provider.paymentMethods.detach(methodId);
+    }
+    if(methodId && req.body?.saveCard===true && req.body?.authorizationAccepted===true)
+      await authorizeSavedCard(portalTenantId,portalCustomerId,methodId,`estimate-deposit:${estimateId}`);
+    res.json({ ok: true, alreadyPaid: true,chargedAmount:estimate.depositChargedAmount??0,paymentIntentId:estimate.depositPaymentIntentId??undefined });
     return;
   }
 
@@ -2384,14 +2363,15 @@ router.post("/portal/estimates/:id/pay-deposit", requirePortalAuth, async (req: 
     return;
   }
 
-  // Also persist the payment method as the customer's default so it's saved for future use
-  await stripe.customers.update(stripeCustomerId, { invoice_settings: { default_payment_method: paymentMethodId } });
-  await db.update(customersTable)
-    .set({ stripeDefaultPaymentMethodId: paymentMethodId })
-    .where(and(eq(customersTable.id, portalCustomerId), eq(customersTable.tenantId, portalTenantId)));
+  if(req.body?.saveCard===true && req.body?.authorizationAccepted===true) {
+    await authorizeSavedCard(portalTenantId,portalCustomerId,paymentMethodId,`estimate-deposit:${estimateId}`);
+  } else if(req.body?.saveCard===false && paymentMethodId!==customer.stripeDefaultPaymentMethodId) {
+    await stripe.paymentMethods.detach(paymentMethodId);
+  }
 
   res.json({ ok: true, chargedAmount: depositAmount, paymentIntentId: pi.id });
-});
+};
+router.post("/portal/estimates/:id/pay-deposit", requirePortalAuth, payEstimateDeposit);
 
 router.post("/portal/plans/:id/cancel-request", requirePortalAuth, async (req: any, res): Promise<void> => {
   const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;

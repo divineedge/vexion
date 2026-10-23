@@ -1,4 +1,5 @@
 import { sendDocumentEmail } from "../lib/documentDelivery";
+import { chargeInvoiceCard } from "../lib/invoiceCardPayments";
 import { creditedInvoiceInsert, invoiceBalance, voidCreditedInvoice } from "../lib/customerCredit";
 import { Router, type IRouter } from "express";
 import { db, invoicesTable, customersTable, jobsTable, activityLogTable, tenantsTable, integrationSyncLogsTable, customerPlansTable, stopServiceFlagsTable, invoiceTemplatesTable, propertiesTable, servicesTable, billingEmailQueueTable } from "@workspace/db";
@@ -591,7 +592,9 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
     });
     if ("error" in result) { res.status(result.code!).json({ error: result.error }); return; }
     void processEmailQueue().catch(err => logger.error({ err }, "Invoice email delivery failed"));
-    res.json(formatInvoice(result.invoice!, result.name!));
+    await chargeInvoiceCard(tenantId,id,"when_sent");
+    const [sentInvoice]=await db.select().from(invoicesTable).where(and(eq(invoicesTable.id,id),eq(invoicesTable.tenantId,tenantId)));
+    res.json(formatInvoice(sentInvoice!, result.name!));
     return;
   }
 

@@ -110,6 +110,7 @@ export default function SettingsPage() {
   const [autoInvoiceFrequency, setAutoInvoiceFrequency] = useState<'off' | 'daily' | 'weekly' | 'bi_monthly' | 'monthly' | 'biweekly' | 'weekly_friday' | 'monthly_15'>('off');
   const [nonRecurringInvoiceCadence, setNonRecurringInvoiceCadence] = useState<'immediate' | 'weekly'>('immediate');
   const [invoiceDeliveryMode, setInvoiceDeliveryMode] = useState<'review' | 'automatic'>('review');
+  const [automaticInvoicePaymentMode, setAutomaticInvoicePaymentMode] = useState<'manual' | 'when_sent' | 'due_date'>('manual');
   const [maxClockInHours, setMaxClockInHours] = useState('');
   const [dailyTaskHourlyRate, setDailyTaskHourlyRate] = useState('0');
   const [defaultOffSeasonStart, setDefaultOffSeasonStart] = useState('11-15');
@@ -311,6 +312,7 @@ export default function SettingsPage() {
       setAutoInvoiceFrequency((settings.autoInvoiceFrequency as typeof autoInvoiceFrequency) ?? 'off');
       setNonRecurringInvoiceCadence(((settings as any).nonRecurringInvoiceCadence as 'immediate' | 'weekly') ?? 'immediate');
       setInvoiceDeliveryMode(settings.invoiceDeliveryMode === 'automatic' ? 'automatic' : 'review');
+      { const m = (settings as any).automaticInvoicePaymentMode; setAutomaticInvoicePaymentMode(m === 'when_sent' || m === 'due_date' ? m : 'manual'); }
       setMaxClockInHours((settings as any).maxClockInHours != null ? String((settings as any).maxClockInHours) : '');
       setDailyTaskHourlyRate(String(settings.dailyTaskHourlyRate ?? 0));
       setDefaultOffSeasonStart((settings as any).defaultOffSeasonStart ?? '11-15');
@@ -543,7 +545,7 @@ export default function SettingsPage() {
     // Invoicing / estimates
     paymentRemindersEnabled, paymentReminderSchedule, paymentReminderChannels, stopServiceRuleEnabled,
     stopServiceThresholdDays: numOrSkip(stopServiceThresholdDays, true),
-    invoiceDueDays: numOrSkip(invoiceDueDays, true), invoiceDeliveryMode, autoInvoiceFrequency, nonRecurringInvoiceCadence,
+    invoiceDueDays: numOrSkip(invoiceDueDays, true), invoiceDeliveryMode, automaticInvoicePaymentMode, autoInvoiceFrequency, nonRecurringInvoiceCadence,
     estimateExpiryDays: numOrSkip(estimateExpiryDays, true),
     // Templates text & reviews
     notificationTemplates,
@@ -1852,6 +1854,18 @@ export default function SettingsPage() {
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">{invoiceDeliveryMode === 'review' ? 'Invoices are created as Draft. Staff review and edit them in Financials, then an admin uses Send Invoice to email the customer.' : 'Invoices are created and sent to the customer without review.'}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Automatic Card Payment</label>
+                    <Select value={automaticInvoicePaymentMode} onValueChange={v => setAutomaticInvoicePaymentMode(v as 'manual' | 'when_sent' | 'due_date')}>
+                      <SelectTrigger className="w-80" data-testid="select-automatic-invoice-payment-mode"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="manual">Staff chooses when to charge</SelectItem>
+                        <SelectItem value="when_sent">Charge authorized saved card when invoice is sent</SelectItem>
+                        <SelectItem value="due_date">Charge automatically on the invoice due date</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">Only cards the customer explicitly authorized for future invoice charges are ever charged automatically. Cards saved without that authorization are never auto-charged. A failed payment leaves the invoice unpaid for admin follow-up.</p>
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Recurring Job Batching</label>

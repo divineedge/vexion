@@ -8,6 +8,9 @@
 import type { EstimateRespondInputAction } from './estimateRespondInputAction';
 
 export interface EstimateRespondInput {
+  saveCard?: boolean;
+  authorizationAccepted?: boolean;
+  setupIntentId?: string;
   action: EstimateRespondInputAction;
   acceptedOptionalItemIds?: string[];
   declineReason?: string;

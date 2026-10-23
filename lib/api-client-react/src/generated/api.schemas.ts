@@ -5,6 +5,39 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+export interface CardPaymentChoice {
+  saveCard: boolean;
+  authorizationAccepted: boolean;
+}
+
+export interface EstimateCardPaymentChoice {
+  saveCard: boolean;
+  authorizationAccepted: boolean;
+  paymentMethodId?: string;
+  acceptedOptionalItemIds?: string[];
+}
+
+export interface EstimateCardPaymentResult {
+  ok: boolean;
+  chargedAmount: number;
+  paymentIntentId?: string;
+}
+
+export type InvoiceCardPaymentResultStatus = typeof InvoiceCardPaymentResultStatus[keyof typeof InvoiceCardPaymentResultStatus];
+
+
+export const InvoiceCardPaymentResultStatus = {
+  paid: 'paid',
+  failed: 'failed',
+  pending: 'pending',
+  unavailable: 'unavailable',
+} as const;
+
+export interface InvoiceCardPaymentResult {
+  status: InvoiceCardPaymentResultStatus;
+  message: string;
+}
+
 export interface GuestDocumentConfirmation {
   /** @maxLength 254 */
   email: string;
@@ -1232,6 +1265,9 @@ export const EstimateRespondInputAction = {
 } as const;
 
 export interface EstimateRespondInput {
+  saveCard?: boolean;
+  authorizationAccepted?: boolean;
+  setupIntentId?: string;
   action: EstimateRespondInputAction;
   acceptedOptionalItemIds?: string[];
   declineReason?: string;
@@ -4083,6 +4119,15 @@ export interface AiZoneInput {
   materials: AiZoneMaterial[];
 }
 
+export type TenantSettingsAutomaticInvoicePaymentMode = typeof TenantSettingsAutomaticInvoicePaymentMode[keyof typeof TenantSettingsAutomaticInvoicePaymentMode];
+
+
+export const TenantSettingsAutomaticInvoicePaymentMode = {
+  manual: 'manual',
+  when_sent: 'when_sent',
+  due_date: 'due_date',
+} as const;
+
 export type TenantSettingsDocumentLinkDestination = typeof TenantSettingsDocumentLinkDestination[keyof typeof TenantSettingsDocumentLinkDestination];
 
 
@@ -4282,6 +4327,7 @@ export interface PreTripChecklistItem {
 }
 
 export interface TenantSettings {
+  automaticInvoicePaymentMode?: TenantSettingsAutomaticInvoicePaymentMode;
   portalShowMeasurements?: boolean;
   documentLinkDestination?: TenantSettingsDocumentLinkDestination;
   /** @nullable */
@@ -4684,6 +4730,15 @@ export interface RescheduleOnceResult {
   exceptionFeeCharged: number;
 }
 
+export type TenantSettingsUpdateAutomaticInvoicePaymentMode = typeof TenantSettingsUpdateAutomaticInvoicePaymentMode[keyof typeof TenantSettingsUpdateAutomaticInvoicePaymentMode];
+
+
+export const TenantSettingsUpdateAutomaticInvoicePaymentMode = {
+  manual: 'manual',
+  when_sent: 'when_sent',
+  due_date: 'due_date',
+} as const;
+
 export type TenantSettingsUpdateDocumentLinkDestination = typeof TenantSettingsUpdateDocumentLinkDestination[keyof typeof TenantSettingsUpdateDocumentLinkDestination];
 
 
@@ -4769,6 +4824,7 @@ export const TenantSettingsUpdatePaymentReminderChannelsItem = {
 } as const;
 
 export interface TenantSettingsUpdate {
+  automaticInvoicePaymentMode?: TenantSettingsUpdateAutomaticInvoicePaymentMode;
   documentLinkDestination?: TenantSettingsUpdateDocumentLinkDestination;
   /** @nullable */
   defaultInvoiceTerms?: string | null;
@@ -6256,6 +6312,7 @@ export interface PortalSummary {
 
 export interface PortalPaySessionInput {
   saveCard?: boolean;
+  authorizationAccepted?: boolean;
   returnUrl: string;
 }
 

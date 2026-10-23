@@ -166,11 +166,15 @@ function CompactLineItems({ items, subtotal, tax, total }: {
  * Template fields (layout, termsText, late fees) come from the invoice's own
  * snapshot, so editing a template never changes an existing invoice.
  */
-export function InvoiceDocument({ invoice, businessProfile, preview = false }: {
+export function InvoiceDocument({ invoice, businessProfile, preview = false, hideLegacyPayLink = false, children }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   invoice: any;
   businessProfile?: InvoiceBusinessProfile | null;
   preview?: boolean;
+  /** Suppress the legacy stripePaymentUrl button when the page renders its own controlled payment flow. */
+  hideLegacyPayLink?: boolean;
+  /** Extra content rendered at the bottom of the document (e.g. the public pay panel). */
+  children?: React.ReactNode;
 }) {
   const inv = invoice as any;
   const biz = businessProfile ?? inv.businessProfile;
@@ -425,7 +429,7 @@ export function InvoiceDocument({ invoice, businessProfile, preview = false }: {
             {inv.stripePaymentUrl ? `The customer sees a Pay Invoice button for $${balanceDue.toFixed(2)} here.` : 'A Pay Invoice button appears here once a payment link exists.'}
           </p>
         )}
-        {!preview && inv.stripePaymentUrl && inv.status !== 'paid' && balanceDue > 0 && (
+        {!preview && !hideLegacyPayLink && inv.stripePaymentUrl && inv.status !== 'paid' && balanceDue > 0 && (
           <div className="flex justify-center print:hidden">
             <a href={inv.stripePaymentUrl} target="_blank" rel="noopener noreferrer">
               <Button size="lg" className="gap-2">
@@ -434,6 +438,7 @@ export function InvoiceDocument({ invoice, businessProfile, preview = false }: {
             </a>
           </div>
         )}
+        {children}
       </div>
     </div>
   );

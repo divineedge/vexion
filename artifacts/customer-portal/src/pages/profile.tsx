@@ -12,6 +12,7 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { loadStripe, type Stripe as StripeInstance } from "@stripe/stripe-js";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
+import { CardAuthorizationTerms } from "@/components/payments/CardAuthorization";
 
 // ── Stripe card setup sub-component ─────────────────────────────────────────
 
@@ -29,7 +30,11 @@ function CardFormInner({ onSuccess, onCancel }: CardFormProps) {
 
   // Get the setup intent as soon as this form mounts
   React.useEffect(() => {
-    customFetch<{ clientSecret: string; publishableKey: string }>("/api/portal/me/setup-intent", { method: "POST" })
+    customFetch<{ clientSecret: string; publishableKey: string }>("/api/portal/me/setup-intent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ saveCard: true, authorizationAccepted: true }),
+    })
       .then(r => setClientSecret(r.clientSecret))
       .catch(() => toast.error("Failed to prepare card form"));
   }, []);
@@ -47,7 +52,7 @@ function CardFormInner({ onSuccess, onCancel }: CardFormProps) {
       await customFetch("/api/portal/me/attach-payment-method", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentMethodId: pmId }),
+        body: JSON.stringify({ paymentMethodId: pmId, saveCard: true, authorizationAccepted: true }),
       });
       toast.success("Card saved successfully");
       onSuccess();
@@ -77,10 +82,11 @@ function CardFormInner({ onSuccess, onCancel }: CardFormProps) {
       <p className="text-xs text-muted-foreground flex items-center gap-1">
         <ShieldCheck className="w-3 h-3 text-emerald-600" /> Secured by Stripe — your card details are never stored on our servers
       </p>
+      <CardAuthorizationTerms />
       <div className="flex gap-2">
         <Button size="sm" onClick={handleSubmit} disabled={busy || !complete} className="gap-1.5">
           {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-          {busy ? "Saving…" : "Save Card"}
+          {busy ? "Saving…" : "Save Card & Authorize"}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel} disabled={busy}>
           <X className="w-3.5 h-3.5 mr-1" /> Cancel
@@ -159,7 +165,7 @@ export default function Profile() {
   const openCardForm = React.useCallback(async () => {
     if (!stripePromise) {
       // Fetch publishable key from setup-intent (it's returned alongside clientSecret)
-      const r = await customFetch<{ publishableKey: string; clientSecret: string }>("/api/portal/me/setup-intent", { method: "POST" }).catch(() => null);
+      const r = await customFetch<{ publishableKey: string; clientSecret: string }>("/api/portal/me/setup-intent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ saveCard: true, authorizationAccepted: true }) }).catch(() => null);
       if (r?.publishableKey) setStripePromise(loadStripe(r.publishableKey));
       else { toast.error("Stripe is not configured — contact your service provider"); return; }
     }

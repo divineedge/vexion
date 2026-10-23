@@ -6531,6 +6531,11 @@ paths:
           required: true
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CardPaymentChoice" }
       responses:
         "200":
           description: SetupIntent client secret and publishable key
@@ -9438,12 +9443,89 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/GuestDocumentConfirmationResult" }
-        "400":
-          description: Invalid confirmation
-        "404":
-          description: Invalid document link
+        "400": { description: Invalid confirmation }
+        "404": { description: Invalid document link }
+  /public/invoices/{token}/pay-session:
+    post:
+      operationId: createPublicInvoicePayment
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CardPaymentChoice" }
+      responses:
+        "200":
+          description: Secure provider checkout
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PortalPaySessionResult" }
+        "400": { description: Invalid payment choice }
+        "404": { description: Invoice not found }
+        "409": { description: Payment already in progress }
+  /public/estimates/{token}/pay-deposit:
+    post:
+      operationId: payPublicEstimateDeposit
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EstimateCardPaymentChoice" }
+      responses:
+        "200":
+          description: Confirmed deposit
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EstimateCardPaymentResult" }
+        "402": { description: Payment failed }
+        "404": { description: Estimate not found }
+  /invoices/{id}/charge-card:
+    post:
+      operationId: chargeInvoiceCard
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Provider-confirmed outcome
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InvoiceCardPaymentResult" }
+        "403": { description: Office access required }
+        "409": { description: Payment unavailable }
 components:
   schemas:
+    CardPaymentChoice:
+      type: object
+      required: [saveCard, authorizationAccepted]
+      properties:
+        saveCard: { type: boolean }
+        authorizationAccepted: { type: boolean }
+    EstimateCardPaymentChoice:
+      type: object
+      required: [saveCard, authorizationAccepted]
+      properties:
+        saveCard: { type: boolean }
+        authorizationAccepted: { type: boolean }
+        paymentMethodId: { type: string }
+        acceptedOptionalItemIds:
+          type: array
+          items: { type: string }
+    EstimateCardPaymentResult:
+      type: object
+      required: [ok, chargedAmount]
+      properties:
+        ok: { type: boolean }
+        chargedAmount: { type: number }
+        paymentIntentId: { type: string }
+    InvoiceCardPaymentResult:
+      type: object
+      required: [status, message]
+      properties:
+        status: { type: string, enum: [paid, failed, pending, unavailable] }
+        message: { type: string }
     GuestDocumentConfirmation:
       type: object
       required: [email, phone, address, confirmed, propertyIds]
@@ -10414,6 +10496,9 @@ components:
       type: object
       required: [action]
       properties:
+        saveCard: { type: boolean }
+        authorizationAccepted: { type: boolean }
+        setupIntentId: { type: string }
         action:
           type: string
           enum: [approve, decline]
@@ -13972,6 +14057,7 @@ components:
       type: object
       required: [id, tenantId]
       properties:
+        automaticInvoicePaymentMode: { type: string, enum: [manual, when_sent, due_date] }
         portalShowMeasurements: {type: boolean}
         documentLinkDestination:
           type: string
@@ -14558,6 +14644,7 @@ components:
     TenantSettingsUpdate:
       type: object
       properties:
+        automaticInvoicePaymentMode: { type: string, enum: [manual, when_sent, due_date] }
         documentLinkDestination:
           type: string
           enum: [document, portal]
@@ -16416,6 +16503,7 @@ components:
       required: [returnUrl]
       properties:
         saveCard: { type: boolean }
+        authorizationAccepted: { type: boolean }
         returnUrl:
           type: string
 

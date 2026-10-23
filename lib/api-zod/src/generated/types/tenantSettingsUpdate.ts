@@ -10,6 +10,7 @@ import type { CustomerFieldConfig } from './customerFieldConfig';
 import type { PaymentReminderRule } from './paymentReminderRule';
 import type { PreTripChecklistItem } from './preTripChecklistItem';
 import type { TenantSettingsUpdateAutoInvoiceFrequency } from './tenantSettingsUpdateAutoInvoiceFrequency';
+import type { TenantSettingsUpdateAutomaticInvoicePaymentMode } from './tenantSettingsUpdateAutomaticInvoicePaymentMode';
 import type { TenantSettingsUpdateDefaultGeofenceUnit } from './tenantSettingsUpdateDefaultGeofenceUnit';
 import type { TenantSettingsUpdateDocumentLinkDestination } from './tenantSettingsUpdateDocumentLinkDestination';
 import type { TenantSettingsUpdateDurationUnit } from './tenantSettingsUpdateDurationUnit';
@@ -21,6 +22,7 @@ import type { TenantSettingsUpdatePreferredAreaUnit } from './tenantSettingsUpda
 import type { TenantSettingsUpdateRolePermissions } from './tenantSettingsUpdateRolePermissions';
 
 export interface TenantSettingsUpdate {
+  automaticInvoicePaymentMode?: TenantSettingsUpdateAutomaticInvoicePaymentMode;
   documentLinkDestination?: TenantSettingsUpdateDocumentLinkDestination;
   /** @nullable */
   defaultInvoiceTerms?: string | null;

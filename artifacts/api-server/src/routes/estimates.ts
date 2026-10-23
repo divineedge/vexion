@@ -1,6 +1,8 @@
 import { sendDocumentEmail } from "../lib/documentDelivery";
 import { publicAppUrl } from "../lib/publicSite";
 import { companyDocumentLink } from "../lib/documentLinks";
+import { validCardChoice, authorizeSavedCard, CARD_AUTHORIZATION_VERSION } from "../lib/cardAuthorization";
+import { payEstimateDeposit } from "./portal";
 import { paymentGuardedJobInsert, effectivePaymentPolicy, estimatePaymentTerms } from "../lib/paymentPolicy";
 import { creditedInvoiceInsert } from "../lib/customerCredit";
 import { Router, type IRouter } from "express";
@@ -1222,6 +1224,7 @@ router.get("/public/estimates/:token", async (req, res): Promise<void> => {
 // ── PUBLIC: CREATE SETUP INTENT ────────────────────────────────────────────────
 router.post("/public/estimates/:token/setup-intent", async (req, res): Promise<void> => {
   const { token } = req.params;
+  if(!validCardChoice(req.body)){res.status(400).json({error:"Choose whether to save this card and accept the authorization if saving."});return;}
 
   const [estimate] = await db.select().from(estimatesTable).where(eq(estimatesTable.approvalToken, token));
   if (!estimate) { res.status(404).json({ error: "Estimate not found" }); return; }
@@ -1269,17 +1272,41 @@ router.post("/public/estimates/:token/setup-intent", async (req, res): Promise<v
 
   const setupIntent = await stripe.setupIntents.create({
     customer: stripeCustomerId,
-    usage: "off_session",
+    usage: req.body.saveCard ? "off_session" : "on_session",
     automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+    metadata:{tenantId:String(estimate.tenantId),customerId:String(customer.id),estimateId:String(estimate.id),
+      saveCard:req.body.saveCard?"true":"false",authorizationVersion:req.body.saveCard?CARD_AUTHORIZATION_VERSION:"none"},
   });
 
   res.json({ clientSecret: setupIntent.client_secret, publishableKey });
+});
+
+// Token authorizes only this estimate/customer, never a general portal session.
+router.post("/public/estimates/:token/pay-deposit", async (req,res):Promise<void>=>{
+  if(!validCardChoice(req.body)){res.status(400).json({error:"Review the card-saving authorization."});return;}
+  const [estimate]=await db.select().from(estimatesTable).where(eq(estimatesTable.approvalToken,req.params.token));
+  if(!estimate?.customerId){res.status(404).json({error:"Estimate not found"});return;}
+  if(estimate.status!=="sent"){res.status(409).json({error:"Estimate is no longer awaiting acceptance"});return;}
+  const ids=req.body.acceptedOptionalItemIds??[];
+  if(!Array.isArray(ids)||ids.some((id:unknown)=>typeof id!=="string")){res.status(400).json({error:"Invalid optional selections"});return;}
+  if(!estimate.depositPaidAt){
+    const items=normalizeGroupedSelections(((estimate.lineItems??[]) as EstimateLineItem[]).map(item=>({
+      ...item,acceptedByCustomer:!item.isOptional||ids.includes(item.id),
+    })));
+    const updated=await db.update(estimatesTable).set({lineItems:items})
+      .where(and(eq(estimatesTable.id,estimate.id),eq(estimatesTable.tenantId,estimate.tenantId),eq(estimatesTable.status,"sent"),isNull(estimatesTable.depositPaidAt))).returning();
+    if(!updated.length){res.status(409).json({error:"Estimate changed. Refresh before paying."});return;}
+  }
+  (req as any).portalLocals={portalTenantId:estimate.tenantId,portalCustomerId:estimate.customerId};
+  (req.params as Record<string,string>).id=String(estimate.id);
+  await payEstimateDeposit(req,res);
 });
 
 // ── PUBLIC: RESPOND (APPROVE / DECLINE) ───────────────────────────────────────
 router.post("/public/estimates/:token/respond", async (req, res): Promise<void> => {
   const { token } = req.params;
   const { action, acceptedOptionalItemIds, declineReason, declineReasonChoice, paymentMethodId } = req.body;
+  if(action==="approve" && req.body.saveCard===true && !validCardChoice(req.body)){res.status(400).json({error:"Accept the saved-card authorization or choose not to save the card."});return;}
 
   if (!["approve", "decline"].includes(action)) {
     res.status(400).json({ error: "action must be 'approve' or 'decline'" });
@@ -1344,7 +1371,7 @@ router.post("/public/estimates/:token/respond", async (req, res): Promise<void> 
         return;
       }
 
-      if (paymentMethodId) {
+      if (paymentMethodId && req.body.saveCard===true) {
         // Standard flow (no deposit requirement) or customer providing a card: attach
         // and set as default for future invoices.
         if (!estimate.customerId) {
@@ -1360,6 +1387,14 @@ router.post("/public/estimates/:token/respond", async (req, res): Promise<void> 
           customer.email,
           customer.stripeCustomerId,
         );
+        if(!req.body.setupIntentId){res.status(422).json({error:"A confirmed card setup is required."});return;}
+        const setup=await stripe.setupIntents.retrieve(req.body.setupIntentId);
+        const setupMethod=typeof setup.payment_method==="string"?setup.payment_method:setup.payment_method?.id;
+        if(setup.status!=="succeeded"||setup.customer!==stripeCustomerId||setupMethod!==paymentMethodId||
+          setup.metadata?.estimateId!==String(estimate.id)||setup.metadata?.saveCard!=="true"||
+          setup.metadata?.authorizationVersion!==CARD_AUTHORIZATION_VERSION){
+          res.status(422).json({error:"The card setup and authorization could not be verified."});return;
+        }
 
         // Retrieve the PaymentMethod to check its current attachment status.
         // confirmCardSetup already attaches it to our customer, so re-calling attach
@@ -1375,19 +1410,7 @@ router.post("/public/estimates/:token/respond", async (req, res): Promise<void> 
         }
         // Already attached to the correct customer — skip attach
 
-        await stripe.customers.update(stripeCustomerId, {
-          invoice_settings: { default_payment_method: paymentMethodId },
-        });
-
-        // Persist the Stripe payment method ID to our DB
-        await db.update(customersTable)
-          .set({ stripeDefaultPaymentMethodId: paymentMethodId })
-          .where(eq(customersTable.id, estimate.customerId));
-      } else if (!estimate.depositPaidAt) {
-        // No deposit paid and no card provided on a Stripe-enabled tenant.
-        // This covers estimates with paymentRequirement='none' where we still want a card on file.
-        res.status(422).json({ error: "paymentMethodId is required when Stripe is enabled" });
-        return;
+        await authorizeSavedCard(estimate.tenantId,estimate.customerId,paymentMethodId,`estimate-acceptance:${estimate.id}`);
       }
       // else: deposit was paid via the authenticated pay-deposit endpoint, which
       // already attached the card and set it as the customer's default. Nothing more needed.

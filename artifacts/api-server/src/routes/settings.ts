@@ -191,6 +191,7 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     cancellationFeeEnabled: tenant.cancellationFeeEnabled ?? false,
     portalShowMeasurements: tenant.portalShowMeasurements ?? true,
     documentLinkDestination: tenant.documentLinkDestination === "portal" ? "portal" : "document",
+    automaticInvoicePaymentMode: ["when_sent","due_date"].includes(tenant.automaticInvoicePaymentMode) ? tenant.automaticInvoicePaymentMode : "manual",
     cancellationFeeAmount: tenant.cancellationFeeAmount ?? 0,
     // Chemical / Rainfast weather alerts
     rainfastRainThresholdPct: tenant.rainfastRainThresholdPct ?? 40,
@@ -517,6 +518,12 @@ router.patch("/settings", async (req, res): Promise<void> => {
       res.status(400).json({ error: "Choose direct document or guest customer portal" }); return;
     }
     updates.documentLinkDestination = req.body.documentLinkDestination;
+  }
+  if (req.body.automaticInvoicePaymentMode !== undefined) {
+    if (!["manual", "when_sent", "due_date"].includes(req.body.automaticInvoicePaymentMode)) {
+      res.status(400).json({ error: "Choose staff-initiated payment, charge when sent, or charge on the due date" }); return;
+    }
+    updates.automaticInvoicePaymentMode = req.body.automaticInvoicePaymentMode;
   }
   if(req.body.portalShowMeasurements!==undefined){
    if(typeof req.body.portalShowMeasurements!=='boolean'){res.status(400).json({error:'Choose whether portal measurements are visible'});return;}

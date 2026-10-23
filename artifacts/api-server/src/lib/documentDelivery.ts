@@ -4,9 +4,21 @@ import { randomUUID } from "node:crypto";
 import { sendEmail, type EmailProviderConfig, type SendEmailResult } from "./emailProvider";
 import { publicAppUrl } from "./publicSite";
 import { companyDocumentLink } from "./documentLinks";
+import { chargeInvoiceCard } from "./invoiceCardPayments";
 import { and, eq } from "drizzle-orm";
 export type DeliveryContext={tenantId:number;documentType:"invoice"|"estimate";documentId:number};
 export async function sendDocumentEmail(config:EmailProviderConfig,to:string,subject:string,body:string,html:string|undefined,context:DeliveryContext):Promise<SendEmailResult & {deliveryId:number}> {
+  if(context.documentType==="invoice"){
+    const outcome=await chargeInvoiceCard(context.tenantId,context.documentId,"when_sent");
+    if(outcome.status==="paid"){
+      subject=`Payment processed — ${subject}`;
+      body+=`\n\nPayment status: PAID. ${outcome.message}`;
+      if(html)html+=`<p><strong>Payment status: PAID.</strong> Payment has been processed successfully.</p>`;
+    } else if(outcome.status==="failed"||outcome.status==="pending"){
+      body+=`\n\nPayment status: NOT CONFIRMED PAID. ${outcome.message}`;
+      if(html)html+=`<p>Payment has not been confirmed. Please check the invoice or contact the office before paying again.</p>`;
+    }
+  }
   const [document] = context.documentType === "invoice"
     ? await db.select({ token: invoicesTable.publicToken }).from(invoicesTable).where(and(eq(invoicesTable.id, context.documentId), eq(invoicesTable.tenantId, context.tenantId)))
     : await db.select({ token: estimatesTable.approvalToken }).from(estimatesTable).where(and(eq(estimatesTable.id, context.documentId), eq(estimatesTable.tenantId, context.tenantId)));

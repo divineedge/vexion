@@ -8,6 +8,7 @@ import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { syncCustomerToMailchimp } from "../lib/mailchimpSync";
 import { isAdminRole } from "../lib/roles";
 import { getStripeClient } from "../lib/stripe";
+import { authorizeSavedCard } from "../lib/cardAuthorization";
 import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
 import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
@@ -1066,7 +1067,9 @@ router.post("/customers/:id/attach-payment-method", async (req, res): Promise<vo
   }
 
   // Attach the payment method to the Stripe customer and set as default
-  await stripe.paymentMethods.attach(paymentMethodId, { customer: stripeCustomerId });
+  const owner=typeof pm.customer==="string"?pm.customer:pm.customer?.id;
+  if(owner && owner!==stripeCustomerId){res.status(422).json({error:"Card belongs to another customer."});return;}
+  if(!owner)await stripe.paymentMethods.attach(paymentMethodId, { customer: stripeCustomerId });
   await stripe.customers.update(stripeCustomerId, {
     invoice_settings: { default_payment_method: paymentMethodId },
   });
@@ -1074,12 +1077,15 @@ router.post("/customers/:id/attach-payment-method", async (req, res): Promise<vo
   const [updated] = await db.update(customersTable)
     .set({
       stripeDefaultPaymentMethodId: paymentMethodId,
+      automaticPaymentAuthorizedAt: null,
+      paymentAuthorizationMethodId: null,
       cardExpiresAt: cardExpiry.toISOString().split("T")[0],
       cardExpiryReminderSentAt: null,
     })
     .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)))
     .returning();
 
+  if(req.body.authorizationAccepted===true)await authorizeSavedCard(tenantId,id,paymentMethodId,"staff-confirmed-customer-authorization");
   const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(propertiesTable)
     .where(and(eq(propertiesTable.customerId, id), eq(propertiesTable.tenantId, tenantId)));
   res.json(formatCustomer(updated, { propertyCount: count }));
@@ -1164,7 +1170,7 @@ router.delete("/customers/:id/payment-method", async (req, res): Promise<void> =
   }
 
   await db.update(customersTable)
-    .set({ stripeDefaultPaymentMethodId: null, cardExpiresAt: null, cardExpiryReminderSentAt: null })
+    .set({ stripeDefaultPaymentMethodId: null, cardExpiresAt: null, cardExpiryReminderSentAt: null,automaticPaymentAuthorizedAt:null,paymentAuthorizationMethodId:null })
     .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
 
   res.json({ success: true });

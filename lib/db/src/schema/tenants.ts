@@ -215,6 +215,7 @@ export const tenantsTable = pgTable("tenants", {
   cancellationFeeEnabled: boolean("cancellation_fee_enabled").notNull().default(false),
   portalShowMeasurements: boolean("portal_show_measurements").notNull().default(true),
   documentLinkDestination: text("document_link_destination").notNull().default("document"),
+  automaticInvoicePaymentMode: text("automatic_invoice_payment_mode").notNull().default("manual"),
   /** Dollar amount charged as a cancellation fee (only applied when cancellationFeeEnabled = true) */
   cancellationFeeAmount: real("cancellation_fee_amount").notNull().default(0),
   // ── Chemical / Rainfast Weather Alerts ───────────────────────────────────

@@ -14,6 +14,7 @@ import { customFetch } from "@workspace/api-client-react";
 import { toast } from "sonner";
 import { loadStripe, type Stripe as StripeInstance } from "@stripe/stripe-js";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
+import { SaveCardConsent } from "@/components/payments/CardAuthorization";
 
 interface PortalEstimate {
   id: number;
@@ -86,20 +87,19 @@ interface EstimateDetail {
 
 /** Inline card form — receives a pre-created setup intent clientSecret */
 function InlineCardFormInner({
-  clientSecret,
   depositAmount,
   onSuccess,
   onCancel,
 }: {
-  clientSecret: string;
   depositAmount: number;
-  onSuccess: (pmId: string) => void;
+  onSuccess: (pmId: string, saveCard: boolean) => void;
   onCancel: () => void;
 }) {
   const stripe = useStripe();
   const elements = useElements();
   const [busy, setBusy] = React.useState(false);
   const [ready, setReady] = React.useState(false);
+  const [saveCard, setSaveCard] = React.useState(true);
 
   const handleSubmit = async () => {
     if (!stripe || !elements) return;
@@ -107,16 +107,25 @@ function InlineCardFormInner({
     if (!cardEl) return;
     setBusy(true);
     try {
-      const result = await stripe.confirmCardSetup(clientSecret, { payment_method: { card: cardEl } });
-      if (result.error) { toast.error(result.error.message ?? "Card setup failed"); return; }
-      const pmId = result.setupIntent?.payment_method as string | undefined;
-      if (!pmId) { toast.error("No payment method returned"); return; }
-      await customFetch("/api/portal/me/attach-payment-method", {
+      const choice = { saveCard, authorizationAccepted: saveCard };
+      const si = await customFetch<{ clientSecret: string }>("/api/portal/me/setup-intent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentMethodId: pmId }),
+        body: JSON.stringify(choice),
       });
-      onSuccess(pmId);
+      const result = await stripe.confirmCardSetup(si.clientSecret, { payment_method: { card: cardEl } });
+      if (result.error) { toast.error(result.error.message ?? "Card setup failed"); return; }
+      if (result.setupIntent?.status !== "succeeded") { toast.error("Card setup did not complete"); return; }
+      const pmId = result.setupIntent?.payment_method as string | undefined;
+      if (!pmId) { toast.error("No payment method returned"); return; }
+      if (saveCard) {
+        await customFetch("/api/portal/me/attach-payment-method", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paymentMethodId: pmId, ...choice }),
+        });
+      }
+      onSuccess(pmId, saveCard);
     } catch {
       toast.error("Failed to save card");
     } finally {
@@ -132,14 +141,15 @@ function InlineCardFormInner({
           onChange={e => setReady(e.complete)}
         />
       </div>
+      <SaveCardConsent checked={saveCard} onChange={setSaveCard} disabled={busy} id="portal-estimate-save-card" />
       <p className="text-xs text-muted-foreground">
-        Your card will be charged {formatCurrency(depositAmount)} immediately after saving.
+        Charged today: <strong>{formatCurrency(depositAmount)}</strong>. {saveCard ? "Your card is saved for future invoices as described above." : "This card is used once and not saved."}
       </p>
       <div className="flex gap-2">
         <Button variant="outline" size="sm" onClick={onCancel} disabled={busy} className="flex-1">Cancel</Button>
         <Button size="sm" disabled={!ready || busy} onClick={handleSubmit} className="flex-1 gap-2">
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
-          {busy ? "Processing…" : "Add Card & Pay"}
+          {busy ? "Processing…" : `Pay ${formatCurrency(depositAmount)} & Approve`}
         </Button>
       </div>
     </div>
@@ -238,14 +248,14 @@ export default function Estimates() {
   };
 
   /** Charge the deposit for the current estimate using the given payment method. */
-  const payDeposit = async (paymentMethodId?: string): Promise<boolean> => {
+  const payDeposit = async (paymentMethodId?: string, saveCard?: boolean): Promise<boolean> => {
     if (!reviewEstimateId) return false;
     setPayingDeposit(true);
     try {
       await customFetch(`/api/portal/estimates/${reviewEstimateId}/pay-deposit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(paymentMethodId ? { paymentMethodId } : {}),
+        body: JSON.stringify(paymentMethodId ? { paymentMethodId, saveCard: !!saveCard, authorizationAccepted: !!saveCard } : {}),
       });
       return true;
     } catch (err: any) {
@@ -306,7 +316,11 @@ export default function Estimates() {
 
   const prepareCardStep = async () => {
     try {
-      const r = await customFetch<{ clientSecret: string; publishableKey: string }>("/api/portal/me/setup-intent", { method: "POST" });
+      const r = await customFetch<{ clientSecret: string; publishableKey: string }>("/api/portal/me/setup-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ saveCard: false, authorizationAccepted: false }),
+      });
       setCardSetupSecret(r.clientSecret);
       if (!stripePromise) setStripePromise(loadStripe(r.publishableKey));
       setPayStep("add-card");
@@ -797,11 +811,10 @@ export default function Estimates() {
               </p>
               <Elements stripe={stripePromise}>
                 <InlineCardFormInner
-                  clientSecret={cardSetupSecret}
                   depositAmount={computedDepositAmount}
-                  onSuccess={async (pmId) => {
+                  onSuccess={async (pmId, saveCard) => {
                     setSavedCard(null); // refresh after attach
-                    const ok = await payDeposit(pmId);
+                    const ok = await payDeposit(pmId, saveCard);
                     if (ok) {
                       setPayStep(null);
                       respond("approve");

@@ -1,3 +1,4 @@
+import { StaffAuthorizationCheckbox } from '@/components/payments/CardAuthorization';
 import React, { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { loadStripe, type Stripe as StripeInstance } from '@stripe/stripe-js';
@@ -70,6 +71,7 @@ const CardSetupInline = forwardRef<CardSetupInlineHandle, object>((_props, ref) 
   const stripe = useStripe();
   const elements = useElements();
   const [cardComplete, setCardComplete] = useState(false);
+  const [authConfirmed, setAuthConfirmed] = useState(false);
   useImperativeHandle(ref, () => ({
     cardComplete,
     async setupCard(customerId: number) {
@@ -77,7 +79,7 @@ const CardSetupInline = forwardRef<CardSetupInlineHandle, object>((_props, ref) 
       const cardEl = elements.getElement(CardElement);
       if (!cardEl) throw new Error('Card element not found');
       const si = await customFetch<{ clientSecret: string }>(
-        `/api/customers/${customerId}/setup-intent`, { method: 'POST' },
+        `/api/customers/${customerId}/setup-intent`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ saveCard: true, authorizationAccepted: authConfirmed }) },
       );
       const result = await stripe.confirmCardSetup(si.clientSecret, { payment_method: { card: cardEl } });
       if (result.error) throw new Error(result.error.message ?? 'Card setup failed');
@@ -85,14 +87,17 @@ const CardSetupInline = forwardRef<CardSetupInlineHandle, object>((_props, ref) 
       if (!pmId) throw new Error('No payment method returned');
       await customFetch(`/api/customers/${customerId}/attach-payment-method`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentMethodId: pmId }),
+        body: JSON.stringify({ paymentMethodId: pmId, saveCard: true, authorizationAccepted: authConfirmed }),
       });
     },
-  }), [stripe, elements, cardComplete]);
+  }), [stripe, elements, cardComplete, authConfirmed]);
   return (
-    <div className="border rounded-md bg-white p-3 shadow-sm">
-      <CardElement onChange={e => setCardComplete(e.complete)}
-        options={{ style: { base: { fontSize: '14px', color: '#1a1a1a', '::placeholder': { color: '#a0aec0' } } } }} />
+    <div className="space-y-2">
+      <div className="border rounded-md bg-white p-3 shadow-sm">
+        <CardElement onChange={e => setCardComplete(e.complete)}
+          options={{ style: { base: { fontSize: '14px', color: '#1a1a1a', '::placeholder': { color: '#a0aec0' } } } }} />
+      </div>
+      <StaffAuthorizationCheckbox checked={authConfirmed} onChange={setAuthConfirmed} />
     </div>
   );
 });

@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import { Loader2, Lock, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { SaveCardConsent } from "@/components/payments/CardAuthorization";
 
 /** Build a return URL that stays on the current tenant (preserves ?tenant= if present). */
 function buildReturnUrl(path: string): string {
@@ -27,7 +27,7 @@ interface Props {
 }
 
 export function PayInvoiceAction({ invoiceId, returnPath, label = "Pay Now", size = "default", className, disabled, onStart, onFail, compact }: Props) {
-  const [saveCard, setSaveCard] = useState(false);
+  const [saveCard, setSaveCard] = useState(true);
   const [pending, setPending] = useState(false);
   const stop = (e: React.SyntheticEvent) => { e.stopPropagation(); };
 
@@ -41,7 +41,7 @@ export function PayInvoiceAction({ invoiceId, returnPath, label = "Pay Now", siz
       const res = await customFetch<PortalPaySessionResult>(`/api/portal/invoices/${invoiceId}/pay-session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ returnUrl: buildReturnUrl(returnPath), saveCard }),
+        body: JSON.stringify({ returnUrl: buildReturnUrl(returnPath), saveCard, authorizationAccepted: saveCard }),
       });
       if (res?.checkoutUrl) {
         window.location.href = res.checkoutUrl;
@@ -58,15 +58,10 @@ export function PayInvoiceAction({ invoiceId, returnPath, label = "Pay Now", siz
   const id = `save-card-${invoiceId}`;
   return (
     <div className={`space-y-2 ${className ?? ""}`} onClick={stop}>
+      <SaveCardConsent id={id} checked={saveCard} onChange={setSaveCard} disabled={pending} />
       <Button className="w-full" size={size} disabled={disabled || pending} onClick={pay} data-testid={`button-pay-${invoiceId}`}>
         {pending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Opening secure checkout…</> : <><Lock className="w-4 h-4 mr-2" />{label}</>}
       </Button>
-      <div className="flex items-start gap-2">
-        <Checkbox id={id} checked={saveCard} onCheckedChange={v => setSaveCard(v === true)} disabled={pending} data-testid={`checkbox-save-card-${invoiceId}`} />
-        <label htmlFor={id} className="text-xs text-muted-foreground leading-snug cursor-pointer select-none">
-          Save card for future payments
-        </label>
-      </div>
       {!compact && (
         <p className="text-[11px] text-muted-foreground flex items-center gap-1">
           <CreditCard className="w-3 h-3" /> Secure Stripe checkout. Manage saved cards in{" "}

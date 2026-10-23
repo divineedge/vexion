@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { EstimateNotesBlock, EstimateTermsBlock, estimateTerms } from '@/components/documents/EstimateDocument';
 import { useParams } from 'wouter';
-import { useGetPublicEstimate, useRespondToEstimate } from '@workspace/api-client-react';
+import { useGetPublicEstimate, useRespondToEstimate, usePayPublicEstimateDeposit } from '@workspace/api-client-react';
+import { SaveCardConsent } from '@/components/payments/CardAuthorization';
 import DeclineReasonPicker, { validateDeclineChoice } from '@/components/estimates/DeclineReasonPicker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -51,16 +52,24 @@ interface PaymentFormProps {
   token: string;
   acceptedOptionalItemIds: string[];
   grandTotal: number;
-  onApproved: () => void;
+  requiredPayment: number;
+  onApproved: (charged: number) => void;
 }
 
-function PaymentForm({ token, acceptedOptionalItemIds, grandTotal, onApproved }: PaymentFormProps) {
+function errMsg(e: any, fallback: string): string {
+  return e?.data?.error ?? e?.data?.message ?? e?.message ?? fallback;
+}
+
+function PaymentForm({ token, acceptedOptionalItemIds, grandTotal, requiredPayment, onApproved }: PaymentFormProps) {
   const stripe = useStripe();
   const elements = useElements();
   const respond = useRespondToEstimate();
+  const payDeposit = usePayPublicEstimateDeposit();
 
   const [cardComplete, setCardComplete] = useState(false);
+  const [saveCard, setSaveCard] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const needsCard = requiredPayment > 0 || saveCard;
 
   const apiBase = (() => {
     const base = import.meta.env.BASE_URL ?? '/';
@@ -69,13 +78,20 @@ function PaymentForm({ token, acceptedOptionalItemIds, grandTotal, onApproved }:
   })();
 
   async function handleApprove() {
-    if (!stripe || !elements || !cardComplete) return;
+    const choice = { saveCard, authorizationAccepted: saveCard };
     setSubmitting(true);
     try {
-      // 1. Create a SetupIntent via our backend
+      if (!needsCard) {
+        await respond.mutateAsync({ token, data: { action: 'approve', acceptedOptionalItemIds, ...choice } as any });
+        onApproved(0);
+        toast.success('Estimate approved!');
+        return;
+      }
+      if (!stripe || !elements || !cardComplete) return;
       const siRes = await fetch(`${apiBase}/public/estimates/${token}/setup-intent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(choice),
       });
       if (!siRes.ok) {
         const err = await siRes.json().catch(() => ({}));
@@ -83,79 +99,90 @@ function PaymentForm({ token, acceptedOptionalItemIds, grandTotal, onApproved }:
         return;
       }
       const { clientSecret } = await siRes.json();
-
-      // 2. Confirm the card setup client-side
       const result = await stripe.confirmCardSetup(clientSecret, {
         payment_method: { card: elements.getElement(CardElement)! },
       });
-      if (result.error) {
-        toast.error(result.error.message ?? 'Card setup failed');
+      if (result.error) { toast.error(result.error.message ?? 'Card setup failed'); return; }
+      const si = result.setupIntent;
+      const paymentMethodId = typeof si?.payment_method === 'string' ? si.payment_method : si?.payment_method?.id;
+      if (!si || si.status !== 'succeeded' || !paymentMethodId) {
+        toast.error('Card setup did not complete. Nothing was charged.');
         return;
       }
-      const paymentMethodId = result.setupIntent?.payment_method as string | null;
-      if (!paymentMethodId) {
-        toast.error('Card setup did not return a payment method');
-        return;
+      let charged = 0;
+      if (requiredPayment > 0) {
+        try {
+          const r = await payDeposit.mutateAsync({ token, data: { paymentMethodId, acceptedOptionalItemIds, ...choice } });
+          if (!r?.ok) { toast.error('Payment was not completed. Your estimate has not been approved.'); return; }
+          charged = r.chargedAmount;
+        } catch (e) {
+          toast.error(errMsg(e, 'Payment failed. Your estimate has not been approved.'));
+          return;
+        }
       }
-
-      // 3. Submit acceptance with the confirmed payment method ID
-      respond.mutate(
-        {
+      try {
+        await respond.mutateAsync({
           token,
-          data: {
-            action: 'approve',
-            acceptedOptionalItemIds,
-            paymentMethodId,
-          } as any,
-        },
-        {
-          onSuccess: () => { onApproved(); toast.success('Estimate approved!'); },
-          onError: () => toast.error('Failed to submit response. Please try again.'),
-        },
-      );
+          data: { action: 'approve', acceptedOptionalItemIds, paymentMethodId, setupIntentId: si.id, ...choice },
+        });
+      } catch (e) {
+        toast.error(errMsg(e, charged > 0
+          ? `Your payment of $${charged.toFixed(2)} went through, but approval failed. Please try again or contact us.`
+          : 'Failed to submit response. Please try again.'));
+        return;
+      }
+      onApproved(charged);
+      toast.success('Estimate approved!');
+    } catch (e) {
+      toast.error(errMsg(e, 'Failed to submit response. Please try again.'));
     } finally {
       setSubmitting(false);
     }
   }
 
-  const busy = submitting || respond.isPending;
+  const busy = submitting || respond.isPending || payDeposit.isPending;
 
   return (
     <div className="space-y-3">
-      {/* Card input section */}
       <Card className="border-blue-200 bg-blue-50/40">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2 text-blue-800">
-            <Lock className="w-4 h-4" /> Payment method required
+            <Lock className="w-4 h-4" /> {requiredPayment > 0 ? 'Payment required to approve' : 'Payment method'}
           </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            A card is saved now and will only be charged after the work is completed and invoiced.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <div className="border rounded-md bg-white p-3">
-            <CardElement
-              onChange={e => setCardComplete(e.complete)}
-              options={{
-                style: {
-                  base: { fontSize: '15px', color: '#1a1a1a', '::placeholder': { color: '#a0aec0' } },
-                },
-              }}
-            />
+          <div className="text-sm space-y-1 pt-1">
+            <div className="flex justify-between"><span className="text-muted-foreground">Estimate total</span><span data-testid="text-estimate-total">${grandTotal.toFixed(2)}</span></div>
+            <div className="flex justify-between font-semibold"><span>Charged today</span><span data-testid="text-charged-today">${requiredPayment.toFixed(2)}</span></div>
+            {requiredPayment === 0 && <p className="text-xs text-muted-foreground">Nothing is charged today. You will be invoiced after the work is done.</p>}
           </div>
-          <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-            <CreditCard className="w-3 h-3" /> Secured by Stripe. Your card details are never stored on our servers.
-          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {needsCard ? (
+            <>
+              <div className="border rounded-md bg-white p-3">
+                <CardElement
+                  onChange={e => setCardComplete(e.complete)}
+                  options={{ style: { base: { fontSize: '15px', color: '#1a1a1a', '::placeholder': { color: '#a0aec0' } } } }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <CreditCard className="w-3 h-3" /> Secured by Stripe. Card numbers are handled by Stripe, never by us.
+              </p>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">No card needed. Check the box below if you want to save a card for future invoices.</p>
+          )}
+          <SaveCardConsent checked={saveCard} onChange={setSaveCard} disabled={busy} id="estimate-save-card" />
         </CardContent>
       </Card>
 
       <Button
         className="w-full h-12 text-base"
         onClick={handleApprove}
-        disabled={busy || !cardComplete || !stripe}
+        disabled={busy || (needsCard && (!cardComplete || !stripe))}
+        data-testid="button-approve-estimate"
       >
         <CheckCircle2 className="w-5 h-5 mr-2" />
-        {busy ? 'Submitting...' : `Approve — $${grandTotal.toFixed(2)}`}
+        {busy ? 'Submitting...' : requiredPayment > 0 ? `Pay $${requiredPayment.toFixed(2)} & Approve` : 'Approve Estimate'}
       </Button>
     </div>
   );
@@ -168,6 +195,7 @@ export default function EstimatePublicPage() {
   const [declineReason, setDeclineReason] = useState('');
   const [declineChoice, setDeclineChoice] = useState('');
   const [responded, setResponded] = useState<'approved' | 'declined' | null>(null);
+  const [chargedToday, setChargedToday] = useState(0);
   const [showDeclineForm, setShowDeclineForm] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [stripePromise, setStripePromise] = useState<Promise<StripeInstance | null> | null>(null);
@@ -238,6 +266,14 @@ export default function EstimatePublicPage() {
   const optionalTotal = billableItems(optional.map(i => ({ ...i, acceptedByCustomer: accepted.has(i.id) }))).reduce((sum, i) => sum + calcItem(i), 0);
   const grandTotal = requiredTotal + optionalTotal;
 
+  const est = estimate as any;
+  const requiredPayment = est.depositPaidAt ? 0 : (() => {
+    const req = est.paymentRequirement;
+    if (req === 'full') return Math.round(grandTotal * 100) / 100;
+    if (req === 'deposit_pct') return Math.round((est.depositValue ?? 0) / 100 * grandTotal * 100) / 100;
+    if (req === 'deposit_fixed') return Math.min(est.depositValue ?? 0, grandTotal);
+    return 0;
+  })();
   const stripeEnabled = !!(estimate as any).stripeEnabled; // stripeEnabled is in the generated schema but estimate type is allOf — access via any until stricter type is applied
 
   function toggleOptional(id: string) {
@@ -282,8 +318,9 @@ export default function EstimatePublicPage() {
             <h2 className="text-2xl font-bold mb-2">Estimate Approved!</h2>
             <p className="text-muted-foreground">Thank you. We'll be in touch shortly to schedule your service.</p>
             <div className="mt-6 p-4 bg-muted/50 rounded-lg text-left">
-              <p className="text-sm font-medium mb-1">Your Total</p>
+              <p className="text-sm font-medium mb-1">Estimate total</p>
               <p className="text-3xl font-bold">${grandTotal.toFixed(2)}</p>
+              <p className="text-sm text-muted-foreground mt-2">Charged today: ${chargedToday.toFixed(2)}</p>
             </div>
           </CardContent>
         </Card>
@@ -524,7 +561,8 @@ export default function EstimatePublicPage() {
                       token={token!}
                       acceptedOptionalItemIds={Array.from(accepted)}
                       grandTotal={grandTotal}
-                      onApproved={() => setResponded('approved')}
+                      requiredPayment={requiredPayment}
+                      onApproved={charged => { setChargedToday(charged); setResponded('approved'); }}
                     />
                   </Elements>
                 ) : (
@@ -534,7 +572,7 @@ export default function EstimatePublicPage() {
                     disabled={respond.isPending}
                   >
                     <CheckCircle2 className="w-5 h-5 mr-2" />
-                    {respond.isPending ? 'Submitting...' : `Approve — $${grandTotal.toFixed(2)}`}
+                    {respond.isPending ? 'Submitting...' : 'Approve Estimate'}
                   </Button>
                 )}
                 <Button variant="outline" className="w-full h-10" onClick={() => setShowDeclineForm(true)}>

@@ -8,5 +8,6 @@
 
 export interface PortalPaySessionInput {
   saveCard?: boolean;
+  authorizationAccepted?: boolean;
   returnUrl: string;
 }

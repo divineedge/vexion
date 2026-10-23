@@ -59,6 +59,7 @@ import type {
   CancelPlanVisit200,
   CancelPlanVisitInput,
   CancelRecurringSeriesParams,
+  CardPaymentChoice,
   ChemicalApplication,
   ChemicalApplicationInput,
   ChemicalDocument,
@@ -133,6 +134,8 @@ import type {
   EquipmentTypeInput,
   EquipmentUseHistoryItem,
   Estimate,
+  EstimateCardPaymentChoice,
+  EstimateCardPaymentResult,
   EstimatePipeline,
   EstimateReminderSettings,
   EstimateRespondInput,
@@ -213,6 +216,7 @@ import type {
   InventorySupplierInput,
   InventorySupplierUpdate,
   Invoice,
+  InvoiceCardPaymentResult,
   InvoiceInput,
   InvoiceRecoveryInput,
   InvoiceTemplate,
@@ -24072,14 +24076,15 @@ export const getCreateEstimateSetupIntentUrl = (token: string,) => {
 /**
  * @summary Create a Stripe SetupIntent for payment-on-file (no auth)
  */
-export const createEstimateSetupIntent = async (token: string, options?: RequestInit): Promise<SetupIntentResponse> => {
+export const createEstimateSetupIntent = async (token: string,
+    cardPaymentChoice: CardPaymentChoice, options?: RequestInit): Promise<SetupIntentResponse> => {
 
   return customFetch<SetupIntentResponse>(getCreateEstimateSetupIntentUrl(token),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(cardPaymentChoice)
   }
 );}
 
@@ -24088,8 +24093,8 @@ export const createEstimateSetupIntent = async (token: string, options?: Request
 
 
 export const getCreateEstimateSetupIntentMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEstimateSetupIntent>>, TError,{token: string}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof createEstimateSetupIntent>>, TError,{token: string}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEstimateSetupIntent>>, TError,{token: string;data: BodyType<CardPaymentChoice>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createEstimateSetupIntent>>, TError,{token: string;data: BodyType<CardPaymentChoice>}, TContext> => {
 
 const mutationKey = ['createEstimateSetupIntent'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -24101,10 +24106,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createEstimateSetupIntent>>, {token: string}> = (props) => {
-          const {token} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createEstimateSetupIntent>>, {token: string;data: BodyType<CardPaymentChoice>}> = (props) => {
+          const {token,data} = props ?? {};
 
-          return  createEstimateSetupIntent(token,requestOptions)
+          return  createEstimateSetupIntent(token,data,requestOptions)
         }
 
 
@@ -24115,18 +24120,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type CreateEstimateSetupIntentMutationResult = NonNullable<Awaited<ReturnType<typeof createEstimateSetupIntent>>>
-
+    export type CreateEstimateSetupIntentMutationBody = BodyType<CardPaymentChoice>
     export type CreateEstimateSetupIntentMutationError = ErrorType<void>
 
     /**
  * @summary Create a Stripe SetupIntent for payment-on-file (no auth)
  */
 export const useCreateEstimateSetupIntent = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEstimateSetupIntent>>, TError,{token: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEstimateSetupIntent>>, TError,{token: string;data: BodyType<CardPaymentChoice>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof createEstimateSetupIntent>>,
         TError,
-        {token: string},
+        {token: string;data: BodyType<CardPaymentChoice>},
         TContext
       > => {
       return useMutation(getCreateEstimateSetupIntentMutationOptions(options));
@@ -35940,5 +35945,202 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getConfirmGuestDocumentPortalMutationOptions(options));
+    }
+
+export const getCreatePublicInvoicePaymentUrl = (token: string,) => {
+
+
+
+
+  return `/api/public/invoices/${token}/pay-session`
+}
+
+export const createPublicInvoicePayment = async (token: string,
+    cardPaymentChoice: CardPaymentChoice, options?: RequestInit): Promise<PortalPaySessionResult> => {
+
+  return customFetch<PortalPaySessionResult>(getCreatePublicInvoicePaymentUrl(token),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(cardPaymentChoice)
+  }
+);}
+
+
+
+
+
+export const getCreatePublicInvoicePaymentMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPublicInvoicePayment>>, TError,{token: string;data: BodyType<CardPaymentChoice>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPublicInvoicePayment>>, TError,{token: string;data: BodyType<CardPaymentChoice>}, TContext> => {
+
+const mutationKey = ['createPublicInvoicePayment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPublicInvoicePayment>>, {token: string;data: BodyType<CardPaymentChoice>}> = (props) => {
+          const {token,data} = props ?? {};
+
+          return  createPublicInvoicePayment(token,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePublicInvoicePaymentMutationResult = NonNullable<Awaited<ReturnType<typeof createPublicInvoicePayment>>>
+    export type CreatePublicInvoicePaymentMutationBody = BodyType<CardPaymentChoice>
+    export type CreatePublicInvoicePaymentMutationError = ErrorType<void>
+
+    export const useCreatePublicInvoicePayment = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPublicInvoicePayment>>, TError,{token: string;data: BodyType<CardPaymentChoice>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPublicInvoicePayment>>,
+        TError,
+        {token: string;data: BodyType<CardPaymentChoice>},
+        TContext
+      > => {
+      return useMutation(getCreatePublicInvoicePaymentMutationOptions(options));
+    }
+
+export const getPayPublicEstimateDepositUrl = (token: string,) => {
+
+
+
+
+  return `/api/public/estimates/${token}/pay-deposit`
+}
+
+export const payPublicEstimateDeposit = async (token: string,
+    estimateCardPaymentChoice: EstimateCardPaymentChoice, options?: RequestInit): Promise<EstimateCardPaymentResult> => {
+
+  return customFetch<EstimateCardPaymentResult>(getPayPublicEstimateDepositUrl(token),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(estimateCardPaymentChoice)
+  }
+);}
+
+
+
+
+
+export const getPayPublicEstimateDepositMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof payPublicEstimateDeposit>>, TError,{token: string;data: BodyType<EstimateCardPaymentChoice>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof payPublicEstimateDeposit>>, TError,{token: string;data: BodyType<EstimateCardPaymentChoice>}, TContext> => {
+
+const mutationKey = ['payPublicEstimateDeposit'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof payPublicEstimateDeposit>>, {token: string;data: BodyType<EstimateCardPaymentChoice>}> = (props) => {
+          const {token,data} = props ?? {};
+
+          return  payPublicEstimateDeposit(token,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PayPublicEstimateDepositMutationResult = NonNullable<Awaited<ReturnType<typeof payPublicEstimateDeposit>>>
+    export type PayPublicEstimateDepositMutationBody = BodyType<EstimateCardPaymentChoice>
+    export type PayPublicEstimateDepositMutationError = ErrorType<void>
+
+    export const usePayPublicEstimateDeposit = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof payPublicEstimateDeposit>>, TError,{token: string;data: BodyType<EstimateCardPaymentChoice>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof payPublicEstimateDeposit>>,
+        TError,
+        {token: string;data: BodyType<EstimateCardPaymentChoice>},
+        TContext
+      > => {
+      return useMutation(getPayPublicEstimateDepositMutationOptions(options));
+    }
+
+export const getChargeInvoiceCardUrl = (id: number,) => {
+
+
+
+
+  return `/api/invoices/${id}/charge-card`
+}
+
+export const chargeInvoiceCard = async (id: number, options?: RequestInit): Promise<InvoiceCardPaymentResult> => {
+
+  return customFetch<InvoiceCardPaymentResult>(getChargeInvoiceCardUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getChargeInvoiceCardMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chargeInvoiceCard>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof chargeInvoiceCard>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['chargeInvoiceCard'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof chargeInvoiceCard>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  chargeInvoiceCard(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ChargeInvoiceCardMutationResult = NonNullable<Awaited<ReturnType<typeof chargeInvoiceCard>>>
+
+    export type ChargeInvoiceCardMutationError = ErrorType<void>
+
+    export const useChargeInvoiceCard = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chargeInvoiceCard>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof chargeInvoiceCard>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getChargeInvoiceCardMutationOptions(options));
     }
 

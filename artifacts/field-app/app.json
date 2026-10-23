@@ -22,13 +22,17 @@
       ]
     },
     "web": {
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/images/icon.png",
+      "output": "single"
     },
     "plugins": [
       [
         "expo-router",
         {
-          "origin": "https://replit.com/"
+          "origin": "https://replit.com/",
+          "asyncRoutes": {
+            "web": false
+          }
         }
       ],
       "expo-font",

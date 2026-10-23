@@ -161,7 +161,7 @@ export default function EquipmentListScreen() {
           ]}
           scrollEnabled={equipment.length > 0}
           refreshControl={
-            <RefreshControl refreshing={isFetching && !isLoading} onRefresh={refetch} tintColor={colors.primary} />
+            <RefreshControl refreshing={isFetching && !isLoading} onRefresh={() => { void refetch(); }} tintColor={colors.primary} />
           }
           ListEmptyComponent={
             <View style={styles.emptyWrap}>

@@ -194,7 +194,7 @@ export default function RecurringScreen() {
         refreshControl={
           <RefreshControl
             refreshing={isFetching && !isLoading}
-            onRefresh={refetch}
+            onRefresh={() => { void refetch(); }}
             tintColor={colors.primary}
           />
         }
@@ -214,7 +214,7 @@ export default function RecurringScreen() {
                 </View>
               ) : null}
             </View>
-          ) : null
+          ) : undefined
         }
         ListEmptyComponent={
           <View style={styles.emptyWrap}>

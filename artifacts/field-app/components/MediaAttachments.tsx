@@ -330,7 +330,7 @@ export function MediaAttachments({
         visible={Boolean(deleteCandidate)}
         transparent
         animationType="fade"
-        onRequestClose={() => deletingId == null && setDeleteCandidate(null)}
+        onRequestClose={() => { if (deletingId == null) setDeleteCandidate(null); }}
       >
         <View style={styles.modalBackdrop}>
           <View style={[styles.confirmCard, { backgroundColor: colors.card, borderColor: colors.border }]}>

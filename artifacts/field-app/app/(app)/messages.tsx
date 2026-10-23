@@ -296,7 +296,7 @@ export default function MessagesScreen() {
               </TouchableOpacity>
               {!!earlierError && <Text style={styles.error}>{earlierError}</Text>}
             </View>
-          ) : null}
+          ) : undefined}
           ListEmptyComponent={<View style={styles.center}><Ionicons name="chatbubbles-outline" size={44} color={colors.mutedForeground} /><Text style={{ color: colors.foreground }}>No messages yet</Text><Text style={{ color: colors.mutedForeground }}>Start the staff conversation below.</Text></View>}
           renderItem={({ item }) => {
             const local = !('id' in item);

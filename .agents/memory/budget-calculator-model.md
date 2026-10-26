@@ -36,3 +36,10 @@ Treat the salaried owner/manager as a productive worker whenever the budget says
 
 ## Minimum show-up cost
 `minimumShowUpCost = requiredHourlyRate * minimumVisitHours` (per-division `minimumVisitHours` input, default 1). This is the floor price for dispatching a crew at all, regardless of job size — never quote below it.
+
+## Stop-level pricing floor is a separate planning scenario
+Keep the annual company/division man-hour budget and its Pricing Review targets intact. A stop-level scenario uses crew clock-hours: labor is paid for every crew member during on-site plus drive/setup time; fixed overhead is allocated through on-site billable crew hours only. Full stop cost divided by on-site hours is the travel-loaded true billable-hour cost. Per-clock-minute rates instead divide by all on-site and drive/setup minutes.
+
+**Why:** The user requested a straightforward financial floor for a single stop in addition to the full annual budget. Mixing the annual man-hour denominator with a crew stop-hour denominator would multiply overhead by crew size or underpay travel. Allocating overhead to both travel and on-site time despite an on-site-only monthly denominator would over-recover the entered overhead.
+
+**How to apply:** Keep the cost scope of monthly overhead and billable crew hours consistent. Use cost / (1 − target margin), not cost × (1 + margin), and round minimum quoted prices up to a cent. Treat prefilled scenarios as examples, never actual financials; prevent invalid or blank inputs from producing a misleading floor. Stop scenarios do not automatically rewrite service prices, annual budgets, or Pricing Review rates.

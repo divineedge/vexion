@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  Save, Loader2, ShieldAlert, CheckCircle2, Plus, X, Pencil, Building2, Printer,
+  Save, Loader2, ShieldAlert, CheckCircle2, Plus, X, Pencil, Building2, Printer, Calculator,
 } from 'lucide-react';
 import { customFetch, useListServices, getListServicesQueryKey } from '@workspace/api-client-react';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -15,14 +15,21 @@ import {
 } from '@/lib/budgetCalc';
 import { DivisionPanel } from '@/components/budget/DivisionPanel';
 import { CompanyTotalPanel } from '@/components/budget/CompanyTotalPanel';
+import {
+  JobPricingFloorPanel, JobPricingFloorDraft, draftFromInputs, parseDraft, isDefaultScenario,
+} from '@/components/budget/JobPricingFloorPanel';
+import { calculateJobPricingFloor, defaultJobPricingFloor } from '@/lib/jobPricingFloor';
 
 const COMPANY_TAB = '__company__';
+const JPF_TAB = 'job-pricing-floor';
+const initialTabIsJpf = () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tab') === JPF_TAB;
 
 export default function BudgetPage() {
   const { canManageOffice } = useAuth();
   const [years, setYears] = useState<BudgetYear[]>([]);
   const [currentYear, setCurrentYear] = useState<number>(new Date().getFullYear());
-  const [activeTab, setActiveTab] = useState<string>(COMPANY_TAB);
+  const [activeTab, setActiveTab] = useState<string>(initialTabIsJpf() ? JPF_TAB : COMPANY_TAB);
+  const [jpfDrafts, setJpfDrafts] = useState<Record<number, JobPricingFloorDraft>>({});
   const [saving, setSaving] = useState(false);
   const [divisionSaving, setDivisionSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -40,12 +47,12 @@ export default function BudgetPage() {
           setYears(migrated);
           const sorted = [...migrated].sort((a, b) => b.year - a.year);
           setCurrentYear(sorted[0].year);
-          setActiveTab(sorted[0].divisions[0]?.id ?? COMPANY_TAB);
+          if (!initialTabIsJpf()) setActiveTab(sorted[0].divisions[0]?.id ?? COMPANY_TAB);
         } else {
           const fresh = defaultBudgetYear();
           setYears([fresh]);
           setCurrentYear(fresh.year);
-          setActiveTab(fresh.divisions[0].id);
+          if (!initialTabIsJpf()) setActiveTab(fresh.divisions[0].id);
         }
       })
       .catch(() => {
@@ -70,6 +77,14 @@ export default function BudgetPage() {
       return prev.map(y => (y.year === currentYear ? updater(y) : y));
     });
   }, [currentYear]);
+
+  const jpfDraft = jpfDrafts[currentYear] ?? draftFromInputs(year.jobPricingFloor ?? defaultJobPricingFloor());
+  const jpfInvalid = !calculateJobPricingFloor(parseDraft(jpfDraft)).result;
+  const changeJpf = (next: JobPricingFloorDraft) => {
+    setJpfDrafts(prev => ({ ...prev, [currentYear]: next }));
+    const parsed = parseDraft(next);
+    if (calculateJobPricingFloor(parsed).result) updateYear(y => ({ ...y, jobPricingFloor: parsed }));
+  };
 
   const updateDivision = (divisionId: string, updated: DivisionBudget) => {
     updateYear(y => ({ ...y, divisions: y.divisions.map(d => (d.id === divisionId ? updated : d)) }));
@@ -151,6 +166,10 @@ export default function BudgetPage() {
       toast.info('Finish editing the division name before saving the budget');
       return;
     }
+    if (jpfInvalid) {
+      toast.error('Fix the Job Pricing Floor entries before saving');
+      return;
+    }
     setSaving(true);
     const toSave = years.map(y => (y.year === currentYear ? { ...y, savedAt: new Date().toISOString() } : y));
     try {
@@ -159,7 +178,12 @@ export default function BudgetPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ budgetData: toSave }),
       });
-      setYears(toSave);
+      // Preserve any newer edits made while the save request was in flight.
+      setYears(prev => prev.map(current => {
+        const beforeSave = years.find(item => item.year === current.year);
+        const saved = toSave.find(item => item.year === current.year);
+        return current === beforeSave && saved ? saved : current;
+      }));
       toast.success('Budget saved');
     } catch {
       toast.error('Failed to save budget');
@@ -196,16 +220,16 @@ export default function BudgetPage() {
   const previousDivision = previousYear?.divisions.find(d => d.name === activeDivision?.name) ?? null;
 
   return (
-    <div className="budget-print-area space-y-6 animate-in fade-in duration-500">
+    <div className="budget-print-area min-w-0 max-w-full space-y-6 animate-in fade-in duration-500">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Budget Calculator</h1>
           <p className="text-muted-foreground mt-1">
             Enter your costs and goals to find out what hourly rate you need to hit your target profit margin.
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
           <div className="flex items-center gap-2 border rounded-lg px-3 py-1.5">
             <span className="text-xs text-muted-foreground">Year</span>
             <input
@@ -215,12 +239,12 @@ export default function BudgetPage() {
               onChange={e => setCurrentYear(parseInt(e.target.value) || new Date().getFullYear())}
             />
           </div>
-          <div className="budget-print-controls flex items-center gap-2">
+          <div className="budget-print-controls flex flex-wrap items-center gap-2 min-w-0 max-w-full">
             <Button variant="outline" onClick={handlePrint} className="gap-2">
               <Printer className="w-4 h-4" />
-              Print {activeTab === COMPANY_TAB ? 'Company Budget' : 'Division'}
+              Print {activeTab === COMPANY_TAB ? 'Company Budget' : activeTab === JPF_TAB ? 'Job Pricing Floor' : 'Division'}
             </Button>
-            <Button onClick={handleSave} disabled={saving || divisionSaving} className="gap-2">
+            <Button onClick={handleSave} disabled={saving || divisionSaving || jpfInvalid} title={jpfInvalid ? 'Fix the Job Pricing Floor entries to save' : undefined} data-testid="button-save-budget" className="gap-2">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               Save Budget
             </Button>
@@ -295,12 +319,23 @@ export default function BudgetPage() {
             )}
           </div>
         ))}
+        <button
+          data-testid="tab-job-pricing-floor"
+          onClick={() => setActiveTab(JPF_TAB)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            activeTab === JPF_TAB ? 'bg-emerald-900 text-emerald-50' : 'text-emerald-900 dark:text-emerald-300 hover:bg-muted'
+          }`}
+        >
+          <Calculator className="w-3.5 h-3.5" /> Job Pricing Floor
+        </button>
         <Button variant="ghost" size="sm" className="gap-1 text-xs h-8" onClick={addDivision} disabled={divisionSaving}>
           <Plus className="w-3.5 h-3.5" /> Add Division
         </Button>
       </div>
 
-      {activeTab === COMPANY_TAB ? (
+      {activeTab === JPF_TAB ? (
+        <JobPricingFloorPanel draft={jpfDraft} onChange={changeJpf} isDefault={!year.jobPricingFloor && isDefaultScenario(jpfDraft)} />
+      ) : activeTab === COMPANY_TAB ? (
         <CompanyTotalPanel
           year={year}
           onOverrideChange={overrides => updateYear(y => ({ ...y, overheadOverrides: overrides }))}

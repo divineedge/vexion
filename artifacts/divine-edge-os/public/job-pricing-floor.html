@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lawn Care Job Pricing Floor</title>
+<style>
+:root{font:16px/1.5 system-ui,sans-serif;color:#172e25;background:#f3f6f3;--green:#14532d}
+*{box-sizing:border-box}body{margin:0}main{max-width:1120px;margin:auto;padding:32px 20px}
+h1{font-size:clamp(26px,4vw,38px);margin:0}h2{font-size:19px;margin:0 0 16px}
+p{color:#52655a}header{margin-bottom:24px}.layout{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+section,.metric,.notice{background:white;border:1px solid #d7e1d9;border-radius:14px;padding:22px}
+section{margin-bottom:18px}.fields{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+label{display:block;font-size:14px;font-weight:650}input{display:block;width:100%;margin-top:6px;padding:11px;border:1px solid #9aafa0;border-radius:8px;font:inherit;color:inherit;background:white}
+input:focus{outline:2px solid #15803d;outline-offset:2px}small{display:block;color:#52655a;font-weight:400;font-size:12px;margin-top:6px}
+.metrics{display:grid;gap:16px}.metric span{display:block;font-size:14px}.metric strong{display:block;font-size:34px;letter-spacing:-1px;color:var(--green);overflow-wrap:anywhere}
+.featured{background:var(--green);color:white}.featured strong,.featured small{color:white}
+.rate{font-size:23px!important}.notice{font-size:13px;background:#ecf5ed;margin:18px 0}
+#errors{color:#9f1239;background:#fff1f2;padding:16px;border-radius:8px}dl{margin:0}dl div{display:flex;justify-content:space-between;gap:18px;border-bottom:1px solid #e4eae5;padding:9px 0}
+dt{color:#52655a}dd{margin:0;font-weight:600;text-align:right}button{font:inherit;border:1px solid var(--green);border-radius:8px;padding:9px 16px;color:var(--green);background:white;cursor:pointer}
+@media(max-width:760px){.layout{grid-template-columns:1fr}.fields{grid-template-columns:1fr}.metric strong{font-size:30px}}
+@media print{body{background:white}main{padding:0}.layout{grid-template-columns:1fr 1fr;gap:12px}section,.metric{break-inside:avoid;padding:12px}button{display:none}input{padding:4px}.featured{background:white;color:#172e25}.featured strong,.featured small{color:#14532d}}
+</style>
+</head>
+<body>
+<main>
+<header><h1>Know your minimum. Price with confidence.</h1><p>Lawn care job pricing floor · Labor, overhead, travel and a real profit margin.</p></header>
+<div class="notice">Example assumptions are prefilled—not your company’s actual costs. Replace them before quoting. This calculator works offline; entries stay in this page only and are not saved after closing it.</div>
+<div class="layout">
+<form id="inputs" novalidate>
+<section><h2>1. Fully burdened labor</h2><div class="fields">
+<label>Base wage per person ($/hour)<input name="hourlyWage" type="number" min="0" step="0.01" value="25" required><small>Include a fair operator wage even if the owner does the work.</small></label>
+<label>Payroll taxes &amp; insurance (%)<input name="payrollBurdenPct" type="number" min="0" step="0.1" value="15" required><small>15% is a starting assumption, not a tax quote. Include employer taxes, workers’ comp and benefits here; do not count them again in overhead.</small></label>
+<label>Crew members on this stop<input name="crewMembers" type="number" min="1" step="1" value="1" required><small>Every crew member is paid for on-site, drive and setup time.</small></label>
+</div></section>
+<section><h2>2. Monthly overhead recovery</h2><div class="fields">
+<label>Fixed overhead ($/month)<input name="monthlyOverhead" type="number" min="0" step="0.01" value="3000" required><small>Truck/equipment payments, insurance, software, phones and shop space. Exclude labor and costs entered elsewhere.</small></label>
+<label>Billable crew hours/month<input name="monthlyBillableHours" type="number" min="0.01" step="0.25" value="120" required><small>Total on-property crew clock-hours across the same business scope as overhead. One hour with two people is one crew hour, not two. Exclude travel, shop time and maintenance.</small></label>
+</div></section>
+<section><h2>3. This stop</h2><div class="fields">
+<label>On-site time (minutes)<input name="onSiteMinutes" type="number" min="0.01" step="1" value="45" required><small>Elapsed crew time spent earning money on the property.</small></label>
+<label>Drive + setup time (minutes)<input name="driveSetupMinutes" type="number" min="0" step="1" value="15" required><small>Include this stop’s share of travel and setup that is not already in on-site time.</small></label>
+<label>Target profit margin (%)<input name="targetMarginPct" type="number" min="0" max="99.99" step="0.1" value="20" required><small>20% margin means keeping $20 of each $100 in revenue after these costs—not adding 20% to cost.</small></label>
+<label>Other direct job costs ($)<input name="directJobCosts" type="number" min="0" step="0.01" value="0" required><small>Materials, chemicals, fuel or disposal for this stop, only if not counted elsewhere.</small></label>
+</div></section>
+</form>
+<aside>
+<div id="errors" role="alert" hidden></div>
+<div id="results">
+<div class="metrics">
+<div class="metric"><span>True hourly cost / on-site billable hour</span><strong id="trueHourlyCost"></strong><small>Full stop cost spread over on-site hours; includes drive/setup labor and direct costs.</small></div>
+<div class="metric"><span>Job break-even floor · 0% profit</span><strong id="breakEvenFloor"></strong><small>Labor + overhead share + other direct costs. Quoting below this loses money under these assumptions.</small></div>
+<div class="metric featured"><span>Recommended minimum price</span><strong id="recommendedMinimum"></strong><small id="profitNote"></small></div>
+<div class="metric"><span>Per on-clock minute · cost / target revenue</span><strong class="rate" id="perMinute"></strong><small>Uses the whole stop: on-site + drive/setup time. Revenue is a pricing target, not guaranteed earnings.</small></div>
+</div>
+<section style="margin-top:18px"><h2>Your cost breakdown</h2><dl>
+<div><dt>Burdened wage / person-hour</dt><dd id="burdenedWage"></dd></div>
+<div><dt>Whole crew labor / clock-hour</dt><dd id="crewLaborHourly"></dd></div>
+<div><dt>Overhead / on-site crew-hour</dt><dd id="overheadPerBillableHour"></dd></div>
+<div><dt>Total on-clock minutes</dt><dd id="totalClockMinutes"></dd></div>
+<div><dt>Labor for this stop</dt><dd id="laborCost"></dd></div>
+<div><dt>Allocated overhead</dt><dd id="overheadShare"></dd></div>
+<div><dt>Other direct costs</dt><dd id="directJobCosts"></dd></div>
+</dl></section>
+</div>
+<div class="notice"><b>How it works</b><br>Labor = wage × (1 + burden %) × crew × all clock hours.<br>Overhead share = monthly overhead ÷ monthly billable crew hours × on-site hours.<br>Price = total stop cost ÷ (1 − margin %), rounded up to a cent.<br><br>Driving is paid, but overhead is recovered only through on-site hours so it is not allocated twice. Use realistic seasonal billable hours and include all costs. Sales tax is not profit and is not included. This is a planning estimate, not a guarantee of profitability.</div>
+<button type="button" onclick="window.print()">Print inputs &amp; results</button>
+</aside>
+</div>
+</main>
+<script>
+/* MATH START */
+function calculate(i) {
+  const keys=['hourlyWage','payrollBurdenPct','crewMembers','monthlyOverhead','monthlyBillableHours','onSiteMinutes','driveSetupMinutes','targetMarginPct','directJobCosts'];
+  const errors=[];
+  if(keys.some(k=>!Number.isFinite(i[k])||i[k]<0)) errors.push('Enter a finite, non-negative number in every field.');
+  if(!Number.isSafeInteger(i.crewMembers)||i.crewMembers<1) errors.push('Crew members must be a whole number of at least 1.');
+  if(i.monthlyBillableHours<=0) errors.push('Monthly billable hours must be greater than 0.');
+  if(i.onSiteMinutes<=0) errors.push('On-site minutes must be greater than 0.');
+  if(i.targetMarginPct>=100) errors.push('Profit margin must be less than 100%.');
+  if(errors.length) return {errors,result:null};
+  const burdenedWage=i.hourlyWage*(1+i.payrollBurdenPct/100);
+  const crewLaborHourly=burdenedWage*i.crewMembers;
+  const overheadPerBillableHour=i.monthlyOverhead/i.monthlyBillableHours;
+  const totalClockMinutes=i.onSiteMinutes+i.driveSetupMinutes;
+  const laborCost=crewLaborHourly*totalClockMinutes/60;
+  const overheadShare=overheadPerBillableHour*i.onSiteMinutes/60;
+  const breakEvenFloor=laborCost+overheadShare+i.directJobCosts;
+  const recommendedMinimum=Math.ceil(breakEvenFloor/(1-i.targetMarginPct/100)*100-1e-8)/100;
+  const result={burdenedWage,crewLaborHourly,overheadPerBillableHour,totalClockMinutes,laborCost,overheadShare,directJobCosts:i.directJobCosts,breakEvenFloor,trueHourlyCost:breakEvenFloor/(i.onSiteMinutes/60),recommendedMinimum,profitAtMinimum:recommendedMinimum-breakEvenFloor,costPerClockMinute:breakEvenFloor/totalClockMinutes,revenuePerClockMinute:recommendedMinimum/totalClockMinutes};
+  if(Object.values(result).some(v=>!Number.isFinite(v))) return {errors:['Inputs produce an out-of-range result. Reduce the values.'],result:null};
+  return {errors:[],result};
+}
+/* MATH END */
+const form=document.querySelector('#inputs');
+const money=new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
+function update() {
+  const inputs=Object.fromEntries(Array.from(form.querySelectorAll('input')).map(el=>[el.name,el.value.trim()===''?NaN:Number(el.value)]));
+  const {errors,result}=calculate(inputs);
+  const errorBox=document.querySelector('#errors');
+  errorBox.hidden=!errors.length;
+  errorBox.textContent=errors.join(' ');
+  document.querySelector('#results').hidden=!result;
+  if(!result) return;
+  for(const key of ['trueHourlyCost','breakEvenFloor','recommendedMinimum','burdenedWage','crewLaborHourly','overheadPerBillableHour','laborCost','overheadShare','directJobCosts']) {
+    const amount=key==='breakEvenFloor'?Math.ceil(result[key]*100-1e-8)/100:result[key];
+    document.getElementById(key).textContent=money.format(amount);
+  }
+  document.querySelector('#totalClockMinutes').textContent=String(result.totalClockMinutes);
+  document.querySelector('#perMinute').textContent=money.format(result.costPerClockMinute)+' / '+money.format(result.revenuePerClockMinute);
+  document.querySelector('#profitNote').textContent=inputs.targetMarginPct+'% target margin · '+money.format(result.profitAtMinimum)+' estimated profit per stop. Price rounded up to a cent.';
+}
+form.addEventListener('input',update);
+form.addEventListener('submit',event=>event.preventDefault());
+update();
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "fjyy-Vhhszf2dcPqRr6t8"
+uri = "file://artifacts/divine-edge-os/public/job-pricing-floor.html"
+type = "html"
+title = "Lawn Care Job Pricing Floor — standalone calculator"
+description = "Self-contained HTML with live inputs, cost breakdown, profit-margin pricing, validation and print support. Download and open in a browser; no installation or internet connection required."
+logical_id = "e3b75392-4451-4122-b332-ba6eafcc06b6"
+content_hash = "sha256:2b8fff4315543066eb5a465e1f686cfe6a40251bd7432dd775b57d3c81c6bedd"
+size = 10594
+mtime_ms = 1792988277013
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:ea5c6dde-c9d3-42c6-8c29-724f83b77e78/e3b75392-4451-4122-b332-ba6eafcc06b6/eea104b0-2365-4a6c-9d1d-ad1d7df9ba3e"
+storage_version_token = "1792988398988548"
+content_type = "text/html"

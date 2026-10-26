@@ -1,3 +1,5 @@
+import { restoreJobPricingFloor, type JobPricingFloorInputs } from './jobPricingFloor';
+
 // ── Shared types & math for the Budget Calculator ──────────────────────────
 // Kept out of the page component so division panels, the company-total
 // rollup, and the checkup comparisons can all share one source of truth.
@@ -155,6 +157,7 @@ export interface BudgetYear {
   companyMidYearCheckup: CheckupData;
   companyEndYearCheckup: CheckupData;
   savedAt?: string;
+  jobPricingFloor?: JobPricingFloorInputs;
 }
 
 export function defaultBudgetYear(year = new Date().getFullYear()): BudgetYear {
@@ -184,6 +187,7 @@ export function migrateBudgetPayload(saved: unknown): BudgetYear[] {
         companyMidYearCheckup: migrateCheckup(raw.companyMidYearCheckup),
         companyEndYearCheckup: migrateCheckup(raw.companyEndYearCheckup),
         savedAt: raw.savedAt,
+        jobPricingFloor: restoreJobPricingFloor(raw.jobPricingFloor),
       };
     }
     // Legacy flat shape: the whole object IS a single division's fields.
@@ -194,6 +198,7 @@ export function migrateBudgetPayload(saved: unknown): BudgetYear[] {
       companyMidYearCheckup: defaultCheckup(),
       companyEndYearCheckup: defaultCheckup(),
       savedAt: raw?.savedAt,
+      jobPricingFloor: restoreJobPricingFloor(raw?.jobPricingFloor),
     };
   });
 }

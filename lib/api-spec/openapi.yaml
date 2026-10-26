@@ -63,6 +63,75 @@ tags:
     description: Recurring billing templates and automation
 
 paths:
+  /platform-billing/access:
+    get:
+      operationId: getPlatformBillingAccess
+      responses:
+        '200': {description: Software-owner access, content: {application/json: {schema: {type: object, required: [isSoftwareOwner], properties: {isSoftwareOwner: {type: boolean}}}}}}
+  /platform-billing/admin:
+    get:
+      operationId: getPlatformBillingAdmin
+      responses:
+        '200': {description: Software administration, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformAdminOverview'}}}}
+  /platform-billing/settings:
+    patch:
+      operationId: updatePlatformBillingSettings
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformBillingSettingsInput'}}}}
+      responses:
+        '200': {description: Saved settings, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformBillingSettingsInput'}}}}
+  /platform-billing/plans:
+    post:
+      operationId: createPlatformSoftwarePlan
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SoftwarePlanInput'}}}}
+      responses:
+        '201': {description: Created draft, content: {application/json: {schema: {$ref: '#/components/schemas/SoftwarePlan'}}}}
+  /platform-billing/plans/{id}:
+    parameters: [{in: path, name: id, required: true, schema: {type: integer}}]
+    patch:
+      operationId: updatePlatformSoftwarePlan
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SoftwarePlanInput'}}}}
+      responses:
+        '200': {description: Saved draft, content: {application/json: {schema: {$ref: '#/components/schemas/SoftwarePlan'}}}}
+  /platform-billing/plans/{id}/publish:
+    parameters: [{in: path, name: id, required: true, schema: {type: integer}}]
+    post:
+      operationId: publishPlatformSoftwarePlan
+      responses:
+        '200': {description: Published plan, content: {application/json: {schema: {$ref: '#/components/schemas/SoftwarePlan'}}}}
+  /platform-billing/payouts/{id}/retry:
+    parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+    post:
+      operationId: retryPlatformPayout
+      responses:
+        '200': {description: Latest payout, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformPayout'}}}}
+  /software-billing:
+    get:
+      operationId: getBusinessSoftwareBilling
+      responses:
+        '200': {description: Business billing, content: {application/json: {schema: {$ref: '#/components/schemas/BusinessSoftwareBilling'}}}}
+  /software-billing/subscribe:
+    post:
+      operationId: startBusinessSubscription
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [planId], properties: {planId: {type: integer}}}}}}
+      responses:
+        '200': {description: Stripe checkout, content: {application/json: {schema: {$ref: '#/components/schemas/SoftwareBillingRedirect'}}}}
+  /software-billing/manage:
+    post:
+      operationId: manageBusinessSubscription
+      requestBody: {content: {application/json: {schema: {type: object, properties: {planId: {type: integer}}}}}}
+      responses:
+        '200': {description: Stripe billing portal, content: {application/json: {schema: {$ref: '#/components/schemas/SoftwareBillingRedirect'}}}}
+  /software-billing/connect:
+    post:
+      operationId: startBusinessPaymentOnboarding
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [acceptedTerms], properties: {acceptedTerms: {type: boolean}}}}}}
+      responses:
+        '200': {description: Stripe onboarding, content: {application/json: {schema: {$ref: '#/components/schemas/SoftwareBillingRedirect'}}}}
+  /software-billing/refresh:
+    post:
+      operationId: refreshBusinessPaymentAccount
+      responses:
+        '200': {description: Provider-confirmed billing, content: {application/json: {schema: {$ref: '#/components/schemas/BusinessSoftwareBilling'}}}}
   /schedule/weather:
     get:
       operationId: getScheduleWeather
@@ -9586,6 +9655,92 @@ paths:
               schema: { $ref: "#/components/schemas/PortalPushStatus" }
 components:
   schemas:
+    PlatformBillingSettingsInput:
+      type: object
+      required: [enabled, cardFeeBps, cardFeeFixedCents, achFeeBps, achFeeFixedCents]
+      properties:
+        enabled: {type: boolean}
+        confirmActivation: {type: boolean}
+        cardFeeBps: {type: integer, minimum: 0, maximum: 10000}
+        cardFeeFixedCents: {type: integer, minimum: 0, maximum: 100000}
+        achFeeBps: {type: integer, minimum: 0, maximum: 10000}
+        achFeeFixedCents: {type: integer, minimum: 0, maximum: 100000}
+    SoftwarePlanInput:
+      type: object
+      required: [name, tier, price, billingInterval, active, features, maxUsers, maxProperties, cardFeeBps, cardFeeFixedCents, achFeeBps, achFeeFixedCents]
+      properties:
+        name: {type: string}
+        tier: {type: string}
+        price: {type: number}
+        billingInterval: {type: string, enum: [month, year]}
+        active: {type: boolean}
+        features: {type: array, items: {type: string}}
+        maxUsers: {type: integer, nullable: true}
+        maxProperties: {type: integer, nullable: true}
+        cardFeeBps: {type: integer, nullable: true}
+        cardFeeFixedCents: {type: integer, nullable: true}
+        achFeeBps: {type: integer, nullable: true}
+        achFeeFixedCents: {type: integer, nullable: true}
+    SoftwarePlan:
+      allOf:
+        - {$ref: '#/components/schemas/SoftwarePlanInput'}
+        - type: object
+          required: [id, revision, published, stripePriceId]
+          properties:
+            id: {type: integer}
+            revision: {type: integer}
+            published: {type: boolean}
+            stripePriceId: {type: string, nullable: true}
+    PlatformPayout:
+      type: object
+      required: [paymentIntentId, tenantId, amountCents, processorFeeCents, platformFeeCents, payoutCents, status, lastError, createdAt]
+      properties:
+        paymentIntentId: {type: string}
+        tenantId: {type: integer}
+        amountCents: {type: integer}
+        processorFeeCents: {type: integer, nullable: true}
+        platformFeeCents: {type: integer, nullable: true}
+        payoutCents: {type: integer, nullable: true}
+        status: {type: string}
+        lastError: {type: string, nullable: true}
+        createdAt: {type: string}
+    SoftwareBillingAccount:
+      type: object
+      required: [tenantId, companyName, planId, status, cancelAtPeriodEnd, currentPeriodEnd, confirmedAt, connectReady, hasConnectAccount, hasSubscription]
+      properties:
+        tenantId: {type: integer}
+        companyName: {type: string}
+        planId: {type: integer, nullable: true}
+        status: {type: string}
+        cancelAtPeriodEnd: {type: boolean}
+        currentPeriodEnd: {type: string, nullable: true}
+        confirmedAt: {type: string, nullable: true}
+        connectReady: {type: boolean}
+        hasConnectAccount: {type: boolean}
+        hasSubscription: {type: boolean}
+    BusinessSoftwareBilling:
+      type: object
+      required: [enabled, account, plans, payouts, fees]
+      properties:
+        enabled: {type: boolean}
+        account: {$ref: '#/components/schemas/SoftwareBillingAccount'}
+        plans: {type: array, items: {$ref: '#/components/schemas/SoftwarePlan'}}
+        payouts: {type: array, items: {$ref: '#/components/schemas/PlatformPayout'}}
+        fees: {$ref: '#/components/schemas/PlatformBillingSettingsInput'}
+    PlatformAdminOverview:
+      type: object
+      required: [settings, plans, businesses, payouts, audit]
+      properties:
+        settings: {$ref: '#/components/schemas/PlatformBillingSettingsInput'}
+        plans: {type: array, items: {$ref: '#/components/schemas/SoftwarePlan'}}
+        businesses: {type: array, items: {$ref: '#/components/schemas/SoftwareBillingAccount'}}
+        payouts: {type: array, items: {$ref: '#/components/schemas/PlatformPayout'}}
+        audit: {type: array, items: {type: object, required: [action, createdAt], properties: {action: {type: string}, createdAt: {type: string}}}}
+    SoftwareBillingRedirect:
+      type: object
+      required: [url]
+      properties:
+        url: {type: string}
     PortalPushKey:
       type: object
       required: [publicKey]

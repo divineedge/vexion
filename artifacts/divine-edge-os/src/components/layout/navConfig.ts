@@ -6,7 +6,7 @@ import {
   Megaphone, FlaskConical,
   Settings, FileText, Footprints, BarChart3, Star, Repeat, ListTodo, Calculator, Scale,
   Map, ClipboardList, PhoneMissed, PhoneIncoming, Inbox, Layers,
-  MessageSquare, Store, ClipboardCheck, IdCard, UserPlus, Globe,
+  MessageSquare, Store, ClipboardCheck, IdCard, UserPlus, Globe, ShieldCheck,
   LucideIcon,
 } from 'lucide-react';
 
@@ -26,7 +26,7 @@ export interface NavSection {
   id: string;
   label: string;
   /** If set, only roles whose key is true in AuthContext can see this section */
-  roles?: Array<'hasHrAccess' | 'isOwner' | 'isManager' | 'isDepartmentManager' | 'isCrewManager' | 'canManageOffice' | 'canManageJobs'>;
+  roles?: Array<'hasHrAccess' | 'isOwner' | 'isManager' | 'isDepartmentManager' | 'isCrewManager' | 'canManageOffice' | 'canManageJobs' | 'isSoftwareOwner'>;
   items: NavItem[];
 }
 
@@ -159,6 +159,15 @@ export const adminNavSections: NavSection[] = [
       { name: 'Staff Messages', href: '/staff-messages', icon: MessageSquare },
     ],
   },
+  {
+    // Visible only with an explicit server-side software-owner grant.
+    id: 'software-admin',
+    label: 'Software Admin',
+    roles: ['isSoftwareOwner'],
+    items: [
+      { name: 'Software Admin', href: '/software-admin', icon: ShieldCheck },
+    ],
+  },
 ];
 
 /** Build a flat href→{section,item} lookup used by Breadcrumb */
@@ -177,6 +186,7 @@ export function buildNavIndex(sections: NavSection[]) {
   // Include standalone items so breadcrumbs resolve them
   map['/dashboard'] = { sectionLabel: '', itemName: 'Dashboard' };
   map['/settings']  = { sectionLabel: '', itemName: 'Settings' };
+  map['/software-billing'] = { sectionLabel: 'Settings', itemName: 'Software billing & payouts' };
   for (const item of hrNavItems) map[item.href] = { sectionLabel: 'People', itemName: item.name };
   map[myRecordNavItem.href] = { sectionLabel: '', itemName: myRecordNavItem.name };
   return map;

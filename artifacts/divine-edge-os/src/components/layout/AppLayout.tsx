@@ -73,7 +73,7 @@ function StandaloneLink({
 }
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, isAuthenticated, logout, isTechnician, isCrewManager, canManageOffice } = useAuth();
+  const { user, isAuthenticated, logout, isTechnician, isCrewManager, canManageOffice, isSuperAdmin } = useAuth();
   const hrMeta = useHrMeta();
   const hasHrAccess = !!hrMeta.data?.hasHrAccess;
   const techNavItems: NavItem[] = [...baseTechNavItems, ...(hasHrAccess ? hrNavItems : hrMeta.data ? [myRecordNavItem] : [])];
@@ -154,6 +154,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     isManager: canManageOffice,
     isDepartmentManager: canManageOffice,
     canManageJobs: isCrewManager || canManageOffice,
+    isSoftwareOwner: isSuperAdmin,
   };
 
   const visibleSections = adminNavSections

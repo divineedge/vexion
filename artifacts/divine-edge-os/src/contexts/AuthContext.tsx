@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import { logout as revokeStaffSession, setDefaultHeaders } from '@workspace/api-client-react';
+import { logout as revokeStaffSession, setDefaultHeaders, useGetPlatformBillingAccess, getGetPlatformBillingAccessQueryKey } from '@workspace/api-client-react';
 import type { User } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { buildEffectivePermissions, type PermissionKey } from '@/hooks/usePermissions';
@@ -86,6 +86,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     applyUserHeaders(null);
   };
 
+  // Software-owner access comes ONLY from an explicit server grant (staff-session protected).
+  const platformAccess = useGetPlatformBillingAccess({
+    query: {
+      enabled: !!user,
+      queryKey: [...getGetPlatformBillingAccessQueryKey(), user?.id ?? null, user?.tenantId ?? null],
+      staleTime: 5 * 60 * 1000,
+    },
+  });
+  const isSuperAdmin = !!user && platformAccess.data?.isSoftwareOwner === true;
+
   const role = user?.role;
   const isOwner = role === 'company_owner';
   const isManager = role === 'office_manager';
@@ -118,7 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isDepartmentManager,
       isCrewManager,
       isTechnician,
-      isSuperAdmin: false,
+      isSuperAdmin,
       canManageOffice,
       canManageJobs,
       can,

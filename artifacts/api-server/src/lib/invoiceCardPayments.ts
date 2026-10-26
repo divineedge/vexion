@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { db, invoicesTable, customersTable, tenantsTable, activityLogTable } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
 import { getStripeClient } from "./stripe";
+import { platformPaymentMetadata } from "./platformBillingPolicy";
 import { invoiceBalance } from "./customerCredit";
 import type Stripe from "stripe";
 import { allowedInvoiceMethods, readAchPolicy } from "./achPolicy";
@@ -35,7 +36,7 @@ export async function chargeInvoiceCard(tenantId:number, invoiceId:number, autom
     const payload:Stripe.PaymentIntentCreateParams={
       customer:customer.stripeCustomerId!,payment_method:customer.stripeDefaultPaymentMethodId,amount:Math.round(invoiceBalance(invoice)*100),currency:"usd",
       confirm:true,off_session:true,payment_method_types:[methodType],description:`Invoice ${invoice.invoiceNumber}`,
-      metadata:{invoiceId:String(invoiceId),tenantId:String(tenantId),source:"invoice_card"},
+      metadata:{...await platformPaymentMetadata(tenantId,Math.round(invoiceBalance(invoice)*100)),invoiceId:String(invoiceId),tenantId:String(tenantId),source:"invoice_card"},
     };
     await tx.execute(sql`INSERT INTO invoice_card_attempts(invoice_id,tenant_id,status,attempt_key,amount_cents,payment_method_id,request_payload)
       VALUES(${invoiceId},${tenantId},'reserved',${`invoice-${invoiceId}-${randomUUID()}`},${Math.round(invoiceBalance(invoice)*100)},${customer.stripeDefaultPaymentMethodId},${JSON.stringify(payload)}::jsonb)

@@ -32,6 +32,7 @@ import timeTrackingRouter from "./timeTracking";
 import blueprintsRouter from "./blueprints";
 import settingsRouter from "./settings";
 import plansRouter from "./plans";
+import platformBillingRouter from "./platformBilling";
 import servicePlansRouter from "./servicePlans";
 import efficiencyRouter from "./efficiency";
 import callbacksRouter from "./callbacks";
@@ -129,6 +130,7 @@ router.use((req, res, next) => {
 });
 
 router.use(storageRouter);
+router.use(platformBillingRouter);
 router.use(websiteIntakeRouter);
 router.use(mediaRouter);
 router.use(dashboardRouter);

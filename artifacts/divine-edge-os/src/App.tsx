@@ -55,6 +55,8 @@ import BudgetPage from '@/pages/budget';
 import PricingReviewPage from '@/pages/pricing-review';
 import StaffMessagesPage from '@/pages/staff-messages';
 import OAuthConsentPage from '@/pages/oauth-consent';
+import SoftwareAdminPage from '@/pages/software-admin';
+import SoftwareBillingPage from '@/pages/software-billing';
 
 import NotFound from '@/pages/not-found';
 import OnboardingWalkthrough, { useOnboarding } from '@/components/onboarding/OnboardingWalkthrough';
@@ -120,6 +122,8 @@ function ProtectedRoutes() {
         <Route path="/budget" component={BudgetPage} />
         <Route path="/pricing-review" component={PricingReviewPage} />
         <Route path="/staff-messages" component={StaffMessagesPage} />
+        <Route path="/software-admin" component={SoftwareAdminPage} />
+        <Route path="/software-billing" component={SoftwareBillingPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

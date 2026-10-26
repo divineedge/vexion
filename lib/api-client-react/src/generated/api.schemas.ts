@@ -5,6 +5,125 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+export interface PlatformBillingSettingsInput {
+  enabled: boolean;
+  confirmActivation?: boolean;
+  /**
+     * @minimum 0
+     * @maximum 10000
+     */
+  cardFeeBps: number;
+  /**
+     * @minimum 0
+     * @maximum 100000
+     */
+  cardFeeFixedCents: number;
+  /**
+     * @minimum 0
+     * @maximum 10000
+     */
+  achFeeBps: number;
+  /**
+     * @minimum 0
+     * @maximum 100000
+     */
+  achFeeFixedCents: number;
+}
+
+export type SoftwarePlanInputBillingInterval = typeof SoftwarePlanInputBillingInterval[keyof typeof SoftwarePlanInputBillingInterval];
+
+
+export const SoftwarePlanInputBillingInterval = {
+  month: 'month',
+  year: 'year',
+} as const;
+
+export interface SoftwarePlanInput {
+  name: string;
+  tier: string;
+  price: number;
+  billingInterval: SoftwarePlanInputBillingInterval;
+  active: boolean;
+  features: string[];
+  /** @nullable */
+  maxUsers: number | null;
+  /** @nullable */
+  maxProperties: number | null;
+  /** @nullable */
+  cardFeeBps: number | null;
+  /** @nullable */
+  cardFeeFixedCents: number | null;
+  /** @nullable */
+  achFeeBps: number | null;
+  /** @nullable */
+  achFeeFixedCents: number | null;
+}
+
+export type SoftwarePlan = SoftwarePlanInput & ({
+  id: number;
+  revision: number;
+  published: boolean;
+  /** @nullable */
+  stripePriceId: string | null;
+});
+
+export interface PlatformPayout {
+  paymentIntentId: string;
+  tenantId: number;
+  amountCents: number;
+  /** @nullable */
+  processorFeeCents: number | null;
+  /** @nullable */
+  platformFeeCents: number | null;
+  /** @nullable */
+  payoutCents: number | null;
+  status: string;
+  /** @nullable */
+  lastError: string | null;
+  createdAt: string;
+}
+
+export interface SoftwareBillingAccount {
+  tenantId: number;
+  companyName: string;
+  /** @nullable */
+  planId: number | null;
+  status: string;
+  cancelAtPeriodEnd: boolean;
+  /** @nullable */
+  currentPeriodEnd: string | null;
+  /** @nullable */
+  confirmedAt: string | null;
+  connectReady: boolean;
+  hasConnectAccount: boolean;
+  hasSubscription: boolean;
+}
+
+export interface BusinessSoftwareBilling {
+  enabled: boolean;
+  account: SoftwareBillingAccount;
+  plans: SoftwarePlan[];
+  payouts: PlatformPayout[];
+  fees: PlatformBillingSettingsInput;
+}
+
+export type PlatformAdminOverviewAuditItem = {
+  action: string;
+  createdAt: string;
+};
+
+export interface PlatformAdminOverview {
+  settings: PlatformBillingSettingsInput;
+  plans: SoftwarePlan[];
+  businesses: SoftwareBillingAccount[];
+  payouts: PlatformPayout[];
+  audit: PlatformAdminOverviewAuditItem[];
+}
+
+export interface SoftwareBillingRedirect {
+  url: string;
+}
+
 export interface PortalPushKey {
   publicKey: string;
 }
@@ -7996,6 +8115,22 @@ export interface ExternalAccessAuditRow {
   requestId: string | null;
   createdAt: string;
 }
+
+export type GetPlatformBillingAccess200 = {
+  isSoftwareOwner: boolean;
+};
+
+export type StartBusinessSubscriptionBody = {
+  planId: number;
+};
+
+export type ManageBusinessSubscriptionBody = {
+  planId?: number;
+};
+
+export type StartBusinessPaymentOnboardingBody = {
+  acceptedTerms: boolean;
+};
 
 export type GetScheduleWeatherParams = {
 /**

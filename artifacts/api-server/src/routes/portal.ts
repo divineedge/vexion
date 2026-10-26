@@ -19,6 +19,9 @@ import { logger } from "../lib/logger";
 import { syncInvoicePaymentToQBO } from "../lib/quickbooksSync";
 import PDFDocument from "pdfkit";
 import { getStripeClient } from "../lib/stripeClient";
+import { platformPaymentMetadata } from "../lib/platformBillingPolicy";
+import { handlePlatformBillingEvent } from "../lib/platformBillingEvents";
+import { recordPlatformPayment } from "../lib/platformPayouts";
 import { resolveStaffSession } from "./auth";
 
 const router: IRouter = Router();
@@ -1929,6 +1932,8 @@ router.post("/portal/stripe-webhook", async (req: any, res): Promise<void> => {
   }
 
   try {
+    if(event.account){res.json({received:true});return;}
+    if(await handlePlatformBillingEvent(event)){res.json({received:true});return;}
     if(event.type==="payment_intent.processing" || event.type==="payment_intent.payment_failed" || event.type==="payment_intent.canceled") {
       const intent=event.data.object;
       await recordInvoiceBankEvent({metadata:intent.metadata,payment_intent:intent.id},
@@ -1949,6 +1954,9 @@ router.post("/portal/stripe-webhook", async (req: any, res): Promise<void> => {
           amount_total:intent.amount_received,metadata:{...intent.metadata,saveCard:"false"},
         });
       }catch(error){logger.error({error},"Invoice payment settlement needs retry");res.status(500).json({error:"Settlement needs retry"});return;}
+    }
+    if(intent.metadata?.platform_payments==="v1"){
+      try{await recordPlatformPayment(intent.id);}catch(error){logger.error({error},"Platform payout recording needs retry");res.status(500).json({error:"Payout recording needs retry"});return;}
     }
   }
   if(event.type==="checkout.session.expired"){
@@ -2310,7 +2318,8 @@ export const payEstimateDeposit = async (req: any, res: import("express").Respon
     confirm: true,
     off_session: true,
     description: `Deposit for Estimate #${estimateId}`,
-    metadata: { estimateId: String(estimateId), tenantId: String(portalTenantId) },
+    metadata: { estimateId: String(estimateId), tenantId: String(portalTenantId),
+      ...await platformPaymentMetadata(portalTenantId,Math.round(depositAmount*100)) },
     expand: ["latest_charge"],
   } as const;
 

@@ -8,6 +8,413 @@
 import * as zod from 'zod';
 
 
+export const GetPlatformBillingAccessResponse = zod.object({
+  "isSoftwareOwner": zod.boolean()
+})
+
+
+export const getPlatformBillingAdminResponseSettingsCardFeeBpsMin = 0;
+export const getPlatformBillingAdminResponseSettingsCardFeeBpsMax = 10000;
+
+export const getPlatformBillingAdminResponseSettingsCardFeeFixedCentsMin = 0;
+export const getPlatformBillingAdminResponseSettingsCardFeeFixedCentsMax = 100000;
+
+export const getPlatformBillingAdminResponseSettingsAchFeeBpsMin = 0;
+export const getPlatformBillingAdminResponseSettingsAchFeeBpsMax = 10000;
+
+export const getPlatformBillingAdminResponseSettingsAchFeeFixedCentsMin = 0;
+export const getPlatformBillingAdminResponseSettingsAchFeeFixedCentsMax = 100000;
+
+
+
+export const GetPlatformBillingAdminResponse = zod.object({
+  "settings": zod.object({
+  "enabled": zod.boolean(),
+  "confirmActivation": zod.boolean().optional(),
+  "cardFeeBps": zod.int().min(getPlatformBillingAdminResponseSettingsCardFeeBpsMin).max(getPlatformBillingAdminResponseSettingsCardFeeBpsMax),
+  "cardFeeFixedCents": zod.int().min(getPlatformBillingAdminResponseSettingsCardFeeFixedCentsMin).max(getPlatformBillingAdminResponseSettingsCardFeeFixedCentsMax),
+  "achFeeBps": zod.int().min(getPlatformBillingAdminResponseSettingsAchFeeBpsMin).max(getPlatformBillingAdminResponseSettingsAchFeeBpsMax),
+  "achFeeFixedCents": zod.int().min(getPlatformBillingAdminResponseSettingsAchFeeFixedCentsMin).max(getPlatformBillingAdminResponseSettingsAchFeeFixedCentsMax)
+}),
+  "plans": zod.array(zod.object({
+  "name": zod.string(),
+  "tier": zod.string(),
+  "price": zod.number(),
+  "billingInterval": zod.enum(['month', 'year']),
+  "active": zod.boolean(),
+  "features": zod.array(zod.string()),
+  "maxUsers": zod.int().nullable(),
+  "maxProperties": zod.int().nullable(),
+  "cardFeeBps": zod.int().nullable(),
+  "cardFeeFixedCents": zod.int().nullable(),
+  "achFeeBps": zod.int().nullable(),
+  "achFeeFixedCents": zod.int().nullable()
+}).and(zod.object({
+  "id": zod.int(),
+  "revision": zod.int(),
+  "published": zod.boolean(),
+  "stripePriceId": zod.string().nullable()
+}))),
+  "businesses": zod.array(zod.object({
+  "tenantId": zod.int(),
+  "companyName": zod.string(),
+  "planId": zod.int().nullable(),
+  "status": zod.string(),
+  "cancelAtPeriodEnd": zod.boolean(),
+  "currentPeriodEnd": zod.string().nullable(),
+  "confirmedAt": zod.string().nullable(),
+  "connectReady": zod.boolean(),
+  "hasConnectAccount": zod.boolean(),
+  "hasSubscription": zod.boolean()
+})),
+  "payouts": zod.array(zod.object({
+  "paymentIntentId": zod.string(),
+  "tenantId": zod.int(),
+  "amountCents": zod.int(),
+  "processorFeeCents": zod.int().nullable(),
+  "platformFeeCents": zod.int().nullable(),
+  "payoutCents": zod.int().nullable(),
+  "status": zod.string(),
+  "lastError": zod.string().nullable(),
+  "createdAt": zod.string()
+})),
+  "audit": zod.array(zod.object({
+  "action": zod.string(),
+  "createdAt": zod.string()
+}))
+})
+
+
+export const updatePlatformBillingSettingsBodyCardFeeBpsMin = 0;
+export const updatePlatformBillingSettingsBodyCardFeeBpsMax = 10000;
+
+export const updatePlatformBillingSettingsBodyCardFeeFixedCentsMin = 0;
+export const updatePlatformBillingSettingsBodyCardFeeFixedCentsMax = 100000;
+
+export const updatePlatformBillingSettingsBodyAchFeeBpsMin = 0;
+export const updatePlatformBillingSettingsBodyAchFeeBpsMax = 10000;
+
+export const updatePlatformBillingSettingsBodyAchFeeFixedCentsMin = 0;
+export const updatePlatformBillingSettingsBodyAchFeeFixedCentsMax = 100000;
+
+
+
+export const UpdatePlatformBillingSettingsBody = zod.object({
+  "enabled": zod.boolean(),
+  "confirmActivation": zod.boolean().optional(),
+  "cardFeeBps": zod.int().min(updatePlatformBillingSettingsBodyCardFeeBpsMin).max(updatePlatformBillingSettingsBodyCardFeeBpsMax),
+  "cardFeeFixedCents": zod.int().min(updatePlatformBillingSettingsBodyCardFeeFixedCentsMin).max(updatePlatformBillingSettingsBodyCardFeeFixedCentsMax),
+  "achFeeBps": zod.int().min(updatePlatformBillingSettingsBodyAchFeeBpsMin).max(updatePlatformBillingSettingsBodyAchFeeBpsMax),
+  "achFeeFixedCents": zod.int().min(updatePlatformBillingSettingsBodyAchFeeFixedCentsMin).max(updatePlatformBillingSettingsBodyAchFeeFixedCentsMax)
+})
+
+export const updatePlatformBillingSettingsResponseCardFeeBpsMin = 0;
+export const updatePlatformBillingSettingsResponseCardFeeBpsMax = 10000;
+
+export const updatePlatformBillingSettingsResponseCardFeeFixedCentsMin = 0;
+export const updatePlatformBillingSettingsResponseCardFeeFixedCentsMax = 100000;
+
+export const updatePlatformBillingSettingsResponseAchFeeBpsMin = 0;
+export const updatePlatformBillingSettingsResponseAchFeeBpsMax = 10000;
+
+export const updatePlatformBillingSettingsResponseAchFeeFixedCentsMin = 0;
+export const updatePlatformBillingSettingsResponseAchFeeFixedCentsMax = 100000;
+
+
+
+export const UpdatePlatformBillingSettingsResponse = zod.object({
+  "enabled": zod.boolean(),
+  "confirmActivation": zod.boolean().optional(),
+  "cardFeeBps": zod.int().min(updatePlatformBillingSettingsResponseCardFeeBpsMin).max(updatePlatformBillingSettingsResponseCardFeeBpsMax),
+  "cardFeeFixedCents": zod.int().min(updatePlatformBillingSettingsResponseCardFeeFixedCentsMin).max(updatePlatformBillingSettingsResponseCardFeeFixedCentsMax),
+  "achFeeBps": zod.int().min(updatePlatformBillingSettingsResponseAchFeeBpsMin).max(updatePlatformBillingSettingsResponseAchFeeBpsMax),
+  "achFeeFixedCents": zod.int().min(updatePlatformBillingSettingsResponseAchFeeFixedCentsMin).max(updatePlatformBillingSettingsResponseAchFeeFixedCentsMax)
+})
+
+
+export const CreatePlatformSoftwarePlanBody = zod.object({
+  "name": zod.string(),
+  "tier": zod.string(),
+  "price": zod.number(),
+  "billingInterval": zod.enum(['month', 'year']),
+  "active": zod.boolean(),
+  "features": zod.array(zod.string()),
+  "maxUsers": zod.int().nullable(),
+  "maxProperties": zod.int().nullable(),
+  "cardFeeBps": zod.int().nullable(),
+  "cardFeeFixedCents": zod.int().nullable(),
+  "achFeeBps": zod.int().nullable(),
+  "achFeeFixedCents": zod.int().nullable()
+})
+
+export const CreatePlatformSoftwarePlanResponse = zod.object({
+  "name": zod.string(),
+  "tier": zod.string(),
+  "price": zod.number(),
+  "billingInterval": zod.enum(['month', 'year']),
+  "active": zod.boolean(),
+  "features": zod.array(zod.string()),
+  "maxUsers": zod.int().nullable(),
+  "maxProperties": zod.int().nullable(),
+  "cardFeeBps": zod.int().nullable(),
+  "cardFeeFixedCents": zod.int().nullable(),
+  "achFeeBps": zod.int().nullable(),
+  "achFeeFixedCents": zod.int().nullable()
+}).and(zod.object({
+  "id": zod.int(),
+  "revision": zod.int(),
+  "published": zod.boolean(),
+  "stripePriceId": zod.string().nullable()
+}))
+
+
+export const UpdatePlatformSoftwarePlanParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const UpdatePlatformSoftwarePlanBody = zod.object({
+  "name": zod.string(),
+  "tier": zod.string(),
+  "price": zod.number(),
+  "billingInterval": zod.enum(['month', 'year']),
+  "active": zod.boolean(),
+  "features": zod.array(zod.string()),
+  "maxUsers": zod.int().nullable(),
+  "maxProperties": zod.int().nullable(),
+  "cardFeeBps": zod.int().nullable(),
+  "cardFeeFixedCents": zod.int().nullable(),
+  "achFeeBps": zod.int().nullable(),
+  "achFeeFixedCents": zod.int().nullable()
+})
+
+export const UpdatePlatformSoftwarePlanResponse = zod.object({
+  "name": zod.string(),
+  "tier": zod.string(),
+  "price": zod.number(),
+  "billingInterval": zod.enum(['month', 'year']),
+  "active": zod.boolean(),
+  "features": zod.array(zod.string()),
+  "maxUsers": zod.int().nullable(),
+  "maxProperties": zod.int().nullable(),
+  "cardFeeBps": zod.int().nullable(),
+  "cardFeeFixedCents": zod.int().nullable(),
+  "achFeeBps": zod.int().nullable(),
+  "achFeeFixedCents": zod.int().nullable()
+}).and(zod.object({
+  "id": zod.int(),
+  "revision": zod.int(),
+  "published": zod.boolean(),
+  "stripePriceId": zod.string().nullable()
+}))
+
+
+export const PublishPlatformSoftwarePlanParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const PublishPlatformSoftwarePlanResponse = zod.object({
+  "name": zod.string(),
+  "tier": zod.string(),
+  "price": zod.number(),
+  "billingInterval": zod.enum(['month', 'year']),
+  "active": zod.boolean(),
+  "features": zod.array(zod.string()),
+  "maxUsers": zod.int().nullable(),
+  "maxProperties": zod.int().nullable(),
+  "cardFeeBps": zod.int().nullable(),
+  "cardFeeFixedCents": zod.int().nullable(),
+  "achFeeBps": zod.int().nullable(),
+  "achFeeFixedCents": zod.int().nullable()
+}).and(zod.object({
+  "id": zod.int(),
+  "revision": zod.int(),
+  "published": zod.boolean(),
+  "stripePriceId": zod.string().nullable()
+}))
+
+
+export const RetryPlatformPayoutParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const RetryPlatformPayoutResponse = zod.object({
+  "paymentIntentId": zod.string(),
+  "tenantId": zod.int(),
+  "amountCents": zod.int(),
+  "processorFeeCents": zod.int().nullable(),
+  "platformFeeCents": zod.int().nullable(),
+  "payoutCents": zod.int().nullable(),
+  "status": zod.string(),
+  "lastError": zod.string().nullable(),
+  "createdAt": zod.string()
+})
+
+
+export const getBusinessSoftwareBillingResponseFeesCardFeeBpsMin = 0;
+export const getBusinessSoftwareBillingResponseFeesCardFeeBpsMax = 10000;
+
+export const getBusinessSoftwareBillingResponseFeesCardFeeFixedCentsMin = 0;
+export const getBusinessSoftwareBillingResponseFeesCardFeeFixedCentsMax = 100000;
+
+export const getBusinessSoftwareBillingResponseFeesAchFeeBpsMin = 0;
+export const getBusinessSoftwareBillingResponseFeesAchFeeBpsMax = 10000;
+
+export const getBusinessSoftwareBillingResponseFeesAchFeeFixedCentsMin = 0;
+export const getBusinessSoftwareBillingResponseFeesAchFeeFixedCentsMax = 100000;
+
+
+
+export const GetBusinessSoftwareBillingResponse = zod.object({
+  "enabled": zod.boolean(),
+  "account": zod.object({
+  "tenantId": zod.int(),
+  "companyName": zod.string(),
+  "planId": zod.int().nullable(),
+  "status": zod.string(),
+  "cancelAtPeriodEnd": zod.boolean(),
+  "currentPeriodEnd": zod.string().nullable(),
+  "confirmedAt": zod.string().nullable(),
+  "connectReady": zod.boolean(),
+  "hasConnectAccount": zod.boolean(),
+  "hasSubscription": zod.boolean()
+}),
+  "plans": zod.array(zod.object({
+  "name": zod.string(),
+  "tier": zod.string(),
+  "price": zod.number(),
+  "billingInterval": zod.enum(['month', 'year']),
+  "active": zod.boolean(),
+  "features": zod.array(zod.string()),
+  "maxUsers": zod.int().nullable(),
+  "maxProperties": zod.int().nullable(),
+  "cardFeeBps": zod.int().nullable(),
+  "cardFeeFixedCents": zod.int().nullable(),
+  "achFeeBps": zod.int().nullable(),
+  "achFeeFixedCents": zod.int().nullable()
+}).and(zod.object({
+  "id": zod.int(),
+  "revision": zod.int(),
+  "published": zod.boolean(),
+  "stripePriceId": zod.string().nullable()
+}))),
+  "payouts": zod.array(zod.object({
+  "paymentIntentId": zod.string(),
+  "tenantId": zod.int(),
+  "amountCents": zod.int(),
+  "processorFeeCents": zod.int().nullable(),
+  "platformFeeCents": zod.int().nullable(),
+  "payoutCents": zod.int().nullable(),
+  "status": zod.string(),
+  "lastError": zod.string().nullable(),
+  "createdAt": zod.string()
+})),
+  "fees": zod.object({
+  "enabled": zod.boolean(),
+  "confirmActivation": zod.boolean().optional(),
+  "cardFeeBps": zod.int().min(getBusinessSoftwareBillingResponseFeesCardFeeBpsMin).max(getBusinessSoftwareBillingResponseFeesCardFeeBpsMax),
+  "cardFeeFixedCents": zod.int().min(getBusinessSoftwareBillingResponseFeesCardFeeFixedCentsMin).max(getBusinessSoftwareBillingResponseFeesCardFeeFixedCentsMax),
+  "achFeeBps": zod.int().min(getBusinessSoftwareBillingResponseFeesAchFeeBpsMin).max(getBusinessSoftwareBillingResponseFeesAchFeeBpsMax),
+  "achFeeFixedCents": zod.int().min(getBusinessSoftwareBillingResponseFeesAchFeeFixedCentsMin).max(getBusinessSoftwareBillingResponseFeesAchFeeFixedCentsMax)
+})
+})
+
+
+export const StartBusinessSubscriptionBody = zod.object({
+  "planId": zod.int()
+})
+
+export const StartBusinessSubscriptionResponse = zod.object({
+  "url": zod.string()
+})
+
+
+export const ManageBusinessSubscriptionBody = zod.object({
+  "planId": zod.int().optional()
+})
+
+export const ManageBusinessSubscriptionResponse = zod.object({
+  "url": zod.string()
+})
+
+
+export const StartBusinessPaymentOnboardingBody = zod.object({
+  "acceptedTerms": zod.boolean()
+})
+
+export const StartBusinessPaymentOnboardingResponse = zod.object({
+  "url": zod.string()
+})
+
+
+export const refreshBusinessPaymentAccountResponseFeesCardFeeBpsMin = 0;
+export const refreshBusinessPaymentAccountResponseFeesCardFeeBpsMax = 10000;
+
+export const refreshBusinessPaymentAccountResponseFeesCardFeeFixedCentsMin = 0;
+export const refreshBusinessPaymentAccountResponseFeesCardFeeFixedCentsMax = 100000;
+
+export const refreshBusinessPaymentAccountResponseFeesAchFeeBpsMin = 0;
+export const refreshBusinessPaymentAccountResponseFeesAchFeeBpsMax = 10000;
+
+export const refreshBusinessPaymentAccountResponseFeesAchFeeFixedCentsMin = 0;
+export const refreshBusinessPaymentAccountResponseFeesAchFeeFixedCentsMax = 100000;
+
+
+
+export const RefreshBusinessPaymentAccountResponse = zod.object({
+  "enabled": zod.boolean(),
+  "account": zod.object({
+  "tenantId": zod.int(),
+  "companyName": zod.string(),
+  "planId": zod.int().nullable(),
+  "status": zod.string(),
+  "cancelAtPeriodEnd": zod.boolean(),
+  "currentPeriodEnd": zod.string().nullable(),
+  "confirmedAt": zod.string().nullable(),
+  "connectReady": zod.boolean(),
+  "hasConnectAccount": zod.boolean(),
+  "hasSubscription": zod.boolean()
+}),
+  "plans": zod.array(zod.object({
+  "name": zod.string(),
+  "tier": zod.string(),
+  "price": zod.number(),
+  "billingInterval": zod.enum(['month', 'year']),
+  "active": zod.boolean(),
+  "features": zod.array(zod.string()),
+  "maxUsers": zod.int().nullable(),
+  "maxProperties": zod.int().nullable(),
+  "cardFeeBps": zod.int().nullable(),
+  "cardFeeFixedCents": zod.int().nullable(),
+  "achFeeBps": zod.int().nullable(),
+  "achFeeFixedCents": zod.int().nullable()
+}).and(zod.object({
+  "id": zod.int(),
+  "revision": zod.int(),
+  "published": zod.boolean(),
+  "stripePriceId": zod.string().nullable()
+}))),
+  "payouts": zod.array(zod.object({
+  "paymentIntentId": zod.string(),
+  "tenantId": zod.int(),
+  "amountCents": zod.int(),
+  "processorFeeCents": zod.int().nullable(),
+  "platformFeeCents": zod.int().nullable(),
+  "payoutCents": zod.int().nullable(),
+  "status": zod.string(),
+  "lastError": zod.string().nullable(),
+  "createdAt": zod.string()
+})),
+  "fees": zod.object({
+  "enabled": zod.boolean(),
+  "confirmActivation": zod.boolean().optional(),
+  "cardFeeBps": zod.int().min(refreshBusinessPaymentAccountResponseFeesCardFeeBpsMin).max(refreshBusinessPaymentAccountResponseFeesCardFeeBpsMax),
+  "cardFeeFixedCents": zod.int().min(refreshBusinessPaymentAccountResponseFeesCardFeeFixedCentsMin).max(refreshBusinessPaymentAccountResponseFeesCardFeeFixedCentsMax),
+  "achFeeBps": zod.int().min(refreshBusinessPaymentAccountResponseFeesAchFeeBpsMin).max(refreshBusinessPaymentAccountResponseFeesAchFeeBpsMax),
+  "achFeeFixedCents": zod.int().min(refreshBusinessPaymentAccountResponseFeesAchFeeFixedCentsMin).max(refreshBusinessPaymentAccountResponseFeesAchFeeFixedCentsMax)
+})
+})
+
+
 /**
  * @summary Fourteen-day planning forecast at a company property's saved map pin
  */

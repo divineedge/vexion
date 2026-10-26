@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { db, invoicesTable, customersTable, tenantsTable } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
 import { getStripeClient, ensureStripeCustomer } from "./stripe";
+import { platformPaymentMetadata } from "./platformBillingPolicy";
 import { invoiceBalance } from "./customerCredit";
 import { CARD_AUTHORIZATION_TERMS, CARD_AUTHORIZATION_VERSION } from "./cardAuthorization";
 import type Stripe from "stripe";
@@ -37,7 +38,7 @@ export async function invoiceCheckout(tenantId:number,customerId:number,invoiceI
       else if(session.status!=="expired")throw new Error("Payment is being confirmed. Refresh before trying again.");
     } else if(attempt && ["reserved","pending","processing","unknown","succeeded","returned","disputed"].includes(attempt.status))throw new Error("A previous payment needs verification. Do not pay again.");
     const key=`checkout-invoice-${invoiceId}-${randomUUID()}`;
-    const consent={invoiceId:String(invoiceId),tenantId:String(tenantId),saveCard:saveCard?"true":"false",
+    const consent={...await platformPaymentMetadata(tenantId,cents),invoiceId:String(invoiceId),tenantId:String(tenantId),saveCard:saveCard?"true":"false",
       authorizationVersion:saveCard?(bankEnabled?PAYMENT_AUTHORIZATION_VERSION:CARD_AUTHORIZATION_VERSION):"none",authorizationAcceptedAt:saveCard?new Date().toISOString():""};
     const payload:Stripe.Checkout.SessionCreateParams={
       mode:"payment",customer,payment_method_types:methods,

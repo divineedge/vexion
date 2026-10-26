@@ -8,7 +8,6 @@ import { useLocation } from 'wouter';
 import {
   useGetTenantSettings, getGetTenantSettingsQueryKey,
   useUpdateTenantSettings,
-  useListPlans, getListPlansQueryKey,
   useUpdateFollowupTriggerConfig,
   useGetGmailAuthorizeUrl, getGetGmailAuthorizeUrlQueryKey,
   useDisconnectGmail,
@@ -68,7 +67,6 @@ export default function SettingsPage() {
   const [, setLocation] = useLocation();
 
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
-  const { data: plans } = useListPlans({ query: { enabled: isSuperAdmin, queryKey: getListPlansQueryKey() } });
   const updateSettings = useUpdateTenantSettings();
   const gmailAuthorizeUrl = useGetGmailAuthorizeUrl({ query: { enabled: false, queryKey: getGetGmailAuthorizeUrlQueryKey() } });
   const disconnectGmail = useDisconnectGmail({
@@ -1227,6 +1225,19 @@ export default function SettingsPage() {
 
         {/* ── Integrations ── */}
         <TabsContent value="payments" className="space-y-6 focus-visible:outline-none">
+          {isOwner && (
+            <Card data-testid="card-software-billing-link">
+              <CardContent className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-5">
+                <div>
+                  <p className="font-medium">Software billing & payouts</p>
+                  <p className="text-sm text-muted-foreground">Your Divine Edge OS subscription, online payment onboarding, and payout history.</p>
+                </div>
+                <Button variant="outline" onClick={() => setLocation('/software-billing')} data-testid="link-software-billing">
+                  Software billing & payouts <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              </CardContent>
+            </Card>
+          )}
           <Card>
             <CardHeader>
               <CardTitle>Payment Processing</CardTitle>
@@ -1754,39 +1765,20 @@ export default function SettingsPage() {
           </TabsContent>
         )}
 
-        {/* ── Plans (superadmin) ── */}
+        {/* ── Plans (software owner) — managed in Software Admin ── */}
         {isSuperAdmin && (
           <TabsContent value="plans" className="focus-visible:outline-none">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {(plans ?? []).map(plan => (
-                <Card key={plan.id} className={settings?.planTier === plan.tier ? 'border-primary shadow-md relative' : ''}>
-                  {settings?.planTier === plan.tier && (
-                    <div className="absolute -top-2 -right-2">
-                      <Badge className="bg-primary text-primary-foreground">Current</Badge>
-                    </div>
-                  )}
-                  <CardHeader>
-                    <CardTitle className="text-xl capitalize">{plan.name}</CardTitle>
-                    <div className="text-3xl font-bold tracking-tight mt-2">
-                      ${plan.price}<span className="text-sm font-normal text-muted-foreground">/mo</span>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="space-y-2 mb-6 text-sm">
-                      {(plan.features ?? []).map((feature, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <CheckCircle2 className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                          <span>{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Button variant={settings?.planTier === plan.tier ? 'outline' : 'default'} className="w-full">
-                      {settings?.planTier === plan.tier ? 'Manage Plan' : 'Upgrade'}
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle>Software plans moved</CardTitle>
+                <CardDescription>Software subscription plans, platform fees, and payouts are managed in Software Admin.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button onClick={() => setLocation('/software-admin?tab=plans')} data-testid="link-software-admin-plans">
+                  Open Software Admin plans <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              </CardContent>
+            </Card>
           </TabsContent>
         )}
 

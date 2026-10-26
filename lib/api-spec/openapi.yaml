@@ -9464,6 +9464,56 @@ paths:
         "400": { description: Invalid payment choice }
         "404": { description: Invoice not found }
         "409": { description: Payment already in progress }
+  /billing/ach-policy:
+    get:
+      operationId: getAchPaymentPolicy
+      responses:
+        "200":
+          description: Company online invoice payment rules
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AchPaymentPolicy" }
+        "403": { description: Office access required }
+    patch:
+      operationId: updateAchPaymentPolicy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AchPaymentPolicy" }
+      responses:
+        "200":
+          description: Saved company payment rules
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AchPaymentPolicy" }
+        "400": { description: Invalid payment rule }
+        "403": { description: Office access required }
+  /portal/invoices/{id}/payment-options:
+    get:
+      operationId: getPortalInvoicePaymentOptions
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Allowed methods and confirmed payment state for this customer invoice
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InvoicePaymentOptions" }
+        "401": { description: Portal sign-in required }
+        "404": { description: Invoice not found }
+  /public/invoices/{token}/payment-options:
+    get:
+      operationId: getPublicInvoicePaymentOptions
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Allowed methods and confirmed payment state for the linked invoice
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InvoicePaymentOptions" }
+        "404": { description: Invoice not found }
   /public/estimates/{token}/pay-deposit:
     post:
       operationId: payPublicEstimateDeposit
@@ -10388,6 +10438,34 @@ components:
         invoiceFooterText:
           type: ["string", "null"]
 
+    AchPaymentPolicy:
+      type: object
+      required: [mode, threshold]
+      properties:
+        mode:
+          type: string
+          enum: [disabled, optional, offer_above, require_above]
+        threshold:
+          type: number
+          minimum: 0
+          maximum: 1000000
+          description: Inclusive threshold in USD, compared to the remaining invoice amount.
+    InvoicePaymentOptions:
+      type: object
+      required: [methods, achRequired, paymentStatus, message]
+      properties:
+        methods:
+          type: array
+          items:
+            type: string
+            enum: [card, us_bank_account]
+        achRequired:
+          type: boolean
+        paymentStatus:
+          type: string
+          enum: [available, processing, review, paid]
+        message:
+          type: string
     PublicInvoice:
       allOf:
         - $ref: "#/components/schemas/Invoice"

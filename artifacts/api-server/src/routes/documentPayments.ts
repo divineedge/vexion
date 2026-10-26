@@ -8,7 +8,13 @@ import { publicAppUrl } from "../lib/publicSite";
 import { chargeInvoiceCard } from "../lib/invoiceCardPayments";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
+import { invoicePaymentOptions } from "../lib/invoicePaymentOptions";
 const router:IRouter=Router();
+router.get("/public/invoices/:token/payment-options", async (req,res):Promise<void> => {
+  const [invoice]=await db.select().from(invoicesTable).where(eq(invoicesTable.publicToken,req.params.token));
+  if(!invoice || invoice.status==="draft" || ["void","cancelled"].includes(invoice.status)){res.status(404).json({error:"Invoice not found"});return;}
+  res.json(await invoicePaymentOptions(invoice));
+});
 router.post("/public/invoices/:token/pay-session",async(req,res):Promise<void>=>{
   const parsed=CreatePublicInvoicePaymentBody.safeParse(req.body);
   if(!parsed.success || !validCardChoice(parsed.data)){res.status(400).json({error:"Choose whether to save your card and accept the displayed authorization if saving it."});return;}

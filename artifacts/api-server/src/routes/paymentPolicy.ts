@@ -6,7 +6,22 @@ import { customerInvoiceGrouping } from "../lib/invoicePropertyGrouping";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { normalizePaymentPolicy, ensureScheduledJobPayment, SchedulingPaymentError } from "../lib/paymentPolicy";
+import { achPolicySchema, getAchPolicy } from "../lib/achPolicy";
 const router = Router();
+router.get("/billing/ach-policy", async (req, res) => {
+  const tenantId = getTenantId(req);
+  if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
+  res.json(await getAchPolicy(tenantId));
+});
+router.patch("/billing/ach-policy", async (req, res) => {
+  const tenantId = getTenantId(req);
+  if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
+  const parsed = achPolicySchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Choose an ACH rule and a valid dollar amount with no more than two decimal places." }); return; }
+  // Update only this nested key, preserving deposit rules, prepayment and all other company settings.
+  await db.execute(sql`UPDATE tenants SET payment_policy=jsonb_set(coalesce(payment_policy,'{}'::jsonb),'{ach}',${JSON.stringify(parsed.data)}::jsonb,true) WHERE id=${tenantId}`);
+  res.json(parsed.data);
+});
 // Runs before all job/plan/routing routes, including drag/drop and approved rescheduling.
 router.use(async (req, res, next) => {
   const match = req.path.match(/^\/jobs\/(\d+)(?:\/.*)?$/) ?? req.path.match(/^\/customer-plans\/\d+\/visits\/(\d+)\/reschedule$/);

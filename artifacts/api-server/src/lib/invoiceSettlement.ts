@@ -4,6 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { getStripeClient } from "./stripe";
 import { invoiceBalance } from "./customerCredit";
 import { authorizeSavedCard, CARD_AUTHORIZATION_VERSION } from "./cardAuthorization";
+import { PAYMENT_AUTHORIZATION_VERSION } from "./achPolicy";
 
 /** Only call with a signature-verified provider event. Browser return URLs never settle money. */
 export async function settleInvoiceCheckout(session:Pick<Stripe.Checkout.Session,"id"|"payment_status"|"payment_intent"|"customer"|"amount_total"|"metadata">){
@@ -14,6 +15,9 @@ export async function settleInvoiceCheckout(session:Pick<Stripe.Checkout.Session
   const intentId=typeof session.payment_intent==="string"?session.payment_intent:session.payment_intent?.id;
   if(!intentId)throw new Error("Missing confirmed payment");
   const intent=await stripe.paymentIntents.retrieve(intentId);
+  const methodId=typeof intent.payment_method==="string"?intent.payment_method:intent.payment_method?.id;
+  const paymentMethod=methodId?await stripe.paymentMethods.retrieve(methodId):null;
+  const isBank=!!paymentMethod?.us_bank_account;
   const [invoice]=await db.select().from(invoicesTable).where(and(eq(invoicesTable.id,invoiceId),eq(invoicesTable.tenantId,tenantId)));
   if(!invoice)throw new Error("Invoice not found");
   const [payer]=await db.select().from(customersTable).where(and(eq(customersTable.id,invoice.customerId),eq(customersTable.tenantId,tenantId)));
@@ -24,6 +28,8 @@ export async function settleInvoiceCheckout(session:Pick<Stripe.Checkout.Session
     throw new Error("Provider payment ownership or amount could not be verified");
   const settled=await db.transaction(async tx=>{
     const [current]=await tx.select().from(invoicesTable).where(and(eq(invoicesTable.id,invoiceId),eq(invoicesTable.tenantId,tenantId))).for("update");
+    const attempts=await tx.execute(sql`SELECT status,payment_intent_id FROM invoice_card_attempts WHERE invoice_id=${invoiceId} AND tenant_id=${tenantId}`);
+    if(attempts.rows[0]?.payment_intent_id===intentId && ["returned","disputed"].includes(String(attempts.rows[0]?.status)))return false;
     if(current.status==="paid" && current.paymentReference===intentId)return true;
     if(current.status==="paid" || Math.round(invoiceBalance(current)*100)!==intent.amount_received){
       await tx.insert(activityLogTable).values({tenantId,type:"invoice_payment_attention",entityId:invoiceId,
@@ -31,7 +37,7 @@ export async function settleInvoiceCheckout(session:Pick<Stripe.Checkout.Session
       await tx.execute(sql`UPDATE invoice_card_attempts SET status='unknown',payment_intent_id=${intentId},updated_at=now() WHERE invoice_id=${invoiceId} AND tenant_id=${tenantId}`);
       return false;
     }
-    await tx.update(invoicesTable).set({status:"paid",paidAt:new Date(),paymentMethod:"card",paymentReference:intentId})
+    await tx.update(invoicesTable).set({status:"paid",paidAt:new Date(),paymentMethod:isBank?"ach":"card",paymentReference:intentId})
       .where(and(eq(invoicesTable.id,invoiceId),eq(invoicesTable.tenantId,tenantId)));
     await tx.execute(sql`INSERT INTO invoice_card_attempts(invoice_id,tenant_id,status,attempt_key,amount_cents,payment_intent_id)
       VALUES(${invoiceId},${tenantId},'succeeded',${`settled-${intentId}`},${intent.amount_received},${intentId})
@@ -40,7 +46,9 @@ export async function settleInvoiceCheckout(session:Pick<Stripe.Checkout.Session
     return true;
   });
   const method=typeof intent.payment_method==="string"?intent.payment_method:intent.payment_method?.id;
-  if(settled && method && session.metadata?.saveCard==="true" && session.metadata.authorizationVersion===CARD_AUTHORIZATION_VERSION){
+  if(settled && method && session.metadata?.saveCard==="true" &&
+    (session.metadata.authorizationVersion===PAYMENT_AUTHORIZATION_VERSION ||
+     !isBank && session.metadata.authorizationVersion===CARD_AUTHORIZATION_VERSION)){
     const previous=await db.execute(sql`SELECT checkout_authorization_saved FROM invoice_card_attempts WHERE invoice_id=${invoiceId} AND tenant_id=${tenantId}`);
     // Re-delivered webhooks must not restore a card a customer later removed.
     if(previous.rows[0]?.checkout_authorization_saved)return;

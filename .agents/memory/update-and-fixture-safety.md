@@ -8,9 +8,9 @@ The user requires app updates to preserve existing customer and business informa
 
 **How to apply:** Prefer additive migrations, inspect the target database before changing it, and use schema-only publishing—not overwriting production data.
 
-Integration tests that create users or payroll records must roll back their whole fixture transaction rather than commit and delete afterward.
+Integration tests that create users, payroll records, or jobs with financial baselines must roll back their whole fixture transaction rather than commit and delete afterward.
 
-**Why:** Immutable payroll history protections prevent deleting baseline rate records, so teardown after committing fixtures can fail and leave test companies behind.
+**Why:** Immutable payroll history protections and job-report baseline references prevent deletion-based teardown, so committing fixtures can fail cleanup and leave test companies behind.
 
 **How to apply:** Pass the transaction through the helpers under test; never disable immutable-history protections just to clean up tests.
 

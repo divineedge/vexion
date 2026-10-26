@@ -65,7 +65,7 @@ export async function schedulingPaymentCheck(tx: Tx, input: typeof jobsTable.$in
   if (!policy.requirePrepay && !policy.requireCard && policy.depositType === "none" && !input.estimateId) return { reserveCredit: false, total: 0 };
   if (!customer) throw new SchedulingPaymentError("A customer is required before scheduling under this payment policy");
   await tx.select({ id: customersTable.id }).from(customersTable).where(eq(customersTable.id, customer.id)).for("update");
-  if (policy.requireCard && (!customer.stripeDefaultPaymentMethodId || customer.cardExpiresAt && customer.cardExpiresAt < new Date().toISOString().slice(0, 10))) {
+  if (policy.requireCard && (!customer.stripeDefaultPaymentMethodId || customer.stripeDefaultPaymentMethodType==="us_bank_account" || customer.cardExpiresAt && customer.cardExpiresAt < new Date().toISOString().slice(0, 10))) {
     throw new SchedulingPaymentError("A valid saved credit card is required on this customer's account before scheduling");
   }
   const total = Math.round((input.totalAmount ?? 0) * (1 + (company?.taxRate ?? 0) / 100) * 100) / 100;

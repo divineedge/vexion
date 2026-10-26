@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { User, Phone, Mail, Building2, Pencil, X, Check, Loader2, CreditCard, ShieldCheck, AlertTriangle } from "lucide-react";
+import { User, Phone, Mail, Building2, Pencil, X, Check, Loader2, CreditCard, ShieldCheck, AlertTriangle, Landmark } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
@@ -155,7 +155,7 @@ export default function Profile() {
 
   const { data: pmData, refetch: refetchPm } = useQuery({
     queryKey: ["portal-payment-method"],
-    queryFn: () => customFetch<{ paymentMethod: { label: string; brand: string; last4: string; expMonth: number; expYear: number } | null }>("/api/portal/me/payment-method"),
+    queryFn: () => customFetch<{ paymentMethod: { id?: string; type?: 'card' | 'us_bank_account'; label?: string; brand: string; last4: string; expMonth: number | null; expYear: number | null; bankName?: string; automaticPaymentAuthorized?: boolean } | null }>("/api/portal/me/payment-method"),
     staleTime: 30_000,
   });
 
@@ -179,21 +179,22 @@ export default function Profile() {
   };
 
   const handleRemoveCard = async () => {
-    if (!confirm("Remove your saved card? You will need to add one again to pay invoices online.")) return;
+    if (!confirm(isBank ? "Remove your saved bank account? Future automatic charges to it will stop. You can add a bank account again when paying an invoice online." : "Remove your saved card? Future automatic charges to it will stop.")) return;
     setRemovingCard(true);
     try {
       await customFetch("/api/portal/me/payment-method", { method: "DELETE" });
       refetchPm();
-      toast.success("Card removed");
+      toast.success(isBank ? "Bank account removed" : "Card removed");
     } catch {
-      toast.error("Failed to remove card");
+      toast.error("Failed to remove payment method");
     } finally {
       setRemovingCard(false);
     }
   };
 
   const pm = pmData?.paymentMethod ?? null;
-  const brandLabel = pm ? `${pm.brand.charAt(0).toUpperCase()}${pm.brand.slice(1)} ···· ${pm.last4}` : null;
+  const isBank = !!pm && (pm.type === "us_bank_account" || pm.expMonth == null || pm.expYear == null);
+  const brandLabel = pm ? (isBank ? `${pm.bankName || "Bank account"} ···· ${pm.last4}` : `${pm.brand.charAt(0).toUpperCase()}${pm.brand.slice(1)} ···· ${pm.last4}`) : null;
 
   return (
     <div className="max-w-xl space-y-6 animate-in fade-in duration-300">
@@ -303,11 +304,11 @@ export default function Profile() {
             <CreditCard className="w-4 h-4" /> Payment Method
           </CardTitle>
           <CardDescription className="text-sm">
-            A saved card lets your service provider collect payment for invoices automatically.
+            A saved card or bank account lets your service provider collect payment for invoices you authorize. Bank accounts are added during secure Stripe checkout when an invoice offers bank payment.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {pm && (() => {
+          {pm && !isBank && pm.expYear != null && pm.expMonth != null && (() => {
             const cardExpiry = new Date(pm.expYear, pm.expMonth, 0);
             const daysLeft = Math.ceil((cardExpiry.getTime() - Date.now()) / 86_400_000);
             const expired = daysLeft < 0;
@@ -344,31 +345,32 @@ export default function Profile() {
               <div className="flex items-center justify-between gap-3 p-3 border rounded-md bg-emerald-50 border-emerald-200">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
-                    <CreditCard className="w-4 h-4 text-emerald-700" />
+                    {isBank ? <Landmark className="w-4 h-4 text-emerald-700" /> : <CreditCard className="w-4 h-4 text-emerald-700" />}
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-emerald-800">{brandLabel}</p>
-                    <p className="text-xs text-emerald-600">Expires {pm.expMonth}/{pm.expYear}</p>
+                    <p className="text-sm font-medium text-emerald-800" data-testid="text-saved-payment-method">{brandLabel}</p>
+                    <p className="text-xs text-emerald-600">{isBank ? "Bank account (ACH)" : `Expires ${pm.expMonth}/${pm.expYear}`}{pm.automaticPaymentAuthorized ? " · Authorized for future invoices" : ""}</p>
                   </div>
                 </div>
                 <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
               </div>
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={openCardForm} className="gap-1.5">
-                  <CreditCard className="w-3.5 h-3.5" /> Replace Card
+                  <CreditCard className="w-3.5 h-3.5" /> {isBank ? "Replace with Card" : "Replace Card"}
                 </Button>
-                <Button size="sm" variant="ghost" onClick={handleRemoveCard} disabled={removingCard}
+                <Button size="sm" variant="ghost" onClick={handleRemoveCard} disabled={removingCard} aria-label={isBank ? "Remove saved bank account" : "Remove saved card"} data-testid="button-remove-payment-method"
                   className="gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10">
                   {removingCard ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
                   Remove
                 </Button>
               </div>
+              {isBank && <p className="text-xs text-muted-foreground">To use a different bank account, pay an invoice that offers bank payment and choose to save it at Stripe checkout.</p>}
             </div>
           ) : (
             <div className="space-y-3">
               <div className="flex items-center gap-3 p-3 border rounded-md bg-muted/40 border-dashed">
                 <CreditCard className="w-5 h-5 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">No card on file</p>
+                <p className="text-sm text-muted-foreground">No payment method on file</p>
               </div>
               <Button size="sm" onClick={openCardForm} className="gap-1.5">
                 <CreditCard className="w-3.5 h-3.5" /> Add Payment Method

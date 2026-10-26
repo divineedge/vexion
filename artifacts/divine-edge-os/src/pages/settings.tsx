@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DefaultWordingCard } from '@/components/settings/DefaultWordingCard';
 import { PaymentPolicyCard } from '@/components/billing/PaymentPolicyCard';
+import { AchPaymentRules } from '@/components/billing/AchPaymentRules';
 import { CompanyDepositRules } from '@/components/billing/CompanyDepositRules';
 import { EstimateReminderSettings } from '@/components/billing/EstimateReminderSettings';
 import { useLocation } from 'wouter';
@@ -576,6 +577,7 @@ export default function SettingsPage() {
     if (t === 'payment-reminders') return 'invoicing';
     return t;
   })();
+  const [settingsTab, setSettingsTab] = useState(initialSettingsTab);
 
   // Team management now lives on Employees > Accounts
   useEffect(() => {
@@ -618,7 +620,7 @@ export default function SettingsPage() {
         </>}
       </div>
 
-      <Tabs defaultValue={initialSettingsTab} className="w-full">
+      <Tabs value={settingsTab} onValueChange={setSettingsTab} className="w-full min-w-0">
         <TabsList className="flex flex-wrap gap-1 h-auto mb-6 justify-start p-2">
           <p className="w-full text-[11px] font-semibold uppercase tracking-wide text-muted-foreground px-2 pt-3 first:pt-1">Company</p>
           <TabsTrigger value="general"><Building className="w-4 h-4 mr-2" />General</TabsTrigger>
@@ -1228,7 +1230,7 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Payment Processing</CardTitle>
-              <CardDescription>Connect Stripe to accept credit cards on invoices.</CardDescription>
+              <CardDescription>Connect Stripe to accept card and, where your rules allow, bank (ACH) payments on online invoices.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between p-4 border rounded-lg">
@@ -1283,6 +1285,15 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4" data-testid="link-ach-rules">
+            <div>
+              <p className="font-medium text-sm">Bank payments (ACH) on invoices</p>
+              <p className="text-xs text-muted-foreground">Choose when customers can or must pay online invoices from a bank account. Set in Invoicing.</p>
+            </div>
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setSettingsTab('invoicing')} data-testid="button-open-ach-rules">
+              Bank payment rules <ArrowRight className="w-3.5 h-3.5" />
+            </Button>
+          </div>
           <IntegrationsGrid />
         </TabsContent>
 
@@ -1899,6 +1910,7 @@ export default function SettingsPage() {
               <DefaultWordingCard kind="invoice" />
               <PaymentPolicyCard scope="company" id={0} canEdit={!!canManageOffice} title="Deposits and prepayment (company default)" />
               {canManageOffice && <CompanyDepositRules />}
+              <AchPaymentRules canEdit={!!canManageOffice} onOpenPayments={() => setSettingsTab('payments')} />
               <div className="flex flex-wrap items-center gap-2 pt-2 border-t">
                 <Button variant="outline" onClick={() => setLocation('/financials?tab=invoice-templates')} className="gap-1.5">
                   Edit invoice templates <ArrowRight className="w-3.5 h-3.5" />

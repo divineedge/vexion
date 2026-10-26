@@ -24,7 +24,7 @@ export default function InvoiceDetail() {
   useEffect(() => {
     const params = new URLSearchParams(search);
     if (params.get("payment") !== "success") return;
-    toast.success("Payment received! This invoice will update shortly.", { description: "Saved cards can be managed from your Profile." });
+    toast.message("Payment submitted. Awaiting confirmation.", { description: "This invoice shows as paid only after the payment processor confirms it. Bank payments can take up to 4 business days.", duration: 10000 });
     queryClient.invalidateQueries();
     const t = setTimeout(() => { refetch(); queryClient.invalidateQueries({ queryKey: ["portal-payment-method"] }); }, 4000);
     params.delete("payment");

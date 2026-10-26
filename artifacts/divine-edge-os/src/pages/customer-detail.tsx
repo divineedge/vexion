@@ -732,9 +732,10 @@ export default function CustomerDetailPage() {
             )}
             {paymentMethodData?.paymentMethod ? (() => {
               const pm = paymentMethodData.paymentMethod;
+              const isBank = (pm as any).type === 'us_bank_account' || pm.expMonth == null;
               const cardExpiry = new Date(pm.expYear ?? 2099, pm.expMonth ?? 12, 0); // last day of exp month
               const daysLeft = Math.ceil((cardExpiry.getTime() - Date.now()) / 86_400_000);
-              const expired = daysLeft < 0;
+              const expired = !isBank && daysLeft < 0;
               const critical = !expired && daysLeft <= 30;
               const warning = !expired && !critical && daysLeft <= 60;
               const badgeCls = expired
@@ -756,18 +757,18 @@ export default function CustomerDetailPage() {
                   <button
                     onClick={async e => {
                       e.stopPropagation();
-                      if (!confirm('Remove this saved card?')) return;
+                      if (!confirm(isBank ? 'Remove this saved bank account?' : 'Remove this saved card?')) return;
                       try {
                         await customFetch(`/api/customers/${id}/payment-method`, { method: 'DELETE' });
                         qc.invalidateQueries({ queryKey: getGetCustomerPaymentMethodQueryKey(id) });
                         qc.invalidateQueries({ queryKey: getGetCustomerQueryKey(id) });
-                        toast.success('Saved card removed');
+                        toast.success(isBank ? 'Saved bank account removed' : 'Saved card removed');
                       } catch {
-                        toast.error('Failed to remove card');
+                        toast.error('Failed to remove payment method');
                       }
                     }}
                     className={`ml-1 rounded-full p-0.5 transition-colors ${hoverCls}`}
-                    title="Remove saved card"
+                    title={isBank ? 'Remove saved bank account' : 'Remove saved card'}
                   >
                     <X className="w-2.5 h-2.5" />
                   </button>

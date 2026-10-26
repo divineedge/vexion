@@ -45,6 +45,8 @@ export const customersTable = pgTable("customers", {
   stripeCustomerId: text("stripe_customer_id"),
   /** Stripe PaymentMethod ID (pm_xxx) saved as default for off-session use */
   stripeDefaultPaymentMethodId: text("stripe_default_payment_method_id"),
+  /** Safe provider metadata only; a saved bank account must not satisfy an explicit credit-card requirement. */
+  stripeDefaultPaymentMethodType: text("stripe_default_payment_method_type").notNull().default("card"),
   automaticPaymentAuthorizedAt: timestamp("automatic_payment_authorized_at", { withTimezone: true }),
   paymentAuthorizationMethodId: text("payment_authorization_method_id"),
   /** When true, the "no card on file" alert is suppressed for this customer */

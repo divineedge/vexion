@@ -35,3 +35,15 @@ Companies choose staff-initiated charging, charging when an invoice is sent, or 
 **Why:** The user chose company control over staff/send timing, then specifically added the due-date option.
 
 **How to apply:** Interpret the due date as a calendar date, using company time for today's date. Skip already paid or fully covered balances. Uncertain payment outcomes must remain unconfirmed, never cause a second charge with a fresh key, and never be inferred from a browser return URL.
+
+Companies must be able to offer ACH or require ACH based on a configurable payment amount, while keeping payment credentials entirely with the payment processor.
+
+**Why:** The user wants secure bank payments with low fees and business-controlled amount thresholds.
+
+**How to apply:** Explain verification and return fees as well as transaction fees; do not promise free ACH. A pending bank debit is not collected prepayment and must not release scheduling restrictions or invite another charge. A bank account is not a credit card when a company explicitly requires a saved credit card.
+
+Stripe-hosted Checkout uses automatic or instant bank verification, not a forced microdeposit-only setting.
+
+**Why:** The Checkout SDK rejects the microdeposit-only option supported by other Stripe integration flows. Avoiding a possible verification fee is not a reason to collect account numbers in this application.
+
+**How to apply:** Keep bank entry and mandate acceptance hosted by Stripe, describe supported verification and any applicable fees honestly, and do not infer payment success from the customer's return URL.

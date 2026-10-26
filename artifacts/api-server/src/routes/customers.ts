@@ -1077,6 +1077,7 @@ router.post("/customers/:id/attach-payment-method", async (req, res): Promise<vo
   const [updated] = await db.update(customersTable)
     .set({
       stripeDefaultPaymentMethodId: paymentMethodId,
+      stripeDefaultPaymentMethodType: "card",
       automaticPaymentAuthorizedAt: null,
       paymentAuthorizationMethodId: null,
       cardExpiresAt: cardExpiry.toISOString().split("T")[0],

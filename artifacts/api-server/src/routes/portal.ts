@@ -6,6 +6,8 @@ import { paymentGuardedJobInsert } from "../lib/paymentPolicy";
 import { invoiceBalance } from "../lib/customerCredit";
 import { invoiceCheckout } from "../lib/invoiceCheckout";
 import { settleInvoiceCheckout } from "../lib/invoiceSettlement";
+import { recordInvoiceBankEvent, recordInvoiceBankReturn } from "../lib/invoiceBankEvents";
+import { invoicePaymentOptions } from "../lib/invoicePaymentOptions";
 import { validCardChoice, authorizeSavedCard, CARD_AUTHORIZATION_VERSION } from "../lib/cardAuthorization";
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable, customerPlansTable, usersTable, planCancelRequestsTable, estimatesTable, taskNotificationsTable, portalMessagesTable, internalTasksTable, chemicalApplicationsTable } from "@workspace/db";
@@ -576,11 +578,17 @@ router.get("/portal/me/payment-method", requirePortalAuth, async (req: any, res)
   try {
     const pm = await stripe.paymentMethods.retrieve(customer.stripeDefaultPaymentMethodId);
     res.json({ paymentMethod: pm.card ? {
+      id:pm.id,type:"card",automaticPaymentAuthorized:!!customer.automaticPaymentAuthorizedAt && customer.paymentAuthorizationMethodId===pm.id,
       label: `${pm.card.brand} ···· ${pm.card.last4}`,
       last4: pm.card.last4,
       brand: pm.card.brand,
       expMonth: pm.card.exp_month,
       expYear: pm.card.exp_year,
+    } : pm.us_bank_account ? {
+      id:pm.id,type:"us_bank_account",automaticPaymentAuthorized:!!customer.automaticPaymentAuthorizedAt && customer.paymentAuthorizationMethodId===pm.id,
+      label:`${pm.us_bank_account.bank_name ?? "Bank account"} ···· ${pm.us_bank_account.last4}`,
+      bankName:pm.us_bank_account.bank_name ?? "Bank account",brand:"Bank account",
+      last4:pm.us_bank_account.last4,expMonth:null,expYear:null,
     } : null });
   } catch {
     res.json({ paymentMethod: null });
@@ -1808,6 +1816,14 @@ router.patch("/portal/plans/:id", requirePortalAuth, async (req: any, res): Prom
 // POST /portal/invoices/:id/pay-session
 // Creates a Stripe Checkout session for a pending/overdue invoice.
 // ---------------------------------------------------------------------------
+router.get("/portal/invoices/:id/payment-options", requirePortalAuth, async (req: any,res):Promise<void> => {
+  const {portalCustomerId,portalTenantId}=req.portalLocals as PortalLocals;
+  const id=Number(req.params.id);
+  if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:"Invalid invoice"});return;}
+  const [invoice]=await db.select().from(invoicesTable).where(and(eq(invoicesTable.id,id),eq(invoicesTable.tenantId,portalTenantId),eq(invoicesTable.customerId,portalCustomerId)));
+  if(!invoice || invoice.status==="draft" || ["void","cancelled"].includes(invoice.status)){res.status(404).json({error:"Invoice not found"});return;}
+  res.json(await invoicePaymentOptions(invoice));
+});
 router.post("/portal/invoices/:id/pay-session", requirePortalAuth, async (req: any, res): Promise<void> => {
   const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
   const invoiceId = parseInt(req.params.id, 10);
@@ -1912,6 +1928,18 @@ router.post("/portal/stripe-webhook", async (req: any, res): Promise<void> => {
     return;
   }
 
+  try {
+    if(event.type==="payment_intent.processing" || event.type==="payment_intent.payment_failed" || event.type==="payment_intent.canceled") {
+      const intent=event.data.object;
+      await recordInvoiceBankEvent({metadata:intent.metadata,payment_intent:intent.id},
+        event.type==="payment_intent.processing"?"processing":"failed");
+    }
+    if(event.type==="checkout.session.async_payment_failed")await recordInvoiceBankEvent(event.data.object,"failed");
+    if(event.type==="charge.dispute.created")await recordInvoiceBankReturn(event.data.object);
+  } catch(error) {
+    logger.error({error},"Invoice bank payment event needs retry");
+    res.status(500).json({error:"Payment update needs retry"});return;
+  }
   if(event.type==="payment_intent.succeeded"){
     const intent=event.data.object;
     if(intent.metadata?.invoiceId){
@@ -1953,6 +1981,9 @@ router.post("/portal/stripe-webhook", async (req: any, res): Promise<void> => {
         res.status(500).json({error:"Payment settlement needs retry"});
         return;
       }
+    } else {
+      try { await recordInvoiceBankEvent(session,"processing"); }
+      catch(error){logger.error({error},"Pending bank payment update needs retry");res.status(500).json({error:"Payment update needs retry"});return;}
     }
   }
 

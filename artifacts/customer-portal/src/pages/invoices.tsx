@@ -31,7 +31,7 @@ export default function Invoices() {
   useEffect(() => {
     const params = new URLSearchParams(search);
     if (params.get("payment") === "success") {
-      toast.success("Payment received! Your invoice will update shortly.", { description: "Saved cards can be managed from your Profile." });
+      toast.message("Payment submitted. Awaiting confirmation.", { description: "This invoice shows as paid only after the payment processor confirms it. Bank payments can take up to 4 business days.", duration: 10000 });
       refetch();
       queryClient.invalidateQueries({ queryKey: ["portal-payment-method"] });
       setTimeout(() => refetch(), 4000);
@@ -179,7 +179,7 @@ export default function Invoices() {
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Billing & Invoices</h1>
-          <p className="text-muted-foreground mt-1">Manage your payments and download past receipts.</p>
+          <p className="text-muted-foreground mt-1">Pay by card or bank account where offered, and download past receipts.</p>
         </div>
         <div className="bg-card border rounded-lg px-4 py-2 flex items-center gap-4">
           <div className="text-sm text-muted-foreground">Total Balance Due</div>

@@ -27,6 +27,7 @@ export async function installVendorCategoriesSchema(){
  await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS document_link_destination text NOT NULL DEFAULT 'document'`);
  await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS automatic_invoice_payment_mode text NOT NULL DEFAULT 'manual'`);
  await db.execute(sql`ALTER TABLE customers ADD COLUMN IF NOT EXISTS automatic_payment_authorized_at timestamptz, ADD COLUMN IF NOT EXISTS payment_authorization_method_id text`);
+ await db.execute(sql`ALTER TABLE customers ADD COLUMN IF NOT EXISTS stripe_default_payment_method_type text NOT NULL DEFAULT 'card'`);
  await db.execute(sql`CREATE TABLE IF NOT EXISTS invoice_card_attempts (
    invoice_id integer PRIMARY KEY REFERENCES invoices(id), tenant_id integer NOT NULL REFERENCES tenants(id),
    status text NOT NULL, attempt_key text NOT NULL, amount_cents integer NOT NULL,

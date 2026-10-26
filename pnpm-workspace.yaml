@@ -26,9 +26,9 @@ catalog:
   tailwind-merge: ^3.3.1
   tailwindcss: ^4.1.14
   tsx: ^4.21.0
-  vite: ^7.3.2
+  vite: ^7.3.7
   wouter: ^3.3.5
-  zod: ^3.25.76
+  zod: ^4.6.7
 
 minimumReleaseAge: 1440
 
@@ -43,6 +43,26 @@ onlyBuiltDependencies:
   - unrs-resolver
 
 overrides:
+  # Security floors for compatible transitive releases still pinned by upstream tools.
+  '@xmldom/xmldom@0.8.13': 0.8.15
+  '@xmldom/xmldom@0.9.10': 0.9.12
+  'body-parser@^2': ^2.4.0
+  'brace-expansion@^1': ^1.1.20
+  'brace-expansion@^2': ^2.1.6
+  'brace-expansion@^5': ^5.0.11
+  'browserslist@^4': ^4.28.7
+  'compression@^1': ^1.8.2
+  'fast-uri@^3': ^3.1.7
+  'fast-xml-parser@^5': ^5.10.1
+  'http-cache-semantics@^4': ^4.3.0
+  'postcss@^8': ^8.5.18
+  'shell-quote@^1': ^1.11.0
+  'source-map-js@^1': ^1.2.2
+  'vite@^7': ^7.3.7
+  # GCS and ExcelJS use the public v4 export, retained by UUID 11's CommonJS entry.
+  # Do not override UUID 3: the Expo tunnel tool still requires its removed deep exports.
+  'uuid@^8': ^11.1.1
+  'uuid@^9': ^11.1.1
   '@esbuild-kit/esm-loader': npm:tsx@^4.21.0
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-arm64': '-'
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-x64': '-'

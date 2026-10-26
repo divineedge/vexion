@@ -7,7 +7,6 @@
 - [Payment requirements](payment-requirements.md) — deposit priority; separate credits/card rules; consent-based staff, when-sent, or due-date charging.
 - [Billing coverage and credits](billing-coverage-credits.md) — completed work needs invoice coverage or admin attention; prepaid funds never replace the invoice or reduce gross revenue.
 - [Drizzle update typing](drizzle-update-typing.md) — use `Partial<typeof table.$inferInsert>` for update payloads, never `Record<string, unknown>` cast
-- [Orval email format](orval-email-format.md) — `format: email` in OpenAPI generates `zod.email()` (Zod v4), which breaks typecheck on Zod v3 workspace; strip email format from spec
 - [Inventory pricing contract](inventory-pricing-contract.md) — DB unitPrice=buy/cost, markedUpPrice=sell; API costPrice=buy (role-gated), unitPrice=sell; markupPct derived from stored values not tenant default
 - [Inventory RBAC](inventory-rbac.md) — technicians cannot mutate inventory (server-enforced); all non-technicians always see costPrice; technicians see it only when showCostPriceToTech is true
 - [API client type rebuild](api-client-type-rebuild.md) — after orval regenerates src/generated/, must run `cd lib/api-client-react && npx tsc --build` to update dist/ .d.ts files used by TypeScript project references
@@ -16,7 +15,6 @@
 - [OpenAPI paths placement](openapi-paths-placement.md) — new paths must go inside the paths: block (before components:); appending to end of file puts them after components: and orval silently ignores them
 - [Orval barrel append](orval-barrel-append.md) — orval v8 split mode appends duplicate exports to index.ts every run; overwrite both lib barrel files after each codegen call
 - [Orval api-zod barrel](orval-api-zod-barrel.md) — lib/api-zod barrel must export ONLY from ./generated/api (superset); exporting both api+types causes TS2308 duplicates
-- [OpenAPI looseObject](openapi-loose-object.md) — bare `type: object` (no properties) in OpenAPI spec generates `zod.looseObject` (Zod v4); api-zod is bundled into api-server and crashes at startup; always define properties or use a named $ref schema
 - [Orval path-param type collision](orval-path-param-type-collision.md) — one operation shape emits a same-named zod const + TS type causing TS2308; delete the specific generated/types/index.ts line after each codegen run
 - [lib/db dist goes stale after schema edits](db-schema-dist-stale.md) — rebuild `lib/db` via `tsc --build --force` after schema changes, or downstream packages show phantom missing-export errors
 - [Expo Router typed routes staleness](expo-router-typed-routes-staleness.md) — new route files fail `pathname` typecheck until .expo/types/router.d.ts is regenerated
@@ -85,3 +83,4 @@
 - [Vendor category policy](vendor-category-policy.md) — company-managed labels, vendor defaults with per-expense overrides, and stable historical classification keys.
 - [Customer merge safety](customer-merge-safety.md) — inactive duplicates, preserved history, payment-profile conflicts, and safe handling of late financial events.
 - [Drizzle correlated SQL](drizzle-correlated-sql.md) — explicitly qualify outer-table columns inside SQL subqueries; single-table selects may strip interpolated qualifiers.
+- [Security upgrade compatibility](security-upgrade-compatibility.md) — preserve legacy Expo tool exports; force-rebuild declarations after validator upgrades; distinguish guarded scanner warnings from exploits.

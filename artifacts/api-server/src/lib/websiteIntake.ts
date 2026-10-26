@@ -12,7 +12,7 @@ import {getWebsiteForm,canonicalJson,validateWebsiteAnswers,validateMeasurements
 import {and,eq,isNull,sql} from 'drizzle-orm';
 import {websiteCustomerChoices} from './websiteCustomerChoices';
 const kindSchema=z.enum(['quote','hiring']);
-export const publicInput=z.object({tenantId:z.number().int().positive(),kind:kindSchema,requestId:z.string().uuid(),revision:z.number().int().nonnegative(),answers:z.record(z.unknown()),measurements:z.record(z.unknown()).default({}),consent:z.literal(true),referralCode:z.string().max(200).optional(),doorHangerCode:z.string().max(200).optional()}).strict();
+export const publicInput=z.object({tenantId:z.number().int().positive(),kind:kindSchema,requestId:z.string().uuid(),revision:z.number().int().nonnegative(),answers:z.record(z.string(),z.unknown()),measurements:z.record(z.string(),z.unknown()).default({}),consent:z.literal(true),referralCode:z.string().max(200).optional(),doorHangerCode:z.string().max(200).optional()}).strict();
 export const definitionVersion=(flow:FlowDefinition)=>parseInt(createHash('sha256').update(canonicalJson(flow)).digest('hex').slice(0,8),16);
 export async function publicWebsiteConfig(kind:FlowKind,tenantId?:number,slug?:string,handle:HrDb=db){
  const [tenant]=await handle.select().from(tenantsTable).where(tenantId?eq(tenantsTable.id,tenantId):eq(tenantsTable.slug,slug??''));

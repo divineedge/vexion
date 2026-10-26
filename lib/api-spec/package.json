@@ -3,9 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "codegen": "orval --config ./orval.config.ts && node ./scripts/repair-orval-barrels.mjs && pnpm -w run typecheck:libs"
+    "codegen": "orval --config ./orval.config.ts && node ./scripts/repair-orval-barrels.mjs && pnpm -w run typecheck:libs",
+    "test:codegen-security": "orval --config ./scripts/security-smoke.config.ts"
   },
   "devDependencies": {
-    "orval": "^8.20.0"
+    "orval": "^8.45.0"
   }
 }

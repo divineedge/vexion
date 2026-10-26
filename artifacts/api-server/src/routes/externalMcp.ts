@@ -45,7 +45,10 @@ router.post("/external/mcp", async (req, res): Promise<void> => {
     res.status(initial.status).json({ error: initial.error }); return;
   }
 
-  const server = new McpServer({ name: "divine-edge-external", version: "1.0.0" });
+  const server = new McpServer(
+    { name: "divine-edge-external", version: "1.0.0" },
+    { maxToolInputElements: 10_000 },
+  );
   const registerList = (name: string, resource: string, scope: ExternalScope) => {
     if (!initial.context.scopes.includes(scope)) return;
     server.registerTool(name, {

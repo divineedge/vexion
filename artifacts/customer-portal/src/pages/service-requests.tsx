@@ -15,9 +15,8 @@ import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/format";
 
 const requestSchema = z.object({
-  propertyId: z.coerce.number({
-    required_error: "Please select a property",
-    invalid_type_error: "Please select a property",
+  propertyId: z.coerce.number<number>({
+    error: "Please select a property",
   }).min(1, "Please select a property"),
   description: z.string().min(10, "Please provide more details about what you need done."),
   preferredDateStart: z.string().optional(),

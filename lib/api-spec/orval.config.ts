@@ -4,6 +4,11 @@ import path from "path";
 const root = path.resolve(__dirname, "..", "..");
 const apiClientReactSrc = path.resolve(root, "lib", "api-client-react", "src");
 const apiZodSrc = path.resolve(root, "lib", "api-zod", "src");
+// Only the two reviewed, local specification fragments may be resolved.
+// Never allow arbitrary files or remote URLs to bypass Orval's SSRF protection.
+const parserOptions = {
+  externalRefs: { allow: ["./customer-merge.yaml", "./website-intake.yaml"] },
+};
 
 // Our exports make assumptions about the title of the API being "Api" (i.e. generated output is `api.ts`).
 const titleTransformer: InputTransformerFn = (config) => {
@@ -17,6 +22,7 @@ export default defineConfig({
   "api-client-react": {
     input: {
       target: "./openapi.yaml",
+      parserOptions,
       override: {
         transformer: titleTransformer,
       },
@@ -43,6 +49,7 @@ export default defineConfig({
   zod: {
     input: {
       target: "./openapi.yaml",
+      parserOptions,
       override: {
         transformer: titleTransformer,
       },

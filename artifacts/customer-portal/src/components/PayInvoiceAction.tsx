@@ -5,6 +5,7 @@ import { Loader2, Lock, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { SaveCardConsent } from "@/components/payments/CardAuthorization";
+import { verifiedCheckoutUrl } from "@/lib/checkoutUrl";
 
 /** Build a return URL that stays on the current tenant (preserves ?tenant= if present). */
 function buildReturnUrl(path: string): string {
@@ -44,7 +45,7 @@ export function PayInvoiceAction({ invoiceId, returnPath, label = "Pay Now", siz
         body: JSON.stringify({ returnUrl: buildReturnUrl(returnPath), saveCard, authorizationAccepted: saveCard }),
       });
       if (res?.checkoutUrl) {
-        window.location.href = res.checkoutUrl;
+        window.location.href = verifiedCheckoutUrl(res.checkoutUrl);
         return;
       }
       throw new Error("Could not open payment page. Please try again.");

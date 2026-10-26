@@ -84,3 +84,4 @@
 - [Customer merge safety](customer-merge-safety.md) — inactive duplicates, preserved history, payment-profile conflicts, and safe handling of late financial events.
 - [Drizzle correlated SQL](drizzle-correlated-sql.md) — explicitly qualify outer-table columns inside SQL subqueries; single-table selects may strip interpolated qualifiers.
 - [Security upgrade compatibility](security-upgrade-compatibility.md) — preserve legacy Expo tool exports; force-rebuild declarations after validator upgrades; distinguish guarded scanner warnings from exploits.
+- [Software platform monetization](software-platform-monetization.md) — software-owner fees above Stripe costs and software subscriptions sold to businesses must work across payment methods.

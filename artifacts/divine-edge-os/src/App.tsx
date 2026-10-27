@@ -58,6 +58,13 @@ import OAuthConsentPage from '@/pages/oauth-consent';
 import SoftwareAdminPage from '@/pages/software-admin';
 import SoftwareBillingPage from '@/pages/software-billing';
 
+import HelpPage from '@/pages/help';
+import GettingStartedPage from '@/pages/getting-started';
+import AccountSecurityPage from '@/pages/account-security';
+import SoftwareSupportPage from '@/pages/software-support';
+import ForgotPasswordPage from '@/pages/forgot-password';
+import ResetPasswordPage from '@/pages/reset-password';
+
 import NotFound from '@/pages/not-found';
 import OnboardingWalkthrough, { useOnboarding } from '@/components/onboarding/OnboardingWalkthrough';
 
@@ -124,6 +131,10 @@ function ProtectedRoutes() {
         <Route path="/staff-messages" component={StaffMessagesPage} />
         <Route path="/software-admin" component={SoftwareAdminPage} />
         <Route path="/software-billing" component={SoftwareBillingPage} />
+        <Route path="/help" component={HelpPage} />
+        <Route path="/getting-started" component={GettingStartedPage} />
+        <Route path="/account-security" component={AccountSecurityPage} />
+        <Route path="/software-support" component={SoftwareSupportPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>
@@ -143,6 +154,8 @@ function Router() {
       <Route path="/careers/:slug" component={PublicCareersForm} />
       <Route path="/login" component={LoginPage} />
       <Route path="/signup" component={SignupPage} />
+      <Route path="/forgot-password" component={ForgotPasswordPage} />
+      <Route path="/reset-password" component={ResetPasswordPage} />
       <Route path="/" component={HomeRoute} />
       <Route component={ProtectedRoutes} />
     </Switch>

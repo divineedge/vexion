@@ -5,6 +5,8 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+export interface ExperienceData { [key: string]: unknown }
+
 export interface PlatformBillingSettingsInput {
   enabled: boolean;
   confirmActivation?: boolean;
@@ -10353,5 +10355,53 @@ from: string;
 to: string;
 customerId?: number;
 serviceId?: number;
+};
+
+export type PerformExperienceActionBodyAction = typeof PerformExperienceActionBodyAction[keyof typeof PerformExperienceActionBodyAction];
+
+
+export const PerformExperienceActionBodyAction = {
+  createThread: 'createThread',
+  replyThread: 'replyThread',
+  updateThread: 'updateThread',
+  saveContent: 'saveContent',
+  saveOnboarding: 'saveOnboarding',
+  saveCompanyPolicy: 'saveCompanyPolicy',
+  recordRecoveryDrill: 'recordRecoveryDrill',
+  runChecks: 'runChecks',
+  resolveAlert: 'resolveAlert',
+} as const;
+
+export type PerformExperienceActionBodyPayload = { [key: string]: unknown };
+
+export type PerformExperienceActionBody = {
+  action: PerformExperienceActionBodyAction;
+  payload: PerformExperienceActionBodyPayload;
+};
+
+export type UpdateAccountSecurityBodyAction = typeof UpdateAccountSecurityBodyAction[keyof typeof UpdateAccountSecurityBodyAction];
+
+
+export const UpdateAccountSecurityBodyAction = {
+  enroll: 'enroll',
+  confirm: 'confirm',
+  disable: 'disable',
+  recoveryCodes: 'recoveryCodes',
+} as const;
+
+export type UpdateAccountSecurityBody = {
+  action: UpdateAccountSecurityBodyAction;
+  password: string;
+  code?: string;
+};
+
+export type RequestStaffPasswordResetBody = {
+  email: string;
+};
+
+export type ConfirmStaffPasswordResetBody = {
+  token: string;
+  /** @minLength 12 */
+  password: string;
 };
 

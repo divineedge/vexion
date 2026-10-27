@@ -1,3 +1,4 @@
+import { assertSoftwareCapacity } from "./experienceCore";
 import {db,tenantsTable,hrSettingsTable,hrPostingsTable,servicesTable,websiteIntakeSubmissionsTable,customersTable,propertiesTable,estimatesTable,usersTable,taskNotificationsTable,hrDocumentsTable} from '@workspace/db';
 import {hrFile,hrStorage} from './hrFiles';
 import {createHash,randomUUID} from 'node:crypto';
@@ -162,6 +163,7 @@ export async function reviewWebsiteSubmission(tenantId:number,userId:number,id:n
    if(!propertyId&&c.address?.trim()){
     const points=typeof a.lat==='number'&&typeof a.lng==='number'&&a.pinConfirmed===true?{lat:a.lat,lng:a.lng}:{lat:null,lng:null};
     const zones=Object.entries(payload.measurements).map(([key,m])=>({id:randomUUID(),label:`Customer measurement: ${key}`,vertices:m.points.map(p=>[p.lat,p.lng]),mode:m.mode,areaSqft:m.mode==='area'?area:0,lengthFt:m.mode==='linear'?length:null,enabled:true,color:'#22c55e'}));
+    await assertSoftwareCapacity(tx,tenantId,"properties");
     const [property]=await tx.insert(propertiesTable).values({tenantId,customerId,address:c.address,city:c.city??'',state:c.state??'',zip:c.zip??'',...points,size:area,sizeUnit:'sqft',measurementPolygons:zones}).returning();propertyId=property.id;
    }
    if(input.createEstimate){

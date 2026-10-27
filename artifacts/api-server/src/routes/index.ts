@@ -87,6 +87,10 @@ import externalMcpRouter from "./externalMcp";
 import externalWebhooksRouter from "./externalWebhooks";
 import externalOAuthRouter from "./externalOAuth";
 import { requireVerifiedStaff } from "../lib/verifiedStaff";
+import experienceRouter from "./experience";
+import accountSecurityRouter,{publicAccountSecurityRouter} from "./accountSecurity";
+import reviewPhotosRouter,{publicReviewPhotosRouter} from "./reviewPhotos";
+import { SoftwareCapacityError } from "../lib/experienceCore";
 
 const router: IRouter = Router();
 router.use(kpisRouter);
@@ -96,6 +100,8 @@ router.use(healthRouter);
 router.use(pricingReviewRouter);
 router.use(estimateRemindersRouter);
 router.use(authRouter);
+router.use(publicAccountSecurityRouter);
+router.use(publicReviewPhotosRouter);
 router.use(publicQuotesRouter);
 router.use(guestDocumentPortalRouter);
 router.use(widgetRouter);
@@ -131,6 +137,9 @@ router.use((req, res, next) => {
 
 router.use(storageRouter);
 router.use(platformBillingRouter);
+router.use(experienceRouter);
+router.use(accountSecurityRouter);
+router.use(reviewPhotosRouter);
 router.use(websiteIntakeRouter);
 router.use(mediaRouter);
 router.use(dashboardRouter);
@@ -204,6 +213,7 @@ router.use(jobEquipmentUsesRouter);
 router.use(externalAccessRouter);
 
 router.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
+  if(error instanceof SoftwareCapacityError){res.status(409).json({code:"software_capacity",error:error.message});return;}
   if (error instanceof CrewCapacityError) { res.status(409).json({code:"crew_capacity_exceeded",error:error.message,capacityWarnings:[error.message]});return; }
   if (error instanceof SchedulingPaymentError) { res.status(422).json({ error: error.message }); return; }
   next(error);

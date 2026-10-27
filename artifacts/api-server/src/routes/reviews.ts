@@ -3,8 +3,27 @@ import { db, reviewRequestsTable, customersTable, tenantsTable } from "@workspac
 import { eq, and, sql, desc } from "drizzle-orm";
 import { getTenantId } from "../lib/tenantHelper";
 import { sendReviewRequest } from "../lib/reviewService";
+import { reviewPhotosTable,operationsAlertsTable } from "@workspace/db";
+import { inArray } from "drizzle-orm";
+import { recordOperationsAlert } from "../lib/experienceCore";
+import { isAdminRole } from "../lib/roles";
+import { getUserId } from "../lib/tenantHelper";
+import { z } from "zod";
 
 const router: IRouter = Router();
+// Put identity first: Drizzle can nullify a whole nested LEFT JOIN when its
+// first selected column is a nullable setting, even if the joined row exists.
+const publicReviewTenant={
+  id:tenantsTable.id,name:tenantsTable.name,logoUrl:tenantsTable.logoUrl,
+  reviewGoogleUrl:tenantsTable.reviewGoogleUrl,reviewFacebookUrl:tenantsTable.reviewFacebookUrl,
+  reviewCustomLink1Label:tenantsTable.reviewCustomLink1Label,reviewCustomLink1Url:tenantsTable.reviewCustomLink1Url,
+  reviewCustomLink2Label:tenantsTable.reviewCustomLink2Label,reviewCustomLink2Url:tenantsTable.reviewCustomLink2Url,
+};
+router.use(async(req,res,next)=>{
+  if(req.path.startsWith("/public/reviews/")){next();return;}
+  if(!await isAdminRole(getTenantId(req),getUserId(req))){res.status(403).json({error:"Company office/management access required"});return;}
+  next();
+});
 
 function formatReviewRequest(r: typeof reviewRequestsTable.$inferSelect, customerName?: string | null) {
   return {
@@ -34,7 +53,8 @@ router.get("/reviews", async (req, res): Promise<void> => {
     .where(where)
     .orderBy(desc(reviewRequestsTable.createdAt));
 
-  res.json(rows.map(r => formatReviewRequest(r.review, r.customerName)));
+  const photos=rows.length?await db.select({id:reviewPhotosTable.id,name:reviewPhotosTable.name,reviewId:reviewPhotosTable.reviewId}).from(reviewPhotosTable).where(and(eq(reviewPhotosTable.tenantId,tenantId),inArray(reviewPhotosTable.reviewId,rows.map(r=>r.review.id)))):[];
+  res.json(rows.map(r => ({...formatReviewRequest(r.review, r.customerName),photos:photos.filter(p=>p.reviewId===r.review.id).map(({id,name})=>({id,name}))})));
 });
 
 // ── STAFF: SUMMARY ────────────────────────────────────────────────────────────
@@ -113,7 +133,9 @@ router.post("/reviews", async (req, res): Promise<void> => {
 router.patch("/reviews/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(req.params.id, 10);
-  const { reviewStatus, reviewNote } = req.body;
+  const parsed=z.object({reviewStatus:z.string().min(1).max(80).optional(),reviewNote:z.string().max(5000).nullable().optional()}).strict().safeParse(req.body);
+  if(!Number.isInteger(id)||id<=0||!parsed.success||Object.keys(parsed.data).length===0){res.status(400).json({error:"Provide a valid review status or note"});return;}
+  const { reviewStatus, reviewNote } = parsed.data;
 
   const updates: Partial<typeof reviewRequestsTable.$inferInsert> = {};
   if (reviewStatus !== undefined) updates.reviewStatus = reviewStatus;
@@ -123,6 +145,7 @@ router.patch("/reviews/:id", async (req, res): Promise<void> => {
     .where(and(eq(reviewRequestsTable.id, id), eq(reviewRequestsTable.tenantId, tenantId)))
     .returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  if(updated.reviewStatus!=="new")await db.update(operationsAlertsTable).set({resolved:true,updatedAt:new Date()}).where(and(eq(operationsAlertsTable.id,`review-low-${updated.id}`),eq(operationsAlertsTable.tenantId,tenantId)));
 
   const [customer] = await db.select({ name: customersTable.name }).from(customersTable).where(eq(customersTable.id, updated.customerId));
   res.json(formatReviewRequest(updated, customer?.name));
@@ -132,7 +155,7 @@ router.patch("/reviews/:id", async (req, res): Promise<void> => {
 router.get("/public/reviews/:token", async (req, res): Promise<void> => {
   const { token } = req.params;
   const [row] = await db
-    .select({ review: reviewRequestsTable, tenant: tenantsTable })
+    .select({ review: reviewRequestsTable, tenant: publicReviewTenant })
     .from(reviewRequestsTable)
     .leftJoin(tenantsTable, eq(reviewRequestsTable.tenantId, tenantsTable.id))
     .where(eq(reviewRequestsTable.token, token));
@@ -143,7 +166,9 @@ router.get("/public/reviews/:token", async (req, res): Promise<void> => {
     token,
     tenantId: row.tenant.id,
     companyName: row.tenant.name,
+    logoUrl:row.tenant.logoUrl,
     status: row.review.rating ? "rated" : "pending",
+    photos:await db.select({id:reviewPhotosTable.id,name:reviewPhotosTable.name}).from(reviewPhotosTable).where(and(eq(reviewPhotosTable.reviewId,row.review.id),eq(reviewPhotosTable.tenantId,row.review.tenantId))),
     rating: row.review.rating ?? null,
     googleUrl: row.tenant.reviewGoogleUrl ?? null,
     facebookUrl: row.tenant.reviewFacebookUrl ?? null,
@@ -158,10 +183,10 @@ router.get("/public/reviews/:token", async (req, res): Promise<void> => {
 router.post("/public/reviews/:token/rating", async (req, res): Promise<void> => {
   const { token } = req.params;
   const { rating } = req.body;
-  if (!rating || rating < 1 || rating > 5) { res.status(400).json({ error: "rating must be 1-5" }); return; }
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) { res.status(400).json({ error: "rating must be an integer from 1 to 5" }); return; }
 
   const [row] = await db
-    .select({ review: reviewRequestsTable, tenant: tenantsTable })
+    .select({ review: reviewRequestsTable, tenant: publicReviewTenant })
     .from(reviewRequestsTable)
     .leftJoin(tenantsTable, eq(reviewRequestsTable.tenantId, tenantsTable.id))
     .where(eq(reviewRequestsTable.token, token));
@@ -172,6 +197,8 @@ router.post("/public/reviews/:token/rating", async (req, res): Promise<void> => 
     .where(eq(reviewRequestsTable.token, token))
     .returning();
 
+  if(rating<=3)await recordOperationsAlert(`review-low-${row.review.id}`,row.review.tenantId,"service_feedback","high","A customer submitted a low service rating. Review their feedback and follow up.");
+  else await db.update(operationsAlertsTable).set({resolved:true,updatedAt:new Date()}).where(eq(operationsAlertsTable.id,`review-low-${row.review.id}`));
   res.json({
     token,
     tenantId: row.tenant.id,
@@ -190,10 +217,12 @@ router.post("/public/reviews/:token/rating", async (req, res): Promise<void> => 
 // ── PUBLIC: SUBMIT STRUCTURED FEEDBACK (1-4 STARS) ────────────────────────────
 router.post("/public/reviews/:token/feedback", async (req, res): Promise<void> => {
   const { token } = req.params;
-  const { checklistSelections, feedbackText, improvementText } = req.body;
+  const parsed=z.object({checklistSelections:z.array(z.string().max(200)).max(20).optional(),feedbackText:z.string().max(8000).nullable().optional(),improvementText:z.string().max(8000).nullable().optional()}).strict().safeParse(req.body);
+  if(!parsed.success){res.status(400).json({error:"Keep feedback within the allowed length and select valid reasons"});return;}
+  const { checklistSelections, feedbackText, improvementText } = parsed.data;
 
   const [row] = await db
-    .select({ review: reviewRequestsTable, tenant: tenantsTable })
+    .select({ review: reviewRequestsTable, tenant: publicReviewTenant })
     .from(reviewRequestsTable)
     .leftJoin(tenantsTable, eq(reviewRequestsTable.tenantId, tenantsTable.id))
     .where(eq(reviewRequestsTable.token, token));
@@ -228,7 +257,7 @@ router.post("/public/reviews/:token/redirect", async (req, res): Promise<void> =
   const { token } = req.params;
 
   const [row] = await db
-    .select({ review: reviewRequestsTable, tenant: tenantsTable })
+    .select({ review: reviewRequestsTable, tenant: publicReviewTenant })
     .from(reviewRequestsTable)
     .leftJoin(tenantsTable, eq(reviewRequestsTable.tenantId, tenantsTable.id))
     .where(eq(reviewRequestsTable.token, token));

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { useLocation } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
-import { useLogin } from '@workspace/api-client-react';
+import { useLogin, type LoginInput } from '@workspace/api-client-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,8 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isServerError, setIsServerError] = useState(false);
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
 
   const getLoginDestination = () => {
     const returnTo = new URLSearchParams(window.location.search).get('returnTo');
@@ -32,17 +34,24 @@ export default function LoginPage() {
     e?.preventDefault();
     setError('');
     setIsServerError(false);
+    const code = twoFactorCode.trim();
+    const body: LoginInput & { twoFactorCode?: string } = { email, password, ...(code ? { twoFactorCode: code } : {}) };
     loginMutation.mutate(
-      { data: { email, password } },
+      { data: body },
       {
         onSuccess: (data) => {
+          setTwoFactorCode('');
           login(data.user, data.sessionToken);
             const continuation = getLoginDestination();
             setLocation(continuation ?? (data.user.role === 'technician' ? '/schedule' : '/dashboard'));
         },
         onError: (err: unknown) => {
           const status = (err as { status?: number })?.status ?? (err as { response?: { status?: number } })?.response?.status;
-          if (status && status >= 500) {
+          const mfa = (err as { data?: { mfaRequired?: boolean } })?.data?.mfaRequired === true;
+          if (status === 401 && mfa) {
+            setMfaRequired(true);
+            setError(code ? 'That code was not accepted. Try a fresh code or an unused recovery code.' : 'Enter the code from your authenticator app, or a recovery code.');
+          } else if (status && status >= 500) {
             setIsServerError(true);
             setError('Server error — please try again in a moment.');
           } else {
@@ -116,6 +125,15 @@ export default function LoginPage() {
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+              </div>
+              {mfaRequired && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium" htmlFor="two-factor">Authenticator or recovery code</label>
+                  <Input id="two-factor" value={twoFactorCode} onChange={e => setTwoFactorCode(e.target.value)} autoComplete="one-time-code" placeholder="123456" autoFocus data-testid="input-two-factor" />
+                </div>
+              )}
+              <div className="text-right -mt-2">
+                <Link href="/forgot-password" className="text-xs text-primary hover:underline" data-testid="link-forgot-password">Forgot password?</Link>
               </div>
               <Button type="submit" title="Sign in to Divine Edge OS" className="w-full" disabled={loginMutation.isPending}>
                 {loginMutation.isPending ? 'Signing in…' : 'Sign In'}

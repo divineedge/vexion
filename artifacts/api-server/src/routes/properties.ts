@@ -1,3 +1,4 @@
+import { withSoftwareCapacity,assertSoftwareCapacity } from "../lib/experienceCore";
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db, propertiesTable, customersTable, propertyOwnershipHistoryTable, activityLogTable, jobsTable, estimatesTable, tenantsTable, usersTable } from "@workspace/db";
 import { eq, and, ilike, sql, desc, isNull } from "drizzle-orm";
@@ -156,7 +157,7 @@ const propertiesImportExportConfig: ImportExportEntityConfig = {
     return existing?.id ?? null;
   },
   insert: async (tenantId, values) => {
-    const [row] = await db.insert(propertiesTable).values({ tenantId, ...values } as typeof propertiesTable.$inferInsert).returning({ id: propertiesTable.id });
+    const [row] = await withSoftwareCapacity(tenantId,"properties",async tx=>tx.insert(propertiesTable).values({ tenantId, ...values } as typeof propertiesTable.$inferInsert).returning({ id: propertiesTable.id }));
     return row.id;
   },
   update: async (tenantId, id, values) => {
@@ -601,7 +602,7 @@ router.post("/properties", async (req, res): Promise<void> => {
     }
   }
 
-  const [property] = await db.insert(propertiesTable).values({
+  const [property] = await withSoftwareCapacity(tenantId,"properties",async tx=>tx.insert(propertiesTable).values({
     tenantId,
     customerId: parsedCustomerId,
     address,
@@ -614,7 +615,7 @@ router.post("/properties", async (req, res): Promise<void> => {
     type: type ?? null,
     size: size != null ? parseFloat(size) : null,
     sizeUnit: sizeUnit ?? null,
-  }).returning();
+  }).returning());
 
   res.status(201).json({ ...formatProperty(property), geocodeStatus });
 });
@@ -701,7 +702,12 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
     }
   }
 
-  const [updated] = await db.update(propertiesTable)
+  const [updated] = await db.transaction(async tx=>{
+    if(archivedAt===null){
+      const [existing]=await tx.select({archivedAt:propertiesTable.archivedAt}).from(propertiesTable).where(and(eq(propertiesTable.id,id),eq(propertiesTable.tenantId,tenantId))).for("update");
+      if(existing?.archivedAt)await assertSoftwareCapacity(tx,tenantId,"properties");
+    }
+    return tx.update(propertiesTable)
     .set({
       ...(address && { address }),
       ...(city !== undefined && { city }),
@@ -720,6 +726,7 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
     })
     .where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)))
     .returning();
+  });
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
 

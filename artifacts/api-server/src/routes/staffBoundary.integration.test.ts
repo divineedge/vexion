@@ -1,9 +1,12 @@
 import { createHash, randomBytes } from "crypto";
 import express from "express";
 import request from "supertest";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db, staffSessionsTable, tenantsTable, usersTable } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { drizzle } from "drizzle-orm/node-postgres";
+const fixture=vi.hoisted(()=>({connection:null as any}));
+vi.mock("@workspace/db",async original=>{const module=await original<typeof import("@workspace/db")>();return {...module,db:new Proxy(module.db,{get(target,key){const active=fixture.connection??target;const value=active[key];return typeof value==="function"?value.bind(active):value;}})};});
+import { db,pool, staffSessionsTable, tenantsTable, usersTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import router from "./index";
 
 const RUN = !!process.env.DATABASE_URL;
@@ -11,6 +14,11 @@ const hash = (token: string) => createHash("sha256").update(token).digest("hex")
 
 // One non-public path for every router mounted behind the boundary in index.ts.
 const privateRouterPaths = [
+  ["experience","/experience"],
+  ["experienceAdmin","/experience/admin"],
+  ["accountSecurity","/account-security"],
+  ["softwareBilling","/software-billing"],
+  ["platformBilling","/platform-billing/admin"],
   ["storage", "/storage/uploads/request-url"],
   ["media", "/properties/1/media"],
   ["dashboard", "/dashboard"],
@@ -84,7 +92,12 @@ describe.skipIf(!RUN)("server-wide verified staff boundary", () => {
   let expired: string;
   let mockEmail: string;
 
+  const connectFixture=()=>pool.connect();
+  let fixtureClient:Awaited<ReturnType<typeof connectFixture>>,savepoint=0;
   beforeAll(async () => {
+    fixtureClient=await pool.connect();await fixtureClient.query("BEGIN");
+    const base=drizzle(fixtureClient);
+    fixture.connection=new Proxy(base,{get(target,key){if(key==="transaction")return async(fn:any)=>{const name=`boundary_${++savepoint}`;await fixtureClient.query(`SAVEPOINT ${name}`);try{const result=await fn(fixture.connection);await fixtureClient.query(`RELEASE SAVEPOINT ${name}`);return result;}catch(error){await fixtureClient.query(`ROLLBACK TO SAVEPOINT ${name}`);await fixtureClient.query(`RELEASE SAVEPOINT ${name}`);throw error;}};const value=(target as any)[key];return typeof value==="function"?value.bind(target):value;}});
     const suffix = randomBytes(8).toString("hex");
     const [tenantA, tenantB] = await db.insert(tenantsTable).values([
       { name: `__boundary_A_${suffix}__` },
@@ -119,9 +132,7 @@ describe.skipIf(!RUN)("server-wide verified staff boundary", () => {
   });
 
   afterAll(async () => {
-    await db.delete(staffSessionsTable).where(inArray(staffSessionsTable.tenantId, tenantIds));
-    await db.delete(usersTable).where(inArray(usersTable.tenantId, tenantIds));
-    await db.delete(tenantsTable).where(inArray(tenantsTable.id, tenantIds));
+    try{await fixtureClient.query("ROLLBACK");}finally{fixture.connection=null;fixtureClient.release();await pool.end();}
   });
 
   for (const [name, path] of privateRouterPaths) {

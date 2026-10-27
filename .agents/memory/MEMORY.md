@@ -85,3 +85,5 @@
 - [Drizzle correlated SQL](drizzle-correlated-sql.md) — explicitly qualify outer-table columns inside SQL subqueries; single-table selects may strip interpolated qualifiers.
 - [Security upgrade compatibility](security-upgrade-compatibility.md) — preserve legacy Expo tool exports; force-rebuild declarations after validator upgrades; distinguish guarded scanner warnings from exploits.
 - [Software platform monetization](software-platform-monetization.md) — software-owner fees above Stripe costs and software subscriptions sold to businesses must work across payment methods.
+- [Launch readiness](launch-readiness-policy.md) — private software support, consent-based rollout, authenticator-key recovery, and honestly scoped restore evidence.
+- [Nested left-join identity](drizzle-nested-left-joins.md) — project a non-null ID first; a leading nullable setting can collapse a real joined company to null.

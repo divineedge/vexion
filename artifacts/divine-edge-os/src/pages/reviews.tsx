@@ -14,7 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { Star, MessageSquare, TrendingUp, Users } from 'lucide-react';
+import { Star, MessageSquare, TrendingUp, Users, AlertTriangle } from 'lucide-react';
+import { AuthedImage } from '@/components/experience/ImagePicker';
 import { format } from 'date-fns';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -104,6 +105,21 @@ export default function ReviewsPage() {
         <h1 className="text-3xl font-bold tracking-tight">Reviews</h1>
         <p className="text-muted-foreground mt-1">Customer satisfaction — track ratings, feedback, and follow-up actions.</p>
       </div>
+
+      {(() => {
+        const low = (reviews ?? []).filter(r => r.rating != null && r.rating <= 3 && (r.reviewStatus ?? 'new') === 'new');
+        if (low.length === 0) return null;
+        return (
+          <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900" data-testid="alert-low-ratings">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="flex-1">
+              <p className="font-semibold">{low.length} low rating{low.length === 1 ? '' : 's'} need acknowledgement</p>
+              <p className="text-xs">Open each one, mark it reviewed, and add a note on how the issue was handled. These stay private to your business.</p>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => openDialog(low[0].id, (low[0].reviewStatus ?? 'new') as ReviewStatus, low[0].reviewNote ?? null)} data-testid="button-acknowledge-low">Acknowledge</Button>
+          </div>
+        );
+      })()}
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -240,17 +256,18 @@ export default function ReviewsPage() {
                 <TableHead>Channel</TableHead>
                 <TableHead>Sent</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Photos</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">Loading...</TableCell>
+                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">Loading...</TableCell>
                 </TableRow>
               ) : (reviews ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                     <Star className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     No reviews found.
                   </TableCell>
@@ -268,6 +285,13 @@ export default function ReviewsPage() {
                       <Badge variant="outline" className={REVIEW_STATUS_COLORS[(r.reviewStatus ?? 'new') as ReviewStatus] ?? ''}>
                         {(r.reviewStatus ?? 'new').replace('_', ' ')}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        {((r as { photos?: { id: string; name: string }[] }).photos ?? []).slice(0, 3).map(ph => (
+                          <AuthedImage key={ph.id} url={`/api/reviews/${r.id}/photos/${encodeURIComponent(ph.id)}`} alt={ph.name} className="h-9 w-9 rounded border" />
+                        ))}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Button

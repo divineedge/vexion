@@ -6,7 +6,7 @@ import {
   Megaphone, FlaskConical,
   Settings, FileText, Footprints, BarChart3, Star, Repeat, ListTodo, Calculator, Scale,
   Map, ClipboardList, PhoneMissed, PhoneIncoming, Inbox, Layers,
-  MessageSquare, Store, ClipboardCheck, IdCard, UserPlus, Globe, ShieldCheck,
+  MessageSquare, Store, ClipboardCheck, IdCard, UserPlus, Globe, ShieldCheck, LifeBuoy, Rocket,
   LucideIcon,
 } from 'lucide-react';
 
@@ -157,6 +157,7 @@ export const adminNavSections: NavSection[] = [
       { name: 'Follow-Up Queue', href: '/followup-queue', icon: PhoneMissed },
       { name: 'Portal Inbox',    href: '/portal-inbox',  icon: Inbox },
       { name: 'Staff Messages', href: '/staff-messages', icon: MessageSquare },
+      { name: 'Getting Started', href: '/getting-started', icon: Rocket },
     ],
   },
   {
@@ -166,6 +167,7 @@ export const adminNavSections: NavSection[] = [
     roles: ['isSoftwareOwner'],
     items: [
       { name: 'Software Admin', href: '/software-admin', icon: ShieldCheck },
+      { name: 'Software Support', href: '/software-support', icon: LifeBuoy },
     ],
   },
 ];
@@ -186,6 +188,8 @@ export function buildNavIndex(sections: NavSection[]) {
   // Include standalone items so breadcrumbs resolve them
   map['/dashboard'] = { sectionLabel: '', itemName: 'Dashboard' };
   map['/settings']  = { sectionLabel: '', itemName: 'Settings' };
+  map['/help'] = { sectionLabel: '', itemName: 'Help & Feedback' };
+  map['/account-security'] = { sectionLabel: '', itemName: 'Account security' };
   map['/software-billing'] = { sectionLabel: 'Settings', itemName: 'Software billing & payouts' };
   for (const item of hrNavItems) map[item.href] = { sectionLabel: 'People', itemName: item.name };
   map[myRecordNavItem.href] = { sectionLabel: '', itemName: myRecordNavItem.name };

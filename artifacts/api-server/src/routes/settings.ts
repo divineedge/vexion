@@ -1,3 +1,4 @@
+import { withSoftwareCapacity,assertSoftwareCapacity } from "../lib/experienceCore";
 import { ensureTenantSlug } from "../lib/tenantSlug";
 import { publicAppUrl } from "../lib/publicSite";
 import { Router, type IRouter } from "express";
@@ -819,7 +820,7 @@ router.post("/settings/users", async (req, res): Promise<void> => {
   if (String(password).length < 8) { res.status(400).json({ error: "Password must be at least 8 characters" }); return; }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const [user] = await db.insert(usersTable).values({
+  const [user] = await withSoftwareCapacity(tenantId,"users",async tx=>tx.insert(usersTable).values({
     tenantId,
     email,
     name,
@@ -827,7 +828,7 @@ router.post("/settings/users", async (req, res): Promise<void> => {
     passwordHash,
     hourlyRate: hourlyRate !== undefined && hourlyRate !== null ? parseFloat(hourlyRate) : null,
     hireDate: hireDate ? new Date(hireDate) : null,
-  }).returning();
+  }).returning());
 
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
 
@@ -863,6 +864,10 @@ router.patch("/settings/users/:id", async (req, res): Promise<void> => {
   if (applicatorLicense !== undefined) updates.applicatorLicense = applicatorLicense || null;
 
   const updated = await db.transaction(async tx => {
+    if(updates.isActive===true){
+      const [existing]=await tx.select({isActive:usersTable.isActive}).from(usersTable).where(and(eq(usersTable.id,id),eq(usersTable.tenantId,tenantId))).for("update");
+      if(existing&&!existing.isActive)await assertSoftwareCapacity(tx,tenantId,"users");
+    }
     const [record] = await tx.update(usersTable).set(updates).where(and(eq(usersTable.id, id), eq(usersTable.tenantId, tenantId))).returning();
     if (record && (updates.passwordHash || updates.isActive === false)) {
       await tx.delete(staffSessionsTable).where(and(eq(staffSessionsTable.userId, id), eq(staffSessionsTable.tenantId, tenantId)));

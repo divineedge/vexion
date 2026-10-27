@@ -1,3 +1,4 @@
+import { assertSoftwareCapacity } from "../lib/experienceCore";
 import { saveAcquisitionAttribution } from "../lib/acquisitionRewards";
 import {customerMergePreview,mergeCustomers} from '../lib/customerMerge';
 import {z} from 'zod';
@@ -686,6 +687,7 @@ router.post("/customers", async (req, res): Promise<void> => {
     createdCustomer.acquiredByEmployeeId=req.body.acquiredByEmployeeId??null;
     createdCustomer.doorHangerVisitId=req.body.doorHangerVisitId??null;
     if (!physicalAddress) return { customer: createdCustomer, createdPropertyId: undefined };
+    await assertSoftwareCapacity(tx,tenantId,"properties");
     const [property] = await tx.insert(propertiesTable).values({
       tenantId, customerId: createdCustomer.id, address: physicalAddress.trim(),
       city: physicalCity ?? null, state: physicalState ?? null, zip: physicalZip ?? null,

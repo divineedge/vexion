@@ -1,6 +1,7 @@
 import app, { startBackgroundSchedulers } from "./app";
 import { startDueInvoicePayments } from "./lib/dueInvoicePayments";
 import { startPlatformPayouts } from "./lib/platformPayouts";
+import { startExperienceMonitoring } from "./lib/experienceCore";
 import { logger } from "./lib/logger";
 import { pool } from "@workspace/db";
 import { readFile } from "node:fs/promises";
@@ -58,6 +59,7 @@ app.listen(port, (err) => {
   startBackgroundSchedulers();
   startDueInvoicePayments();
   startPlatformPayouts();
+  startExperienceMonitoring();
   // The scan must start after payroll trigger installation releases schema locks.
   startCredentialReminderScheduler();
 });

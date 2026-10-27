@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useLogin } from '@workspace/api-client-react';
+import { useLogin, type LoginInput } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
 import { mapLoginUser } from '@/utils/authUser';
@@ -31,6 +31,8 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
 
   const loginMutation = useLogin();
 
@@ -48,7 +50,10 @@ export default function LoginScreen() {
     try {
       await AsyncStorage.setItem(REMEMBERED_EMAIL_KEY, normalizedEmail).catch(() => undefined);
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const result = await loginMutation.mutateAsync({ data: { email: normalizedEmail, password } });
+      const code = twoFactorCode.trim();
+      const body: LoginInput & { twoFactorCode?: string } = { email: normalizedEmail, password, ...(code ? { twoFactorCode: code } : {}) };
+      const result = await loginMutation.mutateAsync({ data: body });
+      setTwoFactorCode('');
       const userData = mapLoginUser({
         ...result.user,
         timezone: result.user.timezone ?? 'UTC',
@@ -62,7 +67,13 @@ export default function LoginScreen() {
           message = "Can't reach the server — check your connection.";
         } else if ('status' in err) {
           const status = (err as { status: number }).status;
-          if (status === 401) {
+          const data = (err as { data?: { mfaRequired?: boolean } }).data;
+          if (status === 401 && data?.mfaRequired) {
+            setMfaRequired(true);
+            message = twoFactorCode.trim()
+              ? 'That code was not accepted. Try a fresh authenticator code or an unused recovery code.'
+              : 'Enter the code from your authenticator app, or a recovery code.';
+          } else if (status === 401) {
             message = 'Invalid email or password. Please try again.';
           } else if (status >= 500) {
             message = 'Server error, please try again.';
@@ -204,6 +215,28 @@ export default function LoginScreen() {
               />
             </View>
           </View>
+
+          {mfaRequired ? (
+            <View style={styles.fieldGroup}>
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>Authenticator or recovery code</Text>
+              <View style={[styles.inputWrap, { borderColor: colors.border, backgroundColor: colors.muted }]}>
+                <Ionicons name="key-outline" size={18} color={colors.mutedForeground} style={styles.inputIcon} />
+                <TextInput
+                  style={[styles.input, { color: colors.foreground }]}
+                  value={twoFactorCode}
+                  onChangeText={setTwoFactorCode}
+                  placeholder="123456 or recovery code"
+                  placeholderTextColor={colors.mutedForeground}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  textContentType="oneTimeCode"
+                  autoComplete="one-time-code"
+                  onSubmitEditing={handleLogin}
+                  testID="two-factor-input"
+                />
+              </View>
+            </View>
+          ) : null}
 
           <TouchableOpacity
             style={[

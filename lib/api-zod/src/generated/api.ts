@@ -17747,3 +17747,48 @@ export const UnsubscribePortalPushResponse = zod.object({
 })
 
 
+export const GetExperienceHubResponse = zod.record(zod.string(), zod.unknown())
+
+
+export const GetExperienceAdminResponse = zod.record(zod.string(), zod.unknown())
+
+
+export const PerformExperienceActionBody = zod.object({
+  "action": zod.enum(['createThread', 'replyThread', 'updateThread', 'saveContent', 'saveOnboarding', 'saveCompanyPolicy', 'recordRecoveryDrill', 'runChecks', 'resolveAlert']),
+  "payload": zod.record(zod.string(), zod.unknown())
+})
+
+export const PerformExperienceActionResponse = zod.record(zod.string(), zod.unknown())
+
+
+export const GetAccountSecurityResponse = zod.record(zod.string(), zod.unknown())
+
+
+export const UpdateAccountSecurityBody = zod.object({
+  "action": zod.enum(['enroll', 'confirm', 'disable', 'recoveryCodes']),
+  "password": zod.string(),
+  "code": zod.string().optional()
+})
+
+export const UpdateAccountSecurityResponse = zod.record(zod.string(), zod.unknown())
+
+
+export const RequestStaffPasswordResetBody = zod.object({
+  "email": zod.email()
+})
+
+export const RequestStaffPasswordResetResponse = zod.record(zod.string(), zod.unknown())
+
+
+export const confirmStaffPasswordResetBodyPasswordMin = 12;
+
+
+
+export const ConfirmStaffPasswordResetBody = zod.object({
+  "token": zod.string(),
+  "password": zod.string().min(confirmStaffPasswordResetBodyPasswordMin)
+})
+
+export const ConfirmStaffPasswordResetResponse = zod.record(zod.string(), zod.unknown())
+
+

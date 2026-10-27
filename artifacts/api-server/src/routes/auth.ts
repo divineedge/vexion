@@ -1,5 +1,6 @@
 import { ensureTenantSlug } from "../lib/tenantSlug";
 import { Router, type IRouter } from "express";
+import { authBlocked,authFailure,verifySecondFactor } from "../lib/accountSecurity";
 import { db, usersTable, tenantsTable, staffSessionsTable } from "@workspace/db";
 import { eq, and, gt, sql } from "drizzle-orm";
 import { randomBytes, createHash } from "crypto";
@@ -106,9 +107,14 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     ? process.env.NODE_ENV !== "production"
     : await bcrypt.compare(password ?? "", user.passwordHash);
 
-  if (!valid) {
+  if (!valid || await authBlocked(user.id)) {
+    if(!valid)await authFailure(user.id);
     res.status(401).json({ error: "Invalid email or password" });
     return;
+  }
+  const secondFactor=await verifySecondFactor(user.id,req.body.twoFactorCode);
+  if(secondFactor!=="ok"){
+    res.status(401).json({error:secondFactor==="required"?"Enter your authenticator code or an unused recovery code":"Invalid code or too many attempts. Please retry later.",mfaRequired:true});return;
   }
 
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, user.tenantId));
@@ -246,7 +252,7 @@ export async function resolveStaffSession(
   return session ?? null;
 }
 
-function getPresentedStaffToken(req: { headers: Record<string, string | string[] | undefined> }): string | undefined {
+export function getPresentedStaffToken(req: { headers: Record<string, string | string[] | undefined> }): string | undefined {
   const staffHeader = req.headers["x-staff-session"];
   const staffToken = Array.isArray(staffHeader) ? staffHeader[0] : staffHeader;
   if (staffToken) return staffToken;

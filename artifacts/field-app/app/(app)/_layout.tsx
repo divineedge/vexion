@@ -57,6 +57,7 @@ export default function AppLayout() {
       />
       <Stack.Screen name="series/[id]" options={{ title: 'Recurring Series', headerShown: true }} />
       <Stack.Screen name="recurring" options={{ title: 'Recurring Series', headerShown: true }} />
+      <Stack.Screen name="help" options={{ title: 'Help & Feedback', headerShown: true }} />
       <Stack.Screen name="time-tracking" options={{ title: 'Time Tracking', headerShown: true }} />
     </Stack>
   );

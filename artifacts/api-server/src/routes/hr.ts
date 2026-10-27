@@ -1,3 +1,4 @@
+import { assertSoftwareCapacity } from "../lib/experienceCore";
 import { Router } from "express";
 import { db,usersTable,tenantsTable,hrAccessTable,employeeProfilesTable,employeeHistoryEntriesTable,employeeFormTemplatesTable,employeeFormAssignmentsTable,hrDocumentsTable,hrApplicationsTable,hrAuditTable,timeEntriesTable,subTimersTable,callbacksTable } from "@workspace/db";
 import { and,eq,desc,sql,or } from "drizzle-orm";
@@ -190,6 +191,7 @@ router.post("/hr/employees/:id/account-setup",async(req,res)=>{
   if(!employee||employee.role==="company_owner")throw new HrError("Pending staff account not found",404);
   const [pending]=await tx.select({id:hrApplicationsTable.id}).from(hrApplicationsTable).where(and(eq(hrApplicationsTable.tenantId,tenantId),eq(hrApplicationsTable.userId,userId),eq(hrApplicationsTable.pendingAccountSetup,true))).for("update");
   if(!pending)throw new HrError("This employee does not have a pending hire login to set up",409);
+  if(!employee.isActive)await assertSoftwareCapacity(tx,tenantId,"users");
   await tx.update(usersTable).set({passwordHash,isActive:true}).where(eq(usersTable.id,userId));
   await tx.update(hrApplicationsTable).set({pendingAccountSetup:false}).where(and(eq(hrApplicationsTable.tenantId,tenantId),eq(hrApplicationsTable.userId,userId)));
   await hrAudit(tx,tenantId,actorId,"pending_hire_account_activated",userId,null,{isActive:employee.isActive},{isActive:true,passwordSet:true});

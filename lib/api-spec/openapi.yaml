@@ -9653,8 +9653,122 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PortalPushStatus" }
+  /experience:
+    get:
+      operationId: getExperienceHub
+      tags: [support]
+      responses:
+        "200":
+          description: Private support threads, published help, onboarding, and company health.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExperienceData" }
+  /experience/admin:
+    get:
+      operationId: getExperienceAdmin
+      tags: [support]
+      responses:
+        "200":
+          description: Software-owner support, content, businesses, policies and recovery evidence.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExperienceData" }
+  /experience/actions:
+    post:
+      operationId: performExperienceAction
+      tags: [support]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, payload]
+              properties:
+                action:
+                  type: string
+                  enum: [createThread, replyThread, updateThread, saveContent, saveOnboarding, saveCompanyPolicy, recordRecoveryDrill, runChecks, resolveAlert]
+                payload: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          description: Persisted action result.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExperienceData" }
+  /account-security:
+    get:
+      operationId: getAccountSecurity
+      tags: [auth]
+      responses:
+        "200":
+          description: Own account security status. Never contains secrets.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExperienceData" }
+    post:
+      operationId: updateAccountSecurity
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, password]
+              properties:
+                action: { type: string, enum: [enroll, confirm, disable, recoveryCodes] }
+                password: { type: string }
+                code: { type: string }
+      responses:
+        "200":
+          description: Enrollment secret or recovery codes are returned once, never logged.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExperienceData" }
+  /auth/password-reset/request:
+    post:
+      operationId: requestStaffPasswordReset
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "200":
+          description: Non-enumerating response.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExperienceData" }
+  /auth/password-reset/confirm:
+    post:
+      operationId: confirmStaffPasswordReset
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string }
+                password: { type: string, minLength: 12 }
+      responses:
+        "200":
+          description: Password changed and existing sessions revoked. MFA remains enabled.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExperienceData" }
 components:
   schemas:
+    ExperienceData:
+      type: object
+      additionalProperties: true
     PlatformBillingSettingsInput:
       type: object
       required: [enabled, cardFeeBps, cardFeeFixedCents, achFeeBps, achFeeFixedCents]

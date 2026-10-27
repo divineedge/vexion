@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ImagePicker, type UploadedImage } from '@/components/experience/ImagePicker';
 import { useParams } from 'wouter';
 import {
   useGetPublicReview,
@@ -42,6 +43,7 @@ export default function ReviewPublicPage() {
 
   const [checklist, setChecklist] = useState<string[]>([]);
   const [feedbackText, setFeedbackText] = useState('');
+  const [photos, setPhotos] = useState<UploadedImage[] | null>(null);
   const [improvementText, setImprovementText] = useState('');
   const [logoError, setLogoError] = useState(false);
 
@@ -254,6 +256,18 @@ export default function ReviewPublicPage() {
                   value={improvementText}
                   onChange={e => setImprovementText(e.target.value)}
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Photos (optional)</label>
+                <ImagePicker
+                  uploadUrl={`/api/public/reviews/${encodeURIComponent(token!)}/photos`}
+                  value={photos ?? ((data as { photos?: UploadedImage[] }).photos ?? [])}
+                  onChange={setPhotos}
+                  max={3}
+                  testId="review-photos"
+                />
+                <p className="text-[11px] text-muted-foreground">Photos are shared only with this business.</p>
               </div>
 
               <Button

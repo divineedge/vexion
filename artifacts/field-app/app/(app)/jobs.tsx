@@ -645,6 +645,9 @@ export default function JobsScreen() {
           >
             <Ionicons name="add-circle-outline" size={22} color={colors.mutedForeground} />
           </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/(app)/help')} style={styles.headerBtn} testID="help-nav-button" accessibilityLabel="Help and feedback">
+            <Ionicons name="help-buoy-outline" size={22} color={colors.mutedForeground} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={handleMyRequestsPress} style={styles.headerBtn} testID="my-job-requests-nav-button">
             <Ionicons name="clipboard-outline" size={22} color={colors.mutedForeground} />
           </TouchableOpacity>

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
-import { LogOut, Menu, X, LayoutDashboard, Settings, Bookmark, BookmarkCheck, Star, IdCard } from 'lucide-react';
+import { LogOut, Menu, X, LayoutDashboard, Settings, Bookmark, BookmarkCheck, Star, IdCard, LifeBuoy, KeyRound } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { adminNavSections, techNavItems as baseTechNavItems, hrNavItems, myRecordNavItem, type NavItem } from './navConfig';
@@ -302,6 +302,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               onToggleBookmark={toggleBookmark}
               onNavClick={onNavClick}
             />
+          </div>
+        )}
+
+        {/* Help & account links (all staff) */}
+        {user && (
+          <div className="px-3 pb-2 shrink-0 flex gap-1">
+            <Link href={`/help?from=${encodeURIComponent(location.split('?')[0])}`} onClick={onNavClick} data-testid="link-help" className={cn('flex-1 flex items-center gap-2 rounded-md px-3 py-1.5 text-xs text-sidebar-foreground/70 hover:text-white hover:bg-sidebar-accent/40', location === '/help' && 'bg-sidebar-accent/50 text-white')}>
+              <LifeBuoy className="w-3.5 h-3.5" /> Help &amp; Feedback
+            </Link>
+            <Link href="/account-security" onClick={onNavClick} data-testid="link-account-security" title="Account security" className={cn('flex items-center rounded-md px-2 py-1.5 text-sidebar-foreground/70 hover:text-white hover:bg-sidebar-accent/40', location === '/account-security' && 'bg-sidebar-accent/50 text-white')}>
+              <KeyRound className="w-3.5 h-3.5" />
+            </Link>
           </div>
         )}
 

@@ -640,7 +640,7 @@ router.post("/customers", async (req, res): Promise<void> => {
     return;
   }
   const duplicate = await findLikelyDuplicateCustomer(tenantId, { name, email, phone, physicalAddress });
-  if (duplicate) {
+  if (duplicate && req.body.allowPossibleDuplicate !== true) {
     res.status(409).json({
       error: `Possible duplicate customer: ${duplicate.name}${duplicate.archivedAt ? " (archived)" : ""}`,
       existingCustomerId: duplicate.id,
@@ -697,7 +697,7 @@ router.post("/customers", async (req, res): Promise<void> => {
     return { customer: createdCustomer, createdPropertyId: property.id };
   });
 
-  await db.insert(activityLogTable).values({ tenantId, userId, type: "customer_added", message: `New customer "${name}" added`, entityId: customer.id });
+  await db.insert(activityLogTable).values({ tenantId, userId, type: "customer_added", message: `New customer "${name}" added${duplicate ? ` as a separate account after duplicate warning (matching record ${duplicate.id})` : ""}`, entityId: customer.id });
   void syncCustomerToMailchimp(tenantId, customer);
 
   res.status(201).json(formatCustomer(customer, { propertyCount: createdPropertyId ? 1 : 0, createdPropertyId, referringCustomerName: referrer?.name ?? null }));

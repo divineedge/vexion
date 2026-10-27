@@ -175,8 +175,10 @@ const US_STATE_ABBR: Record<string, string> = {
 };
 
 function toStateAbbr(state: string): string {
-  if (state.length <= 2) return state.toUpperCase();
-  return US_STATE_ABBR[state] ?? state.slice(0, 2).toUpperCase();
+  const value = state.trim();
+  if (value.length <= 2) return value.toUpperCase();
+  const match = Object.entries(US_STATE_ABBR).find(([name]) => name.toLowerCase() === value.toLowerCase());
+  return match?.[1] ?? value;
 }
 
 type FormData = Record<string, string | string[]>;
@@ -336,6 +338,11 @@ export default function CustomersPage() {
     { query: { queryKey: getListCustomersQueryKey(queryParams as Parameters<typeof useListCustomers>[0]) } },
   );
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
+  useEffect(() => {
+    if (!creating || !settings?.businessState) return;
+    const defaultState = toStateAbbr(settings.businessState);
+    setForm(current => ({ ...current, physicalState: current.physicalState || defaultState, billingState: current.billingState || defaultState }));
+  }, [creating, settings?.businessState]);
 
   const createCustomer = useCreateCustomer();
   const deleteCustomer = useDeleteCustomer();
@@ -434,8 +441,9 @@ export default function CustomersPage() {
   const removeTag = (tag: string) => setForm(f => ({ ...f, tags: ((f.tags as string[]) ?? []).filter(t => t !== tag) }));
 
   const [creating_busy, setCreatingBusy] = useState(false);
+  const [duplicateCustomer, setDuplicateCustomer] = useState<{ existingCustomerId: number; error: string; archived?: boolean } | null>(null);
 
-  const handleCreate = async () => {
+  const handleCreate = async (allowPossibleDuplicate = false) => {
     // Validate required fields according to the tenant's field configuration
     const missing = activeFields
       .filter(f => f.required && !(form[f.key] as string | undefined)?.trim())
@@ -460,6 +468,9 @@ export default function CustomersPage() {
       else body[k] = v;
     }
     body.physicalPropertyType = 'residential';
+    body.allowPossibleDuplicate = allowPossibleDuplicate === true;
+    body.physicalState = toStateAbbr(String(form.physicalState || ''));
+    body.billingState = toStateAbbr(String(form.billingState || ''));
     body.physicalLat = form.physicalLat ? Number(form.physicalLat) : undefined;
     body.physicalLng = form.physicalLng ? Number(form.physicalLng) : undefined;
     body.customFieldValues = customFieldValues;
@@ -487,12 +498,18 @@ export default function CustomersPage() {
       }
       qc.invalidateQueries({ queryKey: getListCustomersQueryKey() });
       setCreating(false);
+      setDuplicateCustomer(null);
       setForm(BLANK);
       setSameAsPhysical(true);
       setCreateCampaignId('');
       setLocation(`/customers/${customer.id}`);
-    } catch {
-      toast.error('Failed to create customer');
+    } catch (error) {
+      const detail = (error as { data?: { error?: string; existingCustomerId?: number; archived?: boolean } }).data;
+      if (detail?.existingCustomerId && detail.error) {
+        setDuplicateCustomer({ existingCustomerId: detail.existingCustomerId, error: detail.error, archived: detail.archived });
+      } else {
+        toast.error(detail?.error || 'Failed to create customer. Your entries are still here; please try again.');
+      }
     } finally {
       setCreatingBusy(false);
     }
@@ -870,7 +887,21 @@ export default function CustomersPage() {
 
       {/* Create Customer Sheet */}
       <Sheet open={creating} onOpenChange={setCreating}>
-        <SheetContent className="w-full sm:max-w-[75vw] overflow-y-auto">
+        <SheetContent className="w-[100vw] max-w-[100vw] sm:w-[75vw] sm:max-w-[75vw] overflow-y-auto">
+      <Dialog open={!!duplicateCustomer} onOpenChange={open => { if (!open) setDuplicateCustomer(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Possible duplicate customer</DialogTitle>
+            <DialogDescription>{duplicateCustomer?.error}. The email, phone, or name and service address match an existing record{duplicateCustomer?.archived ? ', including archived customers' : ''}. Your new-customer entries have been kept.</DialogDescription>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">Open the existing customer to avoid duplicate accounts. Only create a separate customer if this is genuinely a different billing account. Records, payments, and Stripe profiles will not be merged.</p>
+          <DialogFooter className="flex-wrap gap-2">
+            <Button variant="ghost" disabled={creating_busy} onClick={() => setDuplicateCustomer(null)}>Keep editing</Button>
+            <Button variant="outline" disabled={creating_busy} onClick={() => { const customerId = duplicateCustomer?.existingCustomerId; setDuplicateCustomer(null); setCreating(false); if (customerId) setLocation(`/customers/${customerId}`); }}>Open existing customer</Button>
+            <Button disabled={creating_busy} onClick={() => void handleCreate(true)}>{creating_busy ? 'Creating…' : 'Create separate customer'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
           <SheetHeader className="pb-4">
             <SheetTitle>Add New Customer</SheetTitle>
             <SheetDescription>Fill in the customer's details below.</SheetDescription>
@@ -973,7 +1004,7 @@ export default function CustomersPage() {
               </Field>
               <div className="grid grid-cols-3 gap-4">
                 <Field label="City"><Input value={form.physicalCity as string} onChange={e => { const value = e.target.value; setForm(f => ({ ...f, physicalCity: value, ...(sameAsPhysical ? { billingCity: value } : {}) })); }} /></Field>
-                <Field label="State"><Input maxLength={2} value={form.physicalState as string} onChange={e => { const value = e.target.value; setForm(f => ({ ...f, physicalState: value, ...(sameAsPhysical ? { billingState: value } : {}) })); }} /></Field>
+                <Field label="State"><Input maxLength={80} placeholder="State name or abbreviation" value={form.physicalState as string} onChange={e => { const value = e.target.value; setForm(f => ({ ...f, physicalState: value, ...(sameAsPhysical ? { billingState: value } : {}) })); }} /></Field>
                 <Field label="ZIP"><Input value={form.physicalZip as string} onChange={e => { const value = e.target.value; setForm(f => ({ ...f, physicalZip: value, ...(sameAsPhysical ? { billingZip: value } : {}) })); }} /></Field>
               </div>
               {form.physicalLat && form.physicalLng && <p className="text-xs text-muted-foreground">Location selected: {form.physicalLat}, {form.physicalLng}</p>}
@@ -991,7 +1022,7 @@ export default function CustomersPage() {
                     </Field>
                   </div>
                   <Field label="State">
-                    <Input title="2-letter state code" value={form.billingState as string} onChange={e => setField('billingState', e.target.value)} placeholder="CA" maxLength={2} />
+                    <Input title="State name or abbreviation" value={form.billingState as string} onChange={e => setField('billingState', e.target.value)} placeholder="California or CA" maxLength={80} />
                   </Field>
                   <Field label="ZIP">
                     <Input title="ZIP/postal code" value={form.billingZip as string} onChange={e => setField('billingZip', e.target.value)} placeholder="90210" />
@@ -1105,7 +1136,7 @@ export default function CustomersPage() {
             <Separator />
             <div className="flex gap-3 justify-end pt-2">
               <Button variant="outline" onClick={() => setCreating(false)}>Cancel</Button>
-              <Button onClick={handleCreate} disabled={creating_busy} className="gap-2">
+              <Button onClick={() => void handleCreate()} disabled={creating_busy} className="gap-2">
                 <Save className="w-4 h-4" />
                 {creating_busy ? 'Creating...' : 'Create Customer'}
               </Button>

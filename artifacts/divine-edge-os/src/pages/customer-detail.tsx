@@ -721,10 +721,11 @@ export default function CustomerDetailPage() {
   const linkedCampaign = campaigns?.find(c => c.id === (customer as any).acquiredFromCampaignId);
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      {/* Header */}
-      <div className="flex items-start gap-4">
-        <Button variant="ghost" size="icon" onClick={() => setLocation('/customers')}>
+    <div className="space-y-4 animate-in fade-in duration-500 min-w-0 max-w-full overflow-x-hidden">
+      {/* Header: identity (left) + record actions (right on wide screens, below on narrow) */}
+      <div className="rounded-xl border bg-card p-3 sm:p-4 flex flex-col xl:flex-row xl:items-start gap-3 xl:gap-4" data-testid="customer-header">
+      <div className="flex items-start gap-3 flex-1 min-w-0">
+        <Button variant="ghost" size="icon" className="shrink-0 -ml-1" onClick={() => setLocation('/customers')} title="Back to customers" data-testid="button-back-customers">
           <ArrowLeft className="w-5 h-5" />
         </Button>
         <CustomerAvatar
@@ -735,8 +736,8 @@ export default function CustomerDetailPage() {
           onUpdated={() => { /* react-query cache is updated via customFetch */ }}
         />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-3xl font-bold tracking-tight">{customer.name}</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight break-words min-w-0">{customer.name}</h1>
             {customer.customerType && (
               <Badge variant="secondary" className="capitalize">{customer.customerType}</Badge>
             )}
@@ -834,14 +835,26 @@ export default function CustomerDetailPage() {
             })()}
           </div>
 
+          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5 text-sm text-muted-foreground">
+            {customer.company && <span className="flex items-center gap-1 min-w-0 break-all" title={customer.company}><Building className="w-4 h-4" />{customer.company}</span>}
+            {can('customerInfo.phone') && <span className="flex items-center gap-1 min-w-0 break-all" title={customer.phone}><Phone className="w-4 h-4" />{customer.phone}</span>}
+            {can('customerInfo.email') && <span className="flex items-center gap-1 min-w-0 break-all" title={customer.email}><Mail className="w-4 h-4" />{customer.email}</span>}
+            {customer.paymentStanding && (customer.paymentStanding.overdueAmount ?? 0) > 0 && customer.paymentStanding.status !== 'overdue' && (
+              <span className="flex items-center gap-1 text-orange-600">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                {customer.paymentStanding.daysOverdue ?? 0}d overdue · ${(customer.paymentStanding.overdueAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </span>
+            )}
+          </div>
           {/* Card-on-file action row */}
           {(() => {
             const pm = paymentMethodData?.paymentMethod;
             const daysLeft = pm ? Math.ceil((new Date(pm.expYear ?? 2099, pm.expMonth ?? 12, 0).getTime() - Date.now()) / 86_400_000) : null;
             const isExpiringSoon = daysLeft !== null && daysLeft <= 60;
             return (
-              <div className="flex flex-wrap items-center gap-2 mt-2">
-                <Button size="sm" variant="outline" className="gap-1.5 text-xs h-7 px-2.5" onClick={openCardSetup}>
+              <div className="flex flex-wrap items-center gap-1.5 mt-2.5 pt-2.5 border-t border-dashed" data-testid="row-card-actions">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mr-1">Payment</span>
+                <Button size="sm" variant="outline" className="gap-1.5 text-xs h-7 px-2.5" onClick={openCardSetup} data-testid="button-add-card">
                   <CreditCard className="w-3 h-3" />
                   {(customer as any).hasPaymentMethod ? 'Update Card' : 'Add Card'}
                 </Button>
@@ -865,7 +878,7 @@ export default function CustomerDetailPage() {
 
           {/* Inline Stripe card setup form */}
           {showAddCard && (
-            <div className="mt-3 p-3 border rounded-lg bg-muted/30 space-y-3 max-w-sm" data-testid="customer-card-setup">
+            <div className="mt-2 p-3 border rounded-lg bg-muted/30 space-y-3 w-full max-w-md" data-testid="customer-card-setup">
               <p className="text-xs font-medium text-foreground">Enter card details</p>
               {cardSetupLoading && <p role="status" className="text-sm text-muted-foreground">Loading secure card form…</p>}
               {cardSetupError && (
@@ -889,19 +902,9 @@ export default function CustomerDetailPage() {
             </div>
           )}
 
-          <div className="flex flex-wrap gap-4 mt-2 text-sm text-muted-foreground">
-            {customer.company && <span className="flex items-center gap-1" title={customer.company}><Building className="w-4 h-4" />{customer.company}</span>}
-            {can('customerInfo.phone') && <span className="flex items-center gap-1" title={customer.phone}><Phone className="w-4 h-4" />{customer.phone}</span>}
-            {can('customerInfo.email') && <span className="flex items-center gap-1" title={customer.email}><Mail className="w-4 h-4" />{customer.email}</span>}
-            {customer.paymentStanding && (customer.paymentStanding.overdueAmount ?? 0) > 0 && customer.paymentStanding.status !== 'overdue' && (
-              <span className="flex items-center gap-1 text-orange-600">
-                <AlertTriangle className="w-3.5 h-3.5" />
-                {customer.paymentStanding.daysOverdue ?? 0}d overdue · ${(customer.paymentStanding.overdueAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-              </span>
-            )}
-          </div>
         </div>
-        <div className="flex gap-2 shrink-0 flex-wrap justify-end">
+      </div>
+        <div className="flex flex-wrap gap-1.5 xl:justify-end xl:max-w-[44%] xl:shrink-0 pt-3 xl:pt-0 border-t xl:border-t-0 [&_button]:h-8 [&_button]:px-2.5 [&_button]:text-xs [&_button_svg]:w-3.5 [&_button_svg]:h-3.5" data-testid="customer-record-actions">
           {portalLink && (
             <>
               <Button
@@ -982,7 +985,7 @@ export default function CustomerDetailPage() {
       )}
 
       {/* KPI bar */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2 sm:gap-3" data-testid="customer-kpis">
         {[
           { label: 'Lifetime Spend', value: `$${(customer.totalSpend ?? 0).toLocaleString()}`, icon: DollarSign, color: 'text-emerald-600' },
           ...(() => { const open = (custInvoices ?? []).filter(i => i.status !== 'paid' && i.status !== 'cancelled').reduce((s, i) => s + i.total, 0); return open > 0 ? [{ label: 'Open Balance', value: `$${open.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, icon: DollarSign, color: 'text-destructive' }] : []; })(),
@@ -995,11 +998,11 @@ export default function CustomerDetailPage() {
           { label: 'Completed', value: String(completedJobs), icon: Calendar, color: 'text-amber-600' },
         ].map(({ label, value, icon: Icon, color }) => (
           <Card key={label}>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className={`p-2 rounded-lg bg-muted ${color}`}><Icon className="w-5 h-5" /></div>
-              <div>
-                <p className="text-2xl font-bold" title={`${label}: ${value}`}>{value}</p>
-                <p className="text-xs text-muted-foreground">{label}</p>
+            <CardContent className="p-3 flex items-center gap-2.5">
+              <div className={`p-1.5 rounded-md bg-muted shrink-0 ${color}`}><Icon className="w-4 h-4" /></div>
+              <div className="min-w-0">
+                <p className="text-lg font-bold leading-tight truncate" title={`${label}: ${value}`}>{value}</p>
+                <p className="text-xs text-muted-foreground truncate">{label}</p>
               </div>
             </CardContent>
           </Card>
@@ -1008,7 +1011,8 @@ export default function CustomerDetailPage() {
 
       {/* Tabs */}
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="mb-4">
+        <div className="-mx-1 px-1 overflow-x-auto mb-3" data-testid="customer-tabs-scroll">
+        <TabsList className="w-max min-w-full justify-start">
           <TabsTrigger value="overview" title="Customer overview, contact info, and notes">Overview</TabsTrigger>
           <TabsTrigger value="timeline" title="Activity timeline for this customer">Timeline</TabsTrigger>
           <TabsTrigger value="properties" title="Properties associated with this customer">Properties ({properties?.length ?? 0})</TabsTrigger>
@@ -1018,6 +1022,7 @@ export default function CustomerDetailPage() {
           <TabsTrigger value="staff-notes" title="Private staff notes — never visible to the customer">Staff Notes</TabsTrigger>
           <TabsTrigger value="plans" title="Active and past service plans">Plans {customerPlans && customerPlans.length > 0 ? `(${customerPlans.filter(p => p.status === 'active').length} active)` : ''}</TabsTrigger>
         </TabsList>
+        </div>
 
         {/* Overview tab */}
         <TabsContent value="overview" className="space-y-4 focus-visible:outline-none">
@@ -1113,7 +1118,8 @@ export default function CustomerDetailPage() {
             </Card>
           </div>
 
-          <Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
+          <Card className="md:col-span-2 xl:col-span-1">
             <CardHeader><CardTitle className="text-base flex items-center gap-2"><FileText className="w-4 h-4" />Mailing & Notes</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm">
               {customer.billingAddress && (
@@ -1179,6 +1185,7 @@ export default function CustomerDetailPage() {
               </Card>
             );
           })()}
+          </div>
         </TabsContent>
 
         {/* Timeline tab */}
@@ -2343,7 +2350,7 @@ export default function CustomerDetailPage() {
                 </Field>
                 <div className="grid grid-cols-3 gap-4">
                   <Field label="City"><Input value={form.physicalCity as string} onChange={e => setField('physicalCity', e.target.value)} /></Field>
-                  <Field label="State"><Input maxLength={2} value={form.physicalState as string} onChange={e => setField('physicalState', e.target.value)} /></Field>
+                  <Field label="State"><Input maxLength={80} placeholder="State name or abbreviation" value={form.physicalState as string} onChange={e => setField('physicalState', e.target.value)} /></Field>
                   <Field label="ZIP"><Input value={form.physicalZip as string} onChange={e => setField('physicalZip', e.target.value)} /></Field>
                 </div>
               </Section>
@@ -2358,7 +2365,7 @@ export default function CustomerDetailPage() {
                     </Field>
                   </div>
                   <Field label="State">
-                    <Input title="2-letter state code" value={form.billingState as string} onChange={e => setField('billingState', e.target.value)} placeholder="CA" maxLength={2} />
+                    <Input title="State name or abbreviation" value={form.billingState as string} onChange={e => setField('billingState', e.target.value)} placeholder="California or CA" maxLength={80} />
                   </Field>
                   <Field label="ZIP">
                     <Input title="ZIP/postal code" value={form.billingZip as string} onChange={e => setField('billingZip', e.target.value)} placeholder="90210" />

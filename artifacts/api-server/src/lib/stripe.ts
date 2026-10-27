@@ -32,23 +32,25 @@ export async function ensureStripeCustomer(
   customerId: number,
   customerName: string,
   customerEmail: string,
-  existingStripeCustomerId: string | null | undefined
+  _existingStripeCustomerId: string | null | undefined
 ): Promise<string> {
   const stripe = getStripeClient();
   if (!stripe) throw new Error("Stripe is not configured");
 
-  if (existingStripeCustomerId) return existingStripeCustomerId;
-
-  const stripeCustomer = await stripe.customers.create({
-    name: customerName,
-    email: customerEmail,
-    metadata: { internalCustomerId: String(customerId) },
+  // The caller's snapshot may be stale when two card/payment requests overlap.
+  // Serialize against the current record, and use provider idempotency as well.
+  return db.transaction(async tx => {
+    const [customer] = await tx.select().from(customersTable)
+      .where(eq(customersTable.id, customerId)).for("update");
+    if (!customer) throw new Error("Customer not found");
+    if (customer.stripeCustomerId) return customer.stripeCustomerId;
+    const stripeCustomer = await stripe.customers.create({
+      name: customer.name || customerName,
+      email: customer.email || customerEmail,
+      metadata: { internalCustomerId: String(customerId), tenantId: String(customer.tenantId) },
+    }, { idempotencyKey: `crm-customer-${customer.tenantId}-${customerId}` });
+    await tx.update(customersTable).set({ stripeCustomerId: stripeCustomer.id })
+      .where(eq(customersTable.id, customerId));
+    return stripeCustomer.id;
   });
-
-  await db
-    .update(customersTable)
-    .set({ stripeCustomerId: stripeCustomer.id })
-    .where(eq(customersTable.id, customerId));
-
-  return stripeCustomer.id;
 }

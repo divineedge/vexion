@@ -16,7 +16,7 @@ import router from "../routes/platformBilling";
 import publishedPlansRouter from "../routes/plans";
 import { feeCents,platformPaymentMetadata,softwarePlanInput } from "./platformBillingPolicy";
 import { recordPlatformPayment,processPlatformPayout,recordPlatformReturn } from "./platformPayouts";
-import { businessSubscriptionCheckout,syncSoftwareSubscription,publishSoftwarePlan } from "./softwareBilling";
+import { businessSubscriptionCheckout,syncSoftwareSubscription,publishSoftwarePlan,isSoftwareOwner } from "./softwareBilling";
 import { handlePlatformBillingEvent } from "./platformBillingEvents";
 
 describe("software-owner billing and proceeds",()=>{
@@ -84,6 +84,16 @@ describe("software-owner billing and proceeds",()=>{
     expect((await request(app).get("/platform-billing/access")).body.isSoftwareOwner).toBe(false);
     expect((await request(app).get("/platform-billing/admin")).status).toBe(403);
     expect((await request(app).patch("/platform-billing/settings").send({isSoftwareOwner:true,enabled:true})).status).toBe(403);
+  });
+  it("binds deployment owner access to the exact active user and company",async()=>{
+    try{
+      vi.stubEnv("PLATFORM_OWNER_USER_ID",String(businessOwnerId));
+      vi.stubEnv("PLATFORM_OWNER_TENANT_ID",String(tenantId));
+      expect(await isSoftwareOwner(businessOwnerId,tenantId)).toBe(true);
+      expect(await isSoftwareOwner(businessOwnerId,tenantId+1000000)).toBe(false);
+      vi.stubEnv("PLATFORM_OWNER_USER_ID",String(businessOwnerId+1000000));
+      expect(await isSoftwareOwner(businessOwnerId,tenantId)).toBe(false);
+    }finally{vi.unstubAllEnvs();}
   });
   it("rejects demo-password accounts even with a platform grant",async()=>{
     await db.update(usersTable).set({passwordHash:"mock"}).where(eq(usersTable.id,ownerId));

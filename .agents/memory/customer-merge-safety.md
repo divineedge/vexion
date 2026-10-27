@@ -14,6 +14,12 @@ Do not automatically combine different external payment profiles or conflicting 
 
 **How to apply:** Require reconciliation when profiles or explicit payment policies conflict. The record with the saved payment profile should be retained when the other has none.
 
+Payment-profile reuse must follow the stored provider identity, not an email-only match.
+
+**Why:** Shared household contact details and separate billing accounts do not prove ownership of the same saved payment methods. Automatically matching by email could expose another customer's methods or combine financial identities.
+
+**How to apply:** Reuse the authoritative saved Stripe customer link. If staff deliberately create a separate billing account after a duplicate warning, keep its records separate; reconcile unlinked legacy provider profiles through an explicit, verified process.
+
 Late incoming money may follow the merged identity, but stale operational writes must use the retained customer and re-check their current rules.
 
 **Why:** Redirecting a stale job reference only after application validation could bypass the retained customer's stricter scheduling/payment restrictions; losing a delayed payment would also be unacceptable.

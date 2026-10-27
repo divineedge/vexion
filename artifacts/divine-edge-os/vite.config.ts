@@ -57,7 +57,9 @@ export default defineConfig({
         'attached_assets',
       ),
     },
-    dedupe: ['react', 'react-dom'],
+    // Shared workspace hooks can resolve a different pnpm React peer snapshot.
+    // Keep one QueryClient context in production, just as Vite does in dev.
+    dedupe: ['react', 'react-dom', '@tanstack/react-query'],
   },
   root: path.resolve(import.meta.dirname),
   build: {

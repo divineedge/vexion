@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AlertTriangle } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 
 /** True when the API rejected a save because the crew's day is over capacity. */
 export function isCapacityConflict(err: unknown): boolean {
@@ -35,25 +36,28 @@ export function capacityConflictWarnings(err: unknown): string[] {
  * date/crew, or a manager can explicitly override with a written reason. The server
  * decides whether the actor is allowed to override.
  */
-export function CapacityOverrideDialog({ open, message, warnings = [], pending, error, onCancel, onOverride }: {
+export function CapacityOverrideDialog({ open, message, warnings = [], pending, error, onCancel, onOverride, onRetryWithDuration, durationMinutes }: {
   open: boolean;
   message: string;
   warnings?: string[];
   pending?: boolean;
   error?: string | null;
   onCancel: () => void;
-  onOverride: (reason: string) => void;
+  onOverride: (reason: string, minutes?: number) => void;
+  onRetryWithDuration?: (minutes: number) => void;
+  durationMinutes?: number;
 }) {
   const [confirmed, setConfirmed] = useState(false);
   const [reason, setReason] = useState('');
-  useEffect(() => { if (open) { setConfirmed(false); setReason(''); } }, [open]);
-  const canOverride = confirmed && reason.trim().length > 0 && !pending;
+  const [duration, setDuration] = useState('');
+  useEffect(() => { if (open) { setConfirmed(false); setReason(''); setDuration(durationMinutes ? String(durationMinutes) : ''); } }, [open, durationMinutes]);
+  const canOverride = confirmed && reason.trim().length >= 5 && !pending;
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o && !pending) onCancel(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-amber-600" />Crew over capacity</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-amber-600" />Scheduling capacity warning</DialogTitle>
           <DialogDescription>{message}</DialogDescription>
         </DialogHeader>
         {warnings.length > 0 && (
@@ -61,7 +65,13 @@ export function CapacityOverrideDialog({ open, message, warnings = [], pending, 
             {warnings.map((w, i) => <li key={i}>{w}</li>)}
           </ul>
         )}
-        <p className="text-xs text-muted-foreground">The day budget counts every other job on that crew plus travel buffer between stops. Pick a different date or crew, or a manager can override.</p>
+        <p className="text-xs text-muted-foreground">Capacity includes the employee's or crew's other jobs and travel buffers. Choose a different date, employee, or crew, or ask a manager to override.</p>
+        {onRetryWithDuration && <div className="space-y-2 rounded-md border p-3">
+          <label htmlFor="capacity-job-duration" className="text-sm font-medium">This job's estimated duration (minutes)</label>
+          <Input id="capacity-job-duration" type="number" min="1" step="1" value={duration} onChange={event => setDuration(event.target.value)} data-testid="input-capacity-duration" />
+          <p className="text-xs text-muted-foreground">Enter or correct the duration here, then check again without overriding capacity.</p>
+          <Button variant="outline" disabled={pending || !Number.isInteger(Number(duration)) || Number(duration) <= 0} onClick={() => onRetryWithDuration(Number(duration))} data-testid="button-capacity-recheck">Save duration &amp; check again</Button>
+        </div>}
         <div className="space-y-2 rounded-md border p-3">
           <label className="flex items-start gap-2 text-sm cursor-pointer">
             <Checkbox checked={confirmed} onCheckedChange={v => setConfirmed(v === true)} data-testid="checkbox-capacity-override" className="mt-0.5" />
@@ -72,7 +82,7 @@ export function CapacityOverrideDialog({ open, message, warnings = [], pending, 
         {error && <p className="text-sm text-destructive" data-testid="text-capacity-override-error">{error}</p>}
         <DialogFooter>
           <Button variant="outline" onClick={onCancel} disabled={pending} data-testid="button-capacity-change">Change date or crew</Button>
-          <Button onClick={() => onOverride(reason.trim())} disabled={!canOverride} data-testid="button-capacity-override">
+          <Button onClick={() => onOverride(reason.trim(), Number.isInteger(Number(duration)) && Number(duration) > 0 ? Number(duration) : undefined)} disabled={!canOverride} data-testid="button-capacity-override">
             {pending ? 'Saving…' : 'Override and save'}
           </Button>
         </DialogFooter>

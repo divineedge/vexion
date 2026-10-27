@@ -33,6 +33,7 @@ import {
   useConvertEstimateToJob,
   useGetEstimatePipeline, getGetEstimatePipelineQueryKey,
   useListUsers, getListUsersQueryKey,
+  useListCrews,
   useListProperties, getListPropertiesQueryKey,
   useListEstimateTemplates, getListEstimateTemplatesQueryKey,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
@@ -191,12 +192,13 @@ export default function EstimatesPage() {
       if (!Number.isNaN(numId)) setSelectedId(numId);
     }
     if (params.get('action') === 'create') {
+      setTemplatesOpen(false);
       setCreateOpen(true);
       const custId = params.get('customerId');
       if (custId && !Number.isNaN(parseInt(custId, 10))) {
         setForm(f => ({ ...f, customerId: custId }));
       }
-      window.history.replaceState({}, '', window.location.pathname);
+      setLocation(window.location.pathname, { replace: true });
     }
   }, [search]);
 
@@ -258,6 +260,11 @@ export default function EstimatesPage() {
     query: { enabled: selectedId != null, queryKey: getGetEstimateQueryKey(selectedId!) },
   });
   const { data: users } = useListUsers({ query: { queryKey: getListUsersQueryKey() } });
+  const { data: schedulingCrews = [] } = useListCrews();
+  const bookingPropertyParams = { customerId: selectedEstimate?.customerId ?? undefined };
+  const { data: bookingProperties } = useListProperties(bookingPropertyParams, { query: {
+    enabled: Boolean(selectedEstimate?.customerId), queryKey: getListPropertiesQueryKey(bookingPropertyParams),
+  } });
   const { data: properties } = useListProperties({}, { query: { enabled: createOpen, queryKey: getListPropertiesQueryKey({}) } });
   const { data: templates } = useListEstimateTemplates({ query: { enabled: createOpen, queryKey: getListEstimateTemplatesQueryKey() } });
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
@@ -363,9 +370,7 @@ export default function EstimatesPage() {
       data: {
         customerId: form.customerId ? parseInt(form.customerId, 10) : undefined,
         propertyId: form.propertyId ? parseInt(form.propertyId, 10) : undefined,
-        assigneeId: form.assigneeId ? parseInt(form.assigneeId, 10) : undefined,
-        visitMode: form.visitMode as 'scheduled' | 'drop_by' | 'drive_by',
-        scheduledAt: form.scheduledAt || undefined,
+        visitMode: 'drop_by',
         expiresAt: form.expiresAt || undefined,
         notes: form.notes || undefined,
         ...(createTerms !== null ? { termsText: normalizeWording(createTerms) } : {}),
@@ -529,12 +534,12 @@ export default function EstimatesPage() {
   // ── Schedule-job dialog state ────────────────────────────────────────────────
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [scheduleEstimateId, setScheduleEstimateId] = useState<number | null>(null);
-  const [scheduleForm, setScheduleForm] = useState({ title: '', scheduledAt: '', assigneeId: '', invoiceNow: true });
+  const [scheduleForm, setScheduleForm] = useState({ title: '', scheduledAt: '', assigneeId: '', crewId: '', propertyId: '', estimatedDuration: '', scheduleAs: 'job', invoiceNow: true });
   const [converting, setConverting] = useState(false);
 
   function openScheduleDialog(estimate: any) {
     const defaultTitle = estimate.customerName ? `Service for ${estimate.customerName}` : `Job from Estimate #${estimate.id}`;
-    setScheduleForm({ title: defaultTitle, scheduledAt: '', assigneeId: estimate.assigneeId ? String(estimate.assigneeId) : '', invoiceNow: true });
+    setScheduleForm({ title: defaultTitle, scheduledAt: '', assigneeId: estimate.assigneeId ? String(estimate.assigneeId) : '', crewId: '', propertyId: estimate.propertyId ? String(estimate.propertyId) : '', estimatedDuration: estimate.estimatedDurationMin ? String(estimate.estimatedDurationMin) : '', scheduleAs: 'job', invoiceNow: true });
     setScheduleEstimateId(estimate.id);
     setScheduleDialogOpen(true);
   }
@@ -543,12 +548,29 @@ export default function EstimatesPage() {
     if (!scheduleEstimateId) return;
     setConverting(true);
     try {
+      if (scheduleForm.scheduleAs === 'visit') {
+        if (!selectedEstimate || selectedEstimate.id !== scheduleEstimateId || selectedEstimate.status !== 'approved') throw new Error('Only accepted estimates can be scheduled from here.');
+        if (!scheduleForm.propertyId || !scheduleForm.assigneeId || !scheduleForm.scheduledAt) throw new Error('Choose a property, employee, and date/time for the site visit.');
+        await customFetch('/api/visits', { method: 'POST', body: JSON.stringify({
+          customerId: selectedEstimate.customerId, propertyId: scheduleForm.propertyId,
+          assigneeId: scheduleForm.assigneeId, scheduledAt: new Date(scheduleForm.scheduledAt).toISOString(),
+          purpose: scheduleForm.title || `Follow-up for accepted Estimate #${scheduleEstimateId}`,
+          notes: `Follow-up site visit for accepted Estimate #${scheduleEstimateId}. Work and billing remain on the estimate until converted to a job.`,
+          visitMode: 'scheduled',
+        }) });
+        qc.invalidateQueries({ queryKey: ['/api/visits'] });
+        toast.success('Site visit scheduled; no job or invoice was created.', { action: { label: 'View visits', onClick: () => setLocation('/visits') } });
+        setScheduleDialogOpen(false); setScheduleEstimateId(null);
+        return;
+      }
       const r = await customFetch<{ jobId: number; invoiceId: number | null }>(`/api/estimates/${scheduleEstimateId}/convert`, {
         method: 'POST',
         body: JSON.stringify({
           title: scheduleForm.title || undefined,
-          scheduledAt: scheduleForm.scheduledAt || undefined,
+          scheduledAt: scheduleForm.scheduledAt ? new Date(scheduleForm.scheduledAt).toISOString() : undefined,
           assigneeId: scheduleForm.assigneeId ? parseInt(scheduleForm.assigneeId) : undefined,
+          crewId: scheduleForm.crewId ? Number(scheduleForm.crewId) : undefined,
+          estimatedDuration: scheduleForm.estimatedDuration ? Number(scheduleForm.estimatedDuration) : undefined,
           invoiceNow: scheduleForm.invoiceNow,
         }),
       });
@@ -818,9 +840,6 @@ export default function EstimatesPage() {
                       <Badge className={`capitalize text-xs ${STATUS_COLORS[est.status] ?? ''}`} variant="outline" title={`Estimate status: ${est.status}`}>
                         {est.status}
                       </Badge>
-                      <Badge variant="outline" className="text-xs text-muted-foreground border-muted" title={`Visit mode: ${VISIT_MODE_LABELS[est.visitMode] ?? est.visitMode}`}>
-                        {VISIT_MODE_LABELS[est.visitMode] ?? est.visitMode}
-                      </Badge>
                       {est.status === 'sent' && (est as any).expiresAt && (() => {
                         const daysLeft = Math.ceil((new Date((est as any).expiresAt).getTime() - Date.now()) / 86400000);
                         if (daysLeft <= 0) return <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-300">Expired</Badge>;
@@ -887,13 +906,6 @@ export default function EstimatesPage() {
                 <label className="text-sm font-medium">Customer</label>
                 <EstimateCustomerPicker value={form.customerId} onChange={customerId => setForm(f => ({ ...f, customerId, propertyId: f.customerId === customerId ? f.propertyId : '' }))} />
               </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Assign To</label>
-                <Select value={form.assigneeId} onValueChange={v => setForm(f => ({ ...f, assigneeId: v }))}>
-                  <SelectTrigger title="Assign this estimate to a staff member"><SelectValue placeholder="Select assignee..." /></SelectTrigger>
-                  <SelectContent>{(users ?? []).map(u => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
             </div>
 
             {form.customerId && (
@@ -910,25 +922,7 @@ export default function EstimatesPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Visit Mode</label>
-                <Select value={form.visitMode} onValueChange={v => setForm(f => ({ ...f, visitMode: v }))}>
-                  <SelectTrigger title="How the technician will visit the property for this estimate"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="scheduled">Scheduled Appointment</SelectItem>
-                    <SelectItem value="drop_by">Drop By / Flexible</SelectItem>
-                    <SelectItem value="drive_by">Drive-By</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {form.visitMode === 'scheduled' && (
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Scheduled At</label>
-                  <Input type="datetime-local" title="Date and time the estimate visit is scheduled" value={form.scheduledAt} onChange={e => setForm(f => ({ ...f, scheduledAt: e.target.value }))} />
-                </div>
-              )}
-            </div>
+            <p className="text-xs text-muted-foreground">Scheduling and crew or employee assignment are chosen after the customer accepts this estimate.</p>
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Expires At</label>
@@ -1349,8 +1343,7 @@ export default function EstimatesPage() {
                   </Badge>
                 </div>
                 <SheetDescription>
-                  <span title={format(new Date(selectedEstimate.createdAt), 'EEEE, MMMM d, yyyy')}>Created {format(new Date(selectedEstimate.createdAt), 'MMM d, yyyy')}</span> ·{' '}
-                  {VISIT_MODE_LABELS[selectedEstimate.visitMode] ?? selectedEstimate.visitMode}
+                  <span title={format(new Date(selectedEstimate.createdAt), 'EEEE, MMMM d, yyyy')}>Created {format(new Date(selectedEstimate.createdAt), 'MMM d, yyyy')}</span>
                   {(selectedEstimate as any).sentAt && (
                     <> · <span className="text-emerald-600">Sent {format(new Date((selectedEstimate as any).sentAt), 'MMM d, yyyy')}</span></>
                   )}
@@ -1534,7 +1527,7 @@ export default function EstimatesPage() {
                       </div>
                     </div>
                   )}
-                  {selectedEstimate.assigneeName && (
+                  {selectedEstimate.status === 'approved' && selectedEstimate.assigneeName && (
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Assignee</p>
                       <div className="flex items-center gap-2"><User className="w-4 h-4 text-muted-foreground" />{selectedEstimate.assigneeName}</div>
@@ -1551,7 +1544,7 @@ export default function EstimatesPage() {
                       </div>
                     </div>
                   )}
-                  {selectedEstimate.scheduledAt && (
+                  {selectedEstimate.status === 'approved' && selectedEstimate.scheduledAt && (
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Scheduled</p>
                       <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-muted-foreground" /><span title={format(new Date(selectedEstimate.scheduledAt), 'EEEE, MMMM d, yyyy h:mm a')}>{format(new Date(selectedEstimate.scheduledAt), 'MMM d, yyyy h:mm a')}</span></div>
@@ -1996,12 +1989,20 @@ export default function EstimatesPage() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Schedule Job</DialogTitle>
-            <DialogDescription>Convert this estimate to a scheduled job and choose when to invoice.</DialogDescription>
+            <DialogDescription>Now that the estimate is accepted, choose a work job or a follow-up site visit, then set its schedule and assignment.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-1">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Schedule as</label>
+              <Select value={scheduleForm.scheduleAs} onValueChange={scheduleAs => setScheduleForm(form => ({ ...form, scheduleAs }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="job">Work job</SelectItem><SelectItem value="visit">Follow-up site visit</SelectItem></SelectContent>
+              </Select>
+              {scheduleForm.scheduleAs === 'visit' && <p className="text-xs text-muted-foreground">A site visit does not convert the estimate or generate an invoice. Schedule the actual service as a work job. Site visits do not yet participate in job capacity checks; review the employee's calendar before booking.</p>}
+            </div>
             {/* Title */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Job Title</label>
+              <label className="text-sm font-medium">{scheduleForm.scheduleAs === 'visit' ? 'Visit purpose' : 'Job title'}</label>
               <Input
                 value={scheduleForm.title}
                 onChange={e => setScheduleForm(f => ({ ...f, title: e.target.value }))}
@@ -2029,8 +2030,26 @@ export default function EstimatesPage() {
                 </SelectContent>
               </Select>
             </div>
-            {/* Billing choice */}
-            <div className="space-y-2">
+            {scheduleForm.scheduleAs === 'job' ? <div className="space-y-1.5">
+              <label className="text-sm font-medium">Crew (optional)</label>
+              <Select value={scheduleForm.crewId || '__none'} onValueChange={crewId => setScheduleForm(form => ({ ...form, crewId: crewId === '__none' ? '' : crewId }))}>
+                <SelectTrigger><SelectValue placeholder="No crew" /></SelectTrigger>
+                <SelectContent><SelectItem value="__none">No crew</SelectItem>{schedulingCrews.map(crew => <SelectItem key={crew.id} value={String(crew.id)}>{crew.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div> : <div className="space-y-1.5">
+              <label className="text-sm font-medium">Visit property</label>
+              <Select value={scheduleForm.propertyId} onValueChange={propertyId => setScheduleForm(form => ({ ...form, propertyId }))}>
+                <SelectTrigger><SelectValue placeholder="Choose a property" /></SelectTrigger>
+                <SelectContent>{((bookingProperties as any)?.items ?? bookingProperties ?? []).filter((property: any) => Number(property.customerId) === Number(selectedEstimate?.customerId)).map((property: any) => <SelectItem key={property.id} value={String(property.id)}>{property.address}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>}
+            {scheduleForm.scheduleAs === 'job' && <div className="space-y-1.5">
+              <label className="text-sm font-medium">Job duration (minutes)</label>
+              <Input type="number" min="1" step="1" value={scheduleForm.estimatedDuration} onChange={event => setScheduleForm(form => ({ ...form, estimatedDuration: event.target.value }))} />
+              <p className="text-xs text-muted-foreground">Used to check the employee or crew's availability. This does not change the accepted price.</p>
+            </div>}
+            {/* Billing applies to work jobs, never a follow-up site visit. */}
+            {scheduleForm.scheduleAs === 'job' && <div className="space-y-2">
               <label className="text-sm font-medium">Billing</label>
               <div className="flex rounded-lg border overflow-hidden">
                 <button
@@ -2053,14 +2072,14 @@ export default function EstimatesPage() {
                   ? 'A draft invoice will be created now for staff to review and send.'
                   : 'A draft invoice will be auto-created when the job is marked complete.'}
               </p>
-            </div>
+            </div>}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setScheduleDialogOpen(false); setScheduleEstimateId(null); }} disabled={converting}>Cancel</Button>
             <Button onClick={handleConvertWithSchedule} disabled={converting} className="gap-2">
               {converting
                 ? <><Loader2 className="w-4 h-4 animate-spin" /> Scheduling…</>
-                : <><Calendar className="w-4 h-4" /> Schedule Job</>}
+                : <><Calendar className="w-4 h-4" /> {scheduleForm.scheduleAs === 'visit' ? 'Schedule Visit' : 'Schedule Job'}</>}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1068,6 +1068,10 @@ router.post("/estimates/:id/convert", requireVerifiedStaff, async (req, res): Pr
   }
 
   // Only include required + accepted optional items
+  const bookingDuration = req.body.estimatedDuration === undefined ? estimate.estimatedDurationMin : Number(req.body.estimatedDuration);
+  if (req.body.estimatedDuration !== undefined && (!Number.isSafeInteger(bookingDuration) || Number(bookingDuration) <= 0)) {
+    res.status(400).json({ error: "Job duration must be a positive whole number of minutes" }); return;
+  }
   const allItems = normalizeGroupedSelections((estimate.lineItems as EstimateLineItem[]) ?? []);
   const jobItems = allItems.filter(item => !item.isOptional || item.acceptedByCustomer);
   const { subtotal: _s, tax: _t, total } = calcTotals(jobItems);
@@ -1092,7 +1096,7 @@ router.post("/estimates/:id/convert", requireVerifiedStaff, async (req, res): Pr
     totalAmount: total,
     estimateId: estimate.id,
     serviceId: req.body.serviceId ?? (estimate.lineItems as EstimateLineItem[] | null)?.find(item => !item.isOptional && item.serviceId)?.serviceId ?? null,
-    estimatedDuration: estimate.estimatedDurationMin ?? undefined,
+    estimatedDuration: bookingDuration ?? undefined,
     suppliesNeeded: (estimate as any).suppliesNeeded ?? [],
     invoiceAfterJob: !invoiceNow,
   }).returning();

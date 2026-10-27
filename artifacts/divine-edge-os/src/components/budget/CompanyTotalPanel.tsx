@@ -1,6 +1,9 @@
 import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Building2, Package, Timer, Layers } from 'lucide-react';
+import { Building2, Package, Timer, Layers, Calculator } from 'lucide-react';
+import type { JobPricingFloorInputs } from '@/lib/jobPricingFloor';
+import { companyFloorBaseline } from '@/lib/jobPricingFloorBaseline';
+import { ScopedJobPricingFloor } from './ScopedJobPricingFloor';
 import {
   BudgetYear, computeCompanyTotal, OverheadLineItems, OVERHEAD_CATEGORIES,
 } from '@/lib/budgetCalc';
@@ -8,13 +11,16 @@ import { NumField, Section, ResultCard, $, pct } from './shared';
 import { CheckupPanel } from './CheckupPanel';
 
 export function CompanyTotalPanel({
-  year, onOverrideChange, onCompanyCheckupChange,
+  year, onOverrideChange, onCompanyCheckupChange, onJobPricingFloorChange,
 }: {
+  onJobPricingFloorChange: (next: JobPricingFloorInputs | undefined) => void;
   year: BudgetYear;
   onOverrideChange: (overrides: Partial<OverheadLineItems>) => void;
   onCompanyCheckupChange: (which: 'companyMidYearCheckup' | 'companyEndYearCheckup', c: BudgetYear['companyMidYearCheckup']) => void;
 }) {
   const totals = useMemo(() => computeCompanyTotal(year), [year]);
+
+  const jpfBaseline = useMemo(() => companyFloorBaseline(year), [year]);
 
   const setOverride = (key: keyof OverheadLineItems, val: number) => {
     onOverrideChange({ ...year.overheadOverrides, [key]: val });
@@ -89,6 +95,18 @@ export function CompanyTotalPanel({
             <span className="text-amber-800">Combined annual overhead</span>
             <span className="font-bold text-amber-900">{$(totals.combinedAnnualOverhead)} / yr</span>
           </div>
+        </Section>
+
+        {/* Company-wide job pricing floor */}
+        <Section title="Job Pricing Floor — Company-wide" icon={Calculator} defaultOpen={false}>
+          <ScopedJobPricingFloor
+            scopeId="company"
+            scopeLabel="the company"
+            saved={year.companyJobPricingFloor}
+            baseline={jpfBaseline}
+            onChange={onJobPricingFloorChange}
+            baselineNote="Overhead is the combined annual overhead above (including your overrides) plus all owner salaries, ÷ 12. Wage and burden are averaged across paid employees; crew size is average paid employees per crew. Billable hours are total crew-hours across every division's crews ÷ 12, not man-hours. Stop times and direct costs are example values."
+          />
         </Section>
 
         {/* Company-wide checkups */}

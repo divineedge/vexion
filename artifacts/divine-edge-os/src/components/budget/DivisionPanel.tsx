@@ -4,13 +4,15 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import {
-  Users, Building2, Target, TrendingUp, Clock, Package, Timer, AlertTriangle,
+  Users, Building2, Target, TrendingUp, Clock, Package, Timer, AlertTriangle, Calculator,
 } from 'lucide-react';
 import {
   DivisionBudget, computeDivision, OVERHEAD_CATEGORIES,
 } from '@/lib/budgetCalc';
 import { NumField, Section, ResultCard, $, pct } from './shared';
 import { CheckupPanel } from './CheckupPanel';
+import { ScopedJobPricingFloor } from './ScopedJobPricingFloor';
+import { divisionFloorBaseline, divisionCrewHoursYear } from '@/lib/jobPricingFloorBaseline';
 
 export function DivisionPanel({
   division, onChange, previousResults, previousYear,
@@ -24,6 +26,8 @@ export function DivisionPanel({
     onChange({ ...division, [key]: val });
 
   const results = useMemo(() => computeDivision(division), [division]);
+
+  const jpfBaseline = useMemo(() => divisionFloorBaseline(division), [division]);
 
   const budgetedForCheckup = useMemo(() => ({
     revenue: results.requiredRevenue,
@@ -157,6 +161,18 @@ export function DivisionPanel({
               </div>
             </div>
           )}
+        </Section>
+
+        {/* Division job pricing floor */}
+        <Section title={`Job Pricing Floor — ${division.name}`} icon={Calculator} defaultOpen={false}>
+          <ScopedJobPricingFloor
+            scopeId={`div-${division.id}`}
+            scopeLabel={division.name}
+            saved={division.jobPricingFloor}
+            baseline={jpfBaseline}
+            onChange={next => set('jobPricingFloor', next)}
+            baselineNote={`Overhead is this division's monthly overhead plus owner salary ÷ 12 (the owner is not also charged as crew labor). Billable hours are crew-hours: ${division.crewCount} crew${division.crewCount !== 1 ? 's' : ''} × on-site hours ÷ 12 = ${Math.round(divisionCrewHoursYear(division) / 12).toLocaleString()} crew hrs/mo, not the ${results.manHoursYear.toLocaleString()} man-hours/yr used for the rate above. Stop times and direct costs are example values.`}
+          />
         </Section>
 
         {/* Checkups */}

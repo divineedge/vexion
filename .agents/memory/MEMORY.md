@@ -87,3 +87,4 @@
 - [Software platform monetization](software-platform-monetization.md) — software-owner fees above Stripe costs and software subscriptions sold to businesses must work across payment methods.
 - [Launch readiness](launch-readiness-policy.md) — private software support, consent-based rollout, authenticator-key recovery, and honestly scoped restore evidence.
 - [Nested left-join identity](drizzle-nested-left-joins.md) — project a non-null ID first; a leading nullable setting can collapse a real joined company to null.
+- [Modal retry drafts](modal-retry-drafts.md) — validation dialogs can dismiss and clear parent editors; retry the complete submitted draft, not the reset form.

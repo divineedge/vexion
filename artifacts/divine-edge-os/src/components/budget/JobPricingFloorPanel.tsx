@@ -14,7 +14,7 @@ export const draftFromInputs = (i: JobPricingFloorInputs): JobPricingFloorDraft 
 export const parseDraft = (d: JobPricingFloorDraft): JobPricingFloorInputs =>
   Object.fromEntries(Object.entries(d).map(([k, v]) => [k, v.trim() === '' ? NaN : Number(v)])) as unknown as JobPricingFloorInputs;
 
-const FIELDS: { key: keyof JobPricingFloorInputs; label: string; unit: string; prefix?: boolean; step?: string; hint: string }[] = [
+export const FIELDS: { key: keyof JobPricingFloorInputs; label: string; unit: string; prefix?: boolean; step?: string; hint: string }[] = [
   { key: 'hourlyWage', label: 'Hourly wage per crew member', unit: '$/hr', prefix: true, hint: 'Base pay for one person before taxes and insurance.' },
   { key: 'payrollBurdenPct', label: 'Payroll burden', unit: '%', hint: 'Payroll taxes, workers comp and benefits as a percent of wage. Typical starting point: 15%.' },
   { key: 'crewMembers', label: 'Crew members on the stop', unit: 'people', step: '1', hint: 'Every crew member is paid for on-site plus drive and setup time.' },
@@ -26,7 +26,7 @@ const FIELDS: { key: keyof JobPricingFloorInputs; label: string; unit: string; p
   { key: 'directJobCosts', label: 'Other direct job costs', unit: '$/stop', prefix: true, hint: 'Optional: materials, fuel, dump fees used on this stop and not already in overhead.' },
 ];
 
-const money = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+export const money = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export function JobPricingFloorPanel({ draft, onChange, isDefault }: {
   draft: JobPricingFloorDraft;

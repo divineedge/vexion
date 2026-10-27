@@ -69,7 +69,7 @@ import {
   Briefcase, Loader2, Layers, MapPin,
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { useLocation } from 'wouter';
+import { useLocation, useSearch } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { RecurringTemplateSheet } from '@/components/financials/RecurringTemplateSheet';
 import { BillingCoveragePanel } from '@/components/financials/BillingCoveragePanel';
@@ -1371,6 +1371,7 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
 
 export default function FinancialsPage() {
   const [, setLocation] = useLocation();
+  const routeSearch = useSearch();
   const qc = useQueryClient();
   const { user, canManageOffice } = useAuth();
 
@@ -1425,8 +1426,9 @@ export default function FinancialsPage() {
 
   // Handle ?action=create&customerId= from other pages
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(routeSearch);
     if (params.get('action') === 'create') {
+      setTab('invoices');
       setCreateInvoiceOpen(true);
       const cid = params.get('customerId');
       if (cid) {
@@ -1434,9 +1436,9 @@ export default function FinancialsPage() {
           document.dispatchEvent(new CustomEvent('financials:prefillCustomer', { detail: cid }));
         }, 100);
       }
-      window.history.replaceState(null, '', window.location.pathname);
+      setLocation(window.location.pathname, { replace: true });
     }
-  }, []);
+  }, [routeSearch, setLocation]);
 
   const handleRunNow = (templateId: number, excludeJobIds: number[]) => {
     runNow.mutate({ id: templateId, data: { excludeJobIds } as any }, {

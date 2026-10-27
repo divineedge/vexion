@@ -21,6 +21,12 @@ Every drag-and-drop or manual reschedule asks whether to charge a rescheduling f
 
 **How to apply:** Confirm the amount, save the date and fee together, and do not interpret the choice as permission to charge a card.
 
+Estimate creation is for quoting, not booking: scheduling time, employee/crew assignment, and work-job versus site-visit choices belong after the customer accepts.
+
+**Why:** The user explicitly wants these decisions made at acceptance rather than mixed into writing the estimate.
+
+**How to apply:** Preserve pricing-related duration estimates, but do not schedule work or inherit operational assignments when creating a quote from a template. Offer booking from the accepted estimate instead.
+
 Companies choose whether shared invoice/estimate links open the document directly or a no-sign-in guest customer portal. The guest view asks customers to review email, phone, address, and the document's property satellite imagery and labeled measurements.
 
 **Why:** The user wants company control over document delivery, and customers to review their details without signing in.

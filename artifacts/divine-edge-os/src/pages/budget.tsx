@@ -337,7 +337,9 @@ export default function BudgetPage() {
         <JobPricingFloorPanel draft={jpfDraft} onChange={changeJpf} isDefault={!year.jobPricingFloor && isDefaultScenario(jpfDraft)} />
       ) : activeTab === COMPANY_TAB ? (
         <CompanyTotalPanel
+          key={`company-${currentYear}`}
           year={year}
+          onJobPricingFloorChange={next => updateYear(y => ({ ...y, companyJobPricingFloor: next }))}
           onOverrideChange={overrides => updateYear(y => ({ ...y, overheadOverrides: overrides }))}
           onCompanyCheckupChange={(which, c) => updateYear(y => ({ ...y, [which]: c }))}
         />
@@ -369,6 +371,7 @@ export default function BudgetPage() {
           </CardContent>
         </Card>
         <DivisionPanel
+          key={`${currentYear}-${activeDivision.id}`}
           division={activeDivision}
           onChange={updated => updateDivision(activeDivision.id, updated)}
           previousResults={previousDivision ? computeDivision(previousDivision) : null}

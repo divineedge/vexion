@@ -1134,30 +1134,60 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
   }
 });
 
+router.post("/jobs/:id/archive", async (req, res): Promise<void> => {
+  const tenantId=getTenantId(req),userId=getUserId(req),id=Number(req.params.id);
+  if(!await isAdminRole(tenantId,userId)){res.status(403).json({error:"Manager role required"});return;}
+  const result=await db.transaction(async tx=>{
+    const [job]=await tx.select().from(jobsTable).where(and(eq(jobsTable.id,id),eq(jobsTable.tenantId,tenantId))).for("update");
+    if(!job)return {status:404,error:"Job not found"};
+    if(job.status==="in_progress")return {status:409,error:"Stop the job clock before archiving this job."};
+    if(job.status==="completed"&&!job.invoiceId)return {status:409,error:"Invoice this completed job before archiving it so its work is not missed by billing."};
+    await tx.update(jobsTable).set({archivedAt:new Date()}).where(and(eq(jobsTable.id,id),eq(jobsTable.tenantId,tenantId)));
+    await tx.insert(activityLogTable).values({tenantId,userId,type:"job_archived",entityId:id,message:`Job "${job.title}" archived; work and financial history retained.`});
+    return {status:204};
+  });
+  if(result.error){res.status(result.status).json({error:result.error});return;}
+  res.sendStatus(204);
+});
+
 router.delete("/jobs/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  // Block deletion if the job has linked chemical application records.
-  // Deleting would SET NULL the job_id and permanently sever the compliance audit trail.
-  const [chemCount] = await db
+  if(!await isAdminRole(tenantId,getUserId(req))){res.status(403).json({error:"Manager role required"});return;}
+  try {
+  const result=await db.transaction(async tx=>{
+  const [job]=await tx.select().from(jobsTable).where(and(eq(jobsTable.id,id),eq(jobsTable.tenantId,tenantId))).for("update");
+  if(!job)return {status:404,message:"Job not found"};
+  if(job.invoiceId||["completed","in_progress"].includes(job.status))return {status:409,message:"This job has recorded work or billing history. Archive it instead of permanently deleting its history."};
+  // Lock the job before checking dependencies so compliance links cannot race deletion.
+  const [chemCount] = await tx
     .select({ count: sql<number>`count(*)::int` })
     .from(chemicalApplicationsTable)
     .where(and(eq(chemicalApplicationsTable.jobId, id), eq(chemicalApplicationsTable.tenantId, tenantId)));
 
   const count = chemCount?.count ?? 0;
   if (count > 0) {
-    res.status(409).json({
-      error: "Cannot delete job with chemical application records",
-      message: `This job has ${count} chemical application record${count === 1 ? "" : "s"} linked to it. Deleting the job would permanently remove the job association from these compliance records. Please reassign or remove the chemical application records before deleting this job.`,
-      chemicalApplicationCount: count,
-    });
-    return;
+    return {status:409,message:`This job has ${count} chemical application record${count===1?"":"s"}. Archive it to remove it from the schedule while preserving compliance history.`};
   }
-
-  await db.delete(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
+  // This is a derived reporting baseline, not a payment or work record.
+  // Other dependency failures roll back this cleanup and preserve all history.
+  await tx.execute(sql`DELETE FROM job_report_baselines WHERE job_id=${id} AND tenant_id=${tenantId}`);
+  await tx.delete(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
+  await tx.insert(activityLogTable).values({tenantId,userId:getUserId(req),type:"job_deleted",entityId:id,message:`Unused job "${job.title}" permanently deleted.`});
+  return {status:204};
+  });
+  if(result.message){res.status(result.status).json({error:result.message,message:result.message});return;}
   res.sendStatus(204);
+  }catch(error){
+    const e=error as {code?:string;cause?:{code?:string}};
+    if(e.code==="23503"||e.cause?.code==="23503"){
+      const message="This job has linked work, forms, messages, or financial records. Archive it instead to preserve that history.";
+      res.status(409).json({error:message,message});return;
+    }
+    throw error;
+  }
 });
 
 // ── Shared helper: run all completion side effects ───────────────────────────
@@ -2341,18 +2371,14 @@ router.post("/jobs/:id/approve-reschedule", async (req, res): Promise<void> => {
   }
 
   // Atomic claim: only approves while still in the pending state.
+  const correctedDuration = req.body.estimatedDuration === undefined ? undefined : Number(req.body.estimatedDuration);
+  if (correctedDuration !== undefined && (!Number.isSafeInteger(correctedDuration) || correctedDuration <= 0)) {
+    res.status(400).json({ error: "Job duration must be a positive whole number of minutes" }); return;
+  }
   let requestedFeeUpdates: ReturnType<typeof rescheduleFee>;
   try { requestedFeeUpdates = rescheduleFee(job, req.body); }
   catch (error) { res.status(400).json({ error: (error as Error).message }); return; }
-  const [updated] = await db
-    .update(jobsTable)
-    .set({
-      ...requestedFeeUpdates,
-      scheduledAt: newScheduled,
-      rescheduleRequestStatus: "approved",
-      rescheduleRequestReply: reply?.trim() || null,
-    } as any)
-    .where(
+  const [updated] = await capacityCheckedJobUpdate(
       and(
         eq(jobsTable.id, id),
         eq(jobsTable.tenantId, tenantId),
@@ -2361,9 +2387,16 @@ router.post("/jobs/:id/approve-reschedule", async (req, res): Promise<void> => {
           isNull((jobsTable as any).rescheduleRequestStatus),
           eq((jobsTable as any).rescheduleRequestStatus, "pending"),
         ),
-      ),
-    )
-    .returning();
+      )!,
+      {
+      ...requestedFeeUpdates,
+      scheduledAt: newScheduled,
+      ...(correctedDuration !== undefined ? { estimatedDuration: correctedDuration } : {}),
+      rescheduleRequestStatus: "approved",
+      rescheduleRequestReply: reply?.trim() || null,
+    } as Partial<typeof jobsTable.$inferInsert>,
+    { actorId: getUserId(req), reason: req.body.capacityOverrideReason },
+  );
 
   if (!updated) {
     res.status(409).json({ error: "No pending reschedule request on this job, or it was already processed" });

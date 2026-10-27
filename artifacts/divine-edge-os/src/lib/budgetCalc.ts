@@ -93,6 +93,8 @@ export interface DivisionBudget extends OverheadLineItems {
   minimumVisitHours: number;
   midYearCheckup: CheckupData;
   endYearCheckup: CheckupData;
+  /** Saved stop-level floor scenario for this division; undefined = follow budget-derived baseline. */
+  jobPricingFloor?: JobPricingFloorInputs;
 }
 
 export function defaultDivision(name = 'Main'): DivisionBudget {
@@ -141,6 +143,7 @@ function migrateFlatToDivision(raw: any, name = 'Main'): DivisionBudget {
   const merged: DivisionBudget = { ...base, ...raw, id: raw.id ?? base.id, name: raw.name ?? name };
   merged.midYearCheckup = migrateCheckup(raw.midYearCheckup);
   merged.endYearCheckup = migrateCheckup(raw.endYearCheckup);
+  merged.jobPricingFloor = restoreJobPricingFloor(raw.jobPricingFloor);
   merged.estimatedAnnualMaterialCost = Number(raw.estimatedAnnualMaterialCost) || 0;
   merged.minimumVisitHours = raw.minimumVisitHours != null && Number.isFinite(Number(raw.minimumVisitHours))
     ? Math.max(0, Number(raw.minimumVisitHours)) : 1;
@@ -158,6 +161,8 @@ export interface BudgetYear {
   companyEndYearCheckup: CheckupData;
   savedAt?: string;
   jobPricingFloor?: JobPricingFloorInputs;
+  /** Company-wide stop floor scenario; undefined = follow budget-derived baseline. */
+  companyJobPricingFloor?: JobPricingFloorInputs;
 }
 
 export function defaultBudgetYear(year = new Date().getFullYear()): BudgetYear {
@@ -188,6 +193,7 @@ export function migrateBudgetPayload(saved: unknown): BudgetYear[] {
         companyEndYearCheckup: migrateCheckup(raw.companyEndYearCheckup),
         savedAt: raw.savedAt,
         jobPricingFloor: restoreJobPricingFloor(raw.jobPricingFloor),
+        companyJobPricingFloor: restoreJobPricingFloor(raw.companyJobPricingFloor),
       };
     }
     // Legacy flat shape: the whole object IS a single division's fields.

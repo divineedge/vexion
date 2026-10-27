@@ -4,7 +4,7 @@ import { directionsUrl } from '@/lib/directions';
 import { serverErrorMessage } from '@/lib/serverError';
 import { CapacityOverrideDialog, isCapacityConflict, capacityConflictMessage, capacityConflictWarnings } from '@/components/schedule/CapacityOverrideDialog';
 import { RescheduleFeeDialog, defaultRescheduleFee, moveToDay, apiErrorMessage, type RescheduleFeeChoice } from '@/components/schedule/RescheduleFeeDialog';
-import { useLocation, Link } from 'wouter';
+import { useLocation, useSearch, Link } from 'wouter';
 import {
   useListJobs, getListJobsQueryKey,
   useGetJob, getGetJobQueryKey,
@@ -258,6 +258,7 @@ export default function SchedulePage() {
   const { user, isTechnician, canManageJobs, canManageOffice } = useAuth();
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
+  const search = useSearch();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<'week' | 'month' | 'series'>('week');
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
@@ -269,7 +270,7 @@ export default function SchedulePage() {
 
   // Open create sheet when arriving via quick-add shortcut (?action=create) or prefill from property detail
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(search);
     const addressParam = params.get('address');
     const jobIdParam = params.get('jobId');
     if (addressParam) {
@@ -287,9 +288,9 @@ export default function SchedulePage() {
       if (propertyIdParam) setNewJob(j => ({ ...j, propertyId: propertyIdParam }));
     }
     if (addressParam || jobIdParam || params.get('action')) {
-      window.history.replaceState({}, '', window.location.pathname);
+      setLocation(window.location.pathname, { replace: true });
     }
-  }, []);
+  }, [search, setLocation]);
 
   const [alertPanelOpen, setAlertPanelOpen] = useState(false);
   const [alertForm, setAlertForm] = useState({ type: 'issue', priority: 'normal', message: '' });
@@ -539,8 +540,8 @@ export default function SchedulePage() {
   }, [selectedJobId]);
   const [cancelApproveReply, setCancelApproveReply] = useState('');
   const approveReschedule = useMutation({
-    mutationFn: ({ id, approvedDate, reply, chargeRescheduleFee, rescheduleFeeAmount }: { id: number; approvedDate?: string; reply?: string } & RescheduleFeeChoice) =>
-      customFetch<void>(`/api/jobs/${id}/approve-reschedule`, { method: 'POST', body: JSON.stringify({ approvedDate, reply, chargeRescheduleFee, rescheduleFeeAmount }) }),
+    mutationFn: ({ id, ...data }: { id: number; approvedDate?: string; reply?: string; estimatedDuration?: number; capacityOverrideReason?: string } & RescheduleFeeChoice) =>
+      customFetch<void>(`/api/jobs/${id}/approve-reschedule`, { method: 'POST', body: JSON.stringify(data) }),
   });
 
   // ── Reschedule with explicit fee decision (drag/drop, +1 day, date picker, request approval) ──
@@ -560,7 +561,7 @@ export default function SchedulePage() {
   };
   const [capConflict, setCapConflict] = useState<null | { kind: 'move'; choice: RescheduleFeeChoice; message: string; warnings: string[] } | { kind: 'create'; message: string; warnings: string[] }>(null);
   const [capError, setCapError] = useState<string | null>(null);
-  const confirmMove = (choice: RescheduleFeeChoice, capacityOverrideReason?: string) => {
+  const confirmMove = (choice: RescheduleFeeChoice, capacityOverrideReason?: string, estimatedDuration?: number) => {
     if (!pendingMove) return;
     const done = (msg: string) => {
       toast.success(msg);
@@ -570,13 +571,20 @@ export default function SchedulePage() {
       setMoveError(null);
     };
     if (pendingMove.kind === 'approve-request') {
-      approveReschedule.mutate({ id: pendingMove.jobId, approvedDate: pendingMove.approvedDate, reply: pendingMove.reply, ...choice }, {
-        onSuccess: () => { setRescheduleApproveOpen(false); done(choice.chargeRescheduleFee ? `Reschedule approved, $${choice.rescheduleFeeAmount.toFixed(2)} fee added` : 'Reschedule approved, customer notified'); },
-        onError: (err) => setMoveError(apiErrorMessage(err, 'Failed to approve reschedule.')),
+      approveReschedule.mutate({ id: pendingMove.jobId, approvedDate: pendingMove.approvedDate, reply: pendingMove.reply, ...choice, estimatedDuration, capacityOverrideReason }, {
+        onSuccess: () => { setCapConflict(null); setCapError(null); setRescheduleApproveOpen(false); done(choice.chargeRescheduleFee ? `Reschedule approved, $${choice.rescheduleFeeAmount.toFixed(2)} fee added` : 'Reschedule approved, customer notified'); },
+        onError: (err) => {
+          if (isCapacityConflict(err)) {
+            if (capacityOverrideReason) setCapError(apiErrorMessage(err, 'Override was not accepted.'));
+            else setCapConflict({ kind: 'move', choice, message: capacityConflictMessage(err), warnings: capacityConflictWarnings(err) });
+            return;
+          }
+          setCapConflict(null); setMoveError(apiErrorMessage(err, 'Failed to approve reschedule.'));
+        },
       });
       return;
     }
-    updateJob.mutate({ id: pendingMove.jobId, data: { scheduledAt: pendingMove.to.toISOString(), ...choice, ...(capacityOverrideReason ? { capacityOverrideReason } : {}) } as Parameters<typeof updateJob.mutate>[0]['data'] }, {
+    updateJob.mutate({ id: pendingMove.jobId, data: { scheduledAt: pendingMove.to.toISOString(), ...choice, ...(estimatedDuration ? { estimatedDuration } : {}), ...(capacityOverrideReason ? { capacityOverrideReason } : {}) } as Parameters<typeof updateJob.mutate>[0]['data'] }, {
       onSuccess: () => { setCapConflict(null); setCapError(null); done(choice.chargeRescheduleFee ? `Rescheduled, $${choice.rescheduleFeeAmount.toFixed(2)} fee added` : 'Rescheduled'); },
       onError: (err) => {
         if (isCapacityConflict(err)) {
@@ -942,36 +950,42 @@ export default function SchedulePage() {
   };
 
   const [noCardJobWarning, setNoCardJobWarning] = useState(false);
+  const pendingJobDraft = React.useRef<NewJobForm | null>(null);
 
-  const doCreateJob = (capacityOverrideReason?: string) => {
-    const durationMins = newJob.estimatedDuration
-      ? newJob.estimatedDurationUnit === 'hours'
-        ? Math.round(parseFloat(newJob.estimatedDuration) * 60)
-        : parseInt(newJob.estimatedDuration, 10)
-      : undefined;
+  const doCreateJob = (capacityOverrideReason?: string, correctedDuration?: number) => {
+    const draft = capacityOverrideReason || correctedDuration !== undefined ? pendingJobDraft.current ?? newJob : newJob;
+    pendingJobDraft.current = { ...draft };
+    const scheduledDate = new Date(draft.scheduledAt);
+    if (!Number.isFinite(scheduledDate.getTime())) { toast.error('Choose a valid date and time for this job.'); return; }
+    const durationMins = correctedDuration ?? (draft.estimatedDuration
+      ? draft.estimatedDurationUnit === 'hours'
+        ? Math.round(parseFloat(draft.estimatedDuration) * 60)
+        : parseInt(draft.estimatedDuration, 10)
+      : undefined);
 
-    const recurrenceRule = buildRecurrenceRule(newJob);
+    const recurrenceRule = buildRecurrenceRule(draft);
 
     createJob.mutate({
       data: {
-        title: newJob.title,
-        description: newJob.description || undefined,
-        scheduledAt: new Date(newJob.scheduledAt).toISOString(),
+        title: draft.title,
+        description: draft.description || undefined,
+        scheduledAt: scheduledDate.toISOString(),
         estimatedDuration: durationMins,
-        priority: newJob.priority as 'low' | 'normal' | 'high' | 'urgent',
-        customerId: newJob.customerId ? parseInt(newJob.customerId, 10) : undefined,
-        propertyId: newJob.propertyId ? parseInt(newJob.propertyId, 10) : undefined,
-        serviceId: newJob.serviceId ? parseInt(newJob.serviceId, 10) : undefined,
-        assigneeId: newJob.assigneeId ? parseInt(newJob.assigneeId, 10) : undefined,
-        crewId: newJob.crewId ? parseInt(newJob.crewId, 10) : undefined,
+        priority: draft.priority as 'low' | 'normal' | 'high' | 'urgent',
+        customerId: draft.customerId ? parseInt(draft.customerId, 10) : undefined,
+        propertyId: draft.propertyId ? parseInt(draft.propertyId, 10) : undefined,
+        serviceId: draft.serviceId ? parseInt(draft.serviceId, 10) : undefined,
+        assigneeId: draft.assigneeId ? parseInt(draft.assigneeId, 10) : undefined,
+        crewId: draft.crewId ? parseInt(draft.crewId, 10) : undefined,
         recurrenceRule,
-        smsReminderEnabled: newJob.smsReminderEnabled,
-        tags: newJob.tags.length ? newJob.tags : undefined,
-        ...(newJob.offSeasonEnabled ? { offSeasonStart: newJob.offSeasonStart, offSeasonEnd: newJob.offSeasonEnd } : {}),
+        smsReminderEnabled: draft.smsReminderEnabled,
+        tags: draft.tags.length ? draft.tags : undefined,
+        ...(draft.offSeasonEnabled ? { offSeasonStart: draft.offSeasonStart, offSeasonEnd: draft.offSeasonEnd } : {}),
         ...(capacityOverrideReason ? { capacityOverrideReason } : {}),
       } as any,
     }, {
       onSuccess: () => {
+        pendingJobDraft.current = null;
         setCapConflict(null); setCapError(null);
         toast.success(recurrenceRule ? 'Recurring job series created' : 'Job created');
         qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
@@ -1023,14 +1037,23 @@ export default function SchedulePage() {
         open={capConflict != null}
         message={capConflict?.message ?? ''}
         warnings={capConflict?.warnings}
-        pending={updateJob.isPending || createJob.isPending}
+        pending={updateJob.isPending || createJob.isPending || approveReschedule.isPending}
         error={capError}
-        onCancel={() => { setCapConflict(null); setCapError(null); }}
-        onOverride={reason => {
+        onRetryWithDuration={minutes => {
           if (!capConflict) return;
           setCapError(null);
-          if (capConflict.kind === 'move') confirmMove(capConflict.choice, reason);
-          else doCreateJob(reason);
+          if (capConflict.kind === 'move') confirmMove(capConflict.choice, undefined, minutes);
+          else {
+            setNewJob(job => ({ ...(pendingJobDraft.current ?? job), estimatedDuration: String(minutes), estimatedDurationUnit: 'minutes' }));
+            doCreateJob(undefined, minutes);
+          }
+        }}
+        onCancel={() => { if (capConflict?.kind === 'create') { if (pendingJobDraft.current) setNewJob(pendingJobDraft.current); setCreateOpen(true); } setCapConflict(null); setCapError(null); }}
+        onOverride={(reason, minutes) => {
+          if (!capConflict) return;
+          setCapError(null);
+          if (capConflict.kind === 'move') confirmMove(capConflict.choice, reason, minutes);
+          else doCreateJob(reason, minutes);
         }}
       />
       <RescheduleFeeDialog
@@ -1043,7 +1066,7 @@ export default function SchedulePage() {
         pending={updateJob.isPending || approveReschedule.isPending}
         error={moveError}
         onConfirm={confirmMove}
-        onCancel={() => { setPendingMove(null); setMoveError(null); }}
+        onCancel={() => { if (!capConflict) { setPendingMove(null); setMoveError(null); } }}
       />
       {/* No-card warning */}
       <Dialog open={noCardJobWarning} onOpenChange={open => { if (!open) setNoCardJobWarning(false); }}>
@@ -1708,7 +1731,7 @@ export default function SchedulePage() {
       )}
 
       {/* Create Job Sheet */}
-      <Sheet open={createOpen} onOpenChange={open => { if (!open) { setCreateOpen(false); setNewJob(EMPTY_JOB); } }}>
+      <Sheet open={createOpen} onOpenChange={open => { if (!open && !capConflict) { setCreateOpen(false); setNewJob(EMPTY_JOB); } }}>
         <SheetContent className="w-full sm:max-w-[75vw] overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle>New Job</SheetTitle>
@@ -1742,11 +1765,11 @@ export default function SchedulePage() {
       </Sheet>
 
       {/* Job Detail Sheet */}
-      <Sheet open={selectedJobId != null} onOpenChange={open => { if (!open) setSelectedJobId(null); }}>
+      <Sheet open={selectedJobId != null} onOpenChange={open => { if (!open && !deleteJobPending && !deleteBlockedMsg) setSelectedJobId(null); }}>
         <SheetContent className="w-full sm:max-w-[75vw] overflow-y-auto">
           {selectedJob ? (
             <>
-              <SheetHeader className="pb-4">
+              <SheetHeader className="pb-4 pr-10">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     {editingTitle ? (
@@ -3637,8 +3660,19 @@ export default function SchedulePage() {
             </DialogTitle>
             <DialogDescription>{deleteBlockedMsg}</DialogDescription>
           </DialogHeader>
-          <div className="flex justify-end pt-2">
-            <Button onClick={() => setDeleteBlockedMsg(null)}>OK</Button>
+          <div className="flex flex-wrap justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setDeleteBlockedMsg(null)}>Keep job</Button>
+            <Button onClick={async () => {
+              if (!selectedJobId) return;
+              try {
+                await customFetch(`/api/jobs/${selectedJobId}/archive`, { method: 'POST' });
+                await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                setDeleteBlockedMsg(null); setSelectedJobId(null);
+                toast.success('Job archived; work and billing history preserved');
+              } catch (error) {
+                toast.error(apiErrorMessage(error, 'Unable to archive this job.'));
+              }
+            }}>Archive job instead</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -3666,12 +3700,12 @@ export default function SchedulePage() {
                     setDeleteJobPending(false);
                   },
                   onError: (err: any) => {
-                    const status = err?.response?.status;
-                    const body = err?.response?.data;
+                    const status = err?.status ?? err?.response?.status;
+                    const body = err?.data ?? err?.response?.data;
                     if (status === 409 && body?.message) {
                       setDeleteBlockedMsg(body.message);
                     } else {
-                      toast.error('Failed to delete job');
+                      toast.error(body?.error || 'Failed to delete job');
                     }
                     setDeleteJobPending(false);
                   },

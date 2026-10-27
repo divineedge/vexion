@@ -24,7 +24,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Search, Plus, Building, Phone, Mail, Save, X, User, Tag, FileText, Home, AlertTriangle, Filter, Zap, MapPin, CreditCard, DollarSign, Briefcase, MoreHorizontal, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { useLocation } from 'wouter';
+import { useLocation, useSearch } from 'wouter';
 import { useDebounce } from '@/hooks/use-debounce';
 import { toast } from 'sonner';
 import { getActiveCustomerFields, isCustomerFieldVisible } from '@/lib/fieldConfig';
@@ -267,6 +267,7 @@ export default function CustomersPage() {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
   const [, setLocation] = useLocation();
+  const routeSearch = useSearch();
   const qc = useQueryClient();
   const [reminderFailureFilter, setReminderFailureFilter] = useState(false);
   const [openBalanceFilter, setOpenBalanceFilter] = useState(false);
@@ -314,14 +315,14 @@ export default function CustomersPage() {
 
   // Open create sheet when arriving via quick-add shortcut (?action=create)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(routeSearch);
     if (params.get('action') === 'create') {
       setCreating(true);
       setForm(BLANK);
       // Clean the URL without triggering a re-render loop
-      window.history.replaceState({}, '', window.location.pathname);
+      setLocation(window.location.pathname, { replace: true });
     }
-  }, []);
+  }, [routeSearch, setLocation]);
 
   const queryParams = {
     q: debouncedSearch || undefined,

@@ -25,3 +25,9 @@ Draft software-plan edits must not silently reprice existing subscriptions or ch
 **Why:** Editing a catalog is not customer authorization to change an existing recurring price or collect an unpublished fee.
 
 **How to apply:** Keep existing Stripe Price relationships, publish new recurring prices for future purchases, and keep draft fee overrides separate from the published policy. Software-owner grants bind trusted existing account identities, never an unverified email signup claim.
+
+Confirm software-owner identity separately in preview and production.
+
+**Why:** Accounts with the same sign-in email can have different user and company IDs in the two databases. A development grant does not establish published access, and copying development IDs can authorize the wrong account.
+
+**How to apply:** Read the existing production identity through the read-only production database tools. When using the explicit owner bootstrap pair, scope it to production only; never use a shared environment setting with development IDs or authorize owners by email claims.

@@ -1003,7 +1003,7 @@ router.post("/customers/:id/send-card-link", async (req, res): Promise<void> => 
 router.get("/stripe/config", async (_req, res): Promise<void> => {
   const { getStripePublishableKey } = await import("../lib/stripe");
   const key = getStripePublishableKey();
-  res.json({ publishableKey: key ?? null });
+  res.json({ publishableKey: key ?? null, configured: !!key && !!getStripeClient() });
 });
 
 // ── PAYMENT SETUP / ATTACH ────────────────────────────────────────────────────
@@ -1022,6 +1022,8 @@ router.post("/customers/:id/setup-intent", async (req, res): Promise<void> => {
   if (!stripe) { res.status(503).json({ error: "Stripe is not configured" }); return; }
 
   const { ensureStripeCustomer, getStripePublishableKey } = await import("../lib/stripe");
+  const publishableKey = getStripePublishableKey();
+  if (!publishableKey) { res.status(503).json({ error: "Stripe publishable key is not configured" }); return; }
   const stripeCustomerId = await ensureStripeCustomer(id, customer.name, customer.email, customer.stripeCustomerId);
 
   const setupIntent = await stripe.setupIntents.create({
@@ -1029,9 +1031,6 @@ router.post("/customers/:id/setup-intent", async (req, res): Promise<void> => {
     payment_method_types: ["card"],
     usage: "off_session",
   });
-
-  const publishableKey = getStripePublishableKey();
-  if (!publishableKey) { res.status(503).json({ error: "Stripe publishable key is not configured" }); return; }
 
   res.json({ clientSecret: setupIntent.client_secret, publishableKey });
 });

@@ -75,6 +75,7 @@ const CardSetupInline = forwardRef<CardSetupInlineHandle, object>((_props, ref) 
   useImperativeHandle(ref, () => ({
     cardComplete,
     async setupCard(customerId: number) {
+      if (!authConfirmed) throw new Error("Confirm the customer's authorization before saving a card.");
       if (!stripe || !elements) throw new Error('Stripe not ready');
       const cardEl = elements.getElement(CardElement);
       if (!cardEl) throw new Error('Card element not found');
@@ -424,17 +425,31 @@ export default function CustomerDetailPage() {
   // Card-on-file inline setup
   const [showAddCard, setShowAddCard] = useState(false);
   const [stripePromise, setStripePromise] = useState<Promise<StripeInstance | null> | null>(null);
+  const [cardSetupLoading, setCardSetupLoading] = useState(false);
+  const [cardSetupError, setCardSetupError] = useState<string | null>(null);
   const [addCardBusy, setAddCardBusy] = useState(false);
   const [cardLinkSending, setCardLinkSending] = useState(false);
   const [expiryReminderSending, setExpiryReminderSending] = useState(false);
   const cardSetupRef = useRef<CardSetupInlineHandle>(null);
 
   const openCardSetup = useCallback(async () => {
-    if (!stripePromise) {
-      const cfg = await customFetch<{ publishableKey: string | null }>('/api/stripe/config');
-      if (cfg.publishableKey) setStripePromise(loadStripe(cfg.publishableKey));
-    }
     setShowAddCard(true);
+    setCardSetupError(null);
+    if (stripePromise) return;
+    setCardSetupLoading(true);
+    try {
+      const cfg = await customFetch<{ publishableKey: string | null; configured?: boolean }>('/api/stripe/config');
+      if (!cfg.publishableKey || cfg.configured === false) {
+        throw new Error('Stripe payment setup is incomplete. An administrator must finish connecting Stripe before cards can be added. Card details are stored securely by Stripe, not in this app.');
+      }
+      const client = await loadStripe(cfg.publishableKey);
+      if (!client) throw new Error('The secure card form could not load. Check your connection and try again.');
+      setStripePromise(Promise.resolve(client));
+    } catch (error) {
+      setCardSetupError(error instanceof Error ? error.message : 'Unable to load the secure card form. Please try again.');
+    } finally {
+      setCardSetupLoading(false);
+    }
   }, [stripePromise]);
 
   const handleSaveCard = async () => {
@@ -849,14 +864,23 @@ export default function CustomerDetailPage() {
           })()}
 
           {/* Inline Stripe card setup form */}
-          {showAddCard && stripePromise && (
-            <div className="mt-3 p-3 border rounded-lg bg-muted/30 space-y-3 max-w-sm">
+          {showAddCard && (
+            <div className="mt-3 p-3 border rounded-lg bg-muted/30 space-y-3 max-w-sm" data-testid="customer-card-setup">
               <p className="text-xs font-medium text-foreground">Enter card details</p>
-              <Elements stripe={stripePromise}>
-                <CardSetupInline ref={cardSetupRef} />
-              </Elements>
+              {cardSetupLoading && <p role="status" className="text-sm text-muted-foreground">Loading secure card form…</p>}
+              {cardSetupError && (
+                <div role="alert" className="space-y-2 text-sm text-destructive" data-testid="customer-card-setup-error">
+                  <p>{cardSetupError}</p>
+                  <Button type="button" size="sm" variant="outline" onClick={() => void openCardSetup()} disabled={cardSetupLoading}>Try again</Button>
+                </div>
+              )}
+              {!cardSetupError && !cardSetupLoading && stripePromise && (
+                <Elements stripe={stripePromise}>
+                  <CardSetupInline ref={cardSetupRef} />
+                </Elements>
+              )}
               <div className="flex gap-2">
-                <Button size="sm" onClick={handleSaveCard} disabled={addCardBusy} className="gap-1.5">
+                <Button size="sm" onClick={handleSaveCard} disabled={addCardBusy || cardSetupLoading || !!cardSetupError || !stripePromise} className="gap-1.5">
                   <CreditCard className="w-3 h-3" />
                   {addCardBusy ? 'Saving…' : 'Save Card'}
                 </Button>

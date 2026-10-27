@@ -35,3 +35,5 @@ VITE_PUBLIC_APP_URL = "https://divine-edge--divineedgepm.replit.app"
 
 [userenv.production]
 OAUTH_ISSUER = "https://divine-edge--divineedgepm.replit.app"
+PLATFORM_OWNER_TENANT_ID = "12"
+PLATFORM_OWNER_USER_ID = "23"

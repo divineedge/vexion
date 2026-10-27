@@ -51,6 +51,7 @@ import EmployeesPage from '@/pages/employees';
 import EmployeeFilePage from '@/pages/employee-file';
 import HrHiringPage from '@/pages/hr-hiring';
 import PortalInboxPage from '@/pages/portal-inbox';
+import { SoftwareFeatureBoundary } from '@/components/billing/SoftwareFeatureBoundary';
 import BudgetPage from '@/pages/budget';
 import PricingReviewPage from '@/pages/pricing-review';
 import StaffMessagesPage from '@/pages/staff-messages';
@@ -82,7 +83,7 @@ function ProtectedRoutes() {
   return (
     <AppLayout>
       {show && <OnboardingWalkthrough onDismiss={dismiss} />}
-      <Switch>
+      <SoftwareFeatureBoundary><Switch>
         <Route path="/dashboard" component={DashboardPage} />
         <Route path="/customers/:id" component={CustomerDetailPage} />
         <Route path="/customers" component={CustomersPage} />
@@ -136,7 +137,7 @@ function ProtectedRoutes() {
         <Route path="/account-security" component={AccountSecurityPage} />
         <Route path="/software-support" component={SoftwareSupportPage} />
         <Route component={NotFound} />
-      </Switch>
+      </Switch></SoftwareFeatureBoundary>
     </AppLayout>
   );
 }

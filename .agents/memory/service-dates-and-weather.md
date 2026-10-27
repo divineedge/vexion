@@ -19,4 +19,6 @@ The scheduler's fourteen-day forecast is for admins and managers planning crews 
 
 **Why:** The user wants weather and crew schedules together for planning, but separately requires chemical records to reflect actual application-time conditions.
 
-**How to apply:** Use the selected property's saved map pin and clearly identify the company timezone. Preserve crew/employee filters when navigating forecast dates, identify extended-range uncertainty, and never copy planning forecasts into chemical application records or label a forecast as automatic spray approval.
+**How to apply:** Use company-configured towns or ZIP codes for scheduler forecast locations, with the first saved location as the default; do not list every customer property. Clearly identify the company timezone. Preserve crew/employee filters when navigating forecast dates, identify extended-range uncertainty, and never copy planning forecasts into chemical application records or label a forecast as automatic spray approval.
+
+**Why towns and ZIPs:** The user says there are too many properties to use as the forecast-location picker and wants the business to manage its own town/ZIP options in Settings.

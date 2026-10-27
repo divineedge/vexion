@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableCombobox, isFromPickerPortal } from '@/components/shared/SearchableCombobox';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { useQueryClient } from '@tanstack/react-query';
@@ -51,6 +52,7 @@ export default function VisitsPage() {
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const createdVisitToOpen = React.useRef<number | null>(null);
   const [completeOpen, setCompleteOpen] = useState<number | null>(null);
   const [outcomeNotes, setOutcomeNotes] = useState('');
   const [createFollowUp, setCreateFollowUp] = useState(false);
@@ -133,9 +135,8 @@ export default function VisitsPage() {
       onSuccess: (v) => {
         toast.success('Visit created');
         invalidate();
+        createdVisitToOpen.current = v.id;
         setCreateOpen(false);
-        setForm({ customerId: '', propertyId: '', assigneeId: '', visitMode: 'scheduled', purpose: '', notes: '', scheduledAt: '', smsReminderEnabled: false });
-        setSelectedId(v.id);
       },
       onError: () => toast.error('Failed to create visit'),
     });
@@ -324,7 +325,20 @@ export default function VisitsPage() {
 
       {/* Create Sheet */}
       <Sheet open={createOpen} onOpenChange={open => { if (!open) setCreateOpen(false); }}>
-        <SheetContent className="w-full sm:max-w-[75vw] overflow-y-auto">
+        <SheetContent
+          className="w-full sm:max-w-[75vw] overflow-y-auto"
+          onCloseAutoFocus={event => {
+            const id = createdVisitToOpen.current;
+            if (id == null) return;
+            event.preventDefault();
+            createdVisitToOpen.current = null;
+            setForm({ customerId: '', propertyId: '', assigneeId: '', visitMode: 'scheduled', purpose: '', notes: '', scheduledAt: '', smsReminderEnabled: false });
+            setSelectedId(id);
+          }}
+          onInteractOutside={e => { isFromPickerPortal(e); }}
+          onPointerDownOutside={e => { isFromPickerPortal(e); }}
+          onFocusOutside={e => { isFromPickerPortal(e); }}
+        >
           <SheetHeader className="pb-4">
             <SheetTitle>Schedule a Visit</SheetTitle>
             <SheetDescription>Book a visit with a date, property, and assigned technician. Mark it complete when done.</SheetDescription>
@@ -342,10 +356,17 @@ export default function VisitsPage() {
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Customer</label>
-              <Select value={form.customerId} onValueChange={v => setForm(f => ({ ...f, customerId: v, propertyId: '' }))}>
-                <SelectTrigger title="Customer this visit is for"><SelectValue placeholder="Select customer..." /></SelectTrigger>
-                <SelectContent>{(customers?.items ?? []).map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
-              </Select>
+              <SearchableCombobox
+                className="h-9 w-full text-sm"
+                options={(customers?.items ?? []).map(c => ({ value: String(c.id), label: c.name, keywords: [(c as any).email ?? '', (c as any).phone ?? ''].filter(Boolean) }))}
+                value={form.customerId || null}
+                onChange={v => setForm(f => (f.customerId === v ? f : { ...f, customerId: v, propertyId: '' }))}
+                placeholder="Select customer..."
+                searchPlaceholder="Search customers..."
+                emptyText="No customers match."
+                ariaLabel="Customer"
+                title="Customer this visit is for"
+              />
             </div>
 
             <div className="space-y-1.5">

@@ -39,11 +39,12 @@ import {
   useGetTenantSettings, getGetTenantSettingsQueryKey,
   useListInventoryItems, getListInventoryItemsQueryKey,
 } from '@workspace/api-client-react';
+import { ServiceBundlePicker, normalizeBundle, bundlePayload, type BundledService } from '@/components/estimates/ServiceBundlePicker';
 import { useDebounce } from '@/hooks/use-debounce';
 import { format } from 'date-fns';
 import {
   Plus, FileText, DollarSign, TrendingUp, Send, Briefcase, Trash2,
-  ChevronRight, ChevronDown, Eye, Clock, User, MapPin, CheckCircle2, XCircle, Phone, Mail, Globe, Building2, Printer, Search, Edit2, RefreshCw, Copy, X, Target, Package, Layers, Calendar, Loader2, Receipt,
+  ChevronRight, ChevronDown, Eye, Clock, User, MapPin, CheckCircle2, XCircle, Phone, Mail, Globe, Building2, Printer, Search, Edit2, RefreshCw, Copy, X, Target, Package, Calendar, Loader2, Receipt,
 } from 'lucide-react';
 import { Link, useSearch, useLocation } from 'wouter';
 import { printEstimate, buildEstimatePrintDocument } from '@/lib/printUtils';
@@ -85,6 +86,8 @@ interface LineItem {
   serviceName?: string;
   secondaryServiceId?: number;
   secondaryServiceName?: string;
+  /** Additional bundled services (primary excluded) */
+  bundledServices?: BundledService[];
   // Plan template linking
   planTemplateId?: number;
   planTemplateName?: string;
@@ -339,7 +342,7 @@ export default function EstimatesPage() {
   function applyTemplate(templateId: string) {
     const tmpl = templates?.find(t => String(t.id) === templateId);
     if (tmpl && tmpl.lineItems) {
-      setLineItems((tmpl.lineItems as LineItem[]).map(i => ({ ...i, id: crypto.randomUUID() })));
+      setLineItems((tmpl.lineItems as LineItem[]).map(i => normalizeBundle({ ...i, id: crypto.randomUUID() }, catalogServices)));
     }
     setForm(f => ({ ...f, templateId }));
   }
@@ -389,8 +392,7 @@ export default function EstimatesPage() {
           acceptedByCustomer: !i.isOptional,
           serviceId: i.serviceId ?? null,
           serviceName: i.serviceName ?? null,
-          secondaryServiceId: i.secondaryServiceId ?? null,
-          secondaryServiceName: i.secondaryServiceName ?? null,
+          ...bundlePayload(i),
           planTemplateId: i.planTemplateId ?? null,
           planTemplateName: i.planTemplateName ?? null,
           planBillingCycle: i.planBillingCycle ?? null,
@@ -509,16 +511,23 @@ export default function EstimatesPage() {
   function startEditLineItems() {
     if (!selectedEstimate) return;
     setEditLineItemsList(
-      ((selectedEstimate.lineItems ?? []) as LineItem[]).map(i => ({ ...i, id: (i as any).id ?? crypto.randomUUID() }))
+      ((selectedEstimate.lineItems ?? []) as LineItem[]).map(i => normalizeBundle({ ...i, id: (i as any).id ?? crypto.randomUUID() }, catalogServices))
     );
     setEditingLineItems(true);
   }
+  useEffect(() => {
+    if (!editingLineItems || catalogServices !== null) return;
+    customFetch<CatalogService[]>('/api/services?activeOnly=true')
+      .then(d => setCatalogServices(d))
+      .catch(() => setCatalogServices([]));
+  }, [editingLineItems]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function cancelEditLineItems() { setEditingLineItems(false); setEditLineItemsList([]); }
   function saveEditLineItems() {
     if (!selectedEstimate) return;
     const total = billableItems(editLineItemsList).reduce((s, i) => s + calcItem(i), 0);
     updateEstimate.mutate(
-      { id: selectedEstimate.id, data: { lineItems: editLineItemsList, totalAmount: total } as any },
+      { id: selectedEstimate.id, data: { lineItems: editLineItemsList.map(i => ({ ...i, ...bundlePayload(i) })), totalAmount: total } as any },
       {
         onSuccess: () => {
           toast.success('Line items saved');
@@ -1136,84 +1145,19 @@ export default function EstimatesPage() {
 
               {lineItems.map((item, idx) => {
                 const isPlan = !!item.planTemplateId;
-                const hasPrimary = !!item.serviceId;
                 return (
-                  <div key={item.id} className={`rounded-lg border p-4 space-y-3 ${item.isOptional ? 'border-dashed border-amber-300 bg-amber-50/50' : ''} ${isPlan ? 'border-violet-200 bg-violet-50/30' : ''} ${item.secondaryServiceId && !isPlan ? 'border-indigo-200 bg-indigo-50/20' : ''}`}>
+                  <div key={item.id} className={`rounded-lg border p-4 space-y-3 ${item.isOptional ? 'border-dashed border-amber-300 bg-amber-50/50' : ''} ${isPlan ? 'border-violet-200 bg-violet-50/30' : ''} ${(item.bundledServices?.length || item.secondaryServiceId) && !isPlan ? 'border-indigo-200 bg-indigo-50/20' : ''}`}>
 
                     {/* Catalog picker row */}
                     <div className="flex items-center gap-2 flex-wrap">
-                      {/* Primary service picker */}
-                      <Select
-                        value={item.serviceId ? String(item.serviceId) : '__custom__'}
-                        onValueChange={v => {
-                          if (v === '__custom__') {
-                            updateLineItem(idx, { serviceId: undefined, serviceName: undefined, secondaryServiceId: undefined, secondaryServiceName: undefined });
-                          } else {
-                            const svc = catalogServices?.find(s => String(s.id) === v);
-                            if (!svc) return;
-                            const sec = item.secondaryServiceId ? catalogServices?.find(s => s.id === item.secondaryServiceId) : undefined;
-                            const desc = sec ? `${svc.name} + ${sec.name}` : svc.name;
-                            const price = svc.basePrice + (sec?.basePrice ?? 0);
-                            updateLineItem(idx, { serviceId: svc.id, serviceName: svc.name, description: desc, unitPrice: price });
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="h-8 text-xs flex-1 min-w-[140px]" title="Pick a service from the catalog — auto-fills description and price">
-                          <SelectValue placeholder="Custom / pick service..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__custom__">Custom line item</SelectItem>
-                          {(catalogServices ?? []).map(s => (
-                            <SelectItem key={s.id} value={String(s.id)}>
-                              {s.name}
-                              <span className="ml-2 text-muted-foreground">${s.basePrice.toFixed(2)}</span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-
-                      {/* Secondary (bundle) service picker — only shown when a primary is selected */}
-                      {hasPrimary && (
-                        <Select
-                          value={item.secondaryServiceId ? String(item.secondaryServiceId) : '__none__'}
-                          onValueChange={v => {
-                            const svc1 = catalogServices?.find(s => s.id === item.serviceId);
-                            if (v === '__none__') {
-                              updateLineItem(idx, {
-                                secondaryServiceId: undefined, secondaryServiceName: undefined,
-                                description: svc1?.name ?? item.description,
-                                unitPrice: svc1?.basePrice ?? item.unitPrice,
-                              });
-                            } else {
-                              const svc2 = catalogServices?.find(s => String(s.id) === v);
-                              if (!svc2) return;
-                              updateLineItem(idx, {
-                                secondaryServiceId: svc2.id,
-                                secondaryServiceName: svc2.name,
-                                description: `${svc1?.name ?? item.serviceName} + ${svc2.name}`,
-                                unitPrice: (svc1?.basePrice ?? 0) + svc2.basePrice,
-                              });
-                            }
-                          }}
-                        >
-                          <SelectTrigger className="h-8 text-xs w-48" title="Bundle a second service into this line item — both services appear as one combined line">
-                            <Layers className="w-3 h-3 mr-1 text-indigo-500 shrink-0" />
-                            <SelectValue placeholder="+ Bundle service" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none__">No bundle</SelectItem>
-                            {(catalogServices ?? []).filter(s => s.id !== item.serviceId).map(s => (
-                              <SelectItem key={s.id} value={String(s.id)}>
-                                + {s.name}
-                                <span className="ml-1 text-muted-foreground">${s.basePrice.toFixed(2)}</span>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
+                      <ServiceBundlePicker
+                        item={item}
+                        catalog={catalogServices}
+                        onChange={patch => updateLineItem(idx, patch)}
+                      />
 
                       {/* Badges */}
-                      {item.secondaryServiceId && (
+                      {(item.bundledServices?.length ?? 0) > 0 && (
                         <Badge variant="outline" className="text-[10px] px-1.5 text-indigo-600 border-indigo-300 shrink-0">bundled</Badge>
                       )}
                       {isPlan && (
@@ -1726,6 +1670,12 @@ export default function EstimatesPage() {
                     <div className="space-y-2">
                       {editLineItemsList.map((item, idx) => (
                         <div key={item.id} className="space-y-1">
+                          <ServiceBundlePicker
+                            compact
+                            item={item}
+                            catalog={catalogServices}
+                            onChange={patch => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, ...patch } : i))}
+                          />
                           <div className="flex items-center gap-2">
                             <input
                               className="flex-1 border rounded-md px-2 py-1.5 text-sm bg-background"
@@ -1877,9 +1827,9 @@ export default function EstimatesPage() {
                                     {cat.items.map(item => (
                                       <div key={item.id} className="flex items-start justify-between gap-4 text-sm">
                                         <div className="flex-1">
-                                          <p className="font-medium" title={item.description || undefined}>
+                                          <div className="font-medium" title={item.description || undefined}>
                                             {item.description || '—'}
-                                            {(item as any).secondaryServiceId && (
+                                            {(((item as any).bundledServices?.length ?? 0) > 0 || (item as any).secondaryServiceId) && (
                                               <Badge variant="outline" className="ml-1.5 text-[10px] px-1 text-indigo-600 border-indigo-300 align-middle">bundled</Badge>
                                             )}
                                             {(item as any).planTemplateId && (
@@ -1887,7 +1837,7 @@ export default function EstimatesPage() {
                                                 <Package className="w-2.5 h-2.5" /> plan
                                               </Badge>
                                             )}
-                                          </p>
+                                          </div>
                                           <p className="text-muted-foreground text-xs">Qty {item.qty} × ${item.unitPrice.toFixed(2)}{item.markup > 0 && ` + ${item.markup}% markup`}{item.discount > 0 && ` − ${item.discount}% disc`}{(item as any).planBillingCycle && ` · ${(item as any).planBillingCycle}`}</p>
                                         </div>
                                         <span className="font-medium shrink-0">${calcItem(item).toFixed(2)}</span>

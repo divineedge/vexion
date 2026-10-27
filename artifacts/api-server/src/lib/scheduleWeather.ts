@@ -12,7 +12,7 @@ const providerSchema = z.object({
 
 export interface ForecastLocation {
   tenantId: number;
-  propertyId: number;
+  propertyId: number | null;
   address: string;
   lat: number;
   lng: number;

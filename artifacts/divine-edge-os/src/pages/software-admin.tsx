@@ -11,7 +11,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useSettingsAutosave } from '@/hooks/use-settings-autosave';
 import { AutosaveIndicator } from '@/components/settings/AutosaveIndicator';
 import { PayoutTable, earnedPlatformFees } from '@/components/billing/PayoutTable';
-import { cents, feeLabel, errorMessage, REVERSED } from '@/lib/softwareBilling';
+import { cents, errorMessage, REVERSED, catalogOf, resolveFeatures, dollarsToCents, centsToDollars } from '@/lib/softwareBilling';
+import type { FeatureDef, FeeBounds } from '@/lib/softwareBilling';
+import { FeatureChecklist } from '@/components/billing/FeatureChecklist';
+import { FeeDisclosure, railSummary } from '@/components/billing/FeeDisclosure';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -19,7 +22,6 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -83,7 +85,7 @@ export default function SoftwareAdminPage() {
             {TABS.map(t => <TabsTrigger key={t} value={t} className="capitalize" data-testid={`tab-${t}`}>{t}</TabsTrigger>)}
           </TabsList>
           <TabsContent value="overview" className="mt-6"><Overview data={admin.data} /></TabsContent>
-          <TabsContent value="plans" className="mt-6"><PlansTab plans={admin.data.plans} enabled={admin.data.settings.enabled} onChanged={refresh} /></TabsContent>
+          <TabsContent value="plans" className="mt-6"><PlansTab plans={admin.data.plans} enabled={admin.data.settings.enabled} catalog={catalogOf(admin.data)} settings={admin.data.settings as GlobalFees} onChanged={refresh} /></TabsContent>
           <TabsContent value="fees" forceMount className="mt-6 data-[state=inactive]:hidden"><FeesTab settings={admin.data.settings} onChanged={refresh} /></TabsContent>
           <TabsContent value="payouts" className="mt-6"><PayoutsTab data={admin.data} onChanged={refresh} /></TabsContent>
           <TabsContent value="audit" className="mt-6"><AuditTab audit={admin.data.audit} /></TabsContent>
@@ -94,6 +96,8 @@ export default function SoftwareAdminPage() {
 }
 
 type Admin = PlatformAdminOverview;
+type Plan = SoftwarePlan & FeeBounds;
+type GlobalFees = PlatformBillingSettingsInput & FeeBounds;
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -148,20 +152,22 @@ function Overview({ data }: { data: Admin }) {
 }
 
 // ── Plans ────────────────────────────────────────────────────────────────
-type Draft = { name: string; tier: string; price: string; billingInterval: 'month' | 'year'; active: boolean; features: string; maxUsers: string; maxProperties: string; cardPct: string; cardFixed: string; achPct: string; achFixed: string };
-const emptyDraft: Draft = { name: '', tier: '', price: '', billingInterval: 'month', active: true, features: '', maxUsers: '', maxProperties: '', cardPct: '', cardFixed: '', achPct: '', achFixed: '' };
+type Draft = { name: string; tier: string; price: string; billingInterval: 'month' | 'year'; active: boolean; features: string[]; maxUsers: string; maxProperties: string; cardPct: string; cardFixed: string; achPct: string; achFixed: string; cardMin: string; cardMax: string; achMin: string; achMax: string };
+const emptyDraft: Draft = { name: '', tier: '', price: '', billingInterval: 'month', active: true, features: [], maxUsers: '', maxProperties: '', cardPct: '', cardFixed: '', achPct: '', achFixed: '', cardMin: '', cardMax: '', achMin: '', achMax: '' };
 
-function toDraft(p: SoftwarePlan): Draft {
+function toDraft(p: Plan): Draft {
   const s = (n: number | null) => (n == null ? '' : String(n));
   return {
     name: p.name, tier: p.tier, price: p.price.toFixed(2), billingInterval: p.billingInterval, active: p.active,
-    features: p.features.join('\n'), maxUsers: s(p.maxUsers), maxProperties: s(p.maxProperties),
+    features: [...p.features], maxUsers: s(p.maxUsers), maxProperties: s(p.maxProperties),
     cardPct: p.cardFeeBps == null ? '' : String(p.cardFeeBps / 100), cardFixed: p.cardFeeFixedCents == null ? '' : (p.cardFeeFixedCents / 100).toFixed(2),
     achPct: p.achFeeBps == null ? '' : String(p.achFeeBps / 100), achFixed: p.achFeeFixedCents == null ? '' : (p.achFeeFixedCents / 100).toFixed(2),
+    cardMin: centsToDollars(p.cardFeeMinCents), cardMax: centsToDollars(p.cardFeeMaxCents),
+    achMin: centsToDollars(p.achFeeMinCents), achMax: centsToDollars(p.achFeeMaxCents),
   };
 }
 
-function parseDraft(d: Draft): { ok: true; value: SoftwarePlanInput } | { ok: false; error: string } {
+function parseDraft(d: Draft): { ok: true; value: SoftwarePlanInput & FeeBounds } | { ok: false; error: string } {
   if (!d.name.trim()) return { ok: false, error: 'Name is required' };
   if (!d.tier.trim()) return { ok: false, error: 'Tier is required' };
   const price = Number(d.price);
@@ -182,22 +188,30 @@ function parseDraft(d: Draft): { ok: true; value: SoftwarePlanInput } | { ok: fa
   const err = vals.find(v => typeof v === 'string');
   if (typeof err === 'string') return { ok: false, error: err };
   const [maxUsers, maxProperties, cardFeeBps, cardFeeFixedCents, achFeeBps, achFeeFixedCents] = vals as (number | null)[];
+  const bounds = [dollarsToCents(d.cardMin, 'Card minimum'), dollarsToCents(d.cardMax, 'Card maximum'), dollarsToCents(d.achMin, 'ACH minimum'), dollarsToCents(d.achMax, 'ACH maximum')];
+  const bErr = bounds.find(v => typeof v === 'string');
+  if (typeof bErr === 'string') return { ok: false, error: bErr };
+  const [cardFeeMinCents, cardFeeMaxCents, achFeeMinCents, achFeeMaxCents] = bounds as (number | null)[];
+  if (cardFeeMinCents != null && cardFeeMaxCents != null && cardFeeMinCents > cardFeeMaxCents) return { ok: false, error: 'Card minimum must not exceed card maximum' };
+  if (achFeeMinCents != null && achFeeMaxCents != null && achFeeMinCents > achFeeMaxCents) return { ok: false, error: 'ACH minimum must not exceed ACH maximum' };
   return { ok: true, value: {
     name: d.name.trim(), tier: d.tier.trim(), price: Math.round(price * 100) / 100, billingInterval: d.billingInterval, active: d.active,
-    features: d.features.split('\n').map(s => s.trim()).filter(Boolean), maxUsers, maxProperties, cardFeeBps, cardFeeFixedCents, achFeeBps, achFeeFixedCents,
+    features: Array.from(new Set(d.features)), maxUsers, maxProperties, cardFeeBps, cardFeeFixedCents, achFeeBps, achFeeFixedCents,
+    cardFeeMinCents, cardFeeMaxCents, achFeeMinCents, achFeeMaxCents,
   } };
 }
 
-function PlansTab({ plans, enabled, onChanged }: { plans: SoftwarePlan[]; enabled: boolean; onChanged: () => void }) {
-  const [editing, setEditing] = useState<SoftwarePlan | 'new' | null>(null);
+function PlansTab({ plans: rawPlans, enabled, catalog, settings, onChanged }: { plans: SoftwarePlan[]; enabled: boolean; catalog: FeatureDef[]; settings: GlobalFees; onChanged: () => void }) {
+  const plans = rawPlans as Plan[];
+  const [editing, setEditing] = useState<Plan | 'new' | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
-  const [publishTarget, setPublishTarget] = useState<SoftwarePlan | null>(null);
+  const [publishTarget, setPublishTarget] = useState<Plan | null>(null);
   const create = useCreatePlatformSoftwarePlan();
   const update = useUpdatePlatformSoftwarePlan();
   const publish = usePublishPlatformSoftwarePlan();
   const sorted = useMemo(() => [...plans].sort((a, b) => Number(b.active) - Number(a.active) || a.price - b.price), [plans]);
 
-  const open = (p: SoftwarePlan | 'new') => { setEditing(p); setDraft(p === 'new' ? emptyDraft : toDraft(p)); };
+  const open = (p: Plan | 'new') => { setEditing(p); setDraft(p === 'new' ? emptyDraft : toDraft(p)); };
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft(d => ({ ...d, [k]: v }));
 
   const save = () => {
@@ -246,11 +260,11 @@ function PlansTab({ plans, enabled, onChanged }: { plans: SoftwarePlan[]; enable
                 <p className="text-2xl font-bold tabular-nums">{cents(Math.round(p.price * 100))}<span className="text-sm font-normal text-muted-foreground">/{p.billingInterval}</span></p>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
-                <ul className="space-y-1 text-muted-foreground">{p.features.slice(0, 5).map((f, i) => <li key={i}>• {f}</li>)}</ul>
+                <PlanFeatureSummary features={p.features} catalog={catalog} />
                 <div className="text-xs text-muted-foreground space-y-0.5">
                   <div>Users: {p.maxUsers ?? 'Unlimited'} · Properties: {p.maxProperties ?? 'Unlimited'}</div>
-                  <div>Card: {feeLabel(p.cardFeeBps, p.cardFeeFixedCents)}</div>
-                  <div>ACH: {feeLabel(p.achFeeBps, p.achFeeFixedCents)}</div>
+                  <div data-testid={`plan-card-fee-${p.id}`}>Card added fee: {railSummary(effective(p, settings, 'card'))}{inherits(p, 'card') ? ' (inherits company-wide)' : ''}</div>
+                  <div data-testid={`plan-ach-fee-${p.id}`}>ACH added fee: {railSummary(effective(p, settings, 'ach'))}{inherits(p, 'ach') ? ' (inherits company-wide)' : ''}</div>
                 </div>
                 <div className="flex gap-2 pt-1">
                   <Button size="sm" variant="outline" onClick={() => open(p)} data-testid={`button-edit-plan-${p.id}`}><Pencil className="w-3.5 h-3.5 mr-1.5" />Edit</Button>
@@ -282,12 +296,17 @@ function PlansTab({ plans, enabled, onChanged }: { plans: SoftwarePlan[]; enable
             </div>
             <div className="space-y-1"><Label>Max users</Label><Input placeholder="Unlimited" value={draft.maxUsers} onChange={e => set('maxUsers', e.target.value)} /></div>
             <div className="space-y-1"><Label>Max properties</Label><Input placeholder="Unlimited" value={draft.maxProperties} onChange={e => set('maxProperties', e.target.value)} /></div>
-            <div className="col-span-2 space-y-1"><Label>Features (one per line)</Label><Textarea rows={4} value={draft.features} onChange={e => set('features', e.target.value)} data-testid="input-plan-features" /></div>
-            <div className="col-span-2 pt-1"><p className="text-xs font-medium">Platform fee override — leave blank to inherit the company-wide fee</p></div>
+            <div className="col-span-2 space-y-1"><Label>Included features</Label><FeatureChecklist catalog={catalog} value={draft.features} onChange={v => set('features', v)} /></div>
+            <div className="col-span-2 pt-1"><p className="text-xs font-medium">Added platform fee override</p><p className="text-[11px] text-muted-foreground">Charged in addition to Stripe's processing fee and deducted from the business's proceeds. Leave any field blank to inherit the company-wide value.</p></div>
             <div className="space-y-1"><Label>Card %</Label><Input placeholder="Inherit" value={draft.cardPct} onChange={e => set('cardPct', e.target.value)} /></div>
             <div className="space-y-1"><Label>Card fixed ($)</Label><Input placeholder="Inherit" value={draft.cardFixed} onChange={e => set('cardFixed', e.target.value)} /></div>
             <div className="space-y-1"><Label>ACH %</Label><Input placeholder="Inherit" value={draft.achPct} onChange={e => set('achPct', e.target.value)} /></div>
             <div className="space-y-1"><Label>ACH fixed ($)</Label><Input placeholder="Inherit" value={draft.achFixed} onChange={e => set('achFixed', e.target.value)} /></div>
+            <div className="space-y-1"><Label>Card minimum added fee ($)</Label><Input inputMode="decimal" placeholder="Inherit" value={draft.cardMin} onChange={e => set('cardMin', e.target.value)} data-testid="input-plan-cardMin" /></div>
+            <div className="space-y-1"><Label>Card maximum added fee ($)</Label><Input inputMode="decimal" placeholder="Inherit" value={draft.cardMax} onChange={e => set('cardMax', e.target.value)} data-testid="input-plan-cardMax" /></div>
+            <div className="space-y-1"><Label>ACH minimum added fee ($)</Label><Input inputMode="decimal" placeholder="Inherit" value={draft.achMin} onChange={e => set('achMin', e.target.value)} data-testid="input-plan-achMin" /></div>
+            <div className="space-y-1"><Label>ACH maximum added fee ($)</Label><Input inputMode="decimal" placeholder="Inherit" value={draft.achMax} onChange={e => set('achMax', e.target.value)} data-testid="input-plan-achMax" /></div>
+            <div className="col-span-2"><DraftDisclosure draft={draft} settings={settings} /></div>
             <div className="col-span-2 flex items-center justify-between rounded-md border p-3">
               <div><p className="text-sm font-medium">Active</p><p className="text-xs text-muted-foreground">Turn off to archive. Archived plans stay on record and aren't offered.</p></div>
               <Switch checked={draft.active} onCheckedChange={v => set('active', v)} data-testid="switch-plan-active" />
@@ -304,7 +323,10 @@ function PlansTab({ plans, enabled, onChanged }: { plans: SoftwarePlan[]; enable
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Publish “{publishTarget?.name}” to Stripe?</AlertDialogTitle>
-            <AlertDialogDescription>This creates a real Stripe product and recurring {publishTarget?.billingInterval}ly price, and offers it to business owners. Existing subscribers are not repriced.</AlertDialogDescription>
+            <AlertDialogDescription>This creates a real Stripe product and recurring {publishTarget?.billingInterval}ly price, and offers it to business owners. Existing subscribers keep their current plan version until they purchase the newly published one.</AlertDialogDescription>
+            {publishTarget && resolveFeatures(publishTarget.features, catalog).unmapped.length > 0 && (
+              <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-3 py-2" data-testid="publish-unmapped-warning">This plan still has unmapped legacy features. The server will reject publishing until they are mapped to catalog modules and removed.</p>
+            )}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -316,8 +338,46 @@ function PlansTab({ plans, enabled, onChanged }: { plans: SoftwarePlan[]; enable
   );
 }
 
+function inherits(p: Plan, rail: 'card' | 'ach') {
+  return rail === 'card'
+    ? p.cardFeeBps == null && p.cardFeeFixedCents == null && p.cardFeeMinCents == null && p.cardFeeMaxCents == null
+    : p.achFeeBps == null && p.achFeeFixedCents == null && p.achFeeMinCents == null && p.achFeeMaxCents == null;
+}
+
+/** Per-field inheritance: each blank plan value falls back to the company-wide value. */
+function effective(p: Plan, g: GlobalFees, rail: 'card' | 'ach') {
+  return rail === 'card'
+    ? { bps: p.cardFeeBps ?? g.cardFeeBps, fixed: p.cardFeeFixedCents ?? g.cardFeeFixedCents, min: p.cardFeeMinCents ?? g.cardFeeMinCents, max: p.cardFeeMaxCents ?? g.cardFeeMaxCents }
+    : { bps: p.achFeeBps ?? g.achFeeBps, fixed: p.achFeeFixedCents ?? g.achFeeFixedCents, min: p.achFeeMinCents ?? g.achFeeMinCents, max: p.achFeeMaxCents ?? g.achFeeMaxCents };
+}
+
+function DraftDisclosure({ draft, settings }: { draft: Draft; settings: GlobalFees }) {
+  const parsed = parseDraft({ ...draft, name: draft.name || 'x', tier: draft.tier || 'x', price: draft.price || '1' });
+  if (!parsed.ok) return <p className="text-xs text-destructive" data-testid="error-plan-fees">{parsed.error}</p>;
+  const p = parsed.value as unknown as Plan;
+  return <FeeDisclosure card={effective(p, settings, 'card')} ach={effective(p, settings, 'ach')} />;
+}
+
+function PlanFeatureSummary({ features, catalog }: { features: string[]; catalog: FeatureDef[] }) {
+  const { mapped, unmapped } = resolveFeatures(features, catalog);
+  return (
+    <div className="space-y-1.5">
+      {mapped.length === 0 ? <p className="text-xs text-muted-foreground">No catalog features selected.</p> : (
+        <ul className="space-y-1 text-muted-foreground">
+          {mapped.slice(0, 5).map(f => <li key={f.key}>{f.label}</li>)}
+          {mapped.length > 5 && <li className="text-xs">+{mapped.length - 5} more</li>}
+        </ul>
+      )}
+      {unmapped.length > 0 && (
+        <p className="flex gap-1.5 text-xs text-amber-800" data-testid="plan-unmapped-badge"><AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />{unmapped.length} unmapped legacy feature{unmapped.length === 1 ? '' : 's'} need human mapping</p>
+      )}
+    </div>
+  );
+}
+
 // ── Fees ─────────────────────────────────────────────────────────────────
-function FeesTab({ settings, onChanged }: { settings: PlatformBillingSettingsInput; onChanged: () => void }) {
+function FeesTab({ settings: rawSettings, onChanged }: { settings: PlatformBillingSettingsInput; onChanged: () => void }) {
+  const settings = rawSettings as GlobalFees;
   const mutation = useUpdatePlatformBillingSettings();
   const mutateRef = useRef(mutation.mutateAsync); mutateRef.current = mutation.mutateAsync;
   const onChangedRef = useRef(onChanged); onChangedRef.current = onChanged;
@@ -328,6 +388,8 @@ function FeesTab({ settings, onChanged }: { settings: PlatformBillingSettingsInp
   const [f, setF] = useState({
     cardPct: String(settings.cardFeeBps / 100), cardFixed: (settings.cardFeeFixedCents / 100).toFixed(2),
     achPct: String(settings.achFeeBps / 100), achFixed: (settings.achFeeFixedCents / 100).toFixed(2),
+    cardMin: centsToDollars(settings.cardFeeMinCents), cardMax: centsToDollars(settings.cardFeeMaxCents),
+    achMin: centsToDollars(settings.achFeeMinCents), achMax: centsToDollars(settings.achFeeMaxCents),
   });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [toggling, setToggling] = useState(false);
@@ -338,7 +400,13 @@ function FeesTab({ settings, onChanged }: { settings: PlatformBillingSettingsInp
     const pct = (v: string) => { const n = Number(v); return v.trim() !== '' && Number.isFinite(n) && n >= 0 && n <= 100 ? Math.round(n * 100) : null; };
     const fixed = (v: string) => { const n = Number(v); return v.trim() !== '' && Number.isFinite(n) && n >= 0 && n <= 1000 ? Math.round(n * 100) : null; };
     const r = { cardFeeBps: pct(f.cardPct), cardFeeFixedCents: fixed(f.cardFixed), achFeeBps: pct(f.achPct), achFeeFixedCents: fixed(f.achFixed) };
-    return Object.values(r).every(v => v != null) ? (r as { cardFeeBps: number; cardFeeFixedCents: number; achFeeBps: number; achFeeFixedCents: number }) : null;
+    if (!Object.values(r).every(v => v != null)) return null;
+    const b = { cardFeeMinCents: dollarsToCents(f.cardMin, 'x'), cardFeeMaxCents: dollarsToCents(f.cardMax, 'x'), achFeeMinCents: dollarsToCents(f.achMin, 'x'), achFeeMaxCents: dollarsToCents(f.achMax, 'x') };
+    if (Object.values(b).some(v => typeof v === 'string')) return null;
+    const nb = b as { cardFeeMinCents: number | null; cardFeeMaxCents: number | null; achFeeMinCents: number | null; achFeeMaxCents: number | null };
+    if (nb.cardFeeMinCents != null && nb.cardFeeMaxCents != null && nb.cardFeeMinCents > nb.cardFeeMaxCents) return null;
+    if (nb.achFeeMinCents != null && nb.achFeeMaxCents != null && nb.achFeeMinCents > nb.achFeeMaxCents) return null;
+    return { ...(r as { cardFeeBps: number; cardFeeFixedCents: number; achFeeBps: number; achFeeFixedCents: number }), ...nb };
   }, [f]);
 
   useEffect(() => {
@@ -348,7 +416,7 @@ function FeesTab({ settings, onChanged }: { settings: PlatformBillingSettingsInp
     if (json === lastJson.current) return;
     lastJson.current = json;
     // Full validated snapshot; activation state always mirrors the server.
-    autosave.queue({ settings: { enabled: enabledRef.current, ...parsed } });
+    autosave.queue({ settings: { enabled: enabledRef.current, ...parsed } as GlobalFees });
   }, [parsed, autosave.queue]);
 
   const setActivation = async (enabled: boolean) => {
@@ -356,18 +424,18 @@ function FeesTab({ settings, onChanged }: { settings: PlatformBillingSettingsInp
     setToggling(true);
     try {
       await autosave.flush();
-      await mutation.mutateAsync({ data: { enabled, ...parsed, ...(enabled ? { confirmActivation: true } : {}) } });
+      await mutation.mutateAsync({ data: { enabled, ...parsed, ...(enabled ? { confirmActivation: true } : {}) } as GlobalFees });
       toast.success(enabled ? 'Monetization activated' : 'Monetization paused');
       onChanged();
     } catch (e) { toast.error(errorMessage(e, 'Could not change activation')); }
     finally { setToggling(false); setConfirmOpen(false); }
   };
 
-  const field = (k: keyof typeof f, label: string, suffix: string) => (
+  const field = (k: keyof typeof f, label: string, suffix: string, placeholder?: string) => (
     <div className="space-y-1">
       <Label>{label}</Label>
       <div className="relative">
-        <Input inputMode="decimal" value={f[k]} onChange={e => setF(s => ({ ...s, [k]: e.target.value }))} data-testid={`input-fee-${k}`} className="pr-8" />
+        <Input inputMode="decimal" placeholder={placeholder} value={f[k]} onChange={e => setF(s => ({ ...s, [k]: e.target.value }))} data-testid={`input-fee-${k}`} className="pr-8" />
         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{suffix}</span>
       </div>
     </div>
@@ -389,8 +457,8 @@ function FeesTab({ settings, onChanged }: { settings: PlatformBillingSettingsInp
       <Card>
         <CardHeader className="flex-row items-start justify-between gap-4 space-y-0">
           <div>
-            <CardTitle className="text-base">Company-wide platform fee</CardTitle>
-            <CardDescription>Deducted from each business's online payment alongside the actual Stripe fee. Never added to the customer's invoice. Plans may override.</CardDescription>
+            <CardTitle className="text-base">Company-wide added platform fee</CardTitle>
+            <CardDescription>Charged in addition to Stripe's own processing fee and deducted from the business's proceeds. Never added to the customer's invoice. Plans may override any value.</CardDescription>
           </div>
           <AutosaveIndicator status={autosave.status} hasUnsaved={autosave.hasUnsaved} onRetry={() => void autosave.retry()} />
         </CardHeader>
@@ -399,7 +467,14 @@ function FeesTab({ settings, onChanged }: { settings: PlatformBillingSettingsInp
           {field('cardFixed', 'Card fixed per payment', '$')}
           {field('achPct', 'ACH percentage', '%')}
           {field('achFixed', 'ACH fixed per payment', '$')}
-          {!parsed && <p className="col-span-2 text-xs text-destructive">Enter 0–100% and $0–$1,000. Invalid values are not saved.</p>}
+          {field('cardMin', 'Card minimum added fee', '$', 'No minimum')}
+          {field('cardMax', 'Card maximum added fee', '$', 'No maximum')}
+          {field('achMin', 'ACH minimum added fee', '$', 'No minimum')}
+          {field('achMax', 'ACH maximum added fee', '$', 'No maximum')}
+          {!parsed && <p className="col-span-2 text-xs text-destructive" data-testid="error-fee-values">Enter 0–100%, fixed $0–$1,000, and min/max as $0–$10,000,000 with up to 2 decimals (minimum not above maximum). Invalid values are not saved.</p>}
+          {parsed && <div className="col-span-2"><FeeDisclosure
+            card={{ bps: parsed.cardFeeBps, fixed: parsed.cardFeeFixedCents, min: parsed.cardFeeMinCents, max: parsed.cardFeeMaxCents }}
+            ach={{ bps: parsed.achFeeBps, fixed: parsed.achFeeFixedCents, min: parsed.achFeeMinCents, max: parsed.achFeeMaxCents }} /></div>}
         </CardContent>
       </Card>
 

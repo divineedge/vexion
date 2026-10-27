@@ -29,4 +29,28 @@ export interface PlatformBillingSettingsInput {
      * @maximum 100000
      */
   achFeeFixedCents: number;
+  /**
+     * @minimum 0
+     * @maximum 1000000000
+     * @nullable
+     */
+  cardFeeMinCents?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 1000000000
+     * @nullable
+     */
+  cardFeeMaxCents?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 1000000000
+     * @nullable
+     */
+  achFeeMinCents?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 1000000000
+     * @nullable
+     */
+  achFeeMaxCents?: number | null;
 }

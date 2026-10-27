@@ -30,6 +30,30 @@ export interface PlatformBillingSettingsInput {
      * @maximum 100000
      */
   achFeeFixedCents: number;
+  /**
+     * @minimum 0
+     * @maximum 1000000000
+     * @nullable
+     */
+  cardFeeMinCents?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 1000000000
+     * @nullable
+     */
+  cardFeeMaxCents?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 1000000000
+     * @nullable
+     */
+  achFeeMinCents?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 1000000000
+     * @nullable
+     */
+  achFeeMaxCents?: number | null;
 }
 
 export type SoftwarePlanInputBillingInterval = typeof SoftwarePlanInputBillingInterval[keyof typeof SoftwarePlanInputBillingInterval];
@@ -42,6 +66,30 @@ export const SoftwarePlanInputBillingInterval = {
 
 export interface SoftwarePlanInput {
   name: string;
+  /**
+     * @minimum 0
+     * @maximum 1000000000
+     * @nullable
+     */
+  cardFeeMinCents?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 1000000000
+     * @nullable
+     */
+  cardFeeMaxCents?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 1000000000
+     * @nullable
+     */
+  achFeeMinCents?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 1000000000
+     * @nullable
+     */
+  achFeeMaxCents?: number | null;
   tier: string;
   price: number;
   billingInterval: SoftwarePlanInputBillingInterval;
@@ -101,12 +149,43 @@ export interface SoftwareBillingAccount {
   hasSubscription: boolean;
 }
 
+export type WeatherLocationsSettingsLocationsItem = {
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  id: string;
+  /**
+     * @minLength 2
+     * @maxLength 160
+     */
+  label: string;
+  /**
+     * @minLength 2
+     * @maxLength 160
+     */
+  query: string;
+};
+
+export interface WeatherLocationsSettings {
+  /** @maxItems 30 */
+  locations: WeatherLocationsSettingsLocationsItem[];
+}
+
+export interface SoftwareFeatureDefinition {
+  key: string;
+  label: string;
+  description: string;
+  appPaths: string[];
+}
+
 export interface BusinessSoftwareBilling {
   enabled: boolean;
   account: SoftwareBillingAccount;
   plans: SoftwarePlan[];
   payouts: PlatformPayout[];
   fees: PlatformBillingSettingsInput;
+  featureCatalog?: SoftwareFeatureDefinition[];
 }
 
 export type PlatformAdminOverviewAuditItem = {
@@ -116,6 +195,7 @@ export type PlatformAdminOverviewAuditItem = {
 
 export interface PlatformAdminOverview {
   settings: PlatformBillingSettingsInput;
+  featureCatalog?: SoftwareFeatureDefinition[];
   plans: SoftwarePlan[];
   businesses: SoftwareBillingAccount[];
   payouts: PlatformPayout[];
@@ -303,7 +383,8 @@ export interface ScheduleForecastHour {
 }
 
 export interface ScheduleForecast {
-  propertyId: number;
+  /** @nullable */
+  propertyId: number | null;
   location: string;
   latitude: number;
   longitude: number;
@@ -1024,10 +1105,26 @@ export interface JobRequest {
   reviewerName?: string | null;
 }
 
+export type EstimateLineItemBundledServicesItem = {
+  /** @minimum 1 */
+  serviceId: number;
+  serviceName: string;
+  /** @minimum 0 */
+  unitPrice: number;
+};
+
 export interface EstimateLineItem {
   id: string;
   /** @nullable */
   serviceId?: number | null;
+  /** @nullable */
+  serviceName?: string | null;
+  /** @nullable */
+  secondaryServiceId?: number | null;
+  /** @nullable */
+  secondaryServiceName?: string | null;
+  /** @maxItems 100 */
+  bundledServices?: EstimateLineItemBundledServicesItem[];
   description: string;
   qty: number;
   unitPrice: number;
@@ -1252,6 +1349,12 @@ export const InvoicePaymentMethod = {
 } as const;
 
 export interface InvoiceLineItem {
+  /** @nullable */
+  serviceId?: number | null;
+  /** @nullable */
+  inventoryItemId?: number | null;
+  /** @nullable */
+  sku?: string | null;
   id: number;
   description: string;
   quantity: number;
@@ -3813,6 +3916,12 @@ export interface CompletableJob {
 }
 
 export interface InvoiceLineItemInput {
+  /** @nullable */
+  serviceId?: number | null;
+  /** @nullable */
+  inventoryItemId?: number | null;
+  /** @nullable */
+  sku?: string | null;
   description: string;
   quantity: number;
   unitPrice: number;
@@ -8134,11 +8243,22 @@ export type StartBusinessPaymentOnboardingBody = {
   acceptedTerms: boolean;
 };
 
+export type GetSoftwareFeatures200 = {
+  /** @nullable */
+  featureKeys: string[] | null;
+  featureCatalog: SoftwareFeatureDefinition[];
+};
+
 export type GetScheduleWeatherParams = {
 /**
  * @minimum 1
  */
-propertyId: number;
+propertyId?: number;
+/**
+ * @minLength 1
+ * @maxLength 160
+ */
+locationId?: string;
 };
 
 export type GetPortalPropertyMeasurements200 = {

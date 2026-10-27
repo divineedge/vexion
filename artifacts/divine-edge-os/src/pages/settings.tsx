@@ -29,6 +29,7 @@ import { Input } from '@/components/ui/input';
 import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SettingsTabs as Tabs, SettingsTabsContent as TabsContent } from '@/components/settings/SettingsTabs';
 import { TimezoneSelect } from '@/components/settings/TimezoneSelect';
+import { WeatherLocationsSettings } from '@/components/settings/WeatherLocationsSettings';
 import { AutosaveIndicator } from '@/components/settings/AutosaveIndicator';
 import { useSettingsAutosave, useAutosaveFields } from '@/hooks/use-settings-autosave';
 import { Badge } from '@/components/ui/badge';
@@ -669,6 +670,7 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
+          <WeatherLocationsSettings />
           <Card>
             <CardHeader>
               <CardTitle>Customer Portal</CardTitle>

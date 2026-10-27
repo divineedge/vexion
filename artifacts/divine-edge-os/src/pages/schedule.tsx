@@ -2708,12 +2708,12 @@ export default function SchedulePage() {
                         {partsSearch && <button title="Clear parts search" onClick={() => setPartsSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>}
                       </div>
                       {inventoryItems && inventoryItems.length > 0 && (
-                        <div className="rounded-md border divide-y text-sm max-h-48 overflow-y-auto">
-                          {inventoryItems.slice(0, 8).map(item => (
+                        <div className="rounded-md border divide-y text-sm max-h-48 overflow-y-auto" role="list" aria-label="Matching inventory parts">
+                          {inventoryItems.slice(0, 25).map(item => (
                             <div key={item.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted/50">
                               <div className="flex-1 min-w-0">
                                 <div className="font-medium truncate" title={item.name}>{item.name}</div>
-                                <div className="text-xs text-muted-foreground" title={`$${item.unitPrice.toFixed(2)} per ${item.unit} · ${item.quantity} in stock`}>${item.unitPrice.toFixed(2)}/{item.unit} · {item.quantity} in stock</div>
+                                <div className="text-xs text-muted-foreground" title={`$${item.unitPrice.toFixed(2)} per ${item.unit} · ${item.quantity} in stock`}>{item.sku ? `SKU ${item.sku} · ` : ''}${item.unitPrice.toFixed(2)}/{item.unit} · {item.quantity} in stock</div>
                               </div>
                               <div className="flex items-center gap-1">
                                 <input

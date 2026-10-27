@@ -10,5 +10,10 @@ export type GetScheduleWeatherParams = {
 /**
  * @minimum 1
  */
-propertyId: number;
+propertyId?: number;
+/**
+ * @minLength 1
+ * @maxLength 160
+ */
+locationId?: string;
 };

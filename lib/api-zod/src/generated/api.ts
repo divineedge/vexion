@@ -25,6 +25,30 @@ export const getPlatformBillingAdminResponseSettingsAchFeeBpsMax = 10000;
 export const getPlatformBillingAdminResponseSettingsAchFeeFixedCentsMin = 0;
 export const getPlatformBillingAdminResponseSettingsAchFeeFixedCentsMax = 100000;
 
+export const getPlatformBillingAdminResponseSettingsCardFeeMinCentsMin = 0;
+export const getPlatformBillingAdminResponseSettingsCardFeeMinCentsMax = 1000000000;
+
+export const getPlatformBillingAdminResponseSettingsCardFeeMaxCentsMin = 0;
+export const getPlatformBillingAdminResponseSettingsCardFeeMaxCentsMax = 1000000000;
+
+export const getPlatformBillingAdminResponseSettingsAchFeeMinCentsMin = 0;
+export const getPlatformBillingAdminResponseSettingsAchFeeMinCentsMax = 1000000000;
+
+export const getPlatformBillingAdminResponseSettingsAchFeeMaxCentsMin = 0;
+export const getPlatformBillingAdminResponseSettingsAchFeeMaxCentsMax = 1000000000;
+
+export const getPlatformBillingAdminResponsePlansItemOneCardFeeMinCentsMin = 0;
+export const getPlatformBillingAdminResponsePlansItemOneCardFeeMinCentsMax = 1000000000;
+
+export const getPlatformBillingAdminResponsePlansItemOneCardFeeMaxCentsMin = 0;
+export const getPlatformBillingAdminResponsePlansItemOneCardFeeMaxCentsMax = 1000000000;
+
+export const getPlatformBillingAdminResponsePlansItemOneAchFeeMinCentsMin = 0;
+export const getPlatformBillingAdminResponsePlansItemOneAchFeeMinCentsMax = 1000000000;
+
+export const getPlatformBillingAdminResponsePlansItemOneAchFeeMaxCentsMin = 0;
+export const getPlatformBillingAdminResponsePlansItemOneAchFeeMaxCentsMax = 1000000000;
+
 
 
 export const GetPlatformBillingAdminResponse = zod.object({
@@ -34,10 +58,24 @@ export const GetPlatformBillingAdminResponse = zod.object({
   "cardFeeBps": zod.int().min(getPlatformBillingAdminResponseSettingsCardFeeBpsMin).max(getPlatformBillingAdminResponseSettingsCardFeeBpsMax),
   "cardFeeFixedCents": zod.int().min(getPlatformBillingAdminResponseSettingsCardFeeFixedCentsMin).max(getPlatformBillingAdminResponseSettingsCardFeeFixedCentsMax),
   "achFeeBps": zod.int().min(getPlatformBillingAdminResponseSettingsAchFeeBpsMin).max(getPlatformBillingAdminResponseSettingsAchFeeBpsMax),
-  "achFeeFixedCents": zod.int().min(getPlatformBillingAdminResponseSettingsAchFeeFixedCentsMin).max(getPlatformBillingAdminResponseSettingsAchFeeFixedCentsMax)
+  "achFeeFixedCents": zod.int().min(getPlatformBillingAdminResponseSettingsAchFeeFixedCentsMin).max(getPlatformBillingAdminResponseSettingsAchFeeFixedCentsMax),
+  "cardFeeMinCents": zod.int().min(getPlatformBillingAdminResponseSettingsCardFeeMinCentsMin).max(getPlatformBillingAdminResponseSettingsCardFeeMinCentsMax).nullish(),
+  "cardFeeMaxCents": zod.int().min(getPlatformBillingAdminResponseSettingsCardFeeMaxCentsMin).max(getPlatformBillingAdminResponseSettingsCardFeeMaxCentsMax).nullish(),
+  "achFeeMinCents": zod.int().min(getPlatformBillingAdminResponseSettingsAchFeeMinCentsMin).max(getPlatformBillingAdminResponseSettingsAchFeeMinCentsMax).nullish(),
+  "achFeeMaxCents": zod.int().min(getPlatformBillingAdminResponseSettingsAchFeeMaxCentsMin).max(getPlatformBillingAdminResponseSettingsAchFeeMaxCentsMax).nullish()
 }),
+  "featureCatalog": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "description": zod.string(),
+  "appPaths": zod.array(zod.string())
+})).optional(),
   "plans": zod.array(zod.object({
   "name": zod.string(),
+  "cardFeeMinCents": zod.int().min(getPlatformBillingAdminResponsePlansItemOneCardFeeMinCentsMin).max(getPlatformBillingAdminResponsePlansItemOneCardFeeMinCentsMax).nullish(),
+  "cardFeeMaxCents": zod.int().min(getPlatformBillingAdminResponsePlansItemOneCardFeeMaxCentsMin).max(getPlatformBillingAdminResponsePlansItemOneCardFeeMaxCentsMax).nullish(),
+  "achFeeMinCents": zod.int().min(getPlatformBillingAdminResponsePlansItemOneAchFeeMinCentsMin).max(getPlatformBillingAdminResponsePlansItemOneAchFeeMinCentsMax).nullish(),
+  "achFeeMaxCents": zod.int().min(getPlatformBillingAdminResponsePlansItemOneAchFeeMaxCentsMin).max(getPlatformBillingAdminResponsePlansItemOneAchFeeMaxCentsMax).nullish(),
   "tier": zod.string(),
   "price": zod.number(),
   "billingInterval": zod.enum(['month', 'year']),
@@ -97,6 +135,18 @@ export const updatePlatformBillingSettingsBodyAchFeeBpsMax = 10000;
 export const updatePlatformBillingSettingsBodyAchFeeFixedCentsMin = 0;
 export const updatePlatformBillingSettingsBodyAchFeeFixedCentsMax = 100000;
 
+export const updatePlatformBillingSettingsBodyCardFeeMinCentsMin = 0;
+export const updatePlatformBillingSettingsBodyCardFeeMinCentsMax = 1000000000;
+
+export const updatePlatformBillingSettingsBodyCardFeeMaxCentsMin = 0;
+export const updatePlatformBillingSettingsBodyCardFeeMaxCentsMax = 1000000000;
+
+export const updatePlatformBillingSettingsBodyAchFeeMinCentsMin = 0;
+export const updatePlatformBillingSettingsBodyAchFeeMinCentsMax = 1000000000;
+
+export const updatePlatformBillingSettingsBodyAchFeeMaxCentsMin = 0;
+export const updatePlatformBillingSettingsBodyAchFeeMaxCentsMax = 1000000000;
+
 
 
 export const UpdatePlatformBillingSettingsBody = zod.object({
@@ -105,7 +155,11 @@ export const UpdatePlatformBillingSettingsBody = zod.object({
   "cardFeeBps": zod.int().min(updatePlatformBillingSettingsBodyCardFeeBpsMin).max(updatePlatformBillingSettingsBodyCardFeeBpsMax),
   "cardFeeFixedCents": zod.int().min(updatePlatformBillingSettingsBodyCardFeeFixedCentsMin).max(updatePlatformBillingSettingsBodyCardFeeFixedCentsMax),
   "achFeeBps": zod.int().min(updatePlatformBillingSettingsBodyAchFeeBpsMin).max(updatePlatformBillingSettingsBodyAchFeeBpsMax),
-  "achFeeFixedCents": zod.int().min(updatePlatformBillingSettingsBodyAchFeeFixedCentsMin).max(updatePlatformBillingSettingsBodyAchFeeFixedCentsMax)
+  "achFeeFixedCents": zod.int().min(updatePlatformBillingSettingsBodyAchFeeFixedCentsMin).max(updatePlatformBillingSettingsBodyAchFeeFixedCentsMax),
+  "cardFeeMinCents": zod.int().min(updatePlatformBillingSettingsBodyCardFeeMinCentsMin).max(updatePlatformBillingSettingsBodyCardFeeMinCentsMax).nullish(),
+  "cardFeeMaxCents": zod.int().min(updatePlatformBillingSettingsBodyCardFeeMaxCentsMin).max(updatePlatformBillingSettingsBodyCardFeeMaxCentsMax).nullish(),
+  "achFeeMinCents": zod.int().min(updatePlatformBillingSettingsBodyAchFeeMinCentsMin).max(updatePlatformBillingSettingsBodyAchFeeMinCentsMax).nullish(),
+  "achFeeMaxCents": zod.int().min(updatePlatformBillingSettingsBodyAchFeeMaxCentsMin).max(updatePlatformBillingSettingsBodyAchFeeMaxCentsMax).nullish()
 })
 
 export const updatePlatformBillingSettingsResponseCardFeeBpsMin = 0;
@@ -120,6 +174,18 @@ export const updatePlatformBillingSettingsResponseAchFeeBpsMax = 10000;
 export const updatePlatformBillingSettingsResponseAchFeeFixedCentsMin = 0;
 export const updatePlatformBillingSettingsResponseAchFeeFixedCentsMax = 100000;
 
+export const updatePlatformBillingSettingsResponseCardFeeMinCentsMin = 0;
+export const updatePlatformBillingSettingsResponseCardFeeMinCentsMax = 1000000000;
+
+export const updatePlatformBillingSettingsResponseCardFeeMaxCentsMin = 0;
+export const updatePlatformBillingSettingsResponseCardFeeMaxCentsMax = 1000000000;
+
+export const updatePlatformBillingSettingsResponseAchFeeMinCentsMin = 0;
+export const updatePlatformBillingSettingsResponseAchFeeMinCentsMax = 1000000000;
+
+export const updatePlatformBillingSettingsResponseAchFeeMaxCentsMin = 0;
+export const updatePlatformBillingSettingsResponseAchFeeMaxCentsMax = 1000000000;
+
 
 
 export const UpdatePlatformBillingSettingsResponse = zod.object({
@@ -128,12 +194,34 @@ export const UpdatePlatformBillingSettingsResponse = zod.object({
   "cardFeeBps": zod.int().min(updatePlatformBillingSettingsResponseCardFeeBpsMin).max(updatePlatformBillingSettingsResponseCardFeeBpsMax),
   "cardFeeFixedCents": zod.int().min(updatePlatformBillingSettingsResponseCardFeeFixedCentsMin).max(updatePlatformBillingSettingsResponseCardFeeFixedCentsMax),
   "achFeeBps": zod.int().min(updatePlatformBillingSettingsResponseAchFeeBpsMin).max(updatePlatformBillingSettingsResponseAchFeeBpsMax),
-  "achFeeFixedCents": zod.int().min(updatePlatformBillingSettingsResponseAchFeeFixedCentsMin).max(updatePlatformBillingSettingsResponseAchFeeFixedCentsMax)
+  "achFeeFixedCents": zod.int().min(updatePlatformBillingSettingsResponseAchFeeFixedCentsMin).max(updatePlatformBillingSettingsResponseAchFeeFixedCentsMax),
+  "cardFeeMinCents": zod.int().min(updatePlatformBillingSettingsResponseCardFeeMinCentsMin).max(updatePlatformBillingSettingsResponseCardFeeMinCentsMax).nullish(),
+  "cardFeeMaxCents": zod.int().min(updatePlatformBillingSettingsResponseCardFeeMaxCentsMin).max(updatePlatformBillingSettingsResponseCardFeeMaxCentsMax).nullish(),
+  "achFeeMinCents": zod.int().min(updatePlatformBillingSettingsResponseAchFeeMinCentsMin).max(updatePlatformBillingSettingsResponseAchFeeMinCentsMax).nullish(),
+  "achFeeMaxCents": zod.int().min(updatePlatformBillingSettingsResponseAchFeeMaxCentsMin).max(updatePlatformBillingSettingsResponseAchFeeMaxCentsMax).nullish()
 })
+
+
+export const createPlatformSoftwarePlanBodyCardFeeMinCentsMin = 0;
+export const createPlatformSoftwarePlanBodyCardFeeMinCentsMax = 1000000000;
+
+export const createPlatformSoftwarePlanBodyCardFeeMaxCentsMin = 0;
+export const createPlatformSoftwarePlanBodyCardFeeMaxCentsMax = 1000000000;
+
+export const createPlatformSoftwarePlanBodyAchFeeMinCentsMin = 0;
+export const createPlatformSoftwarePlanBodyAchFeeMinCentsMax = 1000000000;
+
+export const createPlatformSoftwarePlanBodyAchFeeMaxCentsMin = 0;
+export const createPlatformSoftwarePlanBodyAchFeeMaxCentsMax = 1000000000;
+
 
 
 export const CreatePlatformSoftwarePlanBody = zod.object({
   "name": zod.string(),
+  "cardFeeMinCents": zod.int().min(createPlatformSoftwarePlanBodyCardFeeMinCentsMin).max(createPlatformSoftwarePlanBodyCardFeeMinCentsMax).nullish(),
+  "cardFeeMaxCents": zod.int().min(createPlatformSoftwarePlanBodyCardFeeMaxCentsMin).max(createPlatformSoftwarePlanBodyCardFeeMaxCentsMax).nullish(),
+  "achFeeMinCents": zod.int().min(createPlatformSoftwarePlanBodyAchFeeMinCentsMin).max(createPlatformSoftwarePlanBodyAchFeeMinCentsMax).nullish(),
+  "achFeeMaxCents": zod.int().min(createPlatformSoftwarePlanBodyAchFeeMaxCentsMin).max(createPlatformSoftwarePlanBodyAchFeeMaxCentsMax).nullish(),
   "tier": zod.string(),
   "price": zod.number(),
   "billingInterval": zod.enum(['month', 'year']),
@@ -147,8 +235,26 @@ export const CreatePlatformSoftwarePlanBody = zod.object({
   "achFeeFixedCents": zod.int().nullable()
 })
 
+export const createPlatformSoftwarePlanResponseOneCardFeeMinCentsMin = 0;
+export const createPlatformSoftwarePlanResponseOneCardFeeMinCentsMax = 1000000000;
+
+export const createPlatformSoftwarePlanResponseOneCardFeeMaxCentsMin = 0;
+export const createPlatformSoftwarePlanResponseOneCardFeeMaxCentsMax = 1000000000;
+
+export const createPlatformSoftwarePlanResponseOneAchFeeMinCentsMin = 0;
+export const createPlatformSoftwarePlanResponseOneAchFeeMinCentsMax = 1000000000;
+
+export const createPlatformSoftwarePlanResponseOneAchFeeMaxCentsMin = 0;
+export const createPlatformSoftwarePlanResponseOneAchFeeMaxCentsMax = 1000000000;
+
+
+
 export const CreatePlatformSoftwarePlanResponse = zod.object({
   "name": zod.string(),
+  "cardFeeMinCents": zod.int().min(createPlatformSoftwarePlanResponseOneCardFeeMinCentsMin).max(createPlatformSoftwarePlanResponseOneCardFeeMinCentsMax).nullish(),
+  "cardFeeMaxCents": zod.int().min(createPlatformSoftwarePlanResponseOneCardFeeMaxCentsMin).max(createPlatformSoftwarePlanResponseOneCardFeeMaxCentsMax).nullish(),
+  "achFeeMinCents": zod.int().min(createPlatformSoftwarePlanResponseOneAchFeeMinCentsMin).max(createPlatformSoftwarePlanResponseOneAchFeeMinCentsMax).nullish(),
+  "achFeeMaxCents": zod.int().min(createPlatformSoftwarePlanResponseOneAchFeeMaxCentsMin).max(createPlatformSoftwarePlanResponseOneAchFeeMaxCentsMax).nullish(),
   "tier": zod.string(),
   "price": zod.number(),
   "billingInterval": zod.enum(['month', 'year']),
@@ -172,8 +278,26 @@ export const UpdatePlatformSoftwarePlanParams = zod.object({
   "id": zod.coerce.number().int()
 })
 
+export const updatePlatformSoftwarePlanBodyCardFeeMinCentsMin = 0;
+export const updatePlatformSoftwarePlanBodyCardFeeMinCentsMax = 1000000000;
+
+export const updatePlatformSoftwarePlanBodyCardFeeMaxCentsMin = 0;
+export const updatePlatformSoftwarePlanBodyCardFeeMaxCentsMax = 1000000000;
+
+export const updatePlatformSoftwarePlanBodyAchFeeMinCentsMin = 0;
+export const updatePlatformSoftwarePlanBodyAchFeeMinCentsMax = 1000000000;
+
+export const updatePlatformSoftwarePlanBodyAchFeeMaxCentsMin = 0;
+export const updatePlatformSoftwarePlanBodyAchFeeMaxCentsMax = 1000000000;
+
+
+
 export const UpdatePlatformSoftwarePlanBody = zod.object({
   "name": zod.string(),
+  "cardFeeMinCents": zod.int().min(updatePlatformSoftwarePlanBodyCardFeeMinCentsMin).max(updatePlatformSoftwarePlanBodyCardFeeMinCentsMax).nullish(),
+  "cardFeeMaxCents": zod.int().min(updatePlatformSoftwarePlanBodyCardFeeMaxCentsMin).max(updatePlatformSoftwarePlanBodyCardFeeMaxCentsMax).nullish(),
+  "achFeeMinCents": zod.int().min(updatePlatformSoftwarePlanBodyAchFeeMinCentsMin).max(updatePlatformSoftwarePlanBodyAchFeeMinCentsMax).nullish(),
+  "achFeeMaxCents": zod.int().min(updatePlatformSoftwarePlanBodyAchFeeMaxCentsMin).max(updatePlatformSoftwarePlanBodyAchFeeMaxCentsMax).nullish(),
   "tier": zod.string(),
   "price": zod.number(),
   "billingInterval": zod.enum(['month', 'year']),
@@ -187,8 +311,26 @@ export const UpdatePlatformSoftwarePlanBody = zod.object({
   "achFeeFixedCents": zod.int().nullable()
 })
 
+export const updatePlatformSoftwarePlanResponseOneCardFeeMinCentsMin = 0;
+export const updatePlatformSoftwarePlanResponseOneCardFeeMinCentsMax = 1000000000;
+
+export const updatePlatformSoftwarePlanResponseOneCardFeeMaxCentsMin = 0;
+export const updatePlatformSoftwarePlanResponseOneCardFeeMaxCentsMax = 1000000000;
+
+export const updatePlatformSoftwarePlanResponseOneAchFeeMinCentsMin = 0;
+export const updatePlatformSoftwarePlanResponseOneAchFeeMinCentsMax = 1000000000;
+
+export const updatePlatformSoftwarePlanResponseOneAchFeeMaxCentsMin = 0;
+export const updatePlatformSoftwarePlanResponseOneAchFeeMaxCentsMax = 1000000000;
+
+
+
 export const UpdatePlatformSoftwarePlanResponse = zod.object({
   "name": zod.string(),
+  "cardFeeMinCents": zod.int().min(updatePlatformSoftwarePlanResponseOneCardFeeMinCentsMin).max(updatePlatformSoftwarePlanResponseOneCardFeeMinCentsMax).nullish(),
+  "cardFeeMaxCents": zod.int().min(updatePlatformSoftwarePlanResponseOneCardFeeMaxCentsMin).max(updatePlatformSoftwarePlanResponseOneCardFeeMaxCentsMax).nullish(),
+  "achFeeMinCents": zod.int().min(updatePlatformSoftwarePlanResponseOneAchFeeMinCentsMin).max(updatePlatformSoftwarePlanResponseOneAchFeeMinCentsMax).nullish(),
+  "achFeeMaxCents": zod.int().min(updatePlatformSoftwarePlanResponseOneAchFeeMaxCentsMin).max(updatePlatformSoftwarePlanResponseOneAchFeeMaxCentsMax).nullish(),
   "tier": zod.string(),
   "price": zod.number(),
   "billingInterval": zod.enum(['month', 'year']),
@@ -212,8 +354,26 @@ export const PublishPlatformSoftwarePlanParams = zod.object({
   "id": zod.coerce.number().int()
 })
 
+export const publishPlatformSoftwarePlanResponseOneCardFeeMinCentsMin = 0;
+export const publishPlatformSoftwarePlanResponseOneCardFeeMinCentsMax = 1000000000;
+
+export const publishPlatformSoftwarePlanResponseOneCardFeeMaxCentsMin = 0;
+export const publishPlatformSoftwarePlanResponseOneCardFeeMaxCentsMax = 1000000000;
+
+export const publishPlatformSoftwarePlanResponseOneAchFeeMinCentsMin = 0;
+export const publishPlatformSoftwarePlanResponseOneAchFeeMinCentsMax = 1000000000;
+
+export const publishPlatformSoftwarePlanResponseOneAchFeeMaxCentsMin = 0;
+export const publishPlatformSoftwarePlanResponseOneAchFeeMaxCentsMax = 1000000000;
+
+
+
 export const PublishPlatformSoftwarePlanResponse = zod.object({
   "name": zod.string(),
+  "cardFeeMinCents": zod.int().min(publishPlatformSoftwarePlanResponseOneCardFeeMinCentsMin).max(publishPlatformSoftwarePlanResponseOneCardFeeMinCentsMax).nullish(),
+  "cardFeeMaxCents": zod.int().min(publishPlatformSoftwarePlanResponseOneCardFeeMaxCentsMin).max(publishPlatformSoftwarePlanResponseOneCardFeeMaxCentsMax).nullish(),
+  "achFeeMinCents": zod.int().min(publishPlatformSoftwarePlanResponseOneAchFeeMinCentsMin).max(publishPlatformSoftwarePlanResponseOneAchFeeMinCentsMax).nullish(),
+  "achFeeMaxCents": zod.int().min(publishPlatformSoftwarePlanResponseOneAchFeeMaxCentsMin).max(publishPlatformSoftwarePlanResponseOneAchFeeMaxCentsMax).nullish(),
   "tier": zod.string(),
   "price": zod.number(),
   "billingInterval": zod.enum(['month', 'year']),
@@ -250,6 +410,18 @@ export const RetryPlatformPayoutResponse = zod.object({
 })
 
 
+export const getBusinessSoftwareBillingResponsePlansItemOneCardFeeMinCentsMin = 0;
+export const getBusinessSoftwareBillingResponsePlansItemOneCardFeeMinCentsMax = 1000000000;
+
+export const getBusinessSoftwareBillingResponsePlansItemOneCardFeeMaxCentsMin = 0;
+export const getBusinessSoftwareBillingResponsePlansItemOneCardFeeMaxCentsMax = 1000000000;
+
+export const getBusinessSoftwareBillingResponsePlansItemOneAchFeeMinCentsMin = 0;
+export const getBusinessSoftwareBillingResponsePlansItemOneAchFeeMinCentsMax = 1000000000;
+
+export const getBusinessSoftwareBillingResponsePlansItemOneAchFeeMaxCentsMin = 0;
+export const getBusinessSoftwareBillingResponsePlansItemOneAchFeeMaxCentsMax = 1000000000;
+
 export const getBusinessSoftwareBillingResponseFeesCardFeeBpsMin = 0;
 export const getBusinessSoftwareBillingResponseFeesCardFeeBpsMax = 10000;
 
@@ -261,6 +433,18 @@ export const getBusinessSoftwareBillingResponseFeesAchFeeBpsMax = 10000;
 
 export const getBusinessSoftwareBillingResponseFeesAchFeeFixedCentsMin = 0;
 export const getBusinessSoftwareBillingResponseFeesAchFeeFixedCentsMax = 100000;
+
+export const getBusinessSoftwareBillingResponseFeesCardFeeMinCentsMin = 0;
+export const getBusinessSoftwareBillingResponseFeesCardFeeMinCentsMax = 1000000000;
+
+export const getBusinessSoftwareBillingResponseFeesCardFeeMaxCentsMin = 0;
+export const getBusinessSoftwareBillingResponseFeesCardFeeMaxCentsMax = 1000000000;
+
+export const getBusinessSoftwareBillingResponseFeesAchFeeMinCentsMin = 0;
+export const getBusinessSoftwareBillingResponseFeesAchFeeMinCentsMax = 1000000000;
+
+export const getBusinessSoftwareBillingResponseFeesAchFeeMaxCentsMin = 0;
+export const getBusinessSoftwareBillingResponseFeesAchFeeMaxCentsMax = 1000000000;
 
 
 
@@ -280,6 +464,10 @@ export const GetBusinessSoftwareBillingResponse = zod.object({
 }),
   "plans": zod.array(zod.object({
   "name": zod.string(),
+  "cardFeeMinCents": zod.int().min(getBusinessSoftwareBillingResponsePlansItemOneCardFeeMinCentsMin).max(getBusinessSoftwareBillingResponsePlansItemOneCardFeeMinCentsMax).nullish(),
+  "cardFeeMaxCents": zod.int().min(getBusinessSoftwareBillingResponsePlansItemOneCardFeeMaxCentsMin).max(getBusinessSoftwareBillingResponsePlansItemOneCardFeeMaxCentsMax).nullish(),
+  "achFeeMinCents": zod.int().min(getBusinessSoftwareBillingResponsePlansItemOneAchFeeMinCentsMin).max(getBusinessSoftwareBillingResponsePlansItemOneAchFeeMinCentsMax).nullish(),
+  "achFeeMaxCents": zod.int().min(getBusinessSoftwareBillingResponsePlansItemOneAchFeeMaxCentsMin).max(getBusinessSoftwareBillingResponsePlansItemOneAchFeeMaxCentsMax).nullish(),
   "tier": zod.string(),
   "price": zod.number(),
   "billingInterval": zod.enum(['month', 'year']),
@@ -314,8 +502,18 @@ export const GetBusinessSoftwareBillingResponse = zod.object({
   "cardFeeBps": zod.int().min(getBusinessSoftwareBillingResponseFeesCardFeeBpsMin).max(getBusinessSoftwareBillingResponseFeesCardFeeBpsMax),
   "cardFeeFixedCents": zod.int().min(getBusinessSoftwareBillingResponseFeesCardFeeFixedCentsMin).max(getBusinessSoftwareBillingResponseFeesCardFeeFixedCentsMax),
   "achFeeBps": zod.int().min(getBusinessSoftwareBillingResponseFeesAchFeeBpsMin).max(getBusinessSoftwareBillingResponseFeesAchFeeBpsMax),
-  "achFeeFixedCents": zod.int().min(getBusinessSoftwareBillingResponseFeesAchFeeFixedCentsMin).max(getBusinessSoftwareBillingResponseFeesAchFeeFixedCentsMax)
-})
+  "achFeeFixedCents": zod.int().min(getBusinessSoftwareBillingResponseFeesAchFeeFixedCentsMin).max(getBusinessSoftwareBillingResponseFeesAchFeeFixedCentsMax),
+  "cardFeeMinCents": zod.int().min(getBusinessSoftwareBillingResponseFeesCardFeeMinCentsMin).max(getBusinessSoftwareBillingResponseFeesCardFeeMinCentsMax).nullish(),
+  "cardFeeMaxCents": zod.int().min(getBusinessSoftwareBillingResponseFeesCardFeeMaxCentsMin).max(getBusinessSoftwareBillingResponseFeesCardFeeMaxCentsMax).nullish(),
+  "achFeeMinCents": zod.int().min(getBusinessSoftwareBillingResponseFeesAchFeeMinCentsMin).max(getBusinessSoftwareBillingResponseFeesAchFeeMinCentsMax).nullish(),
+  "achFeeMaxCents": zod.int().min(getBusinessSoftwareBillingResponseFeesAchFeeMaxCentsMin).max(getBusinessSoftwareBillingResponseFeesAchFeeMaxCentsMax).nullish()
+}),
+  "featureCatalog": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "description": zod.string(),
+  "appPaths": zod.array(zod.string())
+})).optional()
 })
 
 
@@ -346,6 +544,18 @@ export const StartBusinessPaymentOnboardingResponse = zod.object({
 })
 
 
+export const refreshBusinessPaymentAccountResponsePlansItemOneCardFeeMinCentsMin = 0;
+export const refreshBusinessPaymentAccountResponsePlansItemOneCardFeeMinCentsMax = 1000000000;
+
+export const refreshBusinessPaymentAccountResponsePlansItemOneCardFeeMaxCentsMin = 0;
+export const refreshBusinessPaymentAccountResponsePlansItemOneCardFeeMaxCentsMax = 1000000000;
+
+export const refreshBusinessPaymentAccountResponsePlansItemOneAchFeeMinCentsMin = 0;
+export const refreshBusinessPaymentAccountResponsePlansItemOneAchFeeMinCentsMax = 1000000000;
+
+export const refreshBusinessPaymentAccountResponsePlansItemOneAchFeeMaxCentsMin = 0;
+export const refreshBusinessPaymentAccountResponsePlansItemOneAchFeeMaxCentsMax = 1000000000;
+
 export const refreshBusinessPaymentAccountResponseFeesCardFeeBpsMin = 0;
 export const refreshBusinessPaymentAccountResponseFeesCardFeeBpsMax = 10000;
 
@@ -357,6 +567,18 @@ export const refreshBusinessPaymentAccountResponseFeesAchFeeBpsMax = 10000;
 
 export const refreshBusinessPaymentAccountResponseFeesAchFeeFixedCentsMin = 0;
 export const refreshBusinessPaymentAccountResponseFeesAchFeeFixedCentsMax = 100000;
+
+export const refreshBusinessPaymentAccountResponseFeesCardFeeMinCentsMin = 0;
+export const refreshBusinessPaymentAccountResponseFeesCardFeeMinCentsMax = 1000000000;
+
+export const refreshBusinessPaymentAccountResponseFeesCardFeeMaxCentsMin = 0;
+export const refreshBusinessPaymentAccountResponseFeesCardFeeMaxCentsMax = 1000000000;
+
+export const refreshBusinessPaymentAccountResponseFeesAchFeeMinCentsMin = 0;
+export const refreshBusinessPaymentAccountResponseFeesAchFeeMinCentsMax = 1000000000;
+
+export const refreshBusinessPaymentAccountResponseFeesAchFeeMaxCentsMin = 0;
+export const refreshBusinessPaymentAccountResponseFeesAchFeeMaxCentsMax = 1000000000;
 
 
 
@@ -376,6 +598,10 @@ export const RefreshBusinessPaymentAccountResponse = zod.object({
 }),
   "plans": zod.array(zod.object({
   "name": zod.string(),
+  "cardFeeMinCents": zod.int().min(refreshBusinessPaymentAccountResponsePlansItemOneCardFeeMinCentsMin).max(refreshBusinessPaymentAccountResponsePlansItemOneCardFeeMinCentsMax).nullish(),
+  "cardFeeMaxCents": zod.int().min(refreshBusinessPaymentAccountResponsePlansItemOneCardFeeMaxCentsMin).max(refreshBusinessPaymentAccountResponsePlansItemOneCardFeeMaxCentsMax).nullish(),
+  "achFeeMinCents": zod.int().min(refreshBusinessPaymentAccountResponsePlansItemOneAchFeeMinCentsMin).max(refreshBusinessPaymentAccountResponsePlansItemOneAchFeeMinCentsMax).nullish(),
+  "achFeeMaxCents": zod.int().min(refreshBusinessPaymentAccountResponsePlansItemOneAchFeeMaxCentsMin).max(refreshBusinessPaymentAccountResponsePlansItemOneAchFeeMaxCentsMax).nullish(),
   "tier": zod.string(),
   "price": zod.number(),
   "billingInterval": zod.enum(['month', 'year']),
@@ -410,26 +636,112 @@ export const RefreshBusinessPaymentAccountResponse = zod.object({
   "cardFeeBps": zod.int().min(refreshBusinessPaymentAccountResponseFeesCardFeeBpsMin).max(refreshBusinessPaymentAccountResponseFeesCardFeeBpsMax),
   "cardFeeFixedCents": zod.int().min(refreshBusinessPaymentAccountResponseFeesCardFeeFixedCentsMin).max(refreshBusinessPaymentAccountResponseFeesCardFeeFixedCentsMax),
   "achFeeBps": zod.int().min(refreshBusinessPaymentAccountResponseFeesAchFeeBpsMin).max(refreshBusinessPaymentAccountResponseFeesAchFeeBpsMax),
-  "achFeeFixedCents": zod.int().min(refreshBusinessPaymentAccountResponseFeesAchFeeFixedCentsMin).max(refreshBusinessPaymentAccountResponseFeesAchFeeFixedCentsMax)
+  "achFeeFixedCents": zod.int().min(refreshBusinessPaymentAccountResponseFeesAchFeeFixedCentsMin).max(refreshBusinessPaymentAccountResponseFeesAchFeeFixedCentsMax),
+  "cardFeeMinCents": zod.int().min(refreshBusinessPaymentAccountResponseFeesCardFeeMinCentsMin).max(refreshBusinessPaymentAccountResponseFeesCardFeeMinCentsMax).nullish(),
+  "cardFeeMaxCents": zod.int().min(refreshBusinessPaymentAccountResponseFeesCardFeeMaxCentsMin).max(refreshBusinessPaymentAccountResponseFeesCardFeeMaxCentsMax).nullish(),
+  "achFeeMinCents": zod.int().min(refreshBusinessPaymentAccountResponseFeesAchFeeMinCentsMin).max(refreshBusinessPaymentAccountResponseFeesAchFeeMinCentsMax).nullish(),
+  "achFeeMaxCents": zod.int().min(refreshBusinessPaymentAccountResponseFeesAchFeeMaxCentsMin).max(refreshBusinessPaymentAccountResponseFeesAchFeeMaxCentsMax).nullish()
+}),
+  "featureCatalog": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "description": zod.string(),
+  "appPaths": zod.array(zod.string())
+})).optional()
 })
+
+
+export const GetSoftwareFeaturesResponse = zod.object({
+  "featureKeys": zod.array(zod.string()).nullable(),
+  "featureCatalog": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "description": zod.string(),
+  "appPaths": zod.array(zod.string())
+}))
+})
+
+
+export const getWeatherLocationsResponseLocationsItemIdMax = 160;
+
+export const getWeatherLocationsResponseLocationsItemLabelMin = 2;
+export const getWeatherLocationsResponseLocationsItemLabelMax = 160;
+
+export const getWeatherLocationsResponseLocationsItemQueryMin = 2;
+export const getWeatherLocationsResponseLocationsItemQueryMax = 160;
+
+export const getWeatherLocationsResponseLocationsMax = 30;
+
+
+
+export const GetWeatherLocationsResponse = zod.object({
+  "locations": zod.array(zod.object({
+  "id": zod.string().min(1).max(getWeatherLocationsResponseLocationsItemIdMax),
+  "label": zod.string().min(getWeatherLocationsResponseLocationsItemLabelMin).max(getWeatherLocationsResponseLocationsItemLabelMax),
+  "query": zod.string().min(getWeatherLocationsResponseLocationsItemQueryMin).max(getWeatherLocationsResponseLocationsItemQueryMax)
+})).max(getWeatherLocationsResponseLocationsMax)
+})
+
+
+export const updateWeatherLocationsBodyLocationsItemIdMax = 160;
+
+export const updateWeatherLocationsBodyLocationsItemLabelMin = 2;
+export const updateWeatherLocationsBodyLocationsItemLabelMax = 160;
+
+export const updateWeatherLocationsBodyLocationsItemQueryMin = 2;
+export const updateWeatherLocationsBodyLocationsItemQueryMax = 160;
+
+export const updateWeatherLocationsBodyLocationsMax = 30;
+
+
+
+export const UpdateWeatherLocationsBody = zod.object({
+  "locations": zod.array(zod.object({
+  "id": zod.string().min(1).max(updateWeatherLocationsBodyLocationsItemIdMax),
+  "label": zod.string().min(updateWeatherLocationsBodyLocationsItemLabelMin).max(updateWeatherLocationsBodyLocationsItemLabelMax),
+  "query": zod.string().min(updateWeatherLocationsBodyLocationsItemQueryMin).max(updateWeatherLocationsBodyLocationsItemQueryMax)
+})).max(updateWeatherLocationsBodyLocationsMax)
+})
+
+export const updateWeatherLocationsResponseLocationsItemIdMax = 160;
+
+export const updateWeatherLocationsResponseLocationsItemLabelMin = 2;
+export const updateWeatherLocationsResponseLocationsItemLabelMax = 160;
+
+export const updateWeatherLocationsResponseLocationsItemQueryMin = 2;
+export const updateWeatherLocationsResponseLocationsItemQueryMax = 160;
+
+export const updateWeatherLocationsResponseLocationsMax = 30;
+
+
+
+export const UpdateWeatherLocationsResponse = zod.object({
+  "locations": zod.array(zod.object({
+  "id": zod.string().min(1).max(updateWeatherLocationsResponseLocationsItemIdMax),
+  "label": zod.string().min(updateWeatherLocationsResponseLocationsItemLabelMin).max(updateWeatherLocationsResponseLocationsItemLabelMax),
+  "query": zod.string().min(updateWeatherLocationsResponseLocationsItemQueryMin).max(updateWeatherLocationsResponseLocationsItemQueryMax)
+})).max(updateWeatherLocationsResponseLocationsMax)
 })
 
 
 /**
- * @summary Fourteen-day planning forecast at a company property's saved map pin
+ * @summary Fourteen-day planning forecast for a saved company town or ZIP code
  */
+
+export const getScheduleWeatherQueryLocationIdMax = 160;
 
 
 
 export const GetScheduleWeatherQueryParams = zod.object({
-  "propertyId": zod.coerce.number().int().min(1)
+  "propertyId": zod.coerce.number().int().min(1).optional(),
+  "locationId": zod.coerce.string().min(1).max(getScheduleWeatherQueryLocationIdMax).optional()
 })
 
 export const getScheduleWeatherResponseDailyItemDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 
 
 export const GetScheduleWeatherResponse = zod.object({
-  "propertyId": zod.int(),
+  "propertyId": zod.int().nullable(),
   "location": zod.string(),
   "latitude": zod.number(),
   "longitude": zod.number(),
@@ -3852,6 +4164,9 @@ export const CompleteAndInvoiceJobResponse = zod.object({
   "paymentCardLast4": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.int().nullish(),
+  "inventoryItemId": zod.int().nullish(),
+  "sku": zod.string().nullish(),
   "id": zod.int(),
   "description": zod.string(),
   "quantity": zod.number(),
@@ -5192,6 +5507,9 @@ export const ListInvoicesResponseItem = zod.object({
   "paymentCardLast4": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.int().nullish(),
+  "inventoryItemId": zod.int().nullish(),
+  "sku": zod.string().nullish(),
   "id": zod.int(),
   "description": zod.string(),
   "quantity": zod.number(),
@@ -5219,6 +5537,9 @@ export const CreateInvoiceBody = zod.object({
   "notes": zod.string().optional(),
   "dueDate": zod.string().optional(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.int().nullish(),
+  "inventoryItemId": zod.int().nullish(),
+  "sku": zod.string().nullish(),
   "description": zod.string(),
   "quantity": zod.number(),
   "unitPrice": zod.number()
@@ -5255,6 +5576,9 @@ export const CreateInvoiceResponse = zod.object({
   "paymentCardLast4": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.int().nullish(),
+  "inventoryItemId": zod.int().nullish(),
+  "sku": zod.string().nullish(),
   "id": zod.int(),
   "description": zod.string(),
   "quantity": zod.number(),
@@ -5308,6 +5632,9 @@ export const GetInvoiceResponse = zod.object({
   "paymentCardLast4": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.int().nullish(),
+  "inventoryItemId": zod.int().nullish(),
+  "sku": zod.string().nullish(),
   "id": zod.int(),
   "description": zod.string(),
   "quantity": zod.number(),
@@ -5369,6 +5696,9 @@ export const UpdateInvoiceResponse = zod.object({
   "paymentCardLast4": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.int().nullish(),
+  "inventoryItemId": zod.int().nullish(),
+  "sku": zod.string().nullish(),
   "id": zod.int(),
   "description": zod.string(),
   "quantity": zod.number(),
@@ -5450,6 +5780,9 @@ export const MarkInvoicePaidResponse = zod.object({
   "paymentCardLast4": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.int().nullish(),
+  "inventoryItemId": zod.int().nullish(),
+  "sku": zod.string().nullish(),
   "id": zod.int(),
   "description": zod.string(),
   "quantity": zod.number(),
@@ -5503,6 +5836,9 @@ export const ArchiveInvoiceResponse = zod.object({
   "paymentCardLast4": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.int().nullish(),
+  "inventoryItemId": zod.int().nullish(),
+  "sku": zod.string().nullish(),
   "id": zod.int(),
   "description": zod.string(),
   "quantity": zod.number(),
@@ -5556,6 +5892,9 @@ export const RestoreInvoiceResponse = zod.object({
   "paymentCardLast4": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.int().nullish(),
+  "inventoryItemId": zod.int().nullish(),
+  "sku": zod.string().nullish(),
   "id": zod.int(),
   "description": zod.string(),
   "quantity": zod.number(),
@@ -5609,6 +5948,9 @@ export const CreateInvoiceFromJobResponse = zod.object({
   "paymentCardLast4": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.int().nullish(),
+  "inventoryItemId": zod.int().nullish(),
+  "sku": zod.string().nullish(),
   "id": zod.int(),
   "description": zod.string(),
   "quantity": zod.number(),
@@ -11233,6 +11575,13 @@ export const ListEstimatesQueryParams = zod.object({
   "includeArchived": zod.coerce.boolean().optional().describe('Include archived estimates; omitted or false returns active estimates only.')
 })
 
+
+export const listEstimatesResponseLineItemsItemBundledServicesItemUnitPriceMin = 0;
+
+export const listEstimatesResponseLineItemsItemBundledServicesMax = 100;
+
+
+
 export const ListEstimatesResponseItem = zod.object({
   "termsText": zod.string().nullish(),
   "id": zod.int(),
@@ -11249,6 +11598,14 @@ export const ListEstimatesResponseItem = zod.object({
   "lineItems": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(listEstimatesResponseLineItemsItemBundledServicesItemUnitPriceMin)
+})).max(listEstimatesResponseLineItemsItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -11296,6 +11653,13 @@ export const ListEstimatesResponse = zod.array(ListEstimatesResponseItem)
 /**
  * @summary Create a new estimate
  */
+
+export const createEstimateBodyLineItemsItemBundledServicesItemUnitPriceMin = 0;
+
+export const createEstimateBodyLineItemsItemBundledServicesMax = 100;
+
+
+
 export const CreateEstimateBody = zod.object({
   "termsText": zod.string().nullish(),
   "customerId": zod.int().optional(),
@@ -11309,6 +11673,14 @@ export const CreateEstimateBody = zod.object({
   "lineItems": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(createEstimateBodyLineItemsItemBundledServicesItemUnitPriceMin)
+})).max(createEstimateBodyLineItemsItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -11330,6 +11702,13 @@ export const CreateEstimateBody = zod.object({
   "depositValue": zod.number().optional().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)')
 })
 
+
+export const createEstimateResponseLineItemsItemBundledServicesItemUnitPriceMin = 0;
+
+export const createEstimateResponseLineItemsItemBundledServicesMax = 100;
+
+
+
 export const CreateEstimateResponse = zod.object({
   "termsText": zod.string().nullish(),
   "id": zod.int(),
@@ -11346,6 +11725,14 @@ export const CreateEstimateResponse = zod.object({
   "lineItems": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(createEstimateResponseLineItemsItemBundledServicesItemUnitPriceMin)
+})).max(createEstimateResponseLineItemsItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -11405,6 +11792,13 @@ export const GetEstimateParams = zod.object({
   "id": zod.coerce.number().int()
 })
 
+
+export const getEstimateResponseLineItemsItemBundledServicesItemUnitPriceMin = 0;
+
+export const getEstimateResponseLineItemsItemBundledServicesMax = 100;
+
+
+
 export const GetEstimateResponse = zod.object({
   "termsText": zod.string().nullish(),
   "id": zod.int(),
@@ -11421,6 +11815,14 @@ export const GetEstimateResponse = zod.object({
   "lineItems": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(getEstimateResponseLineItemsItemBundledServicesItemUnitPriceMin)
+})).max(getEstimateResponseLineItemsItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -11471,6 +11873,13 @@ export const UpdateEstimateParams = zod.object({
   "id": zod.coerce.number().int()
 })
 
+
+export const updateEstimateBodyLineItemsItemBundledServicesItemUnitPriceMin = 0;
+
+export const updateEstimateBodyLineItemsItemBundledServicesMax = 100;
+
+
+
 export const UpdateEstimateBody = zod.object({
   "termsText": zod.string().nullish(),
   "customerId": zod.int().optional(),
@@ -11483,6 +11892,14 @@ export const UpdateEstimateBody = zod.object({
   "lineItems": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(updateEstimateBodyLineItemsItemBundledServicesItemUnitPriceMin)
+})).max(updateEstimateBodyLineItemsItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -11504,6 +11921,13 @@ export const UpdateEstimateBody = zod.object({
   "depositValue": zod.number().optional().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)')
 })
 
+
+export const updateEstimateResponseLineItemsItemBundledServicesItemUnitPriceMin = 0;
+
+export const updateEstimateResponseLineItemsItemBundledServicesMax = 100;
+
+
+
 export const UpdateEstimateResponse = zod.object({
   "termsText": zod.string().nullish(),
   "id": zod.int(),
@@ -11520,6 +11944,14 @@ export const UpdateEstimateResponse = zod.object({
   "lineItems": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(updateEstimateResponseLineItemsItemBundledServicesItemUnitPriceMin)
+})).max(updateEstimateResponseLineItemsItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -11584,6 +12016,13 @@ export const ArchiveEstimateParams = zod.object({
   "id": zod.coerce.number().int()
 })
 
+
+export const archiveEstimateResponseLineItemsItemBundledServicesItemUnitPriceMin = 0;
+
+export const archiveEstimateResponseLineItemsItemBundledServicesMax = 100;
+
+
+
 export const ArchiveEstimateResponse = zod.object({
   "termsText": zod.string().nullish(),
   "id": zod.int(),
@@ -11600,6 +12039,14 @@ export const ArchiveEstimateResponse = zod.object({
   "lineItems": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(archiveEstimateResponseLineItemsItemBundledServicesItemUnitPriceMin)
+})).max(archiveEstimateResponseLineItemsItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -11650,6 +12097,13 @@ export const RestoreEstimateParams = zod.object({
   "id": zod.coerce.number().int()
 })
 
+
+export const restoreEstimateResponseLineItemsItemBundledServicesItemUnitPriceMin = 0;
+
+export const restoreEstimateResponseLineItemsItemBundledServicesMax = 100;
+
+
+
 export const RestoreEstimateResponse = zod.object({
   "termsText": zod.string().nullish(),
   "id": zod.int(),
@@ -11666,6 +12120,14 @@ export const RestoreEstimateResponse = zod.object({
   "lineItems": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(restoreEstimateResponseLineItemsItemBundledServicesItemUnitPriceMin)
+})).max(restoreEstimateResponseLineItemsItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -11716,6 +12178,13 @@ export const SendEstimateParams = zod.object({
   "id": zod.coerce.number().int()
 })
 
+
+export const sendEstimateResponseLineItemsItemBundledServicesItemUnitPriceMin = 0;
+
+export const sendEstimateResponseLineItemsItemBundledServicesMax = 100;
+
+
+
 export const SendEstimateResponse = zod.object({
   "termsText": zod.string().nullish(),
   "id": zod.int(),
@@ -11732,6 +12201,14 @@ export const SendEstimateResponse = zod.object({
   "lineItems": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(sendEstimateResponseLineItemsItemBundledServicesItemUnitPriceMin)
+})).max(sendEstimateResponseLineItemsItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -11838,6 +12315,9 @@ export const GetPublicInvoiceResponse = zod.object({
   "paymentCardLast4": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.int().nullish(),
+  "inventoryItemId": zod.int().nullish(),
+  "sku": zod.string().nullish(),
   "id": zod.int(),
   "description": zod.string(),
   "quantity": zod.number(),
@@ -11872,6 +12352,23 @@ export const GetPublicEstimateParams = zod.object({
   "token": zod.coerce.string()
 })
 
+
+export const getPublicEstimateResponseOneLineItemsItemBundledServicesItemUnitPriceMin = 0;
+
+export const getPublicEstimateResponseOneLineItemsItemBundledServicesMax = 100;
+
+
+export const getPublicEstimateResponseTwoRequiredItemBundledServicesItemUnitPriceMin = 0;
+
+export const getPublicEstimateResponseTwoRequiredItemBundledServicesMax = 100;
+
+
+export const getPublicEstimateResponseTwoOptionalItemBundledServicesItemUnitPriceMin = 0;
+
+export const getPublicEstimateResponseTwoOptionalItemBundledServicesMax = 100;
+
+
+
 export const GetPublicEstimateResponse = zod.object({
   "termsText": zod.string().nullish(),
   "id": zod.int(),
@@ -11888,6 +12385,14 @@ export const GetPublicEstimateResponse = zod.object({
   "lineItems": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(getPublicEstimateResponseOneLineItemsItemBundledServicesItemUnitPriceMin)
+})).max(getPublicEstimateResponseOneLineItemsItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -11933,6 +12438,14 @@ export const GetPublicEstimateResponse = zod.object({
   "required": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(getPublicEstimateResponseTwoRequiredItemBundledServicesItemUnitPriceMin)
+})).max(getPublicEstimateResponseTwoRequiredItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -11945,6 +12458,14 @@ export const GetPublicEstimateResponse = zod.object({
   "optional": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(getPublicEstimateResponseTwoOptionalItemBundledServicesItemUnitPriceMin)
+})).max(getPublicEstimateResponseTwoOptionalItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -11987,6 +12508,13 @@ export const RespondToEstimateBody = zod.object({
   "paymentMethodId": zod.string().optional().describe('Stripe PaymentMethod ID (pm_xxx) — required when Stripe is enabled and action is approve')
 })
 
+
+export const respondToEstimateResponseLineItemsItemBundledServicesItemUnitPriceMin = 0;
+
+export const respondToEstimateResponseLineItemsItemBundledServicesMax = 100;
+
+
+
 export const RespondToEstimateResponse = zod.object({
   "termsText": zod.string().nullish(),
   "id": zod.int(),
@@ -12003,6 +12531,14 @@ export const RespondToEstimateResponse = zod.object({
   "lineItems": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(respondToEstimateResponseLineItemsItemBundledServicesItemUnitPriceMin)
+})).max(respondToEstimateResponseLineItemsItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -12274,6 +12810,13 @@ export const ConvertVisitToJobResponse = zod.object({
 /**
  * @summary List estimate templates
  */
+
+export const listEstimateTemplatesResponseLineItemsItemBundledServicesItemUnitPriceMin = 0;
+
+export const listEstimateTemplatesResponseLineItemsItemBundledServicesMax = 100;
+
+
+
 export const ListEstimateTemplatesResponseItem = zod.object({
   "notes": zod.string().nullish(),
   "termsText": zod.string().nullish(),
@@ -12284,6 +12827,14 @@ export const ListEstimateTemplatesResponseItem = zod.object({
   "lineItems": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(listEstimateTemplatesResponseLineItemsItemBundledServicesItemUnitPriceMin)
+})).max(listEstimateTemplatesResponseLineItemsItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -12302,6 +12853,13 @@ export const ListEstimateTemplatesResponse = zod.array(ListEstimateTemplatesResp
 /**
  * @summary Create an estimate template
  */
+
+export const createEstimateTemplateBodyLineItemsItemBundledServicesItemUnitPriceMin = 0;
+
+export const createEstimateTemplateBodyLineItemsItemBundledServicesMax = 100;
+
+
+
 export const CreateEstimateTemplateBody = zod.object({
   "notes": zod.string().nullish(),
   "termsText": zod.string().nullish(),
@@ -12310,6 +12868,14 @@ export const CreateEstimateTemplateBody = zod.object({
   "lineItems": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(createEstimateTemplateBodyLineItemsItemBundledServicesItemUnitPriceMin)
+})).max(createEstimateTemplateBodyLineItemsItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -12321,6 +12887,13 @@ export const CreateEstimateTemplateBody = zod.object({
 })).optional()
 })
 
+
+export const createEstimateTemplateResponseLineItemsItemBundledServicesItemUnitPriceMin = 0;
+
+export const createEstimateTemplateResponseLineItemsItemBundledServicesMax = 100;
+
+
+
 export const CreateEstimateTemplateResponse = zod.object({
   "notes": zod.string().nullish(),
   "termsText": zod.string().nullish(),
@@ -12331,6 +12904,14 @@ export const CreateEstimateTemplateResponse = zod.object({
   "lineItems": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(createEstimateTemplateResponseLineItemsItemBundledServicesItemUnitPriceMin)
+})).max(createEstimateTemplateResponseLineItemsItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -12352,6 +12933,13 @@ export const GetEstimateTemplateParams = zod.object({
   "id": zod.coerce.number().int()
 })
 
+
+export const getEstimateTemplateResponseLineItemsItemBundledServicesItemUnitPriceMin = 0;
+
+export const getEstimateTemplateResponseLineItemsItemBundledServicesMax = 100;
+
+
+
 export const GetEstimateTemplateResponse = zod.object({
   "notes": zod.string().nullish(),
   "termsText": zod.string().nullish(),
@@ -12362,6 +12950,14 @@ export const GetEstimateTemplateResponse = zod.object({
   "lineItems": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(getEstimateTemplateResponseLineItemsItemBundledServicesItemUnitPriceMin)
+})).max(getEstimateTemplateResponseLineItemsItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -12383,6 +12979,13 @@ export const UpdateEstimateTemplateParams = zod.object({
   "id": zod.coerce.number().int()
 })
 
+
+export const updateEstimateTemplateBodyLineItemsItemBundledServicesItemUnitPriceMin = 0;
+
+export const updateEstimateTemplateBodyLineItemsItemBundledServicesMax = 100;
+
+
+
 export const UpdateEstimateTemplateBody = zod.object({
   "notes": zod.string().nullish(),
   "termsText": zod.string().nullish(),
@@ -12391,6 +12994,14 @@ export const UpdateEstimateTemplateBody = zod.object({
   "lineItems": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(updateEstimateTemplateBodyLineItemsItemBundledServicesItemUnitPriceMin)
+})).max(updateEstimateTemplateBodyLineItemsItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -12402,6 +13013,13 @@ export const UpdateEstimateTemplateBody = zod.object({
 })).optional()
 })
 
+
+export const updateEstimateTemplateResponseLineItemsItemBundledServicesItemUnitPriceMin = 0;
+
+export const updateEstimateTemplateResponseLineItemsItemBundledServicesMax = 100;
+
+
+
 export const UpdateEstimateTemplateResponse = zod.object({
   "notes": zod.string().nullish(),
   "termsText": zod.string().nullish(),
@@ -12412,6 +13030,14 @@ export const UpdateEstimateTemplateResponse = zod.object({
   "lineItems": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(updateEstimateTemplateResponseLineItemsItemBundledServicesItemUnitPriceMin)
+})).max(updateEstimateTemplateResponseLineItemsItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -12443,6 +13069,13 @@ export const DuplicateEstimateTemplateParams = zod.object({
   "id": zod.coerce.number().int()
 })
 
+
+export const duplicateEstimateTemplateResponseLineItemsItemBundledServicesItemUnitPriceMin = 0;
+
+export const duplicateEstimateTemplateResponseLineItemsItemBundledServicesMax = 100;
+
+
+
 export const DuplicateEstimateTemplateResponse = zod.object({
   "notes": zod.string().nullish(),
   "termsText": zod.string().nullish(),
@@ -12453,6 +13086,14 @@ export const DuplicateEstimateTemplateResponse = zod.object({
   "lineItems": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.int().nullish(),
+  "serviceName": zod.string().nullish(),
+  "secondaryServiceId": zod.int().nullish(),
+  "secondaryServiceName": zod.string().nullish(),
+  "bundledServices": zod.array(zod.object({
+  "serviceId": zod.int().min(1),
+  "serviceName": zod.string(),
+  "unitPrice": zod.number().min(duplicateEstimateTemplateResponseLineItemsItemBundledServicesItemUnitPriceMin)
+})).max(duplicateEstimateTemplateResponseLineItemsItemBundledServicesMax).optional(),
   "description": zod.string(),
   "qty": zod.number(),
   "unitPrice": zod.number(),
@@ -14361,6 +15002,9 @@ export const PrintMailInvoiceResponse = zod.object({
   "paymentCardLast4": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
+  "serviceId": zod.int().nullish(),
+  "inventoryItemId": zod.int().nullish(),
+  "sku": zod.string().nullish(),
   "id": zod.int(),
   "description": zod.string(),
   "quantity": zod.number(),

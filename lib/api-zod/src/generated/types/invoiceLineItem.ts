@@ -7,6 +7,12 @@
  */
 
 export interface InvoiceLineItem {
+  /** @nullable */
+  serviceId?: number | null;
+  /** @nullable */
+  inventoryItemId?: number | null;
+  /** @nullable */
+  sku?: string | null;
   id: number;
   description: string;
   quantity: number;

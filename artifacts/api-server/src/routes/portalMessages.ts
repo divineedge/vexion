@@ -10,6 +10,12 @@ import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 
 const router: IRouter = Router();
+// The customer's "seen by staff" receipt is shared; each staff member's inbox
+// unread state is not. Qualify outer columns explicitly inside this subquery.
+const unreadBy=(userId:number)=>sql`NOT EXISTS (
+ SELECT 1 FROM portal_message_reads pr WHERE pr.tenant_id=portal_messages.tenant_id
+ AND pr.message_id=portal_messages.id AND pr.user_id=${userId}
+)`;
 
 async function requireAdmin(req: import("express").Request, res: import("express").Response): Promise<boolean> {
   const tenantId = getTenantId(req);
@@ -37,7 +43,7 @@ router.get("/portal-inbox", async (req, res): Promise<void> => {
       latestBody: sql<string>`(array_agg(${portalMessagesTable.body} order by ${portalMessagesTable.createdAt} desc))[1]`,
       latestAt: sql<string>`(array_agg(${portalMessagesTable.createdAt} order by ${portalMessagesTable.createdAt} desc))[1]`,
       latestDirection: sql<string>`(array_agg(${portalMessagesTable.direction} order by ${portalMessagesTable.createdAt} desc))[1]`,
-      unreadCount: sql<number>`count(case when ${portalMessagesTable.direction} = 'inbound' and ${portalMessagesTable.readAt} is null then 1 end)::int`,
+      unreadCount: sql<number>`count(case when ${portalMessagesTable.direction} = 'inbound' and ${unreadBy(getUserId(req))} then 1 end)::int`,
     })
     .from(portalMessagesTable)
     .innerJoin(customersTable, eq(portalMessagesTable.customerId, customersTable.id))
@@ -70,7 +76,7 @@ router.get("/portal-inbox/unread-count", async (req, res): Promise<void> => {
       and(
         eq(portalMessagesTable.tenantId, tenantId),
         eq(portalMessagesTable.direction, "inbound"),
-        isNull(portalMessagesTable.readAt),
+        unreadBy(getUserId(req)),
       ),
     );
   res.json({ count: row?.count ?? 0 });
@@ -97,7 +103,20 @@ router.get("/portal-inbox/:customerId", async (req, res): Promise<void> => {
     .where(and(eq(portalMessagesTable.customerId, customerId), eq(portalMessagesTable.tenantId, tenantId)))
     .orderBy(portalMessagesTable.createdAt);
 
-  // Mark all unread inbound messages as read now that staff is viewing the thread
+  // Acknowledge only the messages actually returned. A concurrent new message
+  // must stay unread, even if its timestamp or sequence allocation is earlier.
+  const inboundIds=messages.filter(message=>message.direction==="inbound").map(message=>message.id);
+  if(inboundIds.length){
+    await db.execute(sql`INSERT INTO portal_message_reads(tenant_id,message_id,user_id)
+      SELECT tenant_id,id,${getUserId(req)} FROM portal_messages
+      WHERE tenant_id=${tenantId} AND customer_id=${customerId} AND id=ANY(${`{${inboundIds.join(",")}}`}::integer[])
+      ON CONFLICT DO NOTHING`);
+  }
+  await db.update(taskNotificationsTable).set({isRead:true}).where(and(
+    eq(taskNotificationsTable.tenantId,tenantId),eq(taskNotificationsTable.recipientUserId,getUserId(req)),
+    eq(taskNotificationsTable.type,"portal_message"),eq(taskNotificationsTable.linkPath,`/portal-inbox/${customerId}`),
+  ));
+  // Keep the customer's existing shared staff-read receipt.
   const now = new Date();
   await db
     .update(portalMessagesTable)

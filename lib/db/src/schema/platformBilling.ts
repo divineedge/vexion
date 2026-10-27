@@ -14,6 +14,10 @@ export const platformBillingSettingsTable = pgTable("platform_billing_settings",
   cardFeeFixedCents: integer("card_fee_fixed_cents").notNull().default(0),
   achFeeBps: integer("ach_fee_bps").notNull().default(0),
   achFeeFixedCents: integer("ach_fee_fixed_cents").notNull().default(0),
+  cardFeeMinCents: integer("card_fee_min_cents"),
+  cardFeeMaxCents: integer("card_fee_max_cents"),
+  achFeeMinCents: integer("ach_fee_min_cents"),
+  achFeeMaxCents: integer("ach_fee_max_cents"),
 });
 export const softwareBillingAccountsTable = pgTable("software_billing_accounts", {
   tenantId: integer("tenant_id").primaryKey().references(() => tenantsTable.id),
@@ -34,10 +38,12 @@ export const softwareBillingAccountsTable = pgTable("software_billing_accounts",
   checkoutSessionId: text("checkout_session_id"),
   checkoutUrl: text("checkout_url"),
   checkoutPlanId: integer("checkout_plan_id"),
+  planPolicy: jsonb("plan_policy"),
 });
 export const softwarePlanPricesTable = pgTable("software_plan_prices", {
   stripePriceId: text("stripe_price_id").primaryKey(),
   planId: integer("plan_id").notNull().references(() => plansTable.id),
+  planPolicy: jsonb("plan_policy"),
 });
 export const platformPaymentAllocationsTable = pgTable("platform_payment_allocations", {
   paymentIntentId: text("payment_intent_id").primaryKey(),

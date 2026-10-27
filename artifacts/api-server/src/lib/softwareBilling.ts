@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type Stripe from "stripe";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db, plansTable, softwarePlanPricesTable, softwareBillingAccountsTable, tenantsTable, platformOwnersTable, usersTable, platformBillingAuditTable } from "@workspace/db";
+import { validateFeatureKeys } from "./softwareFeatures";
 import { getStripeClient } from "./stripe";
-import { platformSettings } from "./platformBillingPolicy";
+import { platformSettings,effectivePlatformFees } from "./platformBillingPolicy";
 
 export const stripeId = (value: unknown): string | null => typeof value === "string" ? value : value && typeof value === "object" && "id" in value ? String(value.id) : null;
 export async function isSoftwareOwner(userId: number, tenantId: number) {
@@ -22,7 +23,7 @@ export async function liveStripe() {
   const stripe=getStripeClient(); if(!stripe) throw new Error("Stripe is not connected.");
   return stripe;
 }
-export const planDto = (p: typeof plansTable.$inferSelect) => ({ ...p, published: !!p.stripePriceId && p.revision===p.publishedRevision });
+export const planDto = (p: typeof plansTable.$inferSelect) => ({ ...p, features:p.features??[],published: !!p.stripePriceId && p.revision===p.publishedRevision });
 export async function ensureSoftwareAccount(tenantId: number) {
   await db.insert(softwareBillingAccountsTable).values({tenantId}).onConflictDoNothing();
   const [row]=await db.select().from(softwareBillingAccountsTable).where(eq(softwareBillingAccountsTable.tenantId,tenantId));
@@ -35,18 +36,31 @@ export function accountDto(account: Awaited<ReturnType<typeof ensureSoftwareAcco
     hasConnectAccount:!!account?.connectAccountId,hasSubscription:!!account?.stripeSubscriptionId&&!["canceled","incomplete_expired"].includes(account.status)};
 }
 export async function publishSoftwarePlan(id:number,actor:number) {
-  const stripe=await liveStripe();
   const [plan]=await db.select().from(plansTable).where(eq(plansTable.id,id));
   if(!plan)throw new Error("Plan not found");
+  const featureKeys=validateFeatureKeys(plan.features??[]);
+  const feePolicy={cardFeeBps:plan.cardFeeBps,cardFeeFixedCents:plan.cardFeeFixedCents,achFeeBps:plan.achFeeBps,achFeeFixedCents:plan.achFeeFixedCents,
+    cardFeeMinCents:plan.cardFeeMinCents,cardFeeMaxCents:plan.cardFeeMaxCents,achFeeMinCents:plan.achFeeMinCents,achFeeMaxCents:plan.achFeeMaxCents};
   if(plan.revision===plan.publishedRevision && plan.stripePriceId)return planDto(plan);
+  effectivePlatformFees({...plan,publishedFeePolicy:feePolicy},await platformSettings());
+  const stripe=await liveStripe();
   const product=plan.stripeProductId??(await stripe.products.create({name:plan.name,metadata:{purpose:"software_subscription",planId:String(id)}},{idempotencyKey:`software-product-${id}`})).id;
   const price=await stripe.prices.create({product,unit_amount:Math.round(plan.price*100),currency:"usd",
     recurring:{interval:plan.billingInterval as "month"|"year"},metadata:{purpose:"software_subscription",planId:String(id),revision:String(plan.revision)}},
     {idempotencyKey:`software-price-${id}-${plan.revision}`});
   return db.transaction(async tx=>{
-    await tx.insert(softwarePlanPricesTable).values({stripePriceId:price.id,planId:id}).onConflictDoNothing();
+    if(plan.stripePriceId){
+      // Preserve the policy in force for legacy subscribers before replacing
+      // the published version. Their old price must not adopt draft features.
+      const legacyPolicy=JSON.stringify({version:1,featureKeys:null,feePolicy:plan.publishedFeePolicy??{}});
+      await tx.execute(sql`UPDATE software_plan_prices SET plan_policy=${legacyPolicy}::jsonb
+        WHERE plan_id=${id} AND plan_policy IS NULL`);
+      await tx.execute(sql`UPDATE software_billing_accounts SET plan_policy=${legacyPolicy}::jsonb
+        WHERE plan_id=${id} AND stripe_subscription_id IS NOT NULL AND plan_policy IS NULL`);
+    }
+    await tx.insert(softwarePlanPricesTable).values({stripePriceId:price.id,planId:id,planPolicy:{version:1,featureKeys,feePolicy}}).onConflictDoNothing();
     const [updated]=await tx.update(plansTable).set({stripeProductId:product,stripePriceId:price.id,publishedRevision:plan.revision,
-      publishedFeePolicy:{cardFeeBps:plan.cardFeeBps,cardFeeFixedCents:plan.cardFeeFixedCents,achFeeBps:plan.achFeeBps,achFeeFixedCents:plan.achFeeFixedCents}})
+      publishedFeePolicy:feePolicy})
       .where(and(eq(plansTable.id,id),eq(plansTable.revision,plan.revision))).returning();
     if(!updated)throw new Error("Plan changed while publishing. Publish the latest draft.");
     await tx.insert(platformBillingAuditTable).values({id:randomUUID(),actorUserId:actor,action:"plan_published",details:{planId:id,revision:plan.revision}});
@@ -75,6 +89,8 @@ export async function syncSoftwareSubscription(subscriptionId:string,stripeOverr
     await tx.update(softwareBillingAccountsTable).set({stripeSubscriptionId:sub.id,planId:mapped.planId,status:sub.status,
       cancelAtPeriodEnd:sub.cancel_at_period_end,currentPeriodEnd:first?.current_period_end?new Date(first.current_period_end*1000):null,confirmedAt:new Date()})
       .where(eq(softwareBillingAccountsTable.tenantId,account.tenantId));
+    await tx.execute(sql`UPDATE software_billing_accounts SET plan_policy=${mapped.planPolicy==null?null:JSON.stringify(mapped.planPolicy)}::jsonb
+      WHERE tenant_id=${account.tenantId}`);
     if(["active","trialing"].includes(sub.status)){
       const [plan]=await tx.select().from(plansTable).where(eq(plansTable.id,mapped.planId));
       if(plan)await tx.update(tenantsTable).set({planTier:plan.tier}).where(eq(tenantsTable.id,account.tenantId));

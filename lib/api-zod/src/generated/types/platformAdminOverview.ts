@@ -9,10 +9,12 @@ import type { PlatformAdminOverviewAuditItem } from './platformAdminOverviewAudi
 import type { PlatformBillingSettingsInput } from './platformBillingSettingsInput';
 import type { PlatformPayout } from './platformPayout';
 import type { SoftwareBillingAccount } from './softwareBillingAccount';
+import type { SoftwareFeatureDefinition } from './softwareFeatureDefinition';
 import type { SoftwarePlan } from './softwarePlan';
 
 export interface PlatformAdminOverview {
   settings: PlatformBillingSettingsInput;
+  featureCatalog?: SoftwareFeatureDefinition[];
   plans: SoftwarePlan[];
   businesses: SoftwareBillingAccount[];
   payouts: PlatformPayout[];

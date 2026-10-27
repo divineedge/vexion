@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   useGetScheduleWeather, getGetScheduleWeatherQueryKey,
-  useListProperties, getListPropertiesQueryKey,
+  useGetWeatherLocations, getGetWeatherLocationsQueryKey,
 } from '@workspace/api-client-react';
 import type { ScheduleForecastDay } from '@workspace/api-client-react';
 import { CloudSun, MapPin, RefreshCw, AlertTriangle, ChevronDown, ChevronUp, Navigation } from 'lucide-react';
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import {
   wmoDescription, compassDirection, fmtNum, isKnown, formatDateKey, hourLabel,
-  pickDefaultPropertyId, todayKeyInZone, dateKeyToLocalDate, dateKeyOf,
+  todayKeyInZone, dateKeyToLocalDate, dateKeyOf,
 } from '@/lib/scheduleWeather';
 
 interface Props {
@@ -23,27 +23,20 @@ interface Props {
 
 const REFRESH_MS = 20 * 60 * 1000;
 
-export function ScheduleWeather({ tenantId, jobs, referenceDate, onNavigateDate }: Props) {
+export function ScheduleWeather({ tenantId, referenceDate, onNavigateDate }: Props) {
   const [open, setOpen] = useState(true);
-  const [manualPropertyId, setManualPropertyId] = useState<number | null>(null);
+  const [manualLocationId, setManualLocationId] = useState<string | null>(null);
 
-  const propsQuery = useListProperties(undefined, { query: { queryKey: getListPropertiesQueryKey() } });
-  const pinned = useMemo(
-    () => (propsQuery.data ?? []).filter(p => isKnown(p.lat) && isKnown(p.lng) && Math.abs(p.lat!) <= 90 && Math.abs(p.lng!) <= 180),
-    [propsQuery.data],
-  );
-  const pinnedIds = useMemo(() => new Set(pinned.map(p => p.id)), [pinned]);
-  const defaultId = useMemo(
-    () => pickDefaultPropertyId(jobs, pinnedIds, referenceDate),
-    [jobs, pinnedIds, referenceDate.getTime()],
-  );
-  const propertyId = manualPropertyId && pinnedIds.has(manualPropertyId) ? manualPropertyId : defaultId;
-  const isDefault = propertyId !== null && propertyId === defaultId && manualPropertyId === null;
+  const propsQuery = useGetWeatherLocations({query:{queryKey:[...getGetWeatherLocationsQueryKey(),{tenantId}],enabled:tenantId!==undefined}});
+  const locations = propsQuery.data?.locations ?? [];
+  const location = locations.find(value=>value.id===manualLocationId) ?? locations[0];
+  const locationId=location?.id;
+  const isDefault=locationId===locations[0]?.id;
 
-  const params = { propertyId: propertyId ?? 0 };
+  const params = { locationId };
   const weather = useGetScheduleWeather(params, {
     query: {
-      enabled: open && !!propertyId && tenantId !== undefined,
+      enabled: open && !!locationId && tenantId !== undefined,
       queryKey: [...getGetScheduleWeatherQueryKey(params), { tenantId }],
       staleTime: REFRESH_MS,
       refetchInterval: REFRESH_MS,
@@ -78,23 +71,23 @@ export function ScheduleWeather({ tenantId, jobs, referenceDate, onNavigateDate 
           <div className="flex w-full min-w-0 flex-wrap items-center gap-1.5 sm:ml-auto sm:w-auto">
             <label htmlFor="weather-location" className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" />Forecast location</label>
             <Select
-              value={propertyId ? String(propertyId) : ''}
-              onValueChange={v => setManualPropertyId(Number(v))}
-              disabled={pinned.length === 0}
+              value={locationId ?? ''}
+              onValueChange={setManualLocationId}
+              disabled={locations.length === 0}
             >
               <SelectTrigger id="weather-location" className="h-8 text-xs min-w-0 flex-1 w-52 sm:flex-none sm:w-60" data-testid="select-weather-location">
-                <SelectValue placeholder="Choose a pinned property" />
+                <SelectValue placeholder="Choose a town or ZIP code" />
               </SelectTrigger>
               <SelectContent>
-                {pinned.map(p => (
+                {locations.map(p => (
                   <SelectItem key={p.id} value={String(p.id)} className="text-xs">
-                    {p.address}{p.id === defaultId ? ' (nearest scheduled job)' : ''}
+                    {p.label}{p.id === locations[0]?.id ? ' (company default)' : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {manualPropertyId !== null && defaultId !== null && (
-              <Button variant="ghost" size="sm" className="h-8 text-xs px-2" onClick={() => setManualPropertyId(null)} data-testid="button-weather-location-default">Use job default</Button>
+            {manualLocationId !== null && locations.length > 0 && (
+              <Button variant="ghost" size="sm" className="h-8 text-xs px-2" onClick={() => setManualLocationId(null)} data-testid="button-weather-location-default">Use company default</Button>
             )}
           </div>
         )}
@@ -105,20 +98,20 @@ export function ScheduleWeather({ tenantId, jobs, referenceDate, onNavigateDate 
           {propsQuery.isLoading ? (
             <SkeletonStrip />
           ) : propsQuery.isError ? (
-            <ErrorRow message="Could not load company properties." onRetry={() => propsQuery.refetch()} />
-          ) : pinned.length === 0 ? (
+            <ErrorRow message="Could not load saved forecast towns." onRetry={() => propsQuery.refetch()} />
+          ) : locations.length === 0 ? (
             <div className="text-xs text-muted-foreground rounded-md border border-dashed p-4" data-testid="text-weather-no-pins">
-              No company property has a saved map pin. Add a pin on a property to see its forecast. Device location is never used.
+              Add towns or ZIP codes in Settings → General → Scheduler forecast locations. Customer properties and device location are not used.
             </div>
-          ) : !propertyId ? (
+          ) : !locationId ? (
             <div className="text-xs text-muted-foreground rounded-md border border-dashed p-4" data-testid="text-weather-choose">
-              No scheduled job in view has a pinned property. Choose a forecast location above.
+              Choose a saved town or ZIP code above.
             </div>
           ) : weather.isLoading ? (
             <SkeletonStrip />
           ) : weather.isError ? (
             <ErrorRow
-              message={errStatus === 422 ? 'This property has no valid saved map pin. Choose another location or update the property pin.'
+              message={errStatus === 422 ? 'Check this town or ZIP code in Settings.'
                 : errStatus === 503 ? 'The forecast provider is temporarily unavailable.'
                 : 'Could not load the forecast.'}
               onRetry={() => weather.refetch()}
@@ -129,7 +122,7 @@ export function ScheduleWeather({ tenantId, jobs, referenceDate, onNavigateDate 
             <>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                 <span className="font-medium text-foreground" data-testid="text-weather-location">
-                  {fc.location}{isDefault ? ' · default from scheduled jobs' : ''}
+                  {fc.location}{isDefault ? ' · company default' : ''}
                 </span>
                 <span>{fc.latitude.toFixed(3)}, {fc.longitude.toFixed(3)} · {fc.timezone}</span>
                 <span data-testid="text-weather-fetched">Updated {new Date(fc.fetchedAt).toLocaleString([], { timeZone: fc.timezone, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>

@@ -58,6 +58,7 @@
 - [Equipment assignment visibility](equipment-assignment-visibility.md) — field staff access equipment only by direct or current crew assignment; managers retain tenant-wide access
 - [Tenant identity boundary](tenant-identity-boundary.md) — private APIs must authorize tenant/user solely from a verified staff session, never caller identity headers
 - [Portal company binding](portal-company-binding.md) — portal stays tied to its company across updates; no shared default business or stale cross-company session context.
+- [Portal staff inbox](portal-staff-inbox.md) — admins see portal messages and requests; one staff member reading a message must not clear another's unread queue.
 - [Callback ratio definition](callback-ratio-definition.md) — count every callback ticket over completed jobs in the same selected period; keep original-work attribution stable
 - [Comparable budget efficiency](efficiency-budget-cohorts.md) — employee and crew budgets share a completed-job cohort; assign budgets to actual contributors.
 - [Android Expo Go push imports](android-expo-go-push-imports.md) — SDK 53+ can crash on expo-notifications push side effects; skip loading them in Android Expo Go

@@ -34,3 +34,41 @@ export function errorMessage(e: unknown, fallback: string) {
   const anyE = e as { data?: { error?: string; message?: string }; message?: string } | null;
   return anyE?.data?.error ?? anyE?.data?.message ?? anyE?.message ?? fallback;
 }
+
+// ── Feature catalog + fee bounds (local extended types until the SDK is regenerated) ──
+export type FeatureDef = { key: string; label: string; description: string };
+export type FeeBounds = {
+  cardFeeMinCents?: number | null; cardFeeMaxCents?: number | null;
+  achFeeMinCents?: number | null; achFeeMaxCents?: number | null;
+};
+export const MAX_BOUND_CENTS = 1_000_000_000; // $10,000,000
+
+export function catalogOf(data: unknown): FeatureDef[] {
+  const c = (data as { featureCatalog?: unknown } | null)?.featureCatalog;
+  return Array.isArray(c) ? (c as FeatureDef[]) : [];
+}
+
+/** Split stored plan feature strings into catalog-mapped definitions and unmapped legacy strings. */
+export function resolveFeatures(features: string[], catalog: FeatureDef[]) {
+  const byKey = new Map(catalog.map(f => [f.key, f]));
+  const mapped: FeatureDef[] = []; const unmapped: string[] = [];
+  for (const f of features) { const d = byKey.get(f); if (d) mapped.push(d); else unmapped.push(f); }
+  return { mapped, unmapped };
+}
+
+/** Strict dollars → cents. '' → null. Returns string error message on invalid input. */
+export function dollarsToCents(v: string, label: string, maxCents = MAX_BOUND_CENTS): number | null | string {
+  const t = v.trim().replace(/,/g, '');
+  if (t === '') return null;
+  if (!/^\d+(\.\d{1,2})?$/.test(t)) return `${label} must be a non-negative dollar amount (2 decimals max)`;
+  const c = Math.round(Number(t) * 100);
+  if (c > maxCents) return `${label} must be at most ${cents(maxCents)}`;
+  return c;
+}
+export const centsToDollars = (c: number | null | undefined) => (c == null ? '' : (c / 100).toFixed(2));
+
+export function boundsLabel(min: number | null | undefined, max: number | null | undefined) {
+  if (min == null && max == null) return '';
+  if (min != null && max != null) return `min ${cents(min)}, max ${cents(max)}`;
+  return min != null ? `min ${cents(min)}` : `max ${cents(max)}`;
+}

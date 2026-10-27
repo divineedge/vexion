@@ -9,7 +9,8 @@ import type { ScheduleForecastDay } from './scheduleForecastDay';
 import type { ScheduleForecastHour } from './scheduleForecastHour';
 
 export interface ScheduleForecast {
-  propertyId: number;
+  /** @nullable */
+  propertyId: number | null;
   location: string;
   latitude: number;
   longitude: number;

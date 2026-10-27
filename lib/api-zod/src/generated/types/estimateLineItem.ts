@@ -5,11 +5,20 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { EstimateLineItemBundledServicesItem } from './estimateLineItemBundledServicesItem';
 
 export interface EstimateLineItem {
   id: string;
   /** @nullable */
   serviceId?: number | null;
+  /** @nullable */
+  serviceName?: string | null;
+  /** @nullable */
+  secondaryServiceId?: number | null;
+  /** @nullable */
+  secondaryServiceName?: string | null;
+  /** @maxItems 100 */
+  bundledServices?: EstimateLineItemBundledServicesItem[];
   description: string;
   qty: number;
   unitPrice: number;

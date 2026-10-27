@@ -21,6 +21,10 @@ export const plansTable = pgTable("plans", {
   cardFeeFixedCents: integer("card_fee_fixed_cents"),
   achFeeBps: integer("ach_fee_bps"),
   achFeeFixedCents: integer("ach_fee_fixed_cents"),
+  cardFeeMinCents: integer("card_fee_min_cents"),
+  cardFeeMaxCents: integer("card_fee_max_cents"),
+  achFeeMinCents: integer("ach_fee_min_cents"),
+  achFeeMaxCents: integer("ach_fee_max_cents"),
 });
 
 export const insertPlanSchema = createInsertSchema(plansTable).omit({ id: true });

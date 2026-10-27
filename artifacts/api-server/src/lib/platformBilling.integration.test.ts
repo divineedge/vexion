@@ -42,7 +42,7 @@ describe("software-owner billing and proceeds",()=>{
     await db.insert(platformOwnersTable).values({userId:owner.id});
     await db.insert(config).values({id:1,enabled:false,cardFeeBps:200,cardFeeFixedCents:30,achFeeBps:100,achFeeFixedCents:0})
       .onConflictDoUpdate({target:config.id,set:{enabled:false,cardFeeBps:200,cardFeeFixedCents:30,achFeeBps:100,achFeeFixedCents:0}});
-    const [plan]=await db.insert(plansTable).values({name:"Fixture software plan",tier:"fixture",price:129,billingInterval:"month",revision:1,publishedRevision:1,stripePriceId:"price_fixture",stripeProductId:"prod_fixture",features:["Software access"],active:true}).returning();planId=plan.id;
+    const [plan]=await db.insert(plansTable).values({name:"Fixture software plan",tier:"fixture",price:129,billingInterval:"month",revision:1,publishedRevision:1,stripePriceId:"price_fixture",stripeProductId:"prod_fixture",features:["scheduling","invoices"],active:true}).returning();planId=plan.id;
     await db.insert(softwarePlanPricesTable).values({stripePriceId:"price_fixture",planId}).onConflictDoNothing();
     await db.insert(accounts).values({tenantId,stripeCustomerId:`cus_software_${tenantId}`,planId,connectAccountId:`acct_${tenantId}`,connectReady:true,termsAcceptedAt:new Date()});
   });

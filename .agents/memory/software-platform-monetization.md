@@ -20,14 +20,20 @@ Preserve existing platform-scoped Stripe customer/payment-method identities when
 
 **How to apply:** Require provider-confirmed successful payments and actual transaction fees before transferring proceeds. Snapshot fee terms per payment. Pausing new platform fees must not stop funds already owed to connected businesses. Review partial returns and uncertain expired transfer attempts rather than blindly issuing new transfers.
 
-Draft software-plan edits must not silently reprice existing subscriptions or change their published fee policy.
+Draft software-plan edits must not silently reprice existing subscriptions or change their published feature and fee overrides.
 
-**Why:** Editing a catalog is not customer authorization to change an existing recurring price or collect an unpublished fee.
+**Why:** Editing a catalog is not customer authorization to change an existing recurring price, included features, or collect an unpublished fee.
 
-**How to apply:** Keep existing Stripe Price relationships, publish new recurring prices for future purchases, and keep draft fee overrides separate from the published policy. Software-owner grants bind trusted existing account identities, never an unverified email signup claim.
+**How to apply:** Keep existing Stripe Price relationships, publish new recurring prices for future purchases, and freeze each published version's actual feature selections and fee overrides. Blank overrides continue to inherit global defaults. Preserve legacy companies' access rather than inventing entitlements from old marketing labels; require real feature selections before publishing a new version. Software-owner grants bind trusted existing account identities, never an unverified email signup claim.
 
 Confirm software-owner identity separately in preview and production.
 
 **Why:** Accounts with the same sign-in email can have different user and company IDs in the two databases. A development grant does not establish published access, and copying development IDs can authorize the wrong account.
 
 **How to apply:** Read the existing production identity through the read-only production database tools. When using the explicit owner bootstrap pair, scope it to production only; never use a shared environment setting with development IDs or authorize owners by email claims.
+
+Minimum and maximum fees apply to the software owner's added fee, separately for both ACH and credit cards—not to payment amount limits or Stripe's charges.
+
+**Why:** The user explicitly clarified “Your added ACH fee” and “same on credit card fees.”
+
+**How to apply:** Apply the bounds after percentage plus fixed fee, preserve processor-fee deductions separately, and never promise a fee larger than the available proceeds. State clearly that platform fees are additional to Stripe fees but do not increase the customer's invoice total.

@@ -9,8 +9,13 @@ import { isSoftwareOwner, audit, liveStripe, planDto, accountDto, ensureSoftware
   businessSubscriptionCheckout, syncSoftwareSubscription, stripeId } from "../lib/softwareBilling";
 import { platformSettings, platformSettingsInput, softwarePlanInput, effectivePlatformFees } from "../lib/platformBillingPolicy";
 import { payoutDto, processPlatformPayout } from "../lib/platformPayouts";
+import { businessFeatureKeys, featureCatalogDto } from "../lib/softwareFeatures";
 
 const router=Router();
+router.get("/software-features", async(req,res,next)=>{
+  try {res.json({featureKeys:await businessFeatureKeys(getTenantId(req)),featureCatalog:featureCatalogDto()});}
+  catch(error){next(error);}
+});
 const action=(handler:(req:Request,res:Response)=>Promise<void>)=>async(req:Request,res:Response)=>{
   try{await handler(req,res);}catch(error){
     if(error instanceof z.ZodError){res.status(400).json({error:error.issues[0]?.message??"Invalid input"});return;}
@@ -45,7 +50,8 @@ async function businessView(tenantId:number){
     ?await db.select().from(plansTable).where(eq(plansTable.id,account.planId)):[];
   const payouts=await db.select().from(platformPaymentAllocationsTable).where(eq(platformPaymentAllocationsTable.tenantId,tenantId)).orderBy(desc(platformPaymentAllocationsTable.createdAt)).limit(100);
   return {enabled:settings.enabled,account:accountDto(account,tenant),plans:plans.map(planDto).filter(p=>p.published),
-    payouts:payouts.map(payoutDto),fees:effectivePlatformFees(currentPlan,settings)};
+    payouts:payouts.map(payoutDto),fees:effectivePlatformFees(currentPlan,settings,currentPlan?(account.planPolicy as {feePolicy?:unknown}|null)?.feePolicy:undefined),
+    featureCatalog:featureCatalogDto()};
 }
 router.get("/platform-billing/admin",action(async(_req,res)=>{
   const plans=await db.select().from(plansTable).orderBy(plansTable.price);
@@ -54,10 +60,15 @@ router.get("/platform-billing/admin",action(async(_req,res)=>{
   const payouts=await db.select().from(platformPaymentAllocationsTable).orderBy(desc(platformPaymentAllocationsTable.createdAt)).limit(200);
   const history=await db.select({action:platformBillingAuditTable.action,createdAt:platformBillingAuditTable.createdAt}).from(platformBillingAuditTable).orderBy(desc(platformBillingAuditTable.createdAt)).limit(100);
   res.json({settings:await platformSettings(),plans:plans.map(planDto),businesses:businesses.map(b=>accountDto(b.account??undefined,b.tenant)),
-    payouts:payouts.map(payoutDto),audit:history.map(a=>({...a,createdAt:a.createdAt.toISOString()}))});
+    payouts:payouts.map(payoutDto),featureCatalog:featureCatalogDto(),audit:history.map(a=>({...a,createdAt:a.createdAt.toISOString()}))});
 }));
 router.patch("/platform-billing/settings",action(async(req,res)=>{
   const input=platformSettingsInput.parse(req.body);const {confirmActivation,...values}=input;
+  const next={...await platformSettings(),...values};
+  const publishedPlans=await db.select().from(plansTable);
+  for(const plan of publishedPlans)if(plan.publishedFeePolicy)effectivePlatformFees(plan,next);
+  const snapshots=await db.select({policy:softwareBillingAccountsTable.planPolicy}).from(softwareBillingAccountsTable);
+  for(const snapshot of snapshots)if(snapshot.policy)effectivePlatformFees(undefined,next,(snapshot.policy as {feePolicy?:unknown}).feePolicy);
   if(values.enabled && !(await platformSettings()).enabled){
     if(!confirmActivation)throw new Error("Confirm activation: businesses must finish Stripe Connect setup before accepting new online payments.");
     // Authentication and capabilities must actually work; a configured-looking key is not readiness.
@@ -69,15 +80,19 @@ router.patch("/platform-billing/settings",action(async(req,res)=>{
     await tx.insert(platformBillingSettingsTable).values({id:1,...values}).onConflictDoUpdate({target:platformBillingSettingsTable.id,set:values});
     await tx.insert(platformBillingAuditTable).values({id:randomUUID(),actorUserId:getUserId(req),action:"platform_fee_settings_changed",details:values});
   });
-  res.json(values);
+  res.json(await platformSettings());
 }));
 router.post("/platform-billing/plans",action(async(req,res)=>{
   const input=softwarePlanInput.parse(req.body);
+  effectivePlatformFees(undefined,await platformSettings(),input);
   const [plan]=await db.insert(plansTable).values(input).returning();
   await audit(getUserId(req),"plan_created",{planId:plan.id});res.status(201).json(planDto(plan));
 }));
 router.patch("/platform-billing/plans/:id",action(async(req,res)=>{
   const id=idParam.parse(req.params.id),input=softwarePlanInput.parse(req.body);
+  const [existing]=await db.select().from(plansTable).where(eq(plansTable.id,id));
+  if(!existing){res.status(404).json({error:"Plan not found"});return;}
+  effectivePlatformFees(undefined,await platformSettings(),{...existing,...input});
   const [plan]=await db.update(plansTable).set({...input,revision:sql`${plansTable.revision}+1`}).where(eq(plansTable.id,id)).returning();
   if(!plan){res.status(404).json({error:"Plan not found"});return;}
   await audit(getUserId(req),"plan_draft_updated",{planId:id,revision:plan.revision});res.json(planDto(plan));

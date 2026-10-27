@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
 export const tenantsTable = pgTable("tenants", {
+  scheduleWeatherLocations: jsonb("schedule_weather_locations"),
   acquisitionSettings: jsonb("acquisition_settings"),
   paymentPolicy: jsonb("payment_policy"),
   invoiceDeliveryMode: text("invoice_delivery_mode").notNull().default("review"),

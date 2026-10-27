@@ -89,4 +89,35 @@ CREATE TRIGGER payroll_adjustments_immutable BEFORE UPDATE OR DELETE ON payroll_
 DROP TRIGGER IF EXISTS payroll_rates_immutable ON payroll_rates;
 CREATE TRIGGER payroll_rates_immutable BEFORE UPDATE OR DELETE ON payroll_rates
  FOR EACH ROW EXECUTE FUNCTION payroll_immutable();
+ALTER TABLE IF EXISTS platform_billing_settings
+ ADD COLUMN IF NOT EXISTS card_fee_min_cents integer,
+ ADD COLUMN IF NOT EXISTS card_fee_max_cents integer,
+ ADD COLUMN IF NOT EXISTS ach_fee_min_cents integer,
+ ADD COLUMN IF NOT EXISTS ach_fee_max_cents integer;
+ALTER TABLE IF EXISTS plans
+ ADD COLUMN IF NOT EXISTS card_fee_min_cents integer,
+ ADD COLUMN IF NOT EXISTS card_fee_max_cents integer,
+ ADD COLUMN IF NOT EXISTS ach_fee_min_cents integer,
+ ADD COLUMN IF NOT EXISTS ach_fee_max_cents integer;
+ALTER TABLE IF EXISTS software_billing_accounts ADD COLUMN IF NOT EXISTS plan_policy jsonb;
+ALTER TABLE IF EXISTS software_plan_prices ADD COLUMN IF NOT EXISTS plan_policy jsonb;
+ALTER TABLE IF EXISTS tenants ADD COLUMN IF NOT EXISTS schedule_weather_locations jsonb;
+DO $portal_reads$
+DECLARE first_install boolean := to_regclass('portal_message_reads') IS NULL;
+BEGIN
+ CREATE TABLE IF NOT EXISTS portal_message_reads (
+  tenant_id integer NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  message_id integer NOT NULL REFERENCES portal_messages(id) ON DELETE CASCADE,
+  user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  read_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_id,message_id,user_id)
+ );
+ IF first_install THEN
+  INSERT INTO portal_message_reads(tenant_id,message_id,user_id,read_at)
+   SELECT m.tenant_id,m.id,u.id,m.read_at FROM portal_messages m
+   JOIN users u ON u.tenant_id=m.tenant_id AND u.role='company_owner'
+   WHERE m.direction='inbound' AND m.read_at IS NOT NULL
+   ON CONFLICT DO NOTHING;
+ END IF;
+END; $portal_reads$;
 COMMIT;

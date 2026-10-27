@@ -9,7 +9,9 @@ import {
 import type { SoftwareBillingRedirect } from '@workspace/api-client-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { PayoutTable } from '@/components/billing/PayoutTable';
-import { cents, feeLabel, errorMessage, redirectToStripe } from '@/lib/softwareBilling';
+import { cents, errorMessage, redirectToStripe, catalogOf, resolveFeatures } from '@/lib/softwareBilling';
+import type { FeeBounds } from '@/lib/softwareBilling';
+import { FeeDisclosure, railSummary } from '@/components/billing/FeeDisclosure';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -77,7 +79,11 @@ export default function SoftwareBillingPage() {
     );
   }
 
-  const { account, plans, payouts, fees } = billing.data;
+  const { account, plans, payouts } = billing.data;
+  const fees = billing.data.fees as typeof billing.data.fees & FeeBounds;
+  const catalog = catalogOf(billing.data);
+  const cardRail = { bps: fees.cardFeeBps, fixed: fees.cardFeeFixedCents, min: fees.cardFeeMinCents, max: fees.cardFeeMaxCents };
+  const achRail = { bps: fees.achFeeBps, fixed: fees.achFeeFixedCents, min: fees.achFeeMinCents, max: fees.achFeeMaxCents };
   const live = billing.data.enabled;
   const currentPlan = plans.find(p => p.id === account.planId);
   const confirmed = account.hasSubscription && !!account.confirmedAt;
@@ -129,7 +135,7 @@ export default function SoftwareBillingPage() {
         <Card data-testid="card-payments">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2"><Landmark className="w-4 h-4 text-primary" />Online payments (Stripe Connect)</CardTitle>
-            <CardDescription>Card {feeLabel(fees.cardFeeBps, fees.cardFeeFixedCents)} · ACH {feeLabel(fees.achFeeBps, fees.achFeeFixedCents)} platform fee</CardDescription>
+            <CardDescription>Added platform fee: card {railSummary(cardRail)} · ACH {railSummary(achRail)}. Stripe's processing fee is separate.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <div className="flex items-center gap-2" data-testid="status-connect">
@@ -137,10 +143,11 @@ export default function SoftwareBillingPage() {
                 : account.hasConnectAccount ? <><AlertTriangle className="w-4 h-4 text-amber-600" />Onboarding incomplete or under verification</>
                 : <><AlertTriangle className="w-4 h-4 text-muted-foreground" />Not connected</>}
             </div>
+            <FeeDisclosure card={cardRail} ach={achRail} compact={account.connectReady} />
             {!account.connectReady && (
               <>
                 <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
-                  <li>You receive each payment minus the actual Stripe processing fee and the platform fee.</li>
+                  <li>You receive each payment minus Stripe's actual processing fee and, additionally, the added platform fee shown below.</li>
                   <li>No surcharge is added to your customers' invoices.</li>
                   <li>Refunds, disputes, and ACH returns may reverse a payout.</li>
                   <li>Separate Stripe Connect or verification costs may apply.</li>
@@ -180,7 +187,7 @@ export default function SoftwareBillingPage() {
                     <p className="text-2xl font-bold tabular-nums">{cents(Math.round(p.price * 100))}<span className="text-sm font-normal text-muted-foreground">/{p.billingInterval}</span></p>
                   </CardHeader>
                   <CardContent className="space-y-3 text-sm">
-                    <ul className="space-y-1">{p.features.map((f, i) => <li key={i} className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary shrink-0 mt-0.5" />{f}</li>)}</ul>
+                    <ul className="space-y-1" data-testid={`plan-features-${p.id}`}>{resolveFeatures(p.features, catalog).mapped.map(f => <li key={f.key} className="flex gap-2" title={f.description}><CheckCircle2 className="w-4 h-4 text-primary shrink-0 mt-0.5" />{f.label}</li>)}</ul>
                     <p className="text-xs text-muted-foreground">Users: {p.maxUsers ?? 'Unlimited'} · Properties: {p.maxProperties ?? 'Unlimited'}</p>
                     <Button className="w-full" variant={isCurrent ? 'outline' : 'default'} disabled={!live || isCurrent || pendingPlan != null}
                       onClick={() => choosePlan(p.id)} data-testid={`button-choose-plan-${p.id}`}>

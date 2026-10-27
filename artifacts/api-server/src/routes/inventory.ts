@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db, inventoryItemsTable, inventorySuppliersTable, tenantsTable } from "@workspace/db";
-import { eq, and, ilike, sql } from "drizzle-orm";
+import { eq, and, or, ilike, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { usersTable } from "@workspace/db";
 import {
@@ -52,7 +52,7 @@ const inventoryImportExportConfig: ImportExportEntityConfig = {
   ],
   buildExportRows: async (tenantId, query) => {
     let where = eq(inventoryItemsTable.tenantId, tenantId) as ReturnType<typeof eq>;
-    if (query.q) where = and(where, ilike(inventoryItemsTable.name, `%${query.q}%`)) as typeof where;
+    if (query.q) where = and(where, or(ilike(inventoryItemsTable.name, `%${query.q}%`),ilike(inventoryItemsTable.sku, `%${query.q}%`))) as typeof where;
     if (query.category) where = and(where, eq(inventoryItemsTable.category, query.category)) as typeof where;
 
     const rows = await db.select().from(inventoryItemsTable).where(where).orderBy(inventoryItemsTable.name);
@@ -326,7 +326,7 @@ router.get("/inventory", async (req, res): Promise<void> => {
   const { q, category, lowStock, availableForBlueprint } = req.query as Record<string, string>;
 
   let where = eq(inventoryItemsTable.tenantId, tenantId) as ReturnType<typeof eq>;
-  if (q) where = and(where, ilike(inventoryItemsTable.name, `%${q}%`)) as typeof where;
+  if (q) where = and(where, or(ilike(inventoryItemsTable.name, `%${q}%`),ilike(inventoryItemsTable.sku, `%${q}%`))) as typeof where;
   if (category) where = and(where, eq(inventoryItemsTable.category, category)) as typeof where;
   if (availableForBlueprint === "true") where = and(where, eq(inventoryItemsTable.availableForBlueprint, true)) as typeof where;
 

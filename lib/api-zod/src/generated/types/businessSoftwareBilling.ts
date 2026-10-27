@@ -8,6 +8,7 @@
 import type { PlatformBillingSettingsInput } from './platformBillingSettingsInput';
 import type { PlatformPayout } from './platformPayout';
 import type { SoftwareBillingAccount } from './softwareBillingAccount';
+import type { SoftwareFeatureDefinition } from './softwareFeatureDefinition';
 import type { SoftwarePlan } from './softwarePlan';
 
 export interface BusinessSoftwareBilling {
@@ -16,4 +17,5 @@ export interface BusinessSoftwareBilling {
   plans: SoftwarePlan[];
   payouts: PlatformPayout[];
   fees: PlatformBillingSettingsInput;
+  featureCatalog?: SoftwareFeatureDefinition[];
 }

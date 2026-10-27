@@ -51,6 +51,9 @@ import { buildPreviewInvoice, settingsTaxRate, normalizeWording } from '@/lib/do
 import { InvoiceDocument, businessProfileFromSettings } from '@/components/documents/InvoiceDocument';
 import InvoiceTemplatesSettings from '@/components/settings/InvoiceTemplatesSettings';
 import { Button } from '@/components/ui/button';
+import { SearchableCombobox } from '@/components/shared/SearchableCombobox';
+import { InventoryItemCombobox } from '@/components/inventory/InventoryItemCombobox';
+import type { InventoryItem } from '@workspace/api-client-react';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -82,7 +85,7 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: 'bg-gray-200 text-gray-500 border-transparent',
 };
 
-interface LineItemRow { description: string; quantity: number; unitPrice: number; total: number; propertyId?: number | null; jobId?: number | null; }
+interface LineItemRow { description: string; quantity: number; unitPrice: number; total: number; propertyId?: number | null; jobId?: number | null; serviceId?: number | null; inventoryItemId?: number | null; sku?: string | null; costPrice?: number | null; }
 type InvoiceGrouping = 'combined' | 'by_property';
 
 // ── Create Invoice Sheet ────────────────────────────────────────────────────────
@@ -256,8 +259,17 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
     setLineItems(prev => prev.map((li, i) => {
       if (i !== index) return li;
       const desc = svc.description?.trim() || svc.name;
-      const updated = { ...li, description: desc, unitPrice: svc.basePrice, total: li.quantity * svc.basePrice };
+      const updated = { ...li, description: desc, unitPrice: svc.basePrice, total: li.quantity * svc.basePrice, serviceId: svc.id, inventoryItemId: null, sku: null, costPrice: null };
       return updated;
+    }));
+  };
+
+  // Inventory part selection: fills description/price and carries inventory metadata on the line
+  const applyInventory = (index: number, item: InventoryItem) => {
+    setLineItems(prev => prev.map((li, i) => {
+      if (i !== index) return li;
+      const price = Number(item.unitPrice ?? 0);
+      return { ...li, description: item.name, unitPrice: price, total: li.quantity * price, inventoryItemId: item.id, sku: item.sku ?? null, costPrice: item.costPrice ?? null, serviceId: null };
     }));
   };
 
@@ -304,6 +316,8 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
       .map(li => ({
         description: li.description, quantity: li.quantity, unitPrice: li.unitPrice, total: li.total,
         jobId: li.jobId ?? null,
+        ...(li.serviceId ? { serviceId: li.serviceId } : {}),
+        ...(li.inventoryItemId ? { inventoryItemId: li.inventoryItemId, sku: li.sku ?? null } : {}),
         propertyId: li.jobId != null ? (li.propertyId ?? null) : (li.propertyId ?? defaultPropertyId ?? null),
       }));
     createInvoice.mutate(
@@ -516,36 +530,41 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
             <div className="space-y-3">
               {lineItems.map((li, i) => (
                 <div key={i} className="rounded-lg border bg-muted/20 p-3 space-y-2">
-                  {/* Service picker row */}
-                  {(services ?? []).length > 0 && (
-                    <div className="flex items-center gap-2">
-                      <Select onValueChange={svcId => applyService(i, svcId)}>
-                        <SelectTrigger className="h-8 text-xs flex-1" title="Pick a service to auto-fill description and price">
-                          <SelectValue placeholder="Pick a service to auto-fill…" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">— Manual entry —</SelectItem>
-                          {(services ?? []).map(s => (
-                            <SelectItem key={s.id} value={String(s.id)}>
-                              {s.name}
-                              {s.basePrice > 0 && (
-                                <span className="text-muted-foreground ml-1.5 text-xs">${s.basePrice.toFixed(2)}</span>
-                              )}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
-                        title="Remove this line item"
-                        onClick={() => setLineItems(p => p.filter((_, j) => j !== i))}
-                        disabled={lineItems.length === 1}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
+                  {/* Service / parts picker row */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {(services ?? []).length > 0 && (
+                      <SearchableCombobox
+                        className="flex-1 min-w-[150px]"
+                        options={(services ?? []).map(s => ({ value: String(s.id), label: s.name, keywords: [s.description ?? ''], hint: s.basePrice > 0 ? `$${s.basePrice.toFixed(2)}` : undefined }))}
+                        value={li.serviceId ? String(li.serviceId) : null}
+                        onChange={v => applyService(i, v)}
+                        placeholder="Pick a service..."
+                        searchPlaceholder="Search services..."
+                        emptyText="No services match."
+                        ariaLabel={`Service for line ${i + 1}`}
+                        title="Pick a service to auto-fill description and price"
+                      />
+                    )}
+                    <InventoryItemCombobox
+                      className="flex-1 min-w-[150px]"
+                      value={li.inventoryItemId ?? null}
+                      onSelect={item => applyInventory(i, item)}
+                      placeholder="Pick a part..."
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
+                      title="Remove this line item"
+                      aria-label={`Remove line ${i + 1}`}
+                      onClick={() => setLineItems(p => p.filter((_, j) => j !== i))}
+                      disabled={lineItems.length === 1}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                  {li.inventoryItemId != null && (
+                    <p className="text-[10px] text-muted-foreground">Inventory part{li.sku ? ` · SKU ${li.sku}` : ''}{li.costPrice != null ? ` · cost $${Number(li.costPrice).toFixed(2)}` : ''}. Invoice lines bill the customer; record stock usage on the job.</p>
                   )}
 
                   {/* Property */}
@@ -613,15 +632,6 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
                       </div>
                     </div>
                   </div>
-
-                  {/* Remove button when no service selector shown */}
-                  {(services ?? []).length === 0 && (
-                    <div className="flex justify-end">
-                      <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground hover:text-destructive gap-1" onClick={() => setLineItems(p => p.filter((_, j) => j !== i))} disabled={lineItems.length === 1}>
-                        <Trash2 className="w-3 h-3" /> Remove
-                      </Button>
-                    </div>
-                  )}
                 </div>
               ))}
             </div>

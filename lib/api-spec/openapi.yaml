@@ -132,15 +132,55 @@ paths:
       operationId: refreshBusinessPaymentAccount
       responses:
         '200': {description: Provider-confirmed billing, content: {application/json: {schema: {$ref: '#/components/schemas/BusinessSoftwareBilling'}}}}
+  /software-features:
+    get:
+      operationId: getSoftwareFeatures
+      responses:
+        '200':
+          description: Provider-confirmed plan features, or grandfathered unrestricted access
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [featureKeys, featureCatalog]
+                properties:
+                  featureKeys: {type: array, nullable: true, items: {type: string}}
+                  featureCatalog: {type: array, items: {$ref: '#/components/schemas/SoftwareFeatureDefinition'}}
+  /settings/weather-locations:
+    get:
+      operationId: getWeatherLocations
+      responses:
+        '200':
+          description: Company forecast towns and ZIP codes
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/WeatherLocationsSettings'}
+    put:
+      operationId: updateWeatherLocations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/WeatherLocationsSettings'}
+      responses:
+        '200':
+          description: Saved company forecast locations
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/WeatherLocationsSettings'}
   /schedule/weather:
     get:
       operationId: getScheduleWeather
-      summary: Fourteen-day planning forecast at a company property's saved map pin
+      summary: Fourteen-day planning forecast for a saved company town or ZIP code
       parameters:
         - in: query
           name: propertyId
-          required: true
+          required: false
           schema: { type: integer, minimum: 1 }
+        - in: query
+          name: locationId
+          required: false
+          schema: {type: string, minLength: 1, maxLength: 160}
       responses:
         "200":
           description: Forecast for scheduling, not an application weather record
@@ -9779,11 +9819,19 @@ components:
         cardFeeFixedCents: {type: integer, minimum: 0, maximum: 100000}
         achFeeBps: {type: integer, minimum: 0, maximum: 10000}
         achFeeFixedCents: {type: integer, minimum: 0, maximum: 100000}
+        cardFeeMinCents: {type: integer, nullable: true, minimum: 0, maximum: 1000000000}
+        cardFeeMaxCents: {type: integer, nullable: true, minimum: 0, maximum: 1000000000}
+        achFeeMinCents: {type: integer, nullable: true, minimum: 0, maximum: 1000000000}
+        achFeeMaxCents: {type: integer, nullable: true, minimum: 0, maximum: 1000000000}
     SoftwarePlanInput:
       type: object
       required: [name, tier, price, billingInterval, active, features, maxUsers, maxProperties, cardFeeBps, cardFeeFixedCents, achFeeBps, achFeeFixedCents]
       properties:
         name: {type: string}
+        cardFeeMinCents: {type: integer, nullable: true, minimum: 0, maximum: 1000000000}
+        cardFeeMaxCents: {type: integer, nullable: true, minimum: 0, maximum: 1000000000}
+        achFeeMinCents: {type: integer, nullable: true, minimum: 0, maximum: 1000000000}
+        achFeeMaxCents: {type: integer, nullable: true, minimum: 0, maximum: 1000000000}
         tier: {type: string}
         price: {type: number}
         billingInterval: {type: string, enum: [month, year]}
@@ -9832,6 +9880,28 @@ components:
         connectReady: {type: boolean}
         hasConnectAccount: {type: boolean}
         hasSubscription: {type: boolean}
+    WeatherLocationsSettings:
+      type: object
+      required: [locations]
+      properties:
+        locations:
+          type: array
+          maxItems: 30
+          items:
+            type: object
+            required: [id, label, query]
+            properties:
+              id: {type: string, minLength: 1, maxLength: 160}
+              label: {type: string, minLength: 2, maxLength: 160}
+              query: {type: string, minLength: 2, maxLength: 160}
+    SoftwareFeatureDefinition:
+      type: object
+      required: [key, label, description, appPaths]
+      properties:
+        key: {type: string}
+        label: {type: string}
+        description: {type: string}
+        appPaths: {type: array, items: {type: string}}
     BusinessSoftwareBilling:
       type: object
       required: [enabled, account, plans, payouts, fees]
@@ -9841,11 +9911,13 @@ components:
         plans: {type: array, items: {$ref: '#/components/schemas/SoftwarePlan'}}
         payouts: {type: array, items: {$ref: '#/components/schemas/PlatformPayout'}}
         fees: {$ref: '#/components/schemas/PlatformBillingSettingsInput'}
+        featureCatalog: {type: array, items: {$ref: '#/components/schemas/SoftwareFeatureDefinition'}}
     PlatformAdminOverview:
       type: object
       required: [settings, plans, businesses, payouts, audit]
       properties:
         settings: {$ref: '#/components/schemas/PlatformBillingSettingsInput'}
+        featureCatalog: {type: array, items: {$ref: '#/components/schemas/SoftwareFeatureDefinition'}}
         plans: {type: array, items: {$ref: '#/components/schemas/SoftwarePlan'}}
         businesses: {type: array, items: {$ref: '#/components/schemas/SoftwareBillingAccount'}}
         payouts: {type: array, items: {$ref: '#/components/schemas/PlatformPayout'}}
@@ -9961,7 +10033,7 @@ components:
       type: object
       required: [propertyId, location, latitude, longitude, timezone, fetchedAt, source, daily, hourly]
       properties:
-        propertyId: { type: integer }
+        propertyId: { type: integer, nullable: true }
         location: { type: string }
         latitude: { type: number }
         longitude: { type: number }
@@ -10573,6 +10645,19 @@ components:
           type: string
         serviceId:
           type: ["integer", "null"]
+        serviceName: {type: string, nullable: true}
+        secondaryServiceId: {type: integer, nullable: true}
+        secondaryServiceName: {type: string, nullable: true}
+        bundledServices:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            required: [serviceId, serviceName, unitPrice]
+            properties:
+              serviceId: {type: integer, minimum: 1}
+              serviceName: {type: string}
+              unitPrice: {type: number, minimum: 0}
         description:
           type: string
         qty:
@@ -13455,6 +13540,9 @@ components:
       type: object
       required: [id, description, quantity, unitPrice, total]
       properties:
+        serviceId: {type: integer, nullable: true}
+        inventoryItemId: {type: integer, nullable: true}
+        sku: {type: string, nullable: true}
         id:
           type: integer
         description:
@@ -13812,6 +13900,9 @@ components:
       type: object
       required: [description, quantity, unitPrice]
       properties:
+        serviceId: {type: integer, nullable: true}
+        inventoryItemId: {type: integer, nullable: true}
+        sku: {type: string, nullable: true}
         description:
           type: string
         quantity:

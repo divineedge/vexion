@@ -74,6 +74,8 @@ import planCancelRequestsRouter from "./planCancelRequests";
 import tagsRouter from "./tags";
 import skipReasonsRouter from "./skipReasons";
 import portalMessagesRouter from "./portalMessages";
+import weatherLocationsRouter from "./weatherLocations";
+import { enforceSoftwareFeatures } from "../lib/softwareFeatures";
 import staffNotesRouter from "./staffNotes";
 import invoiceTemplatesRouter from "./invoiceTemplates";
 import jobMessagesRouter from "./jobMessages";
@@ -137,6 +139,8 @@ router.use((req, res, next) => {
 
 router.use(storageRouter);
 router.use(platformBillingRouter);
+router.use(enforceSoftwareFeatures);
+router.use(weatherLocationsRouter);
 router.use(experienceRouter);
 router.use(accountSecurityRouter);
 router.use(reviewPhotosRouter);

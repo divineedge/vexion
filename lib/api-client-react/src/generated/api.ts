@@ -201,6 +201,7 @@ import type {
   GetRoutesDashboardParams,
   GetSalesTaxReportParams,
   GetScheduleWeatherParams,
+  GetSoftwareFeatures200,
   GetTodayScheduleParams,
   GetWebsiteCustomerChoices200,
   GetWebsiteCustomerChoicesParams,
@@ -485,7 +486,8 @@ import type {
   Vendor,
   VendorExpenseDefaultsConfig,
   VendorExpenseDefaultsInput,
-  Visit
+  Visit,
+  WeatherLocationsSettings
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -1524,7 +1526,279 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       return useMutation(getRefreshBusinessPaymentAccountMutationOptions(options), queryClient);
     }
 
-export const getGetScheduleWeatherUrl = (params: GetScheduleWeatherParams,) => {
+export const getGetSoftwareFeaturesUrl = () => {
+
+
+
+
+  return `/api/software-features`
+}
+
+export const getSoftwareFeatures = async ( options?: Parameters<typeof customFetch>[1]): Promise<GetSoftwareFeatures200> => {
+
+  return customFetch<GetSoftwareFeatures200>(getGetSoftwareFeaturesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSoftwareFeaturesQueryKey = () => {
+    return [
+    `/api/software-features`
+    ] as const;
+    }
+
+
+export const getGetSoftwareFeaturesQueryOptions = <TData = Awaited<ReturnType<typeof getSoftwareFeatures>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSoftwareFeatures>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSoftwareFeaturesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSoftwareFeatures>>> = ({ signal }) => getSoftwareFeatures({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSoftwareFeatures>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetSoftwareFeaturesQueryResult = NonNullable<Awaited<ReturnType<typeof getSoftwareFeatures>>>
+export type GetSoftwareFeaturesQueryError = ErrorType<unknown>
+
+
+export function useGetSoftwareFeatures<TData = Awaited<ReturnType<typeof getSoftwareFeatures>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSoftwareFeatures>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSoftwareFeatures>>,
+          TError,
+          Awaited<ReturnType<typeof getSoftwareFeatures>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSoftwareFeatures<TData = Awaited<ReturnType<typeof getSoftwareFeatures>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSoftwareFeatures>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSoftwareFeatures>>,
+          TError,
+          Awaited<ReturnType<typeof getSoftwareFeatures>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSoftwareFeatures<TData = Awaited<ReturnType<typeof getSoftwareFeatures>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSoftwareFeatures>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useGetSoftwareFeatures<TData = Awaited<ReturnType<typeof getSoftwareFeatures>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSoftwareFeatures>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetSoftwareFeaturesQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetWeatherLocationsUrl = () => {
+
+
+
+
+  return `/api/settings/weather-locations`
+}
+
+export const getWeatherLocations = async ( options?: Parameters<typeof customFetch>[1]): Promise<WeatherLocationsSettings> => {
+
+  return customFetch<WeatherLocationsSettings>(getGetWeatherLocationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWeatherLocationsQueryKey = () => {
+    return [
+    `/api/settings/weather-locations`
+    ] as const;
+    }
+
+
+export const getGetWeatherLocationsQueryOptions = <TData = Awaited<ReturnType<typeof getWeatherLocations>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getWeatherLocations>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWeatherLocationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWeatherLocations>>> = ({ signal }) => getWeatherLocations({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWeatherLocations>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetWeatherLocationsQueryResult = NonNullable<Awaited<ReturnType<typeof getWeatherLocations>>>
+export type GetWeatherLocationsQueryError = ErrorType<unknown>
+
+
+export function useGetWeatherLocations<TData = Awaited<ReturnType<typeof getWeatherLocations>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getWeatherLocations>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getWeatherLocations>>,
+          TError,
+          Awaited<ReturnType<typeof getWeatherLocations>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetWeatherLocations<TData = Awaited<ReturnType<typeof getWeatherLocations>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getWeatherLocations>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getWeatherLocations>>,
+          TError,
+          Awaited<ReturnType<typeof getWeatherLocations>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetWeatherLocations<TData = Awaited<ReturnType<typeof getWeatherLocations>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getWeatherLocations>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useGetWeatherLocations<TData = Awaited<ReturnType<typeof getWeatherLocations>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getWeatherLocations>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetWeatherLocationsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateWeatherLocationsUrl = () => {
+
+
+
+
+  return `/api/settings/weather-locations`
+}
+
+export const updateWeatherLocations = async (weatherLocationsSettings: WeatherLocationsSettings, options?: Parameters<typeof customFetch>[1]): Promise<WeatherLocationsSettings> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<WeatherLocationsSettings>(getUpdateWeatherLocationsUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(weatherLocationsSettings)
+  }
+);}
+
+
+
+
+
+export const getUpdateWeatherLocationsMutationKey = () => ['updateWeatherLocations'] as const;
+
+export const getUpdateWeatherLocationsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateWeatherLocations>>, TError,UpdateWeatherLocationsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateWeatherLocations>>, TError,UpdateWeatherLocationsMutationVariables, TContext> => {
+
+const mutationKey = getUpdateWeatherLocationsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateWeatherLocations>>, UpdateWeatherLocationsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateWeatherLocations(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateWeatherLocationsMutationResult = NonNullable<Awaited<ReturnType<typeof updateWeatherLocations>>>
+    export type UpdateWeatherLocationsMutationBody = BodyType<WeatherLocationsSettings>
+    export type UpdateWeatherLocationsMutationError = ErrorType<unknown>
+    export type UpdateWeatherLocationsMutationVariables = {data: BodyType<WeatherLocationsSettings>}
+
+    export const useUpdateWeatherLocations = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateWeatherLocations>>, TError,UpdateWeatherLocationsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateWeatherLocations>>,
+        TError,
+        UpdateWeatherLocationsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateWeatherLocationsMutationOptions(options), queryClient);
+    }
+
+export const getGetScheduleWeatherUrl = (params?: GetScheduleWeatherParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -1540,9 +1814,9 @@ export const getGetScheduleWeatherUrl = (params: GetScheduleWeatherParams,) => {
 }
 
 /**
- * @summary Fourteen-day planning forecast at a company property's saved map pin
+ * @summary Fourteen-day planning forecast for a saved company town or ZIP code
  */
-export const getScheduleWeather = async (params: GetScheduleWeatherParams, options?: Parameters<typeof customFetch>[1]): Promise<ScheduleForecast> => {
+export const getScheduleWeather = async (params?: GetScheduleWeatherParams, options?: Parameters<typeof customFetch>[1]): Promise<ScheduleForecast> => {
 
   return customFetch<ScheduleForecast>(getGetScheduleWeatherUrl(params),
   {
@@ -1564,7 +1838,7 @@ export const getGetScheduleWeatherQueryKey = (params?: GetScheduleWeatherParams,
     }
 
 
-export const getGetScheduleWeatherQueryOptions = <TData = Awaited<ReturnType<typeof getScheduleWeather>>, TError = ErrorType<void>>(params: GetScheduleWeatherParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getScheduleWeather>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+export const getGetScheduleWeatherQueryOptions = <TData = Awaited<ReturnType<typeof getScheduleWeather>>, TError = ErrorType<void>>(params?: GetScheduleWeatherParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getScheduleWeather>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -1587,7 +1861,7 @@ export type GetScheduleWeatherQueryError = ErrorType<void>
 
 
 export function useGetScheduleWeather<TData = Awaited<ReturnType<typeof getScheduleWeather>>, TError = ErrorType<void>>(
- params: GetScheduleWeatherParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getScheduleWeather>>, TError, TData>> & Pick<
+ params: undefined |  GetScheduleWeatherParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getScheduleWeather>>, TError, TData>> & Pick<
         DefinedInitialDataOptions<
           Awaited<ReturnType<typeof getScheduleWeather>>,
           TError,
@@ -1597,7 +1871,7 @@ export function useGetScheduleWeather<TData = Awaited<ReturnType<typeof getSched
  , queryClient?: QueryClient
   ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useGetScheduleWeather<TData = Awaited<ReturnType<typeof getScheduleWeather>>, TError = ErrorType<void>>(
- params: GetScheduleWeatherParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getScheduleWeather>>, TError, TData>> & Pick<
+ params?: GetScheduleWeatherParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getScheduleWeather>>, TError, TData>> & Pick<
         UndefinedInitialDataOptions<
           Awaited<ReturnType<typeof getScheduleWeather>>,
           TError,
@@ -1607,15 +1881,15 @@ export function useGetScheduleWeather<TData = Awaited<ReturnType<typeof getSched
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useGetScheduleWeather<TData = Awaited<ReturnType<typeof getScheduleWeather>>, TError = ErrorType<void>>(
- params: GetScheduleWeatherParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getScheduleWeather>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ params?: GetScheduleWeatherParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getScheduleWeather>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary Fourteen-day planning forecast at a company property's saved map pin
+ * @summary Fourteen-day planning forecast for a saved company town or ZIP code
  */
 
 export function useGetScheduleWeather<TData = Awaited<ReturnType<typeof getScheduleWeather>>, TError = ErrorType<void>>(
- params: GetScheduleWeatherParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getScheduleWeather>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ params?: GetScheduleWeatherParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getScheduleWeather>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
  , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 

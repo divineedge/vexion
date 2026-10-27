@@ -12,16 +12,51 @@ vi.mock("@workspace/db",async original=>{
   return {...m,db:new Proxy(m.db,{get(target,key){const source=state.connection??target;const value=source[key];return typeof value==="function"?value.bind(source):value;}})};
 });
 vi.mock("./mailchimpSync",()=>({syncCustomerToMailchimp:vi.fn()}));
-import {db,pool,tenantsTable,usersTable,customersTable,activityLogTable,jobsTable,jobReportBaselinesTable,crewsTable,crewMembersTable,estimatesTable} from "@workspace/db";
-import {and,eq} from "drizzle-orm";
+import {db,pool,tenantsTable,usersTable,customersTable,activityLogTable,jobsTable,jobReportBaselinesTable,crewsTable,crewMembersTable,estimatesTable,portalMessagesTable,softwareBillingAccountsTable} from "@workspace/db";
+import {and,eq,sql} from "drizzle-orm";
 import router from "../routes/customers";
 import jobsRouter from "../routes/jobs";
 import estimatesRouter from "../routes/estimates";
+import portalMessagesRouter from "../routes/portalMessages";
+import { enforceSoftwareFeatures } from "./softwareFeatures";
 import { enforceCrewCapacity,CrewCapacityError } from "./crewCapacity";
 describe("customer creation and explicit duplicate decisions",()=>{
+  it("gives office admins their own portal unread state and customer requests",async()=>{
+    const owner=state.user;
+    try{
+      const[admin]=await db.insert(usersTable).values({tenantId:state.tenant,name:"QA office admin",email:`qa-inbox-${state.tenant}@example.invalid`,role:"office_manager",passwordHash:"mock"}).returning();
+      const[customer]=await db.insert(customersTable).values({tenantId:state.tenant,name:"QA shared inbox customer",email:`qa-inbox-customer-${state.tenant}@example.invalid`,phone:""}).returning();
+      await db.insert(portalMessagesTable).values({tenantId:state.tenant,customerId:customer.id,direction:"inbound",body:"QA shared portal message"});
+      const[job]=await db.insert(jobsTable).values({tenantId:state.tenant,customerId:customer.id,title:"QA portal request",status:"pending",source:"portal",scheduledAt:new Date("2036-03-02T16:00:00Z")}).returning();
+      expect((await request(app).get(`/portal-inbox/${customer.id}`)).status).toBe(200);
+      state.user=admin.id;
+      const threads=await request(app).get("/portal-inbox");
+      expect(threads.status).toBe(200);
+      expect(threads.body.find((row:{customerId:number})=>row.customerId===customer.id)?.unreadCount).toBe(1);
+      const jobs=await request(app).get("/jobs?source=portal&status=pending");
+      expect(jobs.status).toBe(200);
+      expect((Array.isArray(jobs.body)?jobs.body:jobs.body.items).some((row:{id:number})=>row.id===job.id)).toBe(true);
+      expect((await request(app).get(`/portal-inbox/${customer.id}`)).status).toBe(200);
+      const read=await request(app).get("/portal-inbox");
+      expect(read.body.find((row:{customerId:number})=>row.customerId===customer.id)?.unreadCount).toBe(0);
+      state.user=state.worker;
+      expect((await request(app).get("/portal-inbox")).status).toBe(403);
+    }finally{state.user=owner;}
+  });
+  it("enforces purchased feature keys at the API without blocking core customer records",async()=>{
+    await db.insert(softwareBillingAccountsTable).values({tenantId:state.tenant,planPolicy:{version:1,featureKeys:["invoices"],feePolicy:{}}}).onConflictDoNothing();
+    try{
+      const blocked=await request(app).get("/estimates");
+      expect(blocked.status).toBe(403);expect(blocked.body.code).toBe("software_feature_not_included");
+      expect((await request(app).get("/customers")).status).toBe(200);
+    }finally{
+      await db.execute(sql`UPDATE software_billing_accounts SET plan_policy=NULL WHERE tenant_id=${state.tenant}`);
+    }
+    expect((await request(app).get("/estimates")).status).toBe(200);
+  });
   const connect=()=>pool.connect();
   let client:Awaited<ReturnType<typeof connect>>,savepoint=0;
-  const app=express();app.use(express.json());app.use((req,_res,next)=>{Object.assign(req,{verifiedTenantId:state.tenant,verifiedUserId:state.user});next();});app.use(router);app.use(jobsRouter);app.use(estimatesRouter);
+  const app=express();app.use(express.json());app.use((req,_res,next)=>{Object.assign(req,{verifiedTenantId:state.tenant,verifiedUserId:state.user});next();});app.use(enforceSoftwareFeatures);app.use(router);app.use(jobsRouter);app.use(estimatesRouter);app.use(portalMessagesRouter);
   app.use((error:Error&{status?:number},_req:express.Request,res:express.Response,_next:express.NextFunction)=>{res.status(error instanceof CrewCapacityError?409:error.status??500).json({error:error.message});});
   beforeAll(async()=>{
     client=await pool.connect();await client.query("BEGIN");const connection=drizzle(client);
@@ -42,7 +77,7 @@ describe("customer creation and explicit duplicate decisions",()=>{
     const blocked=await request(app).post("/customers").send(body);expect(blocked.status).toBe(409);expect(blocked.body.existingCustomerId).toBe(created.body.id);
     const stringOverride=await request(app).post("/customers").send({...body,allowPossibleDuplicate:"true"});expect(stringOverride.status).toBe(409);
     const separate=await request(app).post("/customers").send({...body,allowPossibleDuplicate:true});expect(separate.status,JSON.stringify(separate.body)).toBe(201);expect(separate.body.id).not.toBe(created.body.id);
-    const rows=await db.select().from(customersTable).where(eq(customersTable.tenantId,state.tenant));expect(rows).toHaveLength(2);expect(rows.every(row=>!row.stripeCustomerId)).toBe(true);
+    const rows=await db.select().from(customersTable).where(and(eq(customersTable.tenantId,state.tenant),eq(customersTable.email,body.email)));expect(rows).toHaveLength(2);expect(rows.every(row=>!row.stripeCustomerId)).toBe(true);
     const audit=await db.select().from(activityLogTable).where(and(eq(activityLogTable.tenantId,state.tenant),eq(activityLogTable.entityId,separate.body.id)));expect(audit.some(row=>row.message.includes("after duplicate warning"))).toBe(true);
   });
   it("deletes an unused job and its generated report baseline without orphaning data",async()=>{

@@ -9,6 +9,30 @@ import type { SoftwarePlanInputBillingInterval } from './softwarePlanInputBillin
 
 export interface SoftwarePlanInput {
   name: string;
+  /**
+     * @minimum 0
+     * @maximum 1000000000
+     * @nullable
+     */
+  cardFeeMinCents?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 1000000000
+     * @nullable
+     */
+  cardFeeMaxCents?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 1000000000
+     * @nullable
+     */
+  achFeeMinCents?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 1000000000
+     * @nullable
+     */
+  achFeeMaxCents?: number | null;
   tier: string;
   price: number;
   billingInterval: SoftwarePlanInputBillingInterval;

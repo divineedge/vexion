@@ -4,6 +4,7 @@ import { db, propertiesTable, tenantsTable, usersTable } from "@workspace/db";
 import { GetScheduleWeatherQueryParams, GetScheduleWeatherResponse } from "@workspace/api-zod";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { loadScheduleForecast } from "../lib/scheduleWeather";
+import { savedWeatherLocations,resolveWeatherTown } from "../lib/weatherLocations";
 
 const router: IRouter = Router();
 const forecastRoles = new Set(["company_owner", "office_manager", "department_manager", "crew_manager"]);
@@ -18,7 +19,22 @@ router.get("/schedule/weather", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Only company admins and managers can view the scheduling forecast." }); return;
   }
   const params = GetScheduleWeatherQueryParams.safeParse(req.query);
-  if (!params.success || !Number.isSafeInteger(params.data.propertyId)) {
+  if(params.success && params.data.locationId){
+    const [tenant]=await db.select({locations:tenantsTable.scheduleWeatherLocations,timezone:tenantsTable.timezone,state:tenantsTable.businessState})
+      .from(tenantsTable).where(eq(tenantsTable.id,tenantId));
+    const location=savedWeatherLocations(tenant?.locations).find(x=>x.id===params.data.locationId);
+    if(!location){res.status(404).json({error:"Choose a saved company forecast town or ZIP code."});return;}
+    try{
+      const coords=await resolveWeatherTown(location.query,tenant?.state);
+      const forecast=await loadScheduleForecast({tenantId,propertyId:null,address:location.label,...coords,timezone:tenant!.timezone});
+      res.json(GetScheduleWeatherResponse.parse(forecast));
+    }catch(error){
+      req.log?.warn({errorType:(error as Error).name},"Town forecast unavailable");
+      res.status(503).json({error:error instanceof Error?error.message:"Forecast unavailable. The crew schedule remains available."});
+    }
+    return;
+  }
+  if (!params.success || params.data.propertyId==null || !Number.isSafeInteger(params.data.propertyId)) {
     res.status(400).json({ error: "Choose a valid property for the weather forecast." }); return;
   }
   const [property] = await db.select({

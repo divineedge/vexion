@@ -67,6 +67,16 @@ export function dollarsToCents(v: string, label: string, maxCents = MAX_BOUND_CE
 }
 export const centsToDollars = (c: number | null | undefined) => (c == null ? '' : (c / 100).toFixed(2));
 
+/** Match the software-plan API: zero is valid, blanks and fractional cents are not. */
+export function parseSoftwarePlanPrice(value: string): number | string {
+  const text = value.trim();
+  const amount = Number(text);
+  if (!/^\d+(\.\d{1,2})?$/.test(text) || !Number.isFinite(amount) || amount < 0 || amount > 100000) {
+    return 'Price must be $0–$100,000 with no more than 2 decimal places';
+  }
+  return Math.round(amount * 100) / 100;
+}
+
 export function boundsLabel(min: number | null | undefined, max: number | null | undefined) {
   if (min == null && max == null) return '';
   if (min != null && max != null) return `min ${cents(min)}, max ${cents(max)}`;

@@ -79,6 +79,22 @@ describe("software-owner billing and proceeds",()=>{
     expect(softwarePlanInput.safeParse({...input,price:10,cardFeeBps:-1}).success).toBe(false);
     expect(softwarePlanInput.safeParse({...input,price:10,stripePriceId:"price_attack"}).success).toBe(false);
   });
+  it("creates and edits zero-price plans without Stripe or changing existing subscriptions",async()=>{
+    const input={name:"Free software",tier:"free_fixture",price:0,billingInterval:"month",active:true,features:["invoices"],maxUsers:null,maxProperties:null,cardFeeBps:null,cardFeeFixedCents:null,achFeeBps:null,achFeeFixedCents:null};
+    const created=await request(app).post("/platform-billing/plans").send(input);
+    expect(created.status).toBe(201);
+    expect(created.body.price).toBe(0);
+    const updated=await request(app).patch(`/platform-billing/plans/${planId}`).send({...input,tier:"fixture",name:"Edited free plan"});
+    expect(updated.status).toBe(200);
+    expect(updated.body).toMatchObject({price:0,name:"Edited free plan",revision:2,stripePriceId:"price_fixture",published:false});
+    const overview=await request(app).get("/platform-billing/admin");
+    expect(overview.body.plans.find((p:{id:number})=>p.id===planId)).toMatchObject({price:0,name:"Edited free plan"});
+    const repriced=await request(app).patch(`/platform-billing/plans/${planId}`).send({...input,tier:"fixture",name:"Edited paid draft",price:25});
+    expect(repriced.status).toBe(200);
+    expect(repriced.body).toMatchObject({price:25,name:"Edited paid draft",features:["invoices"],revision:3,stripePriceId:"price_fixture",published:false});
+    expect(state.stripe.prices.create).not.toHaveBeenCalled();
+    expect(state.stripe.checkout.sessions.create).not.toHaveBeenCalled();
+  });
   it("does not elevate ordinary business owners or trust a forged owner field",async()=>{
     state.userId=businessOwnerId;
     expect((await request(app).get("/platform-billing/access")).body.isSoftwareOwner).toBe(false);

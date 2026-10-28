@@ -8,6 +8,12 @@ The software owner must be able to adjust the fees they take in addition to Stri
 
 **How to apply:** Treat software-owner fees and business software subscriptions separately from a business's customer invoices and lawn-service plans. Verify actual fee collection and recurring subscription billing, not just the existence of plan records or pricing cards, before claiming platform monetization works.
 
+Software subscription plans may have a $0 price.
+
+**Why:** The user explicitly requested the ability to set the software-owner plan price to zero.
+
+**How to apply:** Allow an explicitly entered zero in both plan creation and editing. Keep blank/invalid prices distinct from zero and preserve the existing published-version protection for current subscribers.
+
 Platform fees come out of the business's proceeds, not an added customer surcharge.
 
 **Why:** The user explicitly selected deduction from business proceeds.

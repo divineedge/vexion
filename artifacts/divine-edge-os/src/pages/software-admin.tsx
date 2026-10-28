@@ -11,7 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useSettingsAutosave } from '@/hooks/use-settings-autosave';
 import { AutosaveIndicator } from '@/components/settings/AutosaveIndicator';
 import { PayoutTable, earnedPlatformFees } from '@/components/billing/PayoutTable';
-import { cents, errorMessage, REVERSED, catalogOf, resolveFeatures, dollarsToCents, centsToDollars } from '@/lib/softwareBilling';
+import { cents, errorMessage, REVERSED, catalogOf, resolveFeatures, dollarsToCents, centsToDollars, parseSoftwarePlanPrice } from '@/lib/softwareBilling';
 import type { FeatureDef, FeeBounds } from '@/lib/softwareBilling';
 import { FeatureChecklist } from '@/components/billing/FeatureChecklist';
 import { FeeDisclosure, railSummary } from '@/components/billing/FeeDisclosure';
@@ -169,9 +169,9 @@ function toDraft(p: Plan): Draft {
 
 function parseDraft(d: Draft): { ok: true; value: SoftwarePlanInput & FeeBounds } | { ok: false; error: string } {
   if (!d.name.trim()) return { ok: false, error: 'Name is required' };
-  if (!d.tier.trim()) return { ok: false, error: 'Tier is required' };
-  const price = Number(d.price);
-  if (!/^\d+(\.\d{1,2})?$/.test(d.price.trim()) || !(price > 0)) return { ok: false, error: 'Price must be a positive dollar amount (2 decimals max)' };
+  if (!/^[a-z][a-z0-9_-]{0,49}$/.test(d.tier.trim())) return { ok: false, error: 'Tier key must start with a lowercase letter and use only lowercase letters, numbers, hyphens or underscores (50 characters max)' };
+  const price = parseSoftwarePlanPrice(d.price);
+  if (typeof price === 'string') return { ok: false, error: price };
   const optInt = (v: string, label: string): number | null | string => {
     if (v.trim() === '') return null; const n = Number(v);
     return Number.isInteger(n) && n > 0 ? n : `${label} must be a whole number`;
@@ -205,21 +205,23 @@ function PlansTab({ plans: rawPlans, enabled, catalog, settings, onChanged }: { 
   const plans = rawPlans as Plan[];
   const [editing, setEditing] = useState<Plan | 'new' | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [publishTarget, setPublishTarget] = useState<Plan | null>(null);
   const create = useCreatePlatformSoftwarePlan();
   const update = useUpdatePlatformSoftwarePlan();
   const publish = usePublishPlatformSoftwarePlan();
   const sorted = useMemo(() => [...plans].sort((a, b) => Number(b.active) - Number(a.active) || a.price - b.price), [plans]);
 
-  const open = (p: Plan | 'new') => { setEditing(p); setDraft(p === 'new' ? emptyDraft : toDraft(p)); };
-  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft(d => ({ ...d, [k]: v }));
+  const open = (p: Plan | 'new') => { setEditing(p); setSaveError(null); setDraft(p === 'new' ? emptyDraft : toDraft(p)); };
+  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => { setSaveError(null); setDraft(d => ({ ...d, [k]: v })); };
 
   const save = () => {
     const parsed = parseDraft(draft);
-    if (!parsed.ok) { toast.error(parsed.error); return; }
+    if (!parsed.ok) { setSaveError(parsed.error); toast.error(parsed.error); return; }
+    setSaveError(null);
     const opts = {
       onSuccess: () => { toast.success(editing === 'new' ? 'Draft plan saved' : 'Plan saved as a new revision'); setEditing(null); onChanged(); },
-      onError: (e: unknown) => toast.error(errorMessage(e, 'Could not save plan')),
+      onError: (e: unknown) => { const message = errorMessage(e, 'Could not save plan'); setSaveError(message); toast.error(message); },
     };
     if (editing === 'new') create.mutate({ data: parsed.value }, opts);
     else if (editing) update.mutate({ id: editing.id, data: parsed.value }, opts);
@@ -287,7 +289,7 @@ function PlansTab({ plans: rawPlans, enabled, catalog, settings, onChanged }: { 
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2 sm:col-span-1 space-y-1"><Label>Name</Label><Input value={draft.name} onChange={e => set('name', e.target.value)} data-testid="input-plan-name" /></div>
             <div className="col-span-2 sm:col-span-1 space-y-1"><Label>Tier key</Label><Input value={draft.tier} onChange={e => set('tier', e.target.value)} data-testid="input-plan-tier" /></div>
-            <div className="space-y-1"><Label>Price (USD)</Label><Input inputMode="decimal" value={draft.price} onChange={e => set('price', e.target.value)} data-testid="input-plan-price" /></div>
+            <div className="space-y-1"><Label>Price (USD)</Label><Input inputMode="decimal" value={draft.price} onChange={e => set('price', e.target.value)} data-testid="input-plan-price" /><p className="text-xs text-muted-foreground">Enter 0 for a free subscription plan.</p></div>
             <div className="space-y-1"><Label>Interval</Label>
               <Select value={draft.billingInterval} onValueChange={v => set('billingInterval', v as 'month' | 'year')}>
                 <SelectTrigger data-testid="select-plan-interval"><SelectValue /></SelectTrigger>
@@ -312,6 +314,7 @@ function PlansTab({ plans: rawPlans, enabled, catalog, settings, onChanged }: { 
               <Switch checked={draft.active} onCheckedChange={v => set('active', v)} data-testid="switch-plan-active" />
             </div>
           </div>
+          {saveError && <p role="alert" className="text-sm text-destructive" data-testid="plan-save-error">{saveError}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
             <Button onClick={save} disabled={create.isPending || update.isPending} data-testid="button-save-plan">{create.isPending || update.isPending ? 'Saving…' : 'Save draft'}</Button>

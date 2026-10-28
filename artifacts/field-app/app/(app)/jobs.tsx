@@ -10,6 +10,8 @@ import {
   Platform,
   TextInput,
   AppState,
+  Alert,
+  Linking,
 } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -289,7 +291,7 @@ export default function JobsScreen() {
   const checklistName = tenantSettings?.preTripChecklistName?.trim() || 'Pre-trip';
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
-  const { user, signOut, lockApp } = useAuth();
+  const { user, signOut, lockApp, requestUnlockSetup } = useAuth();
   const tenantTimezone = user?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC';
   const { isOffline, reportNetworkStatus, cacheJobs, getCachedJobs } = useOffline();
   const params = useLocalSearchParams<{ scheduleMode?: string; scheduleDate?: string }>();
@@ -566,6 +568,27 @@ export default function JobsScreen() {
     router.replace('/');
   }, [lockApp]);
 
+  const handleSignInSecurity = useCallback(() => {
+    void Haptics.selectionAsync();
+    requestUnlockSetup();
+  }, [requestUnlockSetup]);
+
+  const handleLocationAccess = useCallback(() => {
+    void Haptics.selectionAsync();
+    if (Platform.OS === 'web') {
+      globalThis.alert('Location access\n\nClock-ins use your location. In your browser, open site settings (the icon beside the address bar) and set Location to Allow for this site so you are not asked every time.');
+      return;
+    }
+    Alert.alert(
+      'Location access',
+      'Choose "Allow while using app" (not "Allow once") so your phone does not ask again at every clock-in.',
+      [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Open settings', onPress: () => { void Linking.openSettings().catch(() => Alert.alert('Could not open settings', 'Open your phone Settings and find this app to change location access.')); } },
+      ],
+    );
+  }, []);
+
   const handleEquipmentPress = useCallback(async () => {
     await Haptics.selectionAsync();
     router.push('/(app)/equipment');
@@ -672,6 +695,17 @@ export default function JobsScreen() {
             <Ionicons name="lock-closed-outline" size={21} color={colors.mutedForeground} />
           </TouchableOpacity>
         </View>
+      </View>
+
+      <View style={styles.deviceControls}>
+        <TouchableOpacity onPress={handleSignInSecurity} style={[styles.deviceControlBtn, { borderColor: colors.border, backgroundColor: colors.card }]} testID="sign-in-security-button" accessibilityRole="button" accessibilityLabel="Change sign-in security">
+          <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} />
+          <Text style={[styles.deviceControlText, { color: colors.foreground }]}>Sign-in security</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleLocationAccess} style={[styles.deviceControlBtn, { borderColor: colors.border, backgroundColor: colors.card }]} testID="location-access-button" accessibilityRole="button" accessibilityLabel="Location access">
+          <Ionicons name="location-outline" size={18} color={colors.primary} />
+          <Text style={[styles.deviceControlText, { color: colors.foreground }]}>Location access</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Day clock banner */}
@@ -914,6 +948,9 @@ const styles = StyleSheet.create({
   },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   headerBtn: { padding: 6 },
+  deviceControls: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
+  deviceControlBtn: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, borderWidth: 1, borderRadius: 10 },
+  deviceControlText: { fontFamily: 'Inter_500Medium', fontSize: 13 },
   messageBadge: { position: 'absolute', right: -2, top: -2, minWidth: 16, height: 16, paddingHorizontal: 3, borderRadius: 8, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center' },
   messageBadgeText: { color: '#fff', fontSize: 9, fontFamily: 'Inter_600SemiBold' },
   visitTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },

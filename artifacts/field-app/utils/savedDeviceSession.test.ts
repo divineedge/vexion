@@ -19,6 +19,10 @@ describe('Remembered phone session recovery', () => {
     expect(canRestoreSavedSession({ ...defaults, token: null })).toBe(false);
     expect(canRestoreSavedSession({ ...defaults, token: '' })).toBe(false);
   });
+  it('never restores an explicitly password-only session through phone unlock', () => {
+    expect(canRestoreSavedSession({ ...defaults, passwordOnly: true })).toBe(false);
+    expect(canRestoreSavedSession({ ...defaults, native: false, verifier: 'app-pin-verifier', passwordOnly: true })).toBe(false);
+  });
   it('does not extend native recovery rules to browsers', () => {
     expect(canRestoreSavedSession({ ...defaults, native: false, biometric: null })).toBe(false);
     expect(canRestoreSavedSession({ ...defaults, native: false, userJson: null })).toBe(false);

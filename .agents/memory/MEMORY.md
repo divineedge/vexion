@@ -63,7 +63,9 @@
 - [Comparable budget efficiency](efficiency-budget-cohorts.md) — employee and crew budgets share a completed-job cohort; assign budgets to actual contributors.
 - [Android Expo Go push imports](android-expo-go-push-imports.md) — SDK 53+ can crash on expo-notifications push side effects; skip loading them in Android Expo Go
 - [Expo and web React compatibility](expo-react-workspace-compatibility.md) — Expo's required React must not be replaced by a global web-version override; shared imports need one runtime per app.
-- [Field App session unlock](field-app-session-unlock.md) — password once per native device; phone biometrics/passcode on cold launch, with revocable remembered access.
+- [Field App session unlock](field-app-session-unlock.md) — remember opt-in/skip per device and account; phone verification for enabled sessions, password-only cold starts when skipped.
+- [Clock location consent](device-location-consent.md) — one-time device setup; respect denials and expired grants, with explicit phone-settings recovery.
+- [Field App QA API target](field-app-qa-target.md) — the Expo preview may call the published API; isolate browser QA against development without changing production.
 - [External service grants](external-service-grants.md) — owner-delegated business-wide categories are separate from staff roles; MCP client authentication limits must remain explicit
 - [Bulk fuel costing](bulk-fuel-costing.md) — blended tank costs are snapshotted per fill; receipts and allocated equipment fuel must not become duplicate expenses
 - [Estimate declines and campaign consent](estimate-declines-campaign-consent.md) — snapshot feedback; not-now campaign routing is separate from acquisition and never overrides unsubscribe

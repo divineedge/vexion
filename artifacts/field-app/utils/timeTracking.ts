@@ -1,13 +1,36 @@
 import * as Location from 'expo-location';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { resolveWithTimeout } from './jobTimeClockState';
 
+const LOCATION_ASKED_KEY = 'field_app_location_prompted_v1';
+let permissionCheck: Promise<boolean> | null = null;
+
+function clockLocationPermission(): Promise<boolean> {
+  if (permissionCheck) return permissionCheck;
+  permissionCheck = (async () => {
+    const permission = await Location.getForegroundPermissionsAsync();
+    if (permission.granted) return true;
+    // Respect an OS denial, including permission decisions from older versions.
+    // A temporary "Allow once" grant can also expire; do not ask every stop.
+    if (permission.status === 'denied' || !permission.canAskAgain) return false;
+    if (await AsyncStorage.getItem(LOCATION_ASKED_KEY) === 'true') return false;
+    await AsyncStorage.setItem(LOCATION_ASKED_KEY, 'true');
+    return (await Location.requestForegroundPermissionsAsync()).granted;
+  })().finally(() => { permissionCheck = null; });
+  return permissionCheck;
+}
+
 export async function getClockLocation(): Promise<{ lat: number; lng: number } | null> {
-  return resolveWithTimeout(async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') return null;
-    const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-    return { lat: pos.coords.latitude, lng: pos.coords.longitude };
-  }, 3000, null);
+  try {
+    if (!await clockLocationPermission()) return null;
+    // The GPS timeout starts after the person has answered the first OS dialog.
+    return await resolveWithTimeout(async () => {
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      return { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    }, 3000, null);
+  } catch {
+    return null; // Callers retain their existing company geofence requirements.
+  }
 }
 
 export function haversineMetres(lat1: number, lng1: number, lat2: number, lng2: number): number {

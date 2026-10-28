@@ -8,6 +8,7 @@ import { pbkdf2 } from '@noble/hashes/pbkdf2';
 import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils';
 import { useQueryClient } from '@tanstack/react-query';
+import { router } from 'expo-router';
 import {
   getMe,
   rememberStaffDevice,
@@ -17,6 +18,7 @@ import {
 } from '@workspace/api-client-react';
 import { endRemoteStaffSession } from '@/utils/authSessionCleanup';
 import { canRestoreSavedSession, parseSavedAuthUser } from '@/utils/savedDeviceSession';
+import { parseUnlockChoice, unlockChoiceKey, unlockSignInPlan } from '@/utils/unlockPreference';
 
 export interface AuthUser {
   id: number;
@@ -43,7 +45,9 @@ interface AuthContextType {
   signIn: (token: string, user: AuthUser, sessionToken?: string) => Promise<void>;
   signOut: () => Promise<void>;
   lockApp: () => Promise<void>;
-  configureUnlock: (options: { biometric: boolean; pin?: string }) => Promise<void>;
+  configureUnlock: (options: { biometric: boolean; pin?: string; rememberChoice?: boolean }) => Promise<void>;
+  skipUnlock: (rememberChoice: boolean) => Promise<void>;
+  requestUnlockSetup: () => void;
   unlockWithBiometrics: () => Promise<UnlockResult>;
   unlockWithPin: (pin: string) => Promise<UnlockResult>;
 }
@@ -55,6 +59,7 @@ const LEGACY_TOKEN_KEY = 'field_app_token';
 const LEGACY_SESSION_TOKEN_KEY = 'field_app_session_token';
 const TOKEN_KEY = 'field_app_secure_session';
 const BIOMETRIC_KEY = 'field_app_biometric_enabled';
+const SESSION_MODE_KEY = 'field_app_unlock_session_mode';
 const PIN_SALT_KEY = 'field_app_pin_salt';
 const PIN_VERIFIER_KEY = 'field_app_pin_verifier';
 const PIN_ATTEMPTS_KEY = 'field_app_pin_attempts';
@@ -120,6 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.removeItem(LEGACY_SESSION_TOKEN_KEY),
       secureDelete(TOKEN_KEY),
       secureDelete(BIOMETRIC_KEY),
+      secureDelete(SESSION_MODE_KEY),
       secureDelete(PIN_SALT_KEY),
       secureDelete(PIN_VERIFIER_KEY),
       secureDelete(PIN_ATTEMPTS_KEY),
@@ -158,6 +164,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Upgrade existing still-valid phone sessions too, without another login.
         await rememberStaffDevice();
         await secureSet(TOKEN_KEY, storedToken);
+        await secureSet(SESSION_MODE_KEY, 'phone');
+        await secureSet(BIOMETRIC_KEY, 'true');
       }
       await AsyncStorage.setItem(USER_KEY, JSON.stringify(current));
       await secureSet(PIN_ATTEMPTS_KEY, '0');
@@ -193,18 +201,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           AsyncStorage.removeItem(LEGACY_TOKEN_KEY),
           AsyncStorage.removeItem(LEGACY_SESSION_TOKEN_KEY),
         ]);
-        const [storedToken, storedUserJson, biometric, verifier, attempts] = await Promise.all([
+        const [storedToken, storedUserJson, biometric, verifier, attempts, mode] = await Promise.all([
           secureGet(TOKEN_KEY),
           AsyncStorage.getItem(USER_KEY),
           secureGet(BIOMETRIC_KEY),
           secureGet(PIN_VERIFIER_KEY),
           secureGet(PIN_ATTEMPTS_KEY),
+          secureGet(SESSION_MODE_KEY),
         ]);
         const native = Platform.OS !== 'web';
         const enrolled = native &&
           await LocalAuthentication.getEnrolledLevelAsync().catch(() => LocalAuthentication.SecurityLevel.NONE) !== LocalAuthentication.SecurityLevel.NONE;
         setBiometricAvailable(enrolled);
-        const usePhoneUnlock = native && Boolean(storedToken);
+        const usePhoneUnlock = native && Boolean(storedToken) && mode !== 'password';
         setBiometricEnabled(usePhoneUnlock || (Platform.OS === 'web' && biometric === 'true'));
         setPinEnabled(Platform.OS === 'web' && Boolean(verifier));
         if (usePhoneUnlock) {
@@ -213,7 +222,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         const failedAttempts = Number(attempts ?? '0');
         setPinAttemptsRemaining(Math.max(0, MAX_PIN_ATTEMPTS - failedAttempts));
-        if (canRestoreSavedSession({ native, token: storedToken, userJson: storedUserJson, biometric, verifier })) {
+        if (canRestoreSavedSession({ native, token: storedToken, userJson: storedUserJson, biometric, verifier, passwordOnly: mode === 'password' })) {
           setIsLocked(true);
         } else if (storedToken || storedUserJson) {
           await endSavedSession(
@@ -238,25 +247,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = useCallback(async (newToken: string, newUser: AuthUser, sessionToken?: string) => {
     const secureToken = sessionToken ?? newToken;
     const normalized = normalizeUser(newUser);
+    const native = Platform.OS !== 'web';
+    const choice = parseUnlockChoice(await AsyncStorage.getItem(unlockChoiceKey(normalized)));
+    const [oldBiometric, verifier] = native ? [null, null] : await Promise.all([secureGet(BIOMETRIC_KEY), secureGet(PIN_VERIFIER_KEY)]);
+    const plan = unlockSignInPlan(native, choice, Boolean(verifier || oldBiometric === 'true'));
     await Promise.all([
       secureSet(TOKEN_KEY, secureToken),
       AsyncStorage.setItem(USER_KEY, JSON.stringify(normalized)),
       secureSet(PIN_ATTEMPTS_KEY, '0'),
-      ...(Platform.OS !== 'web' ? [secureSet(BIOMETRIC_KEY, 'true')] : []),
+      secureSet(SESSION_MODE_KEY, plan.passwordOnly ? 'password' : plan.phoneUnlock ? 'phone' : 'pending'),
+      ...(native ? [plan.phoneUnlock ? secureSet(BIOMETRIC_KEY, 'true') : secureDelete(BIOMETRIC_KEY)] : []),
     ]);
     queryClient.clear();
+    // A successful password login already authenticated this session. Do not
+    // trap "Sign in with password instead" behind another phone prompt.
+    // Phone verification is still mandatory when restoring on the next cold
+    // launch, and only then may this session be upgraded to remembered access.
     setAuthTokenGetter(() => secureToken);
     setToken(secureToken);
     setUser(normalized);
     setIsLocked(false);
-    if (Platform.OS !== 'web') {
-      setBiometricEnabled(true);
+    if (native) {
+      setBiometricEnabled(plan.phoneUnlock);
       setPinEnabled(false);
     }
-    setNeedsEnrollment(true);
+    setNeedsEnrollment(plan.needsEnrollment);
   }, [queryClient]);
 
-  const configureUnlock = useCallback(async ({ biometric, pin }: { biometric: boolean; pin?: string }) => {
+  const configureUnlock = useCallback(async ({ biometric, pin, rememberChoice = true }: { biometric: boolean; pin?: string; rememberChoice?: boolean }) => {
+    if (!user) throw new Error('Sign in before changing device security.');
     if (Platform.OS !== 'web' && !biometric) throw new Error('Use your phone’s unlock to remember this device.');
     if (Platform.OS !== 'web' && biometric) {
       const result = await LocalAuthentication.authenticateAsync({
@@ -286,11 +305,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ]);
     }
     await secureSet(PIN_ATTEMPTS_KEY, '0');
+    await secureSet(SESSION_MODE_KEY, Platform.OS === 'web' ? 'browser' : 'phone');
+    if (rememberChoice) await AsyncStorage.setItem(unlockChoiceKey(user), 'enabled');
+    else await AsyncStorage.removeItem(unlockChoiceKey(user));
     setBiometricEnabled(biometric);
     setPinEnabled(Boolean(pin));
     setPinAttemptsRemaining(MAX_PIN_ATTEMPTS);
     setNeedsEnrollment(false);
-  }, []);
+  }, [user]);
+
+  const skipUnlock = useCallback(async (rememberChoice: boolean) => {
+    if (!user) throw new Error('Sign in before changing device security.');
+    // Explicit opt-out is separate from old/interrupted enrollment flags.
+    // Keep this password-authenticated session, but never silently restore it
+    // without a local verifier after the app is closed.
+    await secureSet(SESSION_MODE_KEY, 'password');
+    await Promise.all([
+      secureDelete(BIOMETRIC_KEY), secureDelete(PIN_SALT_KEY),
+      secureDelete(PIN_VERIFIER_KEY), secureDelete(PIN_ATTEMPTS_KEY),
+    ]);
+    if (rememberChoice) await AsyncStorage.setItem(unlockChoiceKey(user), 'skipped');
+    else await AsyncStorage.removeItem(unlockChoiceKey(user));
+    setBiometricEnabled(false);
+    setPinEnabled(false);
+    setNeedsEnrollment(false);
+  }, [user]);
+
+  const requestUnlockSetup = useCallback(() => {
+    if (!user || isLocked) return;
+    setNeedsEnrollment(true);
+    router.replace('/');
+  }, [user, isLocked]);
 
   const unlockWithBiometrics = useCallback(async (): Promise<UnlockResult> => {
     const [storedToken, storedUserJson] = await Promise.all([
@@ -365,7 +410,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider value={{
       user, token, isLoading, isLocked, needsEnrollment, biometricAvailable,
       biometricEnabled, pinEnabled, pinAttemptsRemaining, signIn, signOut,
-      lockApp, configureUnlock, unlockWithBiometrics, unlockWithPin,
+      lockApp, configureUnlock, skipUnlock, requestUnlockSetup, unlockWithBiometrics, unlockWithPin,
     }}>
       {children}
     </AuthContext.Provider>

@@ -6,7 +6,9 @@ import { mapLoginUser } from './authUser';
 export function canRestoreSavedSession(input: {
   native: boolean; token: string | null; userJson: string | null;
   biometric: string | null; verifier: string | null;
+  passwordOnly?: boolean;
 }): boolean {
+  if (input.passwordOnly) return false;
   return Boolean(input.token && (input.native || (input.userJson && (input.biometric === 'true' || input.verifier))));
 }
 

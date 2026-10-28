@@ -5,26 +5,57 @@ import { getTenantId } from "./tenantHelper";
 
 /** Only real, enforceable product modules belong in the subscription picker. */
 export const SOFTWARE_FEATURE_CATALOG = [
-  { key: "scheduling", label: "Job scheduling and crew calendar", description: "Create, assign, reschedule, and track work jobs.", appPaths: ["/schedule", "/jobs"], apiPaths: ["/jobs", "/schedule"] },
+  { key: "scheduling", label: "Job scheduling, crew calendar and forecast", description: "Create, assign, drag to reschedule and track jobs; use scheduler weather forecasts for planning.", appPaths: ["/schedule", "/jobs"], apiPaths: ["/jobs", "/schedule"] },
   { key: "visits", label: "Scheduled site visits", description: "Book and track customer site visits.", appPaths: ["/visits"], apiPaths: ["/visits"] },
   { key: "estimates", label: "Estimates and estimate templates", description: "Write, share, and manage estimates and reusable templates.", appPaths: ["/estimates"], apiPaths: ["/estimates", "/estimate-templates"] },
   { key: "invoices", label: "Invoices and recurring billing", description: "Invoice work, manage recurring billing and invoice templates.", appPaths: ["/financials", "/invoices", "/invoice-templates"], apiPaths: ["/invoices", "/invoice-templates", "/billing"] },
   { key: "service_plans", label: "Service plans", description: "Sell and schedule multi-visit service programs.", appPaths: ["/service-plans", "/plans"], apiPaths: ["/service-plans", "/plan-templates", "/customer-plans"] },
   { key: "routing", label: "Crew routes", description: "Plan, assign, and optimize daily routes.", appPaths: ["/routes"], apiPaths: ["/routes", "/routing"] },
   { key: "inventory", label: "Inventory and supplies", description: "Track stock, receiving, parts, and job supplies.", appPaths: ["/inventory"], apiPaths: ["/inventory"] },
-  { key: "equipment", label: "Equipment and fuel tracking", description: "Manage equipment, inspections, maintenance, and bulk fuel.", appPaths: ["/equipment"], apiPaths: ["/equipment", "/bulk-fuel", "/pretrip"] },
+  { key: "equipment", label: "Equipment, pre-trip checks and fuel", description: "Manage equipment, morning/pre-trip inspections, maintenance, bulk tanks and fuel costs.", appPaths: ["/equipment"], apiPaths: ["/equipment", "/bulk-fuel", "/pretrip"] },
   { key: "employee_records", label: "Employee records and hiring", description: "Manage private HR documentation, employee history, job openings, and applications. Basic staff accounts remain available.", appPaths: ["/hiring"], apiPaths: ["/employee-records", "/employee-history", "/employee-form-templates", "/users/:userId/history", "/hr"] },
-  { key: "payroll", label: "Payroll and P4P", description: "Review payroll and performance pay. Basic job clocking remains available.", appPaths: ["/payroll", "/p4p", "/efficiency"], apiPaths: ["/payroll", "/p4p", "/efficiency"] },
-  { key: "budget", label: "Business budget and pricing review", description: "Plan company and division budgets and review prices.", appPaths: ["/budget", "/pricing-review"], apiPaths: ["/settings/budget", "/pricing-review", "/reports/pricing-review"] },
+  { key: "payroll", label: "Payroll, P4P and crew efficiency", description: "Review payroll, performance pay, employee and crew efficiency. Basic job clocking remains available.", appPaths: ["/payroll", "/p4p", "/efficiency"], apiPaths: ["/payroll", "/p4p", "/efficiency"] },
+  { key: "budget", label: "Business budget, pricing floor and review", description: "Plan company and division budgets, calculate job break-even prices and review pricing.", appPaths: ["/budget", "/pricing-review"], apiPaths: ["/settings/budget", "/pricing-review", "/reports/pricing-review"] },
   { key: "reports", label: "KPI dashboard and reports", description: "Analyze customer value, job profitability, and service performance.", appPaths: ["/kpis", "/reports"], apiPaths: ["/kpis", "/reports"] },
   { key: "marketing", label: "Marketing and growth programs", description: "Manage campaigns, referrals, and door-hanger programs.", appPaths: ["/marketing"], apiPaths: ["/marketing", "/acquisition"] },
-  { key: "website_quotes", label: "Website forms and quote intake", description: "Customize website intake forms and review quote inquiries.", appPaths: ["/website-forms"], apiPaths: ["/website-intake"] },
+  { key: "website_quotes", label: "Website forms and instant quote intake", description: "Customize conditional website forms, property-measurement quote intake and staff review.", appPaths: ["/website-forms"], apiPaths: ["/website-intake"] },
   { key: "forms", label: "Custom job forms", description: "Build job forms, templates, and required checklists.", appPaths: ["/forms"], apiPaths: ["/job-forms", "/form-templates", "/jobs/:id/forms"] },
   { key: "blueprints", label: "Property blueprints", description: "Create and estimate from property plans.", appPaths: ["/blueprints"], apiPaths: ["/blueprints"] },
   { key: "portal_messages", label: "Customer portal messages", description: "Manage customer portal conversations and requests.", appPaths: ["/portal-inbox"], apiPaths: ["/portal-inbox"] },
+  { key: "vendors", label: "Vendors and expenses", description: "Manage vendors, expense categories, tax, delivery and recorded expenses.", appPaths: ["/vendors"], apiPaths: ["/vendors", "/expenses", "/expense-categories"] },
+  { key: "chemicals", label: "Chemical applications", description: "Track chemical products, mixtures, application records and actual application weather.", appPaths: ["/chemicals"], apiPaths: ["/chemical-products", "/chemical-mixtures", "/chemical-applications", "/jobs/:id/chemical-applications", "/jobs/:id/chemical-weather"] },
+  { key: "callbacks", label: "Callbacks and quality control", description: "Record service callbacks and track corrective work.", appPaths: ["/callbacks"], apiPaths: ["/callbacks"] },
+  { key: "tasks", label: "Tasks and daily task bundles", description: "Assign internal tasks and reusable daily task bundles.", appPaths: ["/tasks", "/daily-tasks"], apiPaths: ["/tasks", "/task-bundles", "/task-bundle-items", "/task-bundle-completions"] },
+  { key: "calls", label: "Calls and follow-up queue", description: "Track customer calls and manage staff follow-up assignments.", appPaths: ["/calls", "/followup-queue"], apiPaths: ["/communications/quo/calls", "/followup-queue"] },
+  { key: "reviews", label: "Customer reviews", description: "Request reviews and track customer ratings and feedback.", appPaths: ["/reviews"], apiPaths: ["/reviews"] },
 ] as const;
 
-export const featureCatalogDto = () => SOFTWARE_FEATURE_CATALOG.map(({ apiPaths: _private, ...feature }) => feature);
+const NEW_OPTIONAL_KEYS = ["vendors", "chemicals", "callbacks", "tasks", "calls", "reviews"];
+export const SOFTWARE_POLICY_VERSION = 2;
+export const CORE_SOFTWARE_FEATURES = [
+  { key: "core_customers", label: "Customers and properties", description: "Customer records, property addresses and saved property measurements." },
+  { key: "core_services", label: "Service catalog and pricing matrices", description: "Manage service definitions and measurement-based pricing." },
+  { key: "core_team", label: "Staff accounts and crews", description: "Basic employee accounts, roles and crew membership. Private HR is a separate module." },
+  { key: "core_clock", label: "Basic time tracking and Field App access", description: "Staff sign-in and time clocks. Payroll, P4P and other Field App modules depend on the selected modules." },
+  { key: "core_messages", label: "Internal staff messages", description: "Staff-to-staff work communication." },
+  { key: "core_portal", label: "Customer portal access", description: "Customers can access documents and payments enabled by the selected modules. Portal messages are separate." },
+  { key: "core_settings", label: "Company settings and account security", description: "Business preferences, account security, onboarding and software support." },
+] as const;
+export const featureCatalogDto = () => [
+  ...SOFTWARE_FEATURE_CATALOG.map(({ apiPaths: _private, ...feature }) => feature),
+  ...CORE_SOFTWARE_FEATURES.map(feature => ({ ...feature, appPaths: [], alwaysIncluded: true })),
+];
+export function resolvePolicyFeatureKeys(policy: { version?: unknown; featureKeys?: unknown }): string[] | null {
+  const keys = policy.featureKeys;
+  if (keys === null) return null;
+  if (!Array.isArray(keys) || keys.some(key => typeof key !== "string")) throw new Error("This business's plan feature policy needs software-owner review.");
+  const validated = validateFeatureKeys(keys);
+  // These modules were unrestricted before version 2. Existing subscribers
+  // retain that access; only a newly purchased version-2 policy restricts them.
+  if (policy.version === SOFTWARE_POLICY_VERSION) return validated;
+  if (policy.version != null && policy.version !== 1) throw new Error("Unsupported software plan policy version; contact the software owner.");
+  return [...new Set([...validated, ...NEW_OPTIONAL_KEYS])];
+}
 export function validateFeatureKeys(keys: string[]) {
   const known = new Set<string>(SOFTWARE_FEATURE_CATALOG.map(feature => feature.key));
   if (keys.some(key => !known.has(key))) throw new Error("Choose the included features from the feature checklist before publishing this plan.");
@@ -36,10 +67,7 @@ export async function businessFeatureKeys(tenantId: number): Promise<string[] | 
   // Grandfather existing accounts and published legacy price versions. Never
   // reinterpret descriptive marketing text as a restrictive entitlement list.
   if (account?.policy == null) return null;
-  const keys = (account.policy as { featureKeys?: unknown }).featureKeys;
-  if(keys===null)return null;
-  if (!Array.isArray(keys) || keys.some(key => typeof key !== "string")) throw new Error("This business's plan feature policy needs software-owner review.");
-  return validateFeatureKeys(keys);
+  return resolvePolicyFeatureKeys(account.policy as { version?: unknown; featureKeys?: unknown });
 }
 // Nested module routes (job forms, pricing review, employee history) win over
 // their general parent. Compile constant route patterns once, never user input.

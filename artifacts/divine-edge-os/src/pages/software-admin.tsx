@@ -11,7 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useSettingsAutosave } from '@/hooks/use-settings-autosave';
 import { AutosaveIndicator } from '@/components/settings/AutosaveIndicator';
 import { PayoutTable, earnedPlatformFees } from '@/components/billing/PayoutTable';
-import { cents, errorMessage, REVERSED, catalogOf, resolveFeatures, dollarsToCents, centsToDollars, parseSoftwarePlanPrice } from '@/lib/softwareBilling';
+import { cents, errorMessage, REVERSED, catalogOf, resolveFeatures, dollarsToCents, centsToDollars, parseSoftwarePlanPrice, annualPlanDefaults } from '@/lib/softwareBilling';
 import type { FeatureDef, FeeBounds } from '@/lib/softwareBilling';
 import { FeatureChecklist } from '@/components/billing/FeatureChecklist';
 import { FeeDisclosure, railSummary } from '@/components/billing/FeeDisclosure';
@@ -213,6 +213,10 @@ function PlansTab({ plans: rawPlans, enabled, catalog, settings, onChanged }: { 
   const sorted = useMemo(() => [...plans].sort((a, b) => Number(b.active) - Number(a.active) || a.price - b.price), [plans]);
 
   const open = (p: Plan | 'new') => { setEditing(p); setSaveError(null); setDraft(p === 'new' ? emptyDraft : toDraft(p)); };
+  const openAnnual = (p: Plan) => {
+    setEditing('new'); setSaveError(null);
+    setDraft({ ...toDraft(p), ...annualPlanDefaults(p) });
+  };
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => { setSaveError(null); setDraft(d => ({ ...d, [k]: v })); };
 
   const save = () => {
@@ -268,8 +272,9 @@ function PlansTab({ plans: rawPlans, enabled, catalog, settings, onChanged }: { 
                   <div data-testid={`plan-card-fee-${p.id}`}>Card added fee: {railSummary(effective(p, settings, 'card'))}{inherits(p, 'card') ? ' (inherits company-wide)' : ''}</div>
                   <div data-testid={`plan-ach-fee-${p.id}`}>ACH added fee: {railSummary(effective(p, settings, 'ach'))}{inherits(p, 'ach') ? ' (inherits company-wide)' : ''}</div>
                 </div>
-                <div className="flex gap-2 pt-1">
+                <div className="flex gap-2 pt-1 flex-wrap">
                   <Button size="sm" variant="outline" onClick={() => open(p)} data-testid={`button-edit-plan-${p.id}`}><Pencil className="w-3.5 h-3.5 mr-1.5" />Edit</Button>
+                  {p.billingInterval === 'month' && <Button size="sm" variant="outline" onClick={() => openAnnual(p)} data-testid={`button-annual-plan-${p.id}`}>Add annual option</Button>}
                   <Button size="sm" disabled={!enabled || !p.active || publish.isPending} onClick={() => setPublishTarget(p)} data-testid={`button-publish-plan-${p.id}`}>
                     <Rocket className="w-3.5 h-3.5 mr-1.5" />{p.published ? 'Republish' : 'Publish'}
                   </Button>
@@ -289,11 +294,11 @@ function PlansTab({ plans: rawPlans, enabled, catalog, settings, onChanged }: { 
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2 sm:col-span-1 space-y-1"><Label>Name</Label><Input value={draft.name} onChange={e => set('name', e.target.value)} data-testid="input-plan-name" /></div>
             <div className="col-span-2 sm:col-span-1 space-y-1"><Label>Tier key</Label><Input value={draft.tier} onChange={e => set('tier', e.target.value)} data-testid="input-plan-tier" /></div>
-            <div className="space-y-1"><Label>Price (USD)</Label><Input inputMode="decimal" value={draft.price} onChange={e => set('price', e.target.value)} data-testid="input-plan-price" /><p className="text-xs text-muted-foreground">Enter 0 for a free subscription plan.</p></div>
-            <div className="space-y-1"><Label>Interval</Label>
+            <div className="space-y-1"><Label>{draft.billingInterval === 'year' ? 'Annual price (USD per year)' : 'Monthly price (USD per month)'}</Label><Input inputMode="decimal" value={draft.price} onChange={e => set('price', e.target.value)} data-testid="input-plan-price" /><p className="text-xs text-muted-foreground">{draft.billingInterval === 'year' ? 'The full amount charged once per year. Adjust the suggested total to your own annual price. ' : ''}Enter 0 for a free subscription plan.</p></div>
+            <div className="space-y-1"><Label>Billing frequency</Label>
               <Select value={draft.billingInterval} onValueChange={v => set('billingInterval', v as 'month' | 'year')}>
                 <SelectTrigger data-testid="select-plan-interval"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="month">Monthly</SelectItem><SelectItem value="year">Yearly</SelectItem></SelectContent>
+                <SelectContent><SelectItem value="month">Monthly</SelectItem><SelectItem value="year">Annually</SelectItem></SelectContent>
               </Select>
             </div>
             <div className="space-y-1"><Label>Max users</Label><Input placeholder="Unlimited" value={draft.maxUsers} onChange={e => set('maxUsers', e.target.value)} /></div>
@@ -368,7 +373,7 @@ function PlanFeatureSummary({ features, catalog }: { features: string[]; catalog
       {mapped.length === 0 ? <p className="text-xs text-muted-foreground">No catalog features selected.</p> : (
         <ul className="space-y-1 text-muted-foreground">
           {mapped.slice(0, 5).map(f => <li key={f.key}>{f.label}</li>)}
-          {mapped.length > 5 && <li className="text-xs">+{mapped.length - 5} more</li>}
+          {mapped.length > 5 && <li><details className="text-xs"><summary className="cursor-pointer">Show all {mapped.length} included features</summary><ul className="mt-2 space-y-2">{mapped.slice(5).map(f => <li key={f.key}><b>{f.label}</b><p>{f.description}</p></li>)}</ul></details></li>}
         </ul>
       )}
       {unmapped.length > 0 && (

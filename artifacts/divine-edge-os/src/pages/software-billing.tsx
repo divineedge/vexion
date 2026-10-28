@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertTriangle, CheckCircle2, CreditCard, ExternalLink, Landmark, Lock, PauseCircle, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -34,6 +35,7 @@ export default function SoftwareBillingPage() {
   const refreshAcct = useRefreshBusinessPaymentAccount();
   const [terms, setTerms] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<number | null>(null);
+  const [chosenInterval, setChosenInterval] = useState<'month' | 'year' | null>(null);
   const reload = () => qc.invalidateQueries({ queryKey: getGetBusinessSoftwareBillingQueryKey() });
   const refreshRef = useRef(refreshAcct.mutateAsync); refreshRef.current = refreshAcct.mutateAsync;
 
@@ -86,6 +88,8 @@ export default function SoftwareBillingPage() {
   const achRail = { bps: fees.achFeeBps, fixed: fees.achFeeFixedCents, min: fees.achFeeMinCents, max: fees.achFeeMaxCents };
   const live = billing.data.enabled;
   const currentPlan = plans.find(p => p.id === account.planId);
+  const interval = chosenInterval ?? currentPlan?.billingInterval ?? (plans.some(p => p.billingInterval === 'month') ? 'month' : 'year');
+  const visiblePlans = plans.filter(p => p.billingInterval === interval);
   const confirmed = account.hasSubscription && !!account.confirmedAt;
 
   const choosePlan = (planId: number) => {
@@ -174,17 +178,26 @@ export default function SoftwareBillingPage() {
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Plans</h2>
+        <Tabs value={interval} onValueChange={value => setChosenInterval(value as 'month' | 'year')}>
+          <TabsList aria-label="Software billing frequency">
+            <TabsTrigger value="month" data-testid="billing-monthly">Monthly</TabsTrigger>
+            <TabsTrigger value="year" data-testid="billing-annually">Annually</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <p className="text-xs text-muted-foreground">{interval === 'year' ? 'Annual prices are charged once per year, not each month.' : 'Monthly prices are charged each month.'}</p>
         {plans.length === 0 ? (
           <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground" data-testid="empty-plans">No plans are available yet.</div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {plans.map(p => {
+            {visiblePlans.length === 0 && <p className="text-sm text-muted-foreground col-span-full">No {interval === 'year' ? 'annual' : 'monthly'} plans have been published yet.</p>}
+            {visiblePlans.map(p => {
               const isCurrent = p.id === account.planId && confirmed;
               return (
                 <Card key={p.id} className={isCurrent ? 'border-primary ring-1 ring-primary/30' : ''} data-testid={`card-plan-${p.id}`}>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-lg flex items-center justify-between">{p.name}{isCurrent && <Badge>Current</Badge>}</CardTitle>
                     <p className="text-2xl font-bold tabular-nums">{cents(Math.round(p.price * 100))}<span className="text-sm font-normal text-muted-foreground">/{p.billingInterval}</span></p>
+                    {p.billingInterval === 'year' && <p className="text-xs text-muted-foreground">Billed once annually · approximately {cents(Math.round(p.price * 100 / 12))}/month</p>}
                   </CardHeader>
                   <CardContent className="space-y-3 text-sm">
                     <ul className="space-y-1" data-testid={`plan-features-${p.id}`}>{resolveFeatures(p.features, catalog).mapped.map(f => <li key={f.key} className="flex gap-2" title={f.description}><CheckCircle2 className="w-4 h-4 text-primary shrink-0 mt-0.5" />{f.label}</li>)}</ul>

@@ -237,6 +237,18 @@ describe("software-owner billing and proceeds",()=>{
     expect(state.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
     expect((await db.select().from(softwarePlanPricesTable).where(eq(softwarePlanPricesTable.stripePriceId,"price_fixture")))[0].planId).toBe(planId);
   });
+  it("publishes annual totals with yearly recurrence and frozen feature choices",async()=>{
+    await db.update(config).set({enabled:true}).where(eq(config.id,1));
+    await db.update(plansTable).set({revision:2,price:999,billingInterval:"year",features:["invoices","vendors","chemicals"]}).where(eq(plansTable.id,planId));
+    await publishSoftwarePlan(planId,ownerId);
+    expect(state.stripe.prices.create).toHaveBeenCalledWith(expect.objectContaining({unit_amount:99900,recurring:{interval:"year"}}),expect.anything());
+    const [version]=await db.select().from(softwarePlanPricesTable).where(eq(softwarePlanPricesTable.stripePriceId,"price_published"));
+    expect(version.planPolicy).toMatchObject({version:2,featureKeys:["invoices","vendors","chemicals"]});
+    expect(state.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
+    state.stripe.prices.retrieve.mockResolvedValue({id:"price_published",active:true,currency:"usd",unit_amount:99900,recurring:{interval:"year"}});
+    await businessSubscriptionCheckout(tenantId,planId,"https://example.com/software-billing");
+    expect(state.stripe.checkout.sessions.create).toHaveBeenCalledWith(expect.objectContaining({mode:"subscription",line_items:[{price:"price_published",quantity:1}]}),expect.anything());
+  });
   it("keeps unpublished plan drafts out of the business catalog",async()=>{
     const [draft]=await db.insert(plansTable).values({name:"Draft only",tier:"draftonly",price:15}).returning();
     const response=await request(app).get("/plans");

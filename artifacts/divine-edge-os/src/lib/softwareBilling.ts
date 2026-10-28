@@ -36,7 +36,7 @@ export function errorMessage(e: unknown, fallback: string) {
 }
 
 // ── Feature catalog + fee bounds (local extended types until the SDK is regenerated) ──
-export type FeatureDef = { key: string; label: string; description: string };
+export type FeatureDef = { key: string; label: string; description: string; alwaysIncluded?: boolean };
 export type FeeBounds = {
   cardFeeMinCents?: number | null; cardFeeMaxCents?: number | null;
   achFeeMinCents?: number | null; achFeeMaxCents?: number | null;
@@ -52,7 +52,7 @@ export function catalogOf(data: unknown): FeatureDef[] {
 export function resolveFeatures(features: string[], catalog: FeatureDef[]) {
   const byKey = new Map(catalog.map(f => [f.key, f]));
   const mapped: FeatureDef[] = []; const unmapped: string[] = [];
-  for (const f of features) { const d = byKey.get(f); if (d) mapped.push(d); else unmapped.push(f); }
+  for (const f of new Set([...features, ...catalog.filter(f => f.alwaysIncluded).map(f => f.key)])) { const d = byKey.get(f); if (d) mapped.push(d); else unmapped.push(f); }
   return { mapped, unmapped };
 }
 
@@ -75,6 +75,17 @@ export function parseSoftwarePlanPrice(value: string): number | string {
     return 'Price must be $0–$100,000 with no more than 2 decimal places';
   }
   return Math.round(amount * 100) / 100;
+}
+
+/** Suggested annual total only; the owner reviews and saves the actual price. */
+export function annualPlanDefaults(plan: { name: string; tier: string; price: number }) {
+  const total = Math.round(plan.price * 1200) / 100;
+  return {
+    name: `${plan.name.slice(0, 111)} — Annual`,
+    tier: `${plan.tier.slice(0, 43)}_annual`,
+    price: total <= 100000 ? total.toFixed(2) : '',
+    billingInterval: 'year' as const,
+  };
 }
 
 export function boundsLabel(min: number | null | undefined, max: number | null | undefined) {

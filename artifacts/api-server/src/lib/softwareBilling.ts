@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type Stripe from "stripe";
 import { and, eq, sql } from "drizzle-orm";
 import { db, plansTable, softwarePlanPricesTable, softwareBillingAccountsTable, tenantsTable, platformOwnersTable, usersTable, platformBillingAuditTable } from "@workspace/db";
-import { validateFeatureKeys } from "./softwareFeatures";
+import { validateFeatureKeys, SOFTWARE_POLICY_VERSION } from "./softwareFeatures";
 import { getStripeClient } from "./stripe";
 import { platformSettings,effectivePlatformFees } from "./platformBillingPolicy";
 
@@ -58,7 +58,7 @@ export async function publishSoftwarePlan(id:number,actor:number) {
       await tx.execute(sql`UPDATE software_billing_accounts SET plan_policy=${legacyPolicy}::jsonb
         WHERE plan_id=${id} AND stripe_subscription_id IS NOT NULL AND plan_policy IS NULL`);
     }
-    await tx.insert(softwarePlanPricesTable).values({stripePriceId:price.id,planId:id,planPolicy:{version:1,featureKeys,feePolicy}}).onConflictDoNothing();
+    await tx.insert(softwarePlanPricesTable).values({stripePriceId:price.id,planId:id,planPolicy:{version:SOFTWARE_POLICY_VERSION,featureKeys,feePolicy}}).onConflictDoNothing();
     const [updated]=await tx.update(plansTable).set({stripeProductId:product,stripePriceId:price.id,publishedRevision:plan.revision,
       publishedFeePolicy:feePolicy})
       .where(and(eq(plansTable.id,id),eq(plansTable.revision,plan.revision))).returning();

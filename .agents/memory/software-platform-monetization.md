@@ -14,6 +14,12 @@ Software subscription plans may have a $0 price.
 
 **How to apply:** Allow an explicitly entered zero in both plan creation and editing. Keep blank/invalid prices distinct from zero and preserve the existing published-version protection for current subscribers.
 
+Offer annual billing as an explicitly priced annual version alongside a monthly version; the owner reviews the full yearly total before saving or publishing. Do not invent an annual discount or silently convert current subscribers.
+
+**Why:** The user requested annual payment for selected plans, while published subscription pricing and features must remain stable.
+
+**How to apply:** Copy selected modules and fee overrides when starting an annual draft. Clearly label yearly charges and distinguish optional commercial modules from essentials that every business retains. When newly gating previously unrestricted modules, grandfather older purchased policies rather than removing access.
+
 Platform fees come out of the business's proceeds, not an added customer surcharge.
 
 **Why:** The user explicitly selected deduction from business proceeds.

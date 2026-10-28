@@ -20,6 +20,18 @@ Offer annual billing as an explicitly priced annual version alongside a monthly 
 
 **How to apply:** Copy selected modules and fee overrides when starting an annual draft. Clearly label yearly charges and distinguish optional commercial modules from essentials that every business retains. When newly gating previously unrestricted modules, grandfather older purchased policies rather than removing access.
 
+Businesses may stay on a plan and purchase additional user slots beyond its included-user allowance. They purchase slots first, rather than being billed automatically whenever an active user is added.
+
+**Why:** The user explicitly requested per-user pricing above the plan maximum and chose “Purchase extra slots first.”
+
+**How to apply:** Count active staff accounts, including owners, not customer-portal users or applicants. Charge purchased slots per plan billing period, including unused purchased slots until reduced. Require explicit provider confirmation and confirmed payment before increasing capacity; preserve existing staff/history rather than deleting or deactivating accounts. Freeze purchased allowance and rates separately from editable catalog drafts.
+
+The plan feature picker must cover integrations and external automation access, not just navigation pages.
+
+**Why:** The user specifically identified missing Quo/OpenPhone, one-way QuickBooks sync, REST API access and MCP access for other AI agents after the main-module checklist was expanded.
+
+**How to apply:** Audit actual integrations and service capabilities alongside app sections. Distinguish provider-account requirements and charges, one-way versus two-way sync, and supported protocols versus verified compatibility with a named agent. Plan inclusion never replaces the owner's explicit per-connection resource permissions.
+
 Platform fees come out of the business's proceeds, not an added customer surcharge.
 
 **Why:** The user explicitly selected deduction from business proceeds.

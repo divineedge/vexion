@@ -9,6 +9,7 @@ export const plansTable = pgTable("plans", {
   price: real("price").notNull().default(0),
   features: text("features").array().default([]),
   maxUsers: integer("max_users"),
+  extraUserPriceCents: integer("extra_user_price_cents"),
   maxProperties: integer("max_properties"),
   active: boolean("active").notNull().default(true),
   billingInterval: text("billing_interval").notNull().default("month"),

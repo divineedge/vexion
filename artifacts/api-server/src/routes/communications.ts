@@ -4,6 +4,7 @@ import { db, communicationsLogTable, customersTable, tenantsTable, jobsTable, pr
 import { eq, and, desc, or, inArray } from "drizzle-orm";
 import { ADMIN_ROLES } from "../lib/roles";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { hasSoftwareFeature } from "../lib/softwareFeatures";
 import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
 import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import { listQuoCalls, getQuoCallById, verifyQuoSignature } from "../lib/quoClient";
@@ -81,6 +82,9 @@ router.post("/communications/send", async (req, res): Promise<void> => {
   if (channel === "sms" && customer.smsOptOut) {
     res.status(422).json({ error: "Customer has opted out of SMS" });
     return;
+  }
+  if(channel==="sms" && !await hasSoftwareFeature(tenantId,"phone_integration")){
+    res.status(403).json({error:"Business phone/SMS integration is not included in this software plan."});return;
   }
   if (channel === "email" && customer.emailOptOut) {
     res.status(422).json({ error: "Customer has opted out of email" });

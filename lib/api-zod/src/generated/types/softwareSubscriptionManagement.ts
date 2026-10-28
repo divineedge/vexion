@@ -6,6 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type ManageBusinessSubscriptionBody = {
+export interface SoftwareSubscriptionManagement {
+  /** @minimum 1 */
   planId?: number;
-};
+  /**
+     * @minimum 0
+     * @maximum 100000
+     */
+  additionalUserSlots?: number;
+}

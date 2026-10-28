@@ -21,6 +21,8 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertTriangle, CheckCircle2, CreditCard, ExternalLink, Landmark, Lock, PauseCircle, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export default function SoftwareBillingPage() {
   const { isOwner, user } = useAuth();
@@ -36,6 +38,7 @@ export default function SoftwareBillingPage() {
   const [terms, setTerms] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<number | null>(null);
   const [chosenInterval, setChosenInterval] = useState<'month' | 'year' | null>(null);
+  const [slotDraft,setSlotDraft]=useState<string|null>(null);
   const reload = () => qc.invalidateQueries({ queryKey: getGetBusinessSoftwareBillingQueryKey() });
   const refreshRef = useRef(refreshAcct.mutateAsync); refreshRef.current = refreshAcct.mutateAsync;
 
@@ -176,6 +179,21 @@ export default function SoftwareBillingPage() {
         </Card>
       </div>
 
+      {account.hasSubscription && account.purchasedBasePriceCents!=null && <p className="text-sm" data-testid="purchased-base-price">Your purchased base price: <b>{cents(account.purchasedBasePriceCents)}/{account.userSlotInterval}</b>, plus any purchased extra-user slots. Catalog edits do not change these terms automatically.</p>}
+      {account.hasSubscription && account.extraUserPriceCents!=null && account.includedUsers!=null && (
+        <Card data-testid="card-extra-user-slots">
+          <CardHeader><CardTitle>Extra user slots</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm">{account.includedUsers} included + {account.additionalUserSlots??0} purchased = {account.includedUsers+(account.additionalUserSlots??0)} total slots. {account.activeUserCount??0} active users, including owners.</p>
+            <p className="text-sm">Each extra slot costs {cents(account.extraUserPriceCents)} per {account.userSlotInterval}. Purchased slots are recurring charges, even while unused, until reduced or canceled.</p>
+            <div className="max-w-sm space-y-1"><Label htmlFor="extra-slot-count">Additional slots beyond included users</Label><Input id="extra-slot-count" data-testid="input-extra-slot-count" type="number" min={Math.max(0,(account.activeUserCount??0)-account.includedUsers)} max={100000} step={1} value={slotDraft??String(account.additionalUserSlots??0)} onChange={e=>setSlotDraft(e.target.value)} /></div>
+            <p className="text-sm font-medium">Recurring extra-user cost: {cents((Number(slotDraft??account.additionalUserSlots)||0)*account.extraUserPriceCents)}/{account.userSlotInterval}</p>
+            {account.purchasedBasePriceCents!=null && <p className="text-sm">Proposed recurring subscription total: <b>{cents(account.purchasedBasePriceCents+(Number(slotDraft??account.additionalUserSlots)||0)*account.extraUserPriceCents)}/{account.userSlotInterval}</b></p>}
+            <p className="text-xs text-muted-foreground">Stripe shows the subscription total and any prorated charge or credit before you confirm. Slots unlock only after Stripe confirms payment. Deactivate unused accounts before reducing slots below your active-user count.</p>
+            <Button data-testid="button-review-user-slots" disabled={!live || manage.isPending || !/^\d+$/.test(slotDraft??String(account.additionalUserSlots??0)) || Number(slotDraft??account.additionalUserSlots)>100000 || Number(slotDraft??account.additionalUserSlots)<Math.max(0,(account.activeUserCount??0)-account.includedUsers)} onClick={()=>manage.mutateAsync({data:{additionalUserSlots:Number(slotDraft??account.additionalUserSlots??0)}}).then(go).catch(e=>toast.error(errorMessage(e,'Could not open extra-user purchase.')))}>Review change in Stripe</Button>
+          </CardContent>
+        </Card>
+      )}
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Plans</h2>
         <Tabs value={interval} onValueChange={value => setChosenInterval(value as 'month' | 'year')}>
@@ -191,20 +209,23 @@ export default function SoftwareBillingPage() {
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {visiblePlans.length === 0 && <p className="text-sm text-muted-foreground col-span-full">No {interval === 'year' ? 'annual' : 'monthly'} plans have been published yet.</p>}
             {visiblePlans.map(p => {
-              const isCurrent = p.id === account.planId && confirmed;
+              const isSameTier=p.id===account.planId && confirmed;
+              const isCurrent = isSameTier && (account.planPriceId?p.stripePriceId===account.planPriceId:!(p.extraUserPriceCents!=null && account.extraUserPriceCents==null));
               return (
                 <Card key={p.id} className={isCurrent ? 'border-primary ring-1 ring-primary/30' : ''} data-testid={`card-plan-${p.id}`}>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-lg flex items-center justify-between">{p.name}{isCurrent && <Badge>Current</Badge>}</CardTitle>
                     <p className="text-2xl font-bold tabular-nums">{cents(Math.round(p.price * 100))}<span className="text-sm font-normal text-muted-foreground">/{p.billingInterval}</span></p>
+                    {isSameTier&&!isCurrent&&<p className="text-xs text-muted-foreground">Updated terms available for your plan. Existing subscription pricing stays unchanged unless you confirm this update in Stripe.</p>}
                     {p.billingInterval === 'year' && <p className="text-xs text-muted-foreground">Billed once annually · approximately {cents(Math.round(p.price * 100 / 12))}/month</p>}
                   </CardHeader>
                   <CardContent className="space-y-3 text-sm">
                     <ul className="space-y-1" data-testid={`plan-features-${p.id}`}>{resolveFeatures(p.features, catalog).mapped.map(f => <li key={f.key} className="flex gap-2" title={f.description}><CheckCircle2 className="w-4 h-4 text-primary shrink-0 mt-0.5" />{f.label}</li>)}</ul>
-                    <p className="text-xs text-muted-foreground">Users: {p.maxUsers ?? 'Unlimited'} · Properties: {p.maxProperties ?? 'Unlimited'}</p>
+                    <p className="text-xs text-muted-foreground">Included users: {p.maxUsers ?? 'Unlimited'} · Properties: {p.maxProperties ?? 'Unlimited'}</p>
+                    {p.extraUserPriceCents!=null && <p className="text-xs">Additional users: {cents(p.extraUserPriceCents)} per user/{p.billingInterval}. Purchase extra slots without changing plans; Stripe shows the total before confirmation.</p>}
                     <Button className="w-full" variant={isCurrent ? 'outline' : 'default'} disabled={!live || isCurrent || pendingPlan != null}
                       onClick={() => choosePlan(p.id)} data-testid={`button-choose-plan-${p.id}`}>
-                      {pendingPlan === p.id ? 'Opening Stripe…' : isCurrent ? 'Current plan' : account.hasSubscription ? 'Switch to this plan' : 'Subscribe'}
+                      {pendingPlan === p.id ? 'Opening Stripe…' : isCurrent ? 'Current plan' : isSameTier ? 'Review updated plan' : account.hasSubscription ? 'Switch to this plan' : 'Subscribe'}
                     </Button>
                   </CardContent>
                 </Card>

@@ -152,14 +152,14 @@ function Overview({ data }: { data: Admin }) {
 }
 
 // ── Plans ────────────────────────────────────────────────────────────────
-type Draft = { name: string; tier: string; price: string; billingInterval: 'month' | 'year'; active: boolean; features: string[]; maxUsers: string; maxProperties: string; cardPct: string; cardFixed: string; achPct: string; achFixed: string; cardMin: string; cardMax: string; achMin: string; achMax: string };
-const emptyDraft: Draft = { name: '', tier: '', price: '', billingInterval: 'month', active: true, features: [], maxUsers: '', maxProperties: '', cardPct: '', cardFixed: '', achPct: '', achFixed: '', cardMin: '', cardMax: '', achMin: '', achMax: '' };
+type Draft = { name: string; tier: string; price: string; billingInterval: 'month' | 'year'; active: boolean; features: string[]; maxUsers: string; extraUserPrice: string; maxProperties: string; cardPct: string; cardFixed: string; achPct: string; achFixed: string; cardMin: string; cardMax: string; achMin: string; achMax: string };
+const emptyDraft: Draft = { name: '', tier: '', price: '', billingInterval: 'month', active: true, features: [], maxUsers: '', extraUserPrice: '', maxProperties: '', cardPct: '', cardFixed: '', achPct: '', achFixed: '', cardMin: '', cardMax: '', achMin: '', achMax: '' };
 
 function toDraft(p: Plan): Draft {
   const s = (n: number | null) => (n == null ? '' : String(n));
   return {
     name: p.name, tier: p.tier, price: p.price.toFixed(2), billingInterval: p.billingInterval, active: p.active,
-    features: [...p.features], maxUsers: s(p.maxUsers), maxProperties: s(p.maxProperties),
+    features: [...p.features], maxUsers: s(p.maxUsers), extraUserPrice: centsToDollars(p.extraUserPriceCents), maxProperties: s(p.maxProperties),
     cardPct: p.cardFeeBps == null ? '' : String(p.cardFeeBps / 100), cardFixed: p.cardFeeFixedCents == null ? '' : (p.cardFeeFixedCents / 100).toFixed(2),
     achPct: p.achFeeBps == null ? '' : String(p.achFeeBps / 100), achFixed: p.achFeeFixedCents == null ? '' : (p.achFeeFixedCents / 100).toFixed(2),
     cardMin: centsToDollars(p.cardFeeMinCents), cardMax: centsToDollars(p.cardFeeMaxCents),
@@ -188,6 +188,9 @@ function parseDraft(d: Draft): { ok: true; value: SoftwarePlanInput & FeeBounds 
   const err = vals.find(v => typeof v === 'string');
   if (typeof err === 'string') return { ok: false, error: err };
   const [maxUsers, maxProperties, cardFeeBps, cardFeeFixedCents, achFeeBps, achFeeFixedCents] = vals as (number | null)[];
+  const extraUserPriceCents=dollarsToCents(d.extraUserPrice,'Extra user price',10000000);
+  if(typeof extraUserPriceCents==='string')return {ok:false,error:extraUserPriceCents};
+  if(extraUserPriceCents!==null && maxUsers===null)return {ok:false,error:'Set the number of included users before pricing extra users.'};
   const bounds = [dollarsToCents(d.cardMin, 'Card minimum'), dollarsToCents(d.cardMax, 'Card maximum'), dollarsToCents(d.achMin, 'ACH minimum'), dollarsToCents(d.achMax, 'ACH maximum')];
   const bErr = bounds.find(v => typeof v === 'string');
   if (typeof bErr === 'string') return { ok: false, error: bErr };
@@ -196,7 +199,7 @@ function parseDraft(d: Draft): { ok: true; value: SoftwarePlanInput & FeeBounds 
   if (achFeeMinCents != null && achFeeMaxCents != null && achFeeMinCents > achFeeMaxCents) return { ok: false, error: 'ACH minimum must not exceed ACH maximum' };
   return { ok: true, value: {
     name: d.name.trim(), tier: d.tier.trim(), price: Math.round(price * 100) / 100, billingInterval: d.billingInterval, active: d.active,
-    features: Array.from(new Set(d.features)), maxUsers, maxProperties, cardFeeBps, cardFeeFixedCents, achFeeBps, achFeeFixedCents,
+    features: Array.from(new Set(d.features)), maxUsers, extraUserPriceCents, maxProperties, cardFeeBps, cardFeeFixedCents, achFeeBps, achFeeFixedCents,
     cardFeeMinCents, cardFeeMaxCents, achFeeMinCents, achFeeMaxCents,
   } };
 }
@@ -268,7 +271,8 @@ function PlansTab({ plans: rawPlans, enabled, catalog, settings, onChanged }: { 
               <CardContent className="space-y-3 text-sm">
                 <PlanFeatureSummary features={p.features} catalog={catalog} />
                 <div className="text-xs text-muted-foreground space-y-0.5">
-                  <div>Users: {p.maxUsers ?? 'Unlimited'} · Properties: {p.maxProperties ?? 'Unlimited'}</div>
+                  <div>Included users: {p.maxUsers ?? 'Unlimited'} · Properties: {p.maxProperties ?? 'Unlimited'}</div>
+                  {p.extraUserPriceCents!=null && <div>Extra users: {cents(p.extraUserPriceCents)}/user/{p.billingInterval}, purchased separately</div>}
                   <div data-testid={`plan-card-fee-${p.id}`}>Card added fee: {railSummary(effective(p, settings, 'card'))}{inherits(p, 'card') ? ' (inherits company-wide)' : ''}</div>
                   <div data-testid={`plan-ach-fee-${p.id}`}>ACH added fee: {railSummary(effective(p, settings, 'ach'))}{inherits(p, 'ach') ? ' (inherits company-wide)' : ''}</div>
                 </div>
@@ -301,7 +305,8 @@ function PlansTab({ plans: rawPlans, enabled, catalog, settings, onChanged }: { 
                 <SelectContent><SelectItem value="month">Monthly</SelectItem><SelectItem value="year">Annually</SelectItem></SelectContent>
               </Select>
             </div>
-            <div className="space-y-1"><Label>Max users</Label><Input placeholder="Unlimited" value={draft.maxUsers} onChange={e => set('maxUsers', e.target.value)} /></div>
+            <div className="space-y-1"><Label>Included users</Label><Input data-testid="input-plan-included-users" placeholder="Unlimited" value={draft.maxUsers} onChange={e => set('maxUsers', e.target.value)} /><p className="text-xs text-muted-foreground">Active staff accounts, including owners, covered by the base price.</p></div>
+            <div className="space-y-1"><Label>Extra user price (USD per {draft.billingInterval})</Label><Input data-testid="input-plan-extra-user-price" placeholder="No extra slots offered" value={draft.extraUserPrice} onChange={e => set('extraUserPrice',e.target.value)} /><p className="text-xs text-muted-foreground">Per additional user, per billing period. Blank keeps the included-user count as a hard limit. Businesses purchase extra slots before adding more users.</p></div>
             <div className="space-y-1"><Label>Max properties</Label><Input placeholder="Unlimited" value={draft.maxProperties} onChange={e => set('maxProperties', e.target.value)} /></div>
             <div className="col-span-2 space-y-1"><Label>Included features</Label><FeatureChecklist catalog={catalog} value={draft.features} onChange={v => set('features', v)} /></div>
             <div className="col-span-2 pt-1"><p className="text-xs font-medium">Added platform fee override</p><p className="text-[11px] text-muted-foreground">Charged in addition to Stripe's processing fee and deducted from the business's proceeds. Leave any field blank to inherit the company-wide value.</p></div>

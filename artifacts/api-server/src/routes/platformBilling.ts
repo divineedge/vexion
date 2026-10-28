@@ -1,15 +1,16 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { randomUUID, createHash } from "node:crypto";
 import { z } from "zod/v4";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, sql } from "drizzle-orm";
+import { frozenUserSlots, subscriptionQuantity, userSlotPolicy } from "../lib/softwareUserSlots";
 import { db, plansTable, platformBillingSettingsTable, softwareBillingAccountsTable, tenantsTable, usersTable,
-  platformPaymentAllocationsTable, platformBillingAuditTable } from "@workspace/db";
+  platformPaymentAllocationsTable, platformBillingAuditTable, softwarePlanPricesTable } from "@workspace/db";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isSoftwareOwner, audit, liveStripe, planDto, accountDto, ensureSoftwareAccount, publishSoftwarePlan,
   businessSubscriptionCheckout, syncSoftwareSubscription, stripeId } from "../lib/softwareBilling";
 import { platformSettings, platformSettingsInput, softwarePlanInput, effectivePlatformFees } from "../lib/platformBillingPolicy";
 import { payoutDto, processPlatformPayout } from "../lib/platformPayouts";
-import { businessFeatureKeys, featureCatalogDto } from "../lib/softwareFeatures";
+import { businessFeatureKeys, featureCatalogDto, SOFTWARE_FEATURE_CATALOG } from "../lib/softwareFeatures";
 
 const router=Router();
 router.get("/software-features", async(req,res,next)=>{
@@ -43,13 +44,23 @@ router.use("/software-billing",async(req:Request,res:Response,next:NextFunction)
 });
 async function businessView(tenantId:number){
   const account=await ensureSoftwareAccount(tenantId);
+  const [usage]=await db.select({n:count()}).from(usersTable).where(and(eq(usersTable.tenantId,tenantId),eq(usersTable.isActive,true)));
   const [tenant]=await db.select().from(tenantsTable).where(eq(tenantsTable.id,tenantId));
   const settings=await platformSettings();
   const plans=await db.select().from(plansTable).where(eq(plansTable.active,true));
   const [currentPlan]=account.planId && account.stripeSubscriptionId && ["active","trialing"].includes(account.status)
     ?await db.select().from(plansTable).where(eq(plansTable.id,account.planId)):[];
+  const visiblePlans=plans.filter(p=>planDto(p).published);
+  if(currentPlan&&!visiblePlans.some(p=>p.id===currentPlan.id))visiblePlans.push(currentPlan);
+  const purchased=frozenUserSlots(account.planPolicy);
+  const includedFeatures=currentPlan?await businessFeatureKeys(tenantId):null;
   const payouts=await db.select().from(platformPaymentAllocationsTable).where(eq(platformPaymentAllocationsTable.tenantId,tenantId)).orderBy(desc(platformPaymentAllocationsTable.createdAt)).limit(100);
-  return {enabled:settings.enabled,account:accountDto(account,tenant),plans:plans.map(planDto).filter(p=>p.published),
+  return {enabled:settings.enabled,account:{...accountDto(account,tenant),activeUserCount:Number(usage.n)},plans:visiblePlans.map(p=>({
+    ...planDto(p),...(p.id===currentPlan?.id&&!planDto(p).published?{
+      features:includedFeatures??SOFTWARE_FEATURE_CATALOG.map(f=>f.key),
+      ...(purchased?{price:purchased.basePriceCents/100,billingInterval:purchased.interval,maxUsers:purchased.includedUsers,extraUserPriceCents:purchased.extraUserPriceCents}:{})
+    }:{})
+  })),
     payouts:payouts.map(payoutDto),fees:effectivePlatformFees(currentPlan,settings,currentPlan?(account.planPolicy as {feePolicy?:unknown}|null)?.feePolicy:undefined),
     featureCatalog:featureCatalogDto()};
 }
@@ -109,23 +120,44 @@ router.post("/software-billing/subscribe",action(async(req,res)=>{
 }));
 router.post("/software-billing/manage",action(async(req,res)=>{
   const stripe=await liveStripe(),tenantId=getTenantId(req);
-  const {planId}=z.object({planId:idParam.optional()}).strict().parse(req.body??{});
+  const {planId,additionalUserSlots}=z.object({planId:idParam.optional(),additionalUserSlots:z.number().int().min(0).max(100000).optional()}).strict().parse(req.body??{});
+  if(planId!==undefined && additionalUserSlots!==undefined)throw new Error("Change the plan or its extra slots separately.");
   const account=await ensureSoftwareAccount(tenantId);
   if(!account.stripeCustomerId || !account.stripeSubscriptionId)throw new Error("No software subscription to manage");
-  const products=await db.select().from(plansTable).where(and(eq(plansTable.active,true),sql`${plansTable.publishedRevision}=${plansTable.revision}`));
-  const configKey=createHash("sha256").update(JSON.stringify(products.map(p=>[p.stripeProductId,p.stripePriceId]).sort())).digest("hex").slice(0,32);
+  const sub=await stripe.subscriptions.retrieve(account.stripeSubscriptionId,{expand:["latest_invoice"]});
+  if(stripeId(sub.customer)!==account.stripeCustomerId || sub.metadata.tenantId!==String(tenantId) || sub.metadata.purpose!=="software_subscription" || sub.items.data.length!==1)throw new Error("Subscription ownership or pricing mismatch");
+  const item=sub.items.data[0];
+  const [mapped]=await db.select().from(softwarePlanPricesTable).where(eq(softwarePlanPricesTable.stripePriceId,item.price.id));
+  if(!mapped)throw new Error("Current software price needs provider review.");
+  const currentSlots=frozenUserSlots(mapped.planPolicy);
+  const [currentPlan]=await db.select().from(plansTable).where(eq(plansTable.id,mapped.planId));
+  const [usage]=await db.select({n:count()}).from(usersTable).where(and(eq(usersTable.tenantId,tenantId),eq(usersTable.isActive,true)));
+  const activeUsers=Number(usage.n);
+  const canChange=["active","trialing"].includes(sub.status)&&!sub.pending_update;
+  if((planId!==undefined || additionalUserSlots!==undefined) && !canChange)throw new Error("Complete any pending subscription payment before changing the plan or user slots.");
+  const products=planId?await db.select().from(plansTable).where(and(eq(plansTable.id,planId),eq(plansTable.active,true),sql`${plansTable.publishedRevision}=${plansTable.revision}`)):[];
+  const target=products[0];
+  if(planId && !target?.stripePriceId)throw new Error("Selected plan is not published");
+  if(additionalUserSlots!==undefined && (currentSlots?.extraUserPriceCents==null || currentSlots.includedUsers===null))throw new Error("This purchased plan does not offer extra user slots. Choose a published plan that does.");
+  const nextPrice=target?.stripePriceId??item.price.id;
+  const nextPolicy=target?userSlotPolicy(target):currentSlots;
+  const quantity=additionalUserSlots!==undefined?currentSlots!.includedUsers!+additionalUserSlots:
+    target?subscriptionQuantity(userSlotPolicy(target),activeUsers):(item.quantity??1);
+  if(additionalUserSlots!==undefined && quantity<activeUsers)throw new Error(`There are ${activeUsers} active users. Deactivate unused accounts before reducing the number of slots.`);
+  const productId=target?.stripeProductId??stripeId(item.price.product)??currentPlan?.stripeProductId;
+  if(!productId)throw new Error("Subscription product needs provider review");
+  const adjustable=nextPolicy?.extraUserPriceCents!=null && nextPolicy.includedUsers!=null;
+  const productConfig=[{product:productId,prices:[nextPrice],adjustable_quantity:adjustable?
+    {enabled:true,minimum:Math.max(nextPolicy!.includedUsers!,activeUsers),maximum:nextPolicy!.includedUsers!+100000}:{enabled:false}}];
+  const configKey=createHash("sha256").update(JSON.stringify([productConfig,canChange])).digest("hex").slice(0,32);
   const config=await stripe.billingPortal.configurations.create({business_profile:{headline:"Manage your software subscription"},
     features:{customer_update:{enabled:true,allowed_updates:["address","tax_id"]},invoice_history:{enabled:true},payment_method_update:{enabled:true},
       subscription_cancel:{enabled:true,mode:"at_period_end"},
-      subscription_update:{enabled:products.length>0,default_allowed_updates:["price"],proration_behavior:"create_prorations",
-        products:products.filter(p=>p.stripeProductId&&p.stripePriceId).map(p=>({product:p.stripeProductId!,prices:[p.stripePriceId!]}))}}},
+      subscription_update:{enabled:canChange,default_allowed_updates:adjustable?["price","quantity"]:["price"],proration_behavior:"always_invoice",products:productConfig}}},
         {idempotencyKey:`software-portal-config-${configKey}`});
   let flow:import("stripe").default.BillingPortal.SessionCreateParams.FlowData|undefined;
-  if(planId){
-    const plan=products.find(p=>p.id===planId);if(!plan?.stripePriceId)throw new Error("Selected plan is not published");
-    const sub=await stripe.subscriptions.retrieve(account.stripeSubscriptionId);
-    if(stripeId(sub.customer)!==account.stripeCustomerId || sub.metadata.tenantId!==String(tenantId))throw new Error("Subscription ownership mismatch");
-    flow={type:"subscription_update_confirm",subscription_update_confirm:{subscription:sub.id,items:[{id:sub.items.data[0].id,price:plan.stripePriceId,quantity:1}]}};
+  if(planId || additionalUserSlots!==undefined){
+    flow={type:"subscription_update_confirm",subscription_update_confirm:{subscription:sub.id,items:[{id:item.id,price:nextPrice,quantity}]}};
   }
   const session=await stripe.billingPortal.sessions.create({customer:account.stripeCustomerId,configuration:config.id,return_url:billingUrl(req),...(flow?{flow_data:flow}:{})});
   res.json({url:session.url});

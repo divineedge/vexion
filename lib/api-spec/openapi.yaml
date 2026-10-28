@@ -118,7 +118,7 @@ paths:
   /software-billing/manage:
     post:
       operationId: manageBusinessSubscription
-      requestBody: {content: {application/json: {schema: {type: object, properties: {planId: {type: integer}}}}}}
+      requestBody: {content: {application/json: {schema: {$ref: '#/components/schemas/SoftwareSubscriptionManagement'}}}}
       responses:
         '200': {description: Stripe billing portal, content: {application/json: {schema: {$ref: '#/components/schemas/SoftwareBillingRedirect'}}}}
   /software-billing/connect:
@@ -9838,6 +9838,7 @@ components:
         active: {type: boolean}
         features: {type: array, items: {type: string}}
         maxUsers: {type: integer, nullable: true}
+        extraUserPriceCents: {type: integer, nullable: true, minimum: 0, maximum: 10000000}
         maxProperties: {type: integer, nullable: true}
         cardFeeBps: {type: integer, nullable: true}
         cardFeeFixedCents: {type: integer, nullable: true}
@@ -9880,6 +9881,18 @@ components:
         connectReady: {type: boolean}
         hasConnectAccount: {type: boolean}
         hasSubscription: {type: boolean}
+        additionalUserSlots: {type: integer}
+        planPriceId: {type: string, nullable: true}
+        purchasedBasePriceCents: {type: integer, nullable: true}
+        includedUsers: {type: integer, nullable: true}
+        extraUserPriceCents: {type: integer, nullable: true}
+        activeUserCount: {type: integer}
+        userSlotInterval: {type: string, enum: [month, year], nullable: true}
+    SoftwareSubscriptionManagement:
+      type: object
+      properties:
+        planId: {type: integer, minimum: 1}
+        additionalUserSlots: {type: integer, minimum: 0, maximum: 100000}
     WeatherLocationsSettings:
       type: object
       required: [locations]

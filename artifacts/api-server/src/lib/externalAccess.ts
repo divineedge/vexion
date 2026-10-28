@@ -1,3 +1,4 @@
+import { hasSoftwareFeature } from "./softwareFeatures";
 import crypto from "node:crypto";
 import { and, desc, eq, gt, ilike, lt, or, sql } from "drizzle-orm";
 import {
@@ -227,6 +228,10 @@ export async function authorizeExternalRequest(req: Request, transport: "rest" |
     await appendExternalAudit(context, action, transport, "denied", requestId(req));
     return { ok: false, status: 429, error: "Rate limit exceeded" };
   }
+  if (!await hasSoftwareFeature(context.tenantId, transport === "mcp" ? "mcp_access" : "api_access")) {
+    await appendExternalAudit(context, action, transport, "denied", requestId(req));
+    return { ok: false, status: 403, error: "This external access method is not included in the business's software plan." };
+  }
   await db.update(externalConnectionsTable).set({ lastUsedAt: new Date() }).where(eq(externalConnectionsTable.id, connection.id));
   return { ok: true, context };
 }
@@ -256,6 +261,10 @@ export async function authorizeWebhookConnection(connectionId: string, provider:
 
 /** Account only a provider delivery that has already passed its provider authentication. */
 export async function accountAuthenticatedWebhookRequest(context: ExternalConnectionContext, req: Request): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  if (!await hasSoftwareFeature(context.tenantId, "external_webhooks")) {
+    await appendExternalAudit(context, "communications:webhook", "webhook", "denied", requestId(req));
+    return { ok: false, status: 403, error: "External webhooks are not included in this business's software plan." };
+  }
   if (!await consumeRateLimit(context.id)) {
     await appendExternalAudit(context, "communications:webhook", "webhook", "denied", requestId(req));
     return { ok: false, status: 429, error: "Rate limit exceeded" };

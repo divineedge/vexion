@@ -294,7 +294,6 @@ import type {
   LocationStockAdjustInput,
   LocationStockEntry,
   LoginInput,
-  ManageBusinessSubscriptionBody,
   MarkInvoicePaidInput,
   MasterClockState,
   MediaAttachment,
@@ -430,6 +429,7 @@ import type {
   SoftwareBillingRedirect,
   SoftwarePlan,
   SoftwarePlanInput,
+  SoftwareSubscriptionManagement,
   StaffAudienceMessageInput,
   StaffMessage,
   StaffMessageAudience,
@@ -1302,7 +1302,7 @@ export const getManageBusinessSubscriptionUrl = () => {
   return `/api/software-billing/manage`
 }
 
-export const manageBusinessSubscription = async (manageBusinessSubscriptionBody?: ManageBusinessSubscriptionBody, options?: Parameters<typeof customFetch>[1]): Promise<SoftwareBillingRedirect> => {
+export const manageBusinessSubscription = async (softwareSubscriptionManagement?: SoftwareSubscriptionManagement, options?: Parameters<typeof customFetch>[1]): Promise<SoftwareBillingRedirect> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -1323,7 +1323,7 @@ return customFetch<SoftwareBillingRedirect>(getManageBusinessSubscriptionUrl(),
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(manageBusinessSubscriptionBody)
+    body: JSON.stringify(softwareSubscriptionManagement)
   }
 );}
 
@@ -1361,9 +1361,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type ManageBusinessSubscriptionMutationResult = NonNullable<Awaited<ReturnType<typeof manageBusinessSubscription>>>
-    export type ManageBusinessSubscriptionMutationBody = BodyType<ManageBusinessSubscriptionBody> | undefined
+    export type ManageBusinessSubscriptionMutationBody = BodyType<SoftwareSubscriptionManagement> | undefined
     export type ManageBusinessSubscriptionMutationError = ErrorType<unknown>
-    export type ManageBusinessSubscriptionMutationVariables = {data?: BodyType<ManageBusinessSubscriptionBody>}
+    export type ManageBusinessSubscriptionMutationVariables = {data?: BodyType<SoftwareSubscriptionManagement>}
 
     export const useManageBusinessSubscription = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof manageBusinessSubscription>>, TError,ManageBusinessSubscriptionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}

@@ -28,21 +28,43 @@ export const SOFTWARE_FEATURE_CATALOG = [
   { key: "tasks", label: "Tasks and daily task bundles", description: "Assign internal tasks and reusable daily task bundles.", appPaths: ["/tasks", "/daily-tasks"], apiPaths: ["/tasks", "/task-bundles", "/task-bundle-items", "/task-bundle-completions"] },
   { key: "calls", label: "Calls and follow-up queue", description: "Track customer calls and manage staff follow-up assignments.", appPaths: ["/calls", "/followup-queue"], apiPaths: ["/communications/quo/calls", "/followup-queue"] },
   { key: "reviews", label: "Customer reviews", description: "Request reviews and track customer ratings and feedback.", appPaths: ["/reviews"], apiPaths: ["/reviews"] },
+  { key: "phone_integration", label: "Phone integration — Quo / OpenPhone", description: "Connect supported business-phone providers for phone records and messaging. Provider accounts and their charges are separate.", appPaths: [], apiPaths: ["/communications/quo"] },
+  { key: "quickbooks_sync", label: "QuickBooks Online — one-way sync", description: "Push supported customer, invoice and payment data to QuickBooks Online. Not a two-way accounting sync; a QuickBooks account is required.", appPaths: [], apiPaths: ["/integrations/quickbooks"] },
+  { key: "bank_feed", label: "Bank feed integration", description: "Connect supported bank feeds, review imported transactions and record expenses.", appPaths: [], apiPaths: ["/integrations/bank", "/bank-transactions"] },
+  { key: "mailchimp_integration", label: "Mailchimp audience sync", description: "Sync customer audience/contact information to a configured Mailchimp account. Mailchimp charges are separate.", appPaths: [], apiPaths: ["/integrations/mailchimp"] },
+  { key: "lob_integration", label: "Lob print and mail integration", description: "Send supported physical documents through a configured Lob account. Postage and provider charges are separate.", appPaths: [], apiPaths: ["/integrations/lob"] },
+  { key: "api_access", label: "External REST API access", description: "Owner-approved service credentials and resource permissions for external software, with expiry, revocation and access auditing.", appPaths: [], apiPaths: ["/external/v1"] },
+  { key: "mcp_access", label: "MCP access for AI agents", description: "Owner-approved MCP connections and supported OAuth registrations for AI assistants. Explicit permissions still apply; not a promise of compatibility with every agent.", appPaths: [], apiPaths: ["/external/mcp"] },
+  { key: "external_webhooks", label: "External phone and service webhooks", description: "Receive supported signed provider events through owner-approved connections, with scoped permissions and auditing.", appPaths: [], apiPaths: ["/external/webhooks"] },
 ] as const;
 
 const NEW_OPTIONAL_KEYS = ["vendors", "chemicals", "callbacks", "tasks", "calls", "reviews"];
-export const SOFTWARE_POLICY_VERSION = 2;
+const INTEGRATION_KEYS = ["phone_integration", "quickbooks_sync", "bank_feed", "mailchimp_integration", "lob_integration", "api_access", "mcp_access", "external_webhooks"];
+export const SOFTWARE_POLICY_VERSION = 3;
 export const CORE_SOFTWARE_FEATURES = [
-  { key: "core_customers", label: "Customers and properties", description: "Customer records, property addresses and saved property measurements." },
+  { key: "core_customers", label: "Customers and properties", description: "Customer records, active/archive views, duplicate merge, customer import/export, billing/property addresses, saved map pins and satellite measurements." },
   { key: "core_services", label: "Service catalog and pricing matrices", description: "Manage service definitions and measurement-based pricing." },
   { key: "core_team", label: "Staff accounts and crews", description: "Basic employee accounts, roles and crew membership. Private HR is a separate module." },
   { key: "core_clock", label: "Basic time tracking and Field App access", description: "Staff sign-in and time clocks. Payroll, P4P and other Field App modules depend on the selected modules." },
   { key: "core_messages", label: "Internal staff messages", description: "Staff-to-staff work communication." },
   { key: "core_portal", label: "Customer portal access", description: "Customers can access documents and payments enabled by the selected modules. Portal messages are separate." },
-  { key: "core_settings", label: "Company settings and account security", description: "Business preferences, account security, onboarding and software support." },
+  { key: "core_settings", label: "Company settings, security and support", description: "Business preferences, account security, audit/history tools, onboarding, software support and feedback. Email-provider configuration is included; the separately listed external integrations are optional modules. Provider charges are not included." },
 ] as const;
+const FEATURE_DETAILS: Record<string,string> = {
+  scheduling:"Includes drag-and-drop rescheduling, rescheduling-fee choices, staff/crew capacity checks and saved forecast locations.",
+  estimates:"Includes service bundles, optional line items, estimate templates, reminders, customer accept/decline feedback, deposit rules and document previews.",
+  invoices:"Includes recurring automation, invoice templates, reminders, credits/prepayments, delivery verification and supported Stripe card/ACH payments. A configured payment provider is required.",
+  service_plans:"Includes seasonal rounds, multiple services per visit, crew assignments, capacity review, advance visit notices and manager overrides.",
+  inventory:"Includes vendor receiving, tax/shipping allocation and highest-cost-first job supply costing.",
+  equipment:"Includes morning/pre-trip checklists, inspection evidence, maintenance, bulk-tank meter readings and fuel allocation.",
+  employee_records:"Includes private HR documents, licenses/certificates, expiry alerts, employee correction evidence, hiring/application forms and job openings.",
+  payroll:"Includes time-sheet review, employee and crew comparisons, performance pay and approved damage allocations.",
+  reports:"Includes annual customer spend, service time/measurement analysis, matrix groups, customer filters and job labor/material profitability.",
+  marketing:"Includes email campaigns, not-now follow-up routing, referrals, door hangers and acquisition rewards.",
+  website_quotes:"Includes conditional questions, required/optional fields, file uploads, optional property measuring and staff approval before CRM entry.",
+};
 export const featureCatalogDto = () => [
-  ...SOFTWARE_FEATURE_CATALOG.map(({ apiPaths: _private, ...feature }) => feature),
+  ...SOFTWARE_FEATURE_CATALOG.map(({ apiPaths: _private, ...feature }) => ({...feature,description:[feature.description,FEATURE_DETAILS[feature.key]].filter(Boolean).join(" ")})),
   ...CORE_SOFTWARE_FEATURES.map(feature => ({ ...feature, appPaths: [], alwaysIncluded: true })),
 ];
 export function resolvePolicyFeatureKeys(policy: { version?: unknown; featureKeys?: unknown }): string[] | null {
@@ -50,11 +72,12 @@ export function resolvePolicyFeatureKeys(policy: { version?: unknown; featureKey
   if (keys === null) return null;
   if (!Array.isArray(keys) || keys.some(key => typeof key !== "string")) throw new Error("This business's plan feature policy needs software-owner review.");
   const validated = validateFeatureKeys(keys);
-  // These modules were unrestricted before version 2. Existing subscribers
-  // retain that access; only a newly purchased version-2 policy restricts them.
+  // Newly cataloged integrations were previously unrestricted. Do not revoke
+  // purchased access when adding a new checkbox to the catalog.
   if (policy.version === SOFTWARE_POLICY_VERSION) return validated;
+  if (policy.version === 2) return [...new Set([...validated, ...INTEGRATION_KEYS])];
   if (policy.version != null && policy.version !== 1) throw new Error("Unsupported software plan policy version; contact the software owner.");
-  return [...new Set([...validated, ...NEW_OPTIONAL_KEYS])];
+  return [...new Set([...validated, ...NEW_OPTIONAL_KEYS, ...INTEGRATION_KEYS])];
 }
 export function validateFeatureKeys(keys: string[]) {
   const known = new Set<string>(SOFTWARE_FEATURE_CATALOG.map(feature => feature.key));
@@ -68,6 +91,10 @@ export async function businessFeatureKeys(tenantId: number): Promise<string[] | 
   // reinterpret descriptive marketing text as a restrictive entitlement list.
   if (account?.policy == null) return null;
   return resolvePolicyFeatureKeys(account.policy as { version?: unknown; featureKeys?: unknown });
+}
+export async function hasSoftwareFeature(tenantId: number, key: string) {
+  const keys = await businessFeatureKeys(tenantId);
+  return keys === null || keys.includes(key);
 }
 // Nested module routes (job forms, pricing review, employee history) win over
 // their general parent. Compile constant route patterns once, never user input.
@@ -83,7 +110,7 @@ export const enforceSoftwareFeatures: RequestHandler = async (req, res, next) =>
   if (!feature) { next(); return; }
   try {
     const keys = await businessFeatureKeys(getTenantId(req));
-    if (keys !== null && !keys.includes(feature.key)) {
+    if (keys !== null && (!keys.includes(feature.key) || (req.path.startsWith("/communications/quo") && !keys.includes("phone_integration")))) {
       res.status(403).json({ code: "software_feature_not_included", feature: feature.key,
         error: `${feature.label} is not included in this business's software plan. Contact the business owner to change plans.` }); return;
     }

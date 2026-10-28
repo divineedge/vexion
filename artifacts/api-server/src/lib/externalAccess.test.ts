@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
+  featureAllowed: true,
   authRow: null as Record<string, unknown> | null,
   listRows: [] as Record<string, unknown>[],
   txSelectQueue: [] as Record<string, unknown>[][],
@@ -10,6 +11,7 @@ const state = vi.hoisted(() => ({
   idempotencyValues: [] as Record<string, unknown>[],
   taskValues: [] as Record<string, unknown>[],
 }));
+vi.mock("./softwareFeatures",()=>({hasSoftwareFeature:vi.fn(async()=>state.featureAllowed)}));
 
 vi.mock("drizzle-orm", () => ({
   and: (...values: unknown[]) => values, desc: (value: unknown) => value, eq: (...values: unknown[]) => values,
@@ -72,7 +74,8 @@ const connection = (overrides: Record<string, unknown> = {}) => ({
 const request = { header: (name: string) => name === "authorization" ? "Bearer eac_test_token_1234567890" : undefined, id: "request-1" } as never;
 
 describe("external access shared authorization and serialization", () => {
-  beforeEach(() => {
+beforeEach(() => {
+  state.featureAllowed=true;
     state.authRow = { connection: connection(), ownerActive: true, ownerRole: "company_owner" };
     state.listRows = []; state.txSelectQueue = []; state.idempotencyInsert = [];
     state.insertedTasks = [{ id: 88, tenantId: 7, title: "Follow up", status: "open" }];
@@ -92,6 +95,12 @@ describe("external access shared authorization and serialization", () => {
       const result = await authorizeExternalRequest(request, "rest", "test");
       expect(result).toMatchObject({ ok: false, status: 403 });
     }
+  });
+  it("denies REST and MCP access when a valid owner grant lacks the software-plan entitlement",async()=>{
+    state.featureAllowed=false;
+    expect(await authorizeExternalRequest(request,"rest","list:customers")).toMatchObject({ok:false,status:403,error:expect.stringContaining("software plan")});
+    state.authRow={connection:connection({mode:"mcp"}),ownerActive:true,ownerRole:"company_owner"};
+    expect(await authorizeExternalRequest(request,"mcp","tools/list")).toMatchObject({ok:false,status:403,error:expect.stringContaining("software plan")});
   });
 
   it("turns expired OAuth MCP credentials into invalid_token-style 401 results while preserving legacy bearer behavior", async () => {

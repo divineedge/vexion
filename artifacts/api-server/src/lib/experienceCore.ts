@@ -1,3 +1,4 @@
+import { frozenUserSlots } from "./softwareUserSlots";
 import { randomUUID } from "node:crypto";
 import { and,eq,sql,count,isNull } from "drizzle-orm";
 import { db,operationsAlertsTable,usersTable,taskNotificationsTable,platformOwnersTable,companyExperienceTable,softwareBillingAccountsTable,plansTable,propertiesTable } from "@workspace/db";
@@ -45,23 +46,28 @@ export class SoftwareCapacityError extends Error {status=409;}
 /** Preserve historical access. Enforcement is explicit per company and only guards NEW capacity. */
 export async function assertSoftwareCapacity(tx:ExperienceTx,tenantId:number,kind:"users"|"properties",additional=1){
   if(additional<=0)return;
-  const [policy]=await tx.select().from(companyExperienceTable).where(eq(companyExperienceTable.tenantId,tenantId));
-  if(!policy?.subscriptionRequired&&!policy?.enforceLimits)return;
   await tx.execute(sql`SELECT pg_advisory_xact_lock(426981,${tenantId})`);
+  const [policy]=await tx.select().from(companyExperienceTable).where(eq(companyExperienceTable.tenantId,tenantId));
+  const [seatAccount]=await tx.select().from(softwareBillingAccountsTable).where(eq(softwareBillingAccountsTable.tenantId,tenantId));
+  const purchasedSlots=frozenUserSlots(seatAccount?.planPolicy);
+  const paidSlotPlan=kind==="users" && purchasedSlots!==null;
+  if(!policy?.subscriptionRequired&&!policy?.enforceLimits&&!paidSlotPlan)return;
   const [account]=await tx.select().from(softwareBillingAccountsTable).where(eq(softwareBillingAccountsTable.tenantId,tenantId));
   const current=!!account?.stripeSubscriptionId&&["active","trialing"].includes(account.status);
   const trial=!!policy?.trialUntil&&policy.trialUntil>new Date();
   const anchor=account?.currentPeriodEnd??policy?.trialUntil??policy?.requiredSince;
   const grace=!!anchor&&Date.now()<=anchor.getTime()+(policy?.graceDays??7)*86400000;
   if(policy?.subscriptionRequired&&!current&&!trial&&!grace)throw new SoftwareCapacityError("A current software subscription is required to add users or properties. Historical records and existing work remain available. Open Software Billing.");
-  if(!policy?.enforceLimits)return;
+  if(!policy?.enforceLimits&&!paidSlotPlan)return;
   const [plan]=account?.planId?await tx.select().from(plansTable).where(eq(plansTable.id,account.planId)):[];
-  const limit=kind==="users"?plan?.maxUsers:plan?.maxProperties;
+  const limit=kind==="users"
+    ? purchasedSlots ? purchasedSlots.includedUsers===null?null:purchasedSlots.includedUsers+(account?.additionalUserSlots??0) : plan?.maxUsers
+    :plan?.maxProperties;
   if(limit===null||limit===undefined)return;
   const [result]=kind==="users"
     ?await tx.select({n:count()}).from(usersTable).where(and(eq(usersTable.tenantId,tenantId),eq(usersTable.isActive,true)))
     :await tx.select({n:count()}).from(propertiesTable).where(and(eq(propertiesTable.tenantId,tenantId),isNull(propertiesTable.archivedAt)));
-  if(Number(result.n)+additional>limit)throw new SoftwareCapacityError(`The software plan allows ${limit} active ${kind}. Upgrade the plan or archive/deactivate an unused record before adding more.`);
+  if(Number(result.n)+additional>limit)throw new SoftwareCapacityError(`The software plan allows ${limit} active ${kind}. ${purchasedSlots?.extraUserPriceCents!=null?"Purchase extra user slots in Software Billing, or deactivate an unused account.":"Upgrade the plan or archive/deactivate an unused record before adding more."}`);
 }
 export async function withSoftwareCapacity<T>(tenantId:number,kind:"users"|"properties",write:(tx:ExperienceTx)=>Promise<T>,parent:typeof db|ExperienceTx=db,additional=1):Promise<T>{
   return parent.transaction(async(tx)=>{await assertSoftwareCapacity(tx,tenantId,kind,additional);return write(tx);});

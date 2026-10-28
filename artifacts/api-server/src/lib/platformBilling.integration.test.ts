@@ -18,6 +18,7 @@ import { feeCents,platformPaymentMetadata,softwarePlanInput } from "./platformBi
 import { recordPlatformPayment,processPlatformPayout,recordPlatformReturn } from "./platformPayouts";
 import { businessSubscriptionCheckout,syncSoftwareSubscription,publishSoftwarePlan,isSoftwareOwner } from "./softwareBilling";
 import { handlePlatformBillingEvent } from "./platformBillingEvents";
+import { assertSoftwareCapacity } from "./experienceCore";
 
 describe("software-owner billing and proceeds",()=>{
   const connect=()=>pool.connect();let client:Awaited<ReturnType<typeof connect>>,savepoint=0,tenantId=0,ownerId=0,businessOwnerId=0,planId=0;
@@ -243,11 +244,62 @@ describe("software-owner billing and proceeds",()=>{
     await publishSoftwarePlan(planId,ownerId);
     expect(state.stripe.prices.create).toHaveBeenCalledWith(expect.objectContaining({unit_amount:99900,recurring:{interval:"year"}}),expect.anything());
     const [version]=await db.select().from(softwarePlanPricesTable).where(eq(softwarePlanPricesTable.stripePriceId,"price_published"));
-    expect(version.planPolicy).toMatchObject({version:2,featureKeys:["invoices","vendors","chemicals"]});
+    expect(version.planPolicy).toMatchObject({version:3,featureKeys:["invoices","vendors","chemicals"]});
     expect(state.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
     state.stripe.prices.retrieve.mockResolvedValue({id:"price_published",active:true,currency:"usd",unit_amount:99900,recurring:{interval:"year"}});
     await businessSubscriptionCheckout(tenantId,planId,"https://example.com/software-billing");
     expect(state.stripe.checkout.sessions.create).toHaveBeenCalledWith(expect.objectContaining({mode:"subscription",line_items:[{price:"price_published",quantity:1}]}),expect.anything());
+  });
+  it("publishes included users plus a recurring graduated extra-user rate",async()=>{
+    await db.update(config).set({enabled:true}).where(eq(config.id,1));
+    await db.update(plansTable).set({revision:2,maxUsers:5,extraUserPriceCents:1000}).where(eq(plansTable.id,planId));
+    await publishSoftwarePlan(planId,ownerId);
+    expect(state.stripe.prices.create).toHaveBeenCalledWith(expect.objectContaining({
+      billing_scheme:"tiered",tiers_mode:"graduated",tiers:[{up_to:5,flat_amount:12900,unit_amount:0},{up_to:"inf",flat_amount:0,unit_amount:1000}],
+    }),expect.anything());
+    const [version]=await db.select().from(softwarePlanPricesTable).where(eq(softwarePlanPricesTable.stripePriceId,"price_published"));
+    expect(version.planPolicy).toMatchObject({userSlots:{includedUsers:5,extraUserPriceCents:1000,basePriceCents:12900,interval:"month"}});
+    expect(state.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
+  });
+  it("reviews slots in Stripe without granting them before confirmed payment, and freezes included limits",async()=>{
+    await db.update(config).set({enabled:true}).where(eq(config.id,1));
+    const policy={version:3,featureKeys:["invoices"],userSlots:{includedUsers:2,extraUserPriceCents:1000,basePriceCents:12900,interval:"month"}};
+    await db.update(softwarePlanPricesTable).set({planPolicy:policy}).where(eq(softwarePlanPricesTable.stripePriceId,"price_fixture"));
+    await db.update(accounts).set({stripeSubscriptionId:"sub_fixture",status:"active",planPolicy:policy}).where(eq(accounts.tenantId,tenantId));
+    const subscription={...await state.stripe.subscriptions.retrieve(),latest_invoice:{id:"in_slots",status:"paid"},items:{data:[{id:"si_fixture",quantity:2,current_period_end:1800000000,price:{id:"price_fixture",product:"prod_fixture"}}]}};
+    state.stripe.subscriptions.retrieve.mockResolvedValue(subscription);
+    state.userId=businessOwnerId;
+    const response=await request(app).post("/software-billing/manage").send({additionalUserSlots:2});
+    expect(response.status).toBe(200);
+    expect(state.stripe.billingPortal.sessions.create).toHaveBeenCalledWith(expect.objectContaining({flow_data:{type:"subscription_update_confirm",subscription_update_confirm:{subscription:"sub_fixture",items:[{id:"si_fixture",price:"price_fixture",quantity:4}]}}}));
+    expect((await db.select().from(accounts).where(eq(accounts.tenantId,tenantId)))[0].additionalUserSlots).toBe(0);
+    subscription.items.data[0].quantity=4;subscription.latest_invoice.status="open";
+    await syncSoftwareSubscription("sub_fixture");
+    expect((await db.select().from(accounts).where(eq(accounts.tenantId,tenantId)))[0].additionalUserSlots).toBe(0);
+    await expect(assertSoftwareCapacity(state.connection,tenantId,"users",1)).rejects.toThrow(/Purchase extra user slots/);
+    subscription.latest_invoice.status="paid";
+    await syncSoftwareSubscription("sub_fixture");
+    expect((await db.select().from(accounts).where(eq(accounts.tenantId,tenantId)))[0].additionalUserSlots).toBe(2);
+    await expect(assertSoftwareCapacity(state.connection,tenantId,"users",2)).resolves.toBeUndefined();
+    await db.update(plansTable).set({maxUsers:999,extraUserPriceCents:1}).where(eq(plansTable.id,planId));
+    await expect(assertSoftwareCapacity(state.connection,tenantId,"users",3)).rejects.toThrow();
+    const business=await request(app).get("/software-billing");
+    expect(business.body.account).toMatchObject({includedUsers:2,extraUserPriceCents:1000,purchasedBasePriceCents:12900,additionalUserSlots:2});
+    subscription.status="canceled";
+    await syncSoftwareSubscription("sub_fixture");
+    expect((await db.select().from(accounts).where(eq(accounts.tenantId,tenantId)))[0].additionalUserSlots).toBe(0);
+  });
+  it("will not sell a slot reduction below active users or reprice a legacy subscription",async()=>{
+    await db.update(config).set({enabled:true}).where(eq(config.id,1));
+    await db.update(accounts).set({stripeSubscriptionId:"sub_fixture",status:"active"}).where(eq(accounts.tenantId,tenantId));
+    state.userId=businessOwnerId;
+    expect((await request(app).post("/software-billing/manage").send({additionalUserSlots:1})).status).toBe(409);
+    const policy={version:3,featureKeys:[],userSlots:{includedUsers:1,extraUserPriceCents:1000,basePriceCents:12900,interval:"year"}};
+    await db.update(softwarePlanPricesTable).set({planPolicy:policy}).where(eq(softwarePlanPricesTable.stripePriceId,"price_fixture"));
+    expect((await request(app).post("/software-billing/manage").send({additionalUserSlots:0})).status).toBe(409);
+    expect((await request(app).post("/software-billing/manage").send({additionalUserSlots:-1})).status).toBe(400);
+    expect((await request(app).post("/software-billing/manage").send({additionalUserSlots:1.5})).status).toBe(400);
+    expect(state.stripe.billingPortal.sessions.create).not.toHaveBeenCalled();
   });
   it("keeps unpublished plan drafts out of the business catalog",async()=>{
     const [draft]=await db.insert(plansTable).values({name:"Draft only",tier:"draftonly",price:15}).returning();

@@ -5,6 +5,7 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { SoftwareBillingAccountUserSlotInterval } from './softwareBillingAccountUserSlotInterval';
 
 export interface SoftwareBillingAccount {
   tenantId: number;
@@ -20,4 +21,16 @@ export interface SoftwareBillingAccount {
   connectReady: boolean;
   hasConnectAccount: boolean;
   hasSubscription: boolean;
+  additionalUserSlots?: number;
+  /** @nullable */
+  planPriceId?: string | null;
+  /** @nullable */
+  purchasedBasePriceCents?: number | null;
+  /** @nullable */
+  includedUsers?: number | null;
+  /** @nullable */
+  extraUserPriceCents?: number | null;
+  activeUserCount?: number;
+  /** @nullable */
+  userSlotInterval?: SoftwareBillingAccountUserSlotInterval;
 }

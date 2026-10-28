@@ -28,11 +28,14 @@ export const softwarePlanInput = z.object({
   billingInterval: z.enum(["month", "year"]), active: z.boolean(),
   features: z.array(z.string().trim().min(1).max(200)).max(50),
   maxUsers: z.number().int().min(1).max(100000).nullable(),
+  extraUserPriceCents: z.number().int().min(0).max(10000000).nullable().optional(),
   maxProperties: z.number().int().min(1).max(10000000).nullable(),
   cardFeeBps: feeFields.cardFeeBps.nullable(), cardFeeFixedCents: feeFields.cardFeeFixedCents.nullable(),
   achFeeBps: feeFields.achFeeBps.nullable(), achFeeFixedCents: feeFields.achFeeFixedCents.nullable(),
   ...feeBoundsFields,
-}).strict().superRefine(validateBounds);
+}).strict().superRefine(validateBounds).superRefine((value, ctx) => {
+  if (value.extraUserPriceCents != null && value.maxUsers == null) ctx.addIssue({ code: "custom", message: "Set included users before pricing extra user slots.", path: ["maxUsers"] });
+});
 export function effectivePlatformFees(plan:typeof plansTable.$inferSelect|undefined,settings:Awaited<ReturnType<typeof platformSettings>>,frozenPolicy?:unknown) {
   const published=z.object({
     cardFeeBps:feeFields.cardFeeBps.nullable(),cardFeeFixedCents:feeFields.cardFeeFixedCents.nullable(),

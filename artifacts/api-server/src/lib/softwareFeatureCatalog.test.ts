@@ -8,6 +8,10 @@ describe("complete software feature catalog", () => {
     ["/jobs/1/chemical-applications", "chemicals"], ["/callbacks", "callbacks"],
     ["/tasks", "tasks"], ["/task-bundles/1/start", "tasks"],
     ["/communications/quo/calls", "calls"], ["/followup-queue", "calls"], ["/reviews", "reviews"],
+    ["/integrations/quickbooks/oauth/authorize-url","quickbooks_sync"],
+    ["/integrations/bank/sync","bank_feed"], ["/bank-transactions","bank_feed"],
+    ["/integrations/mailchimp/test","mailchimp_integration"], ["/integrations/lob","lob_integration"],
+    ["/external/v1/customers","api_access"], ["/external/mcp","mcp_access"], ["/external/webhooks/123","external_webhooks"],
   ])("enforces %s through its actual module", (path, key) => {
     expect(featureForApiPath(path)?.key).toBe(key);
   });
@@ -28,8 +32,9 @@ describe("complete software feature catalog", () => {
     expect(resolvePolicyFeatureKeys({ version: 1, featureKeys: null })).toBeNull();
   });
   it("uses exact choices for newly purchased policies", () => {
-    expect(resolvePolicyFeatureKeys({ version: 2, featureKeys: ["invoices"] })).toEqual(["invoices"]);
-    expect(resolvePolicyFeatureKeys({ version: 2, featureKeys: [] })).toEqual([]);
-    expect(() => resolvePolicyFeatureKeys({ version: 3, featureKeys: [] })).toThrow();
+    expect(resolvePolicyFeatureKeys({ version: 3, featureKeys: ["invoices"] })).toEqual(["invoices"]);
+    expect(resolvePolicyFeatureKeys({ version: 3, featureKeys: [] })).toEqual([]);
+    expect(resolvePolicyFeatureKeys({version:2,featureKeys:[]})).toContain("mcp_access");
+    expect(() => resolvePolicyFeatureKeys({ version: 4, featureKeys: [] })).toThrow();
   });
 });

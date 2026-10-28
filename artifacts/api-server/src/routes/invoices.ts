@@ -1,3 +1,4 @@
+import { hasSoftwareFeature } from "../lib/softwareFeatures";
 import { sendDocumentEmail } from "../lib/documentDelivery";
 import { chargeInvoiceCard } from "../lib/invoiceCardPayments";
 import { creditedInvoiceInsert, invoiceBalance, voidCreditedInvoice } from "../lib/customerCredit";
@@ -1018,6 +1019,7 @@ router.post("/invoices/:id/print-mail", async (req, res): Promise<void> => {
 
   const states = (row.tenant.integrationsConfig as Record<string, { connected: boolean; encryptedConfig?: string }>) ?? {};
   const lobState = states.lob;
+  if(!await hasSoftwareFeature(tenantId,"lob_integration")){res.status(403).json({error:"Lob print and mail is not included in this software plan."});return;}
   if (!lobState?.connected) { res.status(400).json({ error: "Lob is not connected. Connect it in Settings → Integrations first." }); return; }
   const config = decryptSecretConfig(lobState.encryptedConfig) as LobConfig;
 

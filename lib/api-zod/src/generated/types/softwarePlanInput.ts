@@ -40,6 +40,12 @@ export interface SoftwarePlanInput {
   features: string[];
   /** @nullable */
   maxUsers: number | null;
+  /**
+     * @minimum 0
+     * @maximum 10000000
+     * @nullable
+     */
+  extraUserPriceCents?: number | null;
   /** @nullable */
   maxProperties: number | null;
   /** @nullable */

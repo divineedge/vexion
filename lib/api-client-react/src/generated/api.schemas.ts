@@ -97,6 +97,12 @@ export interface SoftwarePlanInput {
   features: string[];
   /** @nullable */
   maxUsers: number | null;
+  /**
+     * @minimum 0
+     * @maximum 10000000
+     * @nullable
+     */
+  extraUserPriceCents?: number | null;
   /** @nullable */
   maxProperties: number | null;
   /** @nullable */
@@ -133,6 +139,17 @@ export interface PlatformPayout {
   createdAt: string;
 }
 
+/**
+ * @nullable
+ */
+export type SoftwareBillingAccountUserSlotInterval = typeof SoftwareBillingAccountUserSlotInterval[keyof typeof SoftwareBillingAccountUserSlotInterval] | null;
+
+
+export const SoftwareBillingAccountUserSlotInterval = {
+  month: 'month',
+  year: 'year',
+} as const;
+
 export interface SoftwareBillingAccount {
   tenantId: number;
   companyName: string;
@@ -147,6 +164,28 @@ export interface SoftwareBillingAccount {
   connectReady: boolean;
   hasConnectAccount: boolean;
   hasSubscription: boolean;
+  additionalUserSlots?: number;
+  /** @nullable */
+  planPriceId?: string | null;
+  /** @nullable */
+  purchasedBasePriceCents?: number | null;
+  /** @nullable */
+  includedUsers?: number | null;
+  /** @nullable */
+  extraUserPriceCents?: number | null;
+  activeUserCount?: number;
+  /** @nullable */
+  userSlotInterval?: SoftwareBillingAccountUserSlotInterval;
+}
+
+export interface SoftwareSubscriptionManagement {
+  /** @minimum 1 */
+  planId?: number;
+  /**
+     * @minimum 0
+     * @maximum 100000
+     */
+  additionalUserSlots?: number;
 }
 
 export type WeatherLocationsSettingsLocationsItem = {
@@ -8233,10 +8272,6 @@ export type GetPlatformBillingAccess200 = {
 
 export type StartBusinessSubscriptionBody = {
   planId: number;
-};
-
-export type ManageBusinessSubscriptionBody = {
-  planId?: number;
 };
 
 export type StartBusinessPaymentOnboardingBody = {

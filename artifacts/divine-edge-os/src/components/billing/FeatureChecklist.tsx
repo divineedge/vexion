@@ -12,7 +12,8 @@ import type { FeatureDef } from '@/lib/softwareBilling';
 export function FeatureChecklist({ catalog, value, onChange }: { catalog: FeatureDef[]; value: string[]; onChange: (next: string[]) => void }) {
   const [search, setSearch] = useState('');
   const optional = catalog.filter(f => !f.alwaysIncluded);
-  const core = catalog.filter(f => f.alwaysIncluded);
+  const allCore = catalog.filter(f => f.alwaysIncluded);
+  const core = allCore.filter(f => `${f.label} ${f.description}`.toLowerCase().includes(search.trim().toLowerCase()));
   const visible = optional.filter(f => `${f.label} ${f.description}`.toLowerCase().includes(search.trim().toLowerCase()));
   const known = new Set(catalog.map(f => f.key));
   const unmapped = value.filter(v => !known.has(v));
@@ -50,8 +51,8 @@ export function FeatureChecklist({ catalog, value, onChange }: { catalog: Featur
           })}
         </div>
       )}
-      {core.length > 0 && <details className="rounded-md border p-3 text-xs" data-testid="always-included-features">
-        <summary className="cursor-pointer font-medium">Always included in every plan ({core.length})</summary>
+      {core.length > 0 && <details open={search.trim() ? true : undefined} className="rounded-md border p-3 text-xs" data-testid="always-included-features">
+        <summary className="cursor-pointer font-medium">Always included in every plan ({allCore.length})</summary>
         <p className="text-muted-foreground mt-2">These essentials are not optional paid modules.</p>
         <ul className="mt-2 space-y-2">{core.map(f => <li key={f.key}><b>{f.label}</b><p className="text-muted-foreground">{f.description}</p></li>)}</ul>
       </details>}

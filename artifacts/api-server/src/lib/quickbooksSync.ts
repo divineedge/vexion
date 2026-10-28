@@ -1,3 +1,4 @@
+import { hasSoftwareFeature } from "./softwareFeatures";
 /**
  * Stripe → QuickBooks sync
  *
@@ -89,6 +90,7 @@ async function logSync(
  */
 export async function syncInvoicePaymentToQBO(tenantId: number, invoiceId: number): Promise<void> {
   try {
+    if (!await hasSoftwareFeature(tenantId, "quickbooks_sync")) return;
     // 1. Load QB config
     const loaded = await loadQBState(tenantId);
     if (!loaded) return; // QB not connected — silently skip

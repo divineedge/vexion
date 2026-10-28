@@ -1,4 +1,6 @@
 BEGIN;
+ALTER TABLE IF EXISTS plans ADD COLUMN IF NOT EXISTS extra_user_price_cents integer CHECK (extra_user_price_cents >= 0);
+ALTER TABLE IF EXISTS software_billing_accounts ADD COLUMN IF NOT EXISTS additional_user_slots integer NOT NULL DEFAULT 0 CHECK (additional_user_slots >= 0);
 CREATE TABLE IF NOT EXISTS payroll_rates (
  id serial PRIMARY KEY, tenant_id integer NOT NULL REFERENCES tenants(id),
  source text NOT NULL, source_id integer NOT NULL, value real,

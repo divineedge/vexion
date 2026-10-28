@@ -1,3 +1,4 @@
+import { hasSoftwareFeature } from "./softwareFeatures";
 /**
  * Fire-and-forget helper that pushes a customer to Mailchimp when the integration
  * is connected. Called from customer create/update and campaign-membership events.
@@ -16,6 +17,7 @@ interface IntegrationState {
 
 export async function syncCustomerToMailchimp(tenantId: number, customer: { email: string; name: string; tags?: string[] | null }): Promise<void> {
   try {
+    if (!await hasSoftwareFeature(tenantId, "mailchimp_integration")) return;
     const [tenant] = await db.select({ integrationsConfig: tenantsTable.integrationsConfig }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
     const states = (tenant?.integrationsConfig as Record<string, IntegrationState>) ?? {};
     const mailchimpState = states.mailchimp;

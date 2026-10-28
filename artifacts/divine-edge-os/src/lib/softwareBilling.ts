@@ -78,13 +78,14 @@ export function parseSoftwarePlanPrice(value: string): number | string {
 }
 
 /** Suggested annual total only; the owner reviews and saves the actual price. */
-export function annualPlanDefaults(plan: { name: string; tier: string; price: number }) {
+export function annualPlanDefaults(plan: { name: string; tier: string; price: number; extraUserPriceCents?:number|null }) {
   const total = Math.round(plan.price * 1200) / 100;
   return {
     name: `${plan.name.slice(0, 111)} — Annual`,
     tier: `${plan.tier.slice(0, 43)}_annual`,
     price: total <= 100000 ? total.toFixed(2) : '',
     billingInterval: 'year' as const,
+    ...(plan.extraUserPriceCents!=null?{extraUserPrice:plan.extraUserPriceCents*12<=10000000?(plan.extraUserPriceCents*12/100).toFixed(2):''}:{}),
   };
 }
 

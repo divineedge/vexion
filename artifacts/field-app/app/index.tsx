@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
   useColorScheme,
 } from 'react-native';
@@ -15,11 +14,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useLogin, type LoginInput } from '@workspace/api-client-react';
+import { customFetch, useLogin, type AuthResponse, type LoginInput } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
 import { mapLoginUser } from '@/utils/authUser';
 import { UnlockEnrollment, UnlockScreen } from '@/components/AuthUnlock';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 
 const REMEMBERED_EMAIL_KEY = 'field_app_remembered_email';
 
@@ -33,8 +33,10 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
   const [mfaRequired, setMfaRequired] = useState(false);
   const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [demoPending, setDemoPending] = useState(false);
 
   const loginMutation = useLogin();
+  const busy = loginMutation.isPending || demoPending;
 
   const handleLogin = async () => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -96,6 +98,31 @@ export default function LoginScreen() {
     }
   };
 
+  const handleDemo = async () => {
+    if (busy) return;
+    setError('');
+    setDemoPending(true);
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const result = await customFetch<AuthResponse>('/api/auth/demo', { method: 'POST' });
+      const userData = mapLoginUser({
+        ...result.user,
+        timezone: result.user.timezone ?? 'America/Denver',
+      });
+      await signIn(result.sessionToken, userData, result.sessionToken);
+    } catch (err: unknown) {
+      const apiMessage = err && typeof err === 'object' && 'data' in err
+        ? (err as { data?: { error?: string } }).data?.error
+        : undefined;
+      setError(err instanceof TypeError
+        ? "Can't reach the server — check your connection."
+        : apiMessage ?? 'The sandbox demo is unavailable right now. Please try again.');
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setDemoPending(false);
+    }
+  };
+
   const isDark = colorScheme === 'dark';
 
   useEffect(() => {
@@ -138,9 +165,10 @@ export default function LoginScreen() {
       </View>
 
       {/* Form card */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      <KeyboardAwareScrollViewCompat
         style={styles.formWrap}
+        contentContainerStyle={styles.formContent}
+        keyboardShouldPersistTaps="handled"
       >
         <View
           style={[
@@ -241,10 +269,10 @@ export default function LoginScreen() {
           <TouchableOpacity
             style={[
               styles.button,
-              { backgroundColor: colors.primary, opacity: loginMutation.isPending ? 0.7 : 1 },
+              { backgroundColor: colors.primary, opacity: busy ? 0.7 : 1 },
             ]}
             onPress={handleLogin}
-            disabled={loginMutation.isPending}
+            disabled={busy}
             activeOpacity={0.85}
             testID="login-button"
           >
@@ -257,8 +285,46 @@ export default function LoginScreen() {
               </>
             )}
           </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => router.push('/signup')}
+            disabled={busy}
+            activeOpacity={0.7}
+            style={styles.signupLink}
+            testID="signup-link"
+            accessibilityRole="link"
+            accessibilityLabel="Sign Up"
+          >
+            <Text style={[styles.signupPrompt, { color: colors.mutedForeground }]}>Need an account?</Text>
+            <Text style={[styles.signupText, { color: colors.primary }]}>Sign Up</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.demoButton,
+              { borderColor: colors.border, opacity: busy ? 0.7 : 1 },
+            ]}
+            onPress={handleDemo}
+            disabled={busy}
+            activeOpacity={0.85}
+            testID="demo-account-button"
+            accessibilityRole="button"
+            accessibilityLabel="Try Demo Account"
+          >
+            {demoPending ? (
+              <ActivityIndicator color={colors.primary} size="small" />
+            ) : (
+              <>
+                <Ionicons name="flask-outline" size={18} color={colors.primary} />
+                <Text style={[styles.demoButtonText, { color: colors.foreground }]}>Try Demo Account</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          <Text style={[styles.demoHint, { color: colors.mutedForeground }]}>
+            Opens the shared sandbox. No account needed.
+          </Text>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollViewCompat>
 
       <View
         style={[
@@ -309,8 +375,11 @@ const styles = StyleSheet.create({
   },
   formWrap: {
     flex: 1,
-    paddingHorizontal: 20,
     marginTop: -24,
+  },
+  formContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
   },
   card: {
     borderRadius: 16,
@@ -375,6 +444,42 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     fontSize: 16,
     color: '#ffffff',
+  },
+  signupLink: {
+    marginTop: 16,
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  signupPrompt: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+  },
+  signupText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+  },
+  demoButton: {
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  demoButtonText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 15,
+  },
+  demoHint: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 8,
   },
   footer: {
     alignItems: 'center',

@@ -302,7 +302,7 @@ export default function LoginScreen() {
             <Text style={[styles.demoButtonText, { color: colors.foreground }]}>Try Demo Account</Text>
           </TouchableOpacity>
           <Text style={[styles.demoHint, { color: colors.mutedForeground }]}>
-            Opens the demo dashboard. No sign-in and no account needed.
+            Opens a full local CRM sandbox. No sign-in and no account needed.
           </Text>
         </View>
       </KeyboardAwareScrollViewCompat>

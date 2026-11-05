@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEMO_FLAG_KEY, DEMO_TOKEN, DEMO_TOKEN_KEY, clearAccountFreeDemo, grantAccountFreeDemo, hasAccountFreeDemo } from './demoAccess';
+import { clearAccountFreeDemo, grantAccountFreeDemo, hasAccountFreeDemo } from './demoAccess';
+import { DEMO_MODE_KEY, DEMO_SANDBOX_KEY } from './demoSandbox';
 
 describe('account-free demo access', () => {
   beforeEach(() => {
@@ -16,17 +17,18 @@ describe('account-free demo access', () => {
     vi.unstubAllGlobals();
   });
 
-  it('stores a demo flag and token in localStorage without an account', () => {
+  it('sets is_demo_mode and populates the sandbox without an account', () => {
     grantAccountFreeDemo();
-    expect(localStorage.getItem(DEMO_FLAG_KEY)).toBe('true');
-    expect(localStorage.getItem(DEMO_TOKEN_KEY)).toBe(DEMO_TOKEN);
+    expect(localStorage.getItem(DEMO_MODE_KEY)).toBe('true');
+    expect(localStorage.getItem(DEMO_SANDBOX_KEY)).toContain('Willow Creek HOA');
     expect(hasAccountFreeDemo()).toBe(true);
   });
 
-  it('clears the demo flag', () => {
+  it('clears demo mode and the sandbox', () => {
     grantAccountFreeDemo();
     clearAccountFreeDemo();
-    expect(localStorage.getItem(DEMO_FLAG_KEY)).toBeNull();
+    expect(localStorage.getItem(DEMO_MODE_KEY)).toBeNull();
+    expect(localStorage.getItem(DEMO_SANDBOX_KEY)).toBeNull();
     expect(hasAccountFreeDemo()).toBe(false);
   });
 });

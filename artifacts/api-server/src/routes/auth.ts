@@ -1,6 +1,8 @@
 import { ensureTenantSlug } from "../lib/tenantSlug";
 import { Router, type IRouter } from "express";
 import { authBlocked,authFailure,verifySecondFactor } from "../lib/accountSecurity";
+import { ensureSandboxDemoAccount, trimSandboxDemoSessions } from "../lib/sandboxDemo";
+import { SANDBOX_DEMO_EMAIL, SANDBOX_DEMO_SESSION_MS, SANDBOX_DEMO_SLUG } from "../lib/sandboxDemoCalendar";
 import { db, usersTable, tenantsTable, staffSessionsTable } from "@workspace/db";
 import { eq, and, gt, sql } from "drizzle-orm";
 import { randomBytes, createHash } from "crypto";
@@ -147,6 +149,45 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     token: `token-${user.id}`,
     sessionToken: rawToken,
   });
+});
+
+// Shared sandbox for the field app. The request body is ignored so a caller
+// cannot choose a tenant, email, or role. Password login stays closed.
+router.post("/auth/demo", async (_req, res): Promise<void> => {
+  try {
+    const { tenant, user } = await ensureSandboxDemoAccount();
+    if (user.email !== SANDBOX_DEMO_EMAIL || tenant.slug !== SANDBOX_DEMO_SLUG) {
+      res.status(409).json({ error: "Sandbox demo is unavailable" });
+      return;
+    }
+    const rawToken = randomBytes(32).toString("hex");
+    await db.insert(staffSessionsTable).values({
+      tenantId: user.tenantId,
+      userId: user.id,
+      tokenHash: hashToken(rawToken),
+      expiresAt: new Date(Date.now() + SANDBOX_DEMO_SESSION_MS),
+    });
+    await trimSandboxDemoSessions(user.id);
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        tenantId: user.tenantId,
+        timezone: tenant.timezone ?? "UTC",
+        planTier: tenant.planTier ?? "starter",
+        avatarUrl: user.avatarUrl ?? null,
+        isActive: user.isActive,
+        createdAt: user.createdAt.toISOString(),
+      },
+      token: `token-${user.id}`,
+      sessionToken: rawToken,
+    });
+  } catch (err) {
+    const status = (err as { status?: number }).status === 409 ? 409 : 500;
+    res.status(status).json({ error: status === 409 ? "Sandbox demo is unavailable" : "Could not open the sandbox demo" });
+  }
 });
 
 router.post("/auth/remember-device", async (req, res): Promise<void> => {

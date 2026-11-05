@@ -6,11 +6,13 @@ import { db, plansTable, softwarePlanPricesTable, softwareBillingAccountsTable, 
 import { validateFeatureKeys, SOFTWARE_POLICY_VERSION } from "./softwareFeatures";
 import { getStripeClient } from "./stripe";
 import { platformSettings,effectivePlatformFees } from "./platformBillingPolicy";
+import { SANDBOX_DEMO_EMAIL } from "./sandboxDemoCalendar";
 
 export const stripeId = (value: unknown): string | null => typeof value === "string" ? value : value && typeof value === "object" && "id" in value ? String(value.id) : null;
 export async function isSoftwareOwner(userId: number, tenantId: number) {
   const [user] = await db.select().from(usersTable).where(and(eq(usersTable.id,userId),eq(usersTable.tenantId,tenantId),eq(usersTable.isActive,true)));
   if (!user?.passwordHash || !/^\$2[aby]\$\d\d\$/.test(user.passwordHash)) return false;
+  if (user.email.trim().toLowerCase() === SANDBOX_DEMO_EMAIL) return false;
   const [grant] = await db.select().from(platformOwnersTable).where(eq(platformOwnersTable.userId,userId));
   // Optional deployment bootstrap is an explicit immutable identity pair, NEVER an email signup claim.
   const configured = process.env.PLATFORM_OWNER_USER_ID === String(userId) && process.env.PLATFORM_OWNER_TENANT_ID === String(tenantId);

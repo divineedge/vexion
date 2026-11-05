@@ -14,10 +14,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { customFetch, useLogin, type AuthResponse, type LoginInput } from '@workspace/api-client-react';
+import { useLogin, type LoginInput } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
 import { mapLoginUser } from '@/utils/authUser';
+import { grantAccountFreeDemo } from '@/utils/demoAccess';
 import { UnlockEnrollment, UnlockScreen } from '@/components/AuthUnlock';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 
@@ -33,10 +34,10 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
   const [mfaRequired, setMfaRequired] = useState(false);
   const [twoFactorCode, setTwoFactorCode] = useState('');
-  const [demoPending, setDemoPending] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const loginMutation = useLogin();
-  const busy = loginMutation.isPending || demoPending;
+  const busy = loginMutation.isPending;
 
   const handleLogin = async () => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -98,29 +99,9 @@ export default function LoginScreen() {
     }
   };
 
-  const handleDemo = async () => {
-    if (busy) return;
-    setError('');
-    setDemoPending(true);
-    try {
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const result = await customFetch<AuthResponse>('/api/auth/demo', { method: 'POST' });
-      const userData = mapLoginUser({
-        ...result.user,
-        timezone: result.user.timezone ?? 'America/Denver',
-      });
-      await signIn(result.sessionToken, userData, result.sessionToken);
-    } catch (err: unknown) {
-      const apiMessage = err && typeof err === 'object' && 'data' in err
-        ? (err as { data?: { error?: string } }).data?.error
-        : undefined;
-      setError(err instanceof TypeError
-        ? "Can't reach the server — check your connection."
-        : apiMessage ?? 'The sandbox demo is unavailable right now. Please try again.');
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    } finally {
-      setDemoPending(false);
-    }
+  const handleDemo = () => {
+    grantAccountFreeDemo();
+    router.replace('/dashboard');
   };
 
   const isDark = colorScheme === 'dark';
@@ -234,13 +215,23 @@ export default function LoginScreen() {
                 onChangeText={setPassword}
                 placeholder="Your password"
                 placeholderTextColor={colors.mutedForeground}
-                secureTextEntry
+                secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
                 onSubmitEditing={handleLogin}
                 returnKeyType="go"
                 testID="password-input"
               />
+              <TouchableOpacity
+                onPress={() => setShowPassword(visible => !visible)}
+                accessibilityRole="button"
+                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                testID="password-visibility"
+                hitSlop={8}
+                style={styles.eyeButton}
+              >
+                <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.mutedForeground} />
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -300,28 +291,18 @@ export default function LoginScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[
-              styles.demoButton,
-              { borderColor: colors.border, opacity: busy ? 0.7 : 1 },
-            ]}
+            style={[styles.demoButton, { borderColor: colors.border }]}
             onPress={handleDemo}
-            disabled={busy}
             activeOpacity={0.85}
             testID="demo-account-button"
             accessibilityRole="button"
             accessibilityLabel="Try Demo Account"
           >
-            {demoPending ? (
-              <ActivityIndicator color={colors.primary} size="small" />
-            ) : (
-              <>
-                <Ionicons name="flask-outline" size={18} color={colors.primary} />
-                <Text style={[styles.demoButtonText, { color: colors.foreground }]}>Try Demo Account</Text>
-              </>
-            )}
+            <Ionicons name="flask-outline" size={18} color={colors.primary} />
+            <Text style={[styles.demoButtonText, { color: colors.foreground }]}>Try Demo Account</Text>
           </TouchableOpacity>
           <Text style={[styles.demoHint, { color: colors.mutedForeground }]}>
-            Opens the shared sandbox. No account needed.
+            Opens the demo dashboard. No sign-in and no account needed.
           </Text>
         </View>
       </KeyboardAwareScrollViewCompat>
@@ -426,6 +407,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     fontSize: 16,
     height: 48,
+  },
+  eyeButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   errorText: {
     fontFamily: 'Inter_400Regular',

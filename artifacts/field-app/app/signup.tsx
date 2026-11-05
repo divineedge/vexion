@@ -17,6 +17,7 @@ import { customFetch, type AuthResponse } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
 import { mapLoginUser } from '@/utils/authUser';
+import { passwordSecurityError } from '@/utils/passwordRules';
 import { UnlockEnrollment, UnlockScreen } from '@/components/AuthUnlock';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 
@@ -31,6 +32,9 @@ export default function SignupScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [pending, setPending] = useState(false);
   const isDark = colorScheme === 'dark';
 
@@ -46,7 +50,12 @@ export default function SignupScreen() {
     if (business.length > 120) return setError('Business name must be 120 characters or fewer.');
     if (!name) return setError('Your name is required.');
     if (!normalizedEmail) return setError('Email is required.');
-    if (password.length < 8) return setError('Password must be at least 8 characters.');
+    const ruleError = passwordSecurityError(password);
+    if (ruleError) {
+      setPasswordError(ruleError);
+      return;
+    }
+    setPasswordError('');
     if (password !== confirmPassword) return setError('Passwords do not match.');
 
     setError('');
@@ -165,19 +174,37 @@ export default function SignupScreen() {
               testID="signup-email"
             />
           </Field>
-          <Field label="Password" colors={colors} error={Boolean(error)}>
+          <Field label="Password" colors={colors} error={Boolean(error || passwordError)}>
             <TextInput
               style={[styles.input, { color: colors.foreground }]}
               value={password}
-              onChangeText={setPassword}
-              placeholder="At least 8 characters"
+              onChangeText={value => {
+                setPassword(value);
+                if (passwordError) setPasswordError(passwordSecurityError(value) ?? '');
+              }}
+              placeholder="8+ chars, mixed case, number, symbol"
               placeholderTextColor={colors.mutedForeground}
-              secureTextEntry
+              secureTextEntry={!showPassword}
               autoCapitalize="none"
               autoCorrect={false}
               testID="signup-password"
             />
+            <TouchableOpacity
+              onPress={() => setShowPassword(visible => !visible)}
+              accessibilityRole="button"
+              accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+              testID="signup-password-visibility"
+              hitSlop={8}
+              style={styles.eyeButton}
+            >
+              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.mutedForeground} />
+            </TouchableOpacity>
           </Field>
+          {passwordError ? (
+            <Text style={[styles.passwordError, { color: colors.destructive }]} testID="signup-password-error">
+              {passwordError}
+            </Text>
+          ) : null}
           <Field label="Confirm password" colors={colors} error={Boolean(error)}>
             <TextInput
               style={[styles.input, { color: colors.foreground }]}
@@ -185,12 +212,22 @@ export default function SignupScreen() {
               onChangeText={setConfirmPassword}
               placeholder="Repeat your password"
               placeholderTextColor={colors.mutedForeground}
-              secureTextEntry
+              secureTextEntry={!showConfirmPassword}
               autoCapitalize="none"
               autoCorrect={false}
               onSubmitEditing={handleSignup}
               testID="signup-confirm-password"
             />
+            <TouchableOpacity
+              onPress={() => setShowConfirmPassword(visible => !visible)}
+              accessibilityRole="button"
+              accessibilityLabel={showConfirmPassword ? 'Hide password' : 'Show password'}
+              testID="signup-confirm-password-visibility"
+              hitSlop={8}
+              style={styles.eyeButton}
+            >
+              <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.mutedForeground} />
+            </TouchableOpacity>
           </Field>
           <TouchableOpacity
             style={[styles.button, { backgroundColor: colors.primary, opacity: pending ? 0.7 : 1 }]}
@@ -271,14 +308,17 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   inputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1.5,
     borderRadius: 10,
     paddingHorizontal: 12,
     height: 48,
-    justifyContent: 'center',
   },
-  input: { fontFamily: 'Inter_400Regular', fontSize: 16, height: 48 },
+  input: { flex: 1, fontFamily: 'Inter_400Regular', fontSize: 16, height: 48 },
+  eyeButton: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   errorText: { fontFamily: 'Inter_400Regular', fontSize: 13, marginBottom: 12 },
+  passwordError: { fontFamily: 'Inter_400Regular', fontSize: 13, marginTop: -8, marginBottom: 12 },
   button: {
     height: 52,
     borderRadius: 12,

@@ -1,15 +1,21 @@
-/**
- * Base URL for the field app API client.
- * Login, signup, session refresh, and logout all go through customFetch, which
- * prepends this value to relative /api paths.
- * EXPO_PUBLIC_DOMAIN remains the host fallback used by the existing Expo dev setup.
- */
-export function resolveApiBaseUrl(): string | null {
-  const configured = process.env.EXPO_PUBLIC_API_BASE_URL || process.env.VITE_API_BASE_URL;
-  const trimmed = configured?.trim();
-  if (trimmed) return trimmed.replace(/\/+$/, "");
+/** Production API. Used when EXPO_PUBLIC_API_BASE_URL and VITE_API_BASE_URL are unset. */
+export const PRODUCTION_API_URL = "https://workspaceapi-server-production-21ea.up.railway.app";
 
-  const domain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
-  if (!domain) return null;
-  return `https://${domain.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`;
+/**
+ * Base URL for every field-app API request, including
+ * `${API_URL}/api/auth/signup`, login, session refresh, and logout.
+ */
+export function resolveApiBaseUrl(): string {
+  const API_URL = process.env.EXPO_PUBLIC_API_BASE_URL
+    || process.env.VITE_API_BASE_URL
+    || PRODUCTION_API_URL;
+  const trimmed = API_URL.trim().replace(/\/+$/, "");
+  return trimmed || PRODUCTION_API_URL;
+}
+
+/** Absolute URL for a relative API path such as `/api/auth/signup`. */
+export function apiUrl(path: string): string {
+  const API_URL = resolveApiBaseUrl();
+  const suffix = path.startsWith("/") ? path : `/${path}`;
+  return `${API_URL}${suffix}`;
 }

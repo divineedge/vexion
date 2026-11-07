@@ -29,10 +29,8 @@ const NotificationLifecycle = Platform.OS === 'android' && isRunningInExpoGo()
       default: module.NotificationLifecycle,
     })));
 
-// Login, signup, and the rest of the auth client call relative /api paths.
-// customFetch prepends this base URL to every one of those requests.
-const apiBaseUrl = resolveApiBaseUrl();
-if (apiBaseUrl) setBaseUrl(apiBaseUrl);
+// customFetch prepends this base to every relative /api path, including login and logout.
+setBaseUrl(resolveApiBaseUrl());
 
 SplashScreen.preventAutoHideAsync();
 

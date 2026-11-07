@@ -1,5 +1,5 @@
 import { ensureTenantSlug } from "../lib/tenantSlug";
-import { Router, type IRouter } from "express";
+import express, { Router, type IRouter } from "express";
 import { authBlocked,authFailure,verifySecondFactor } from "../lib/accountSecurity";
 import { ensureSandboxDemoAccount, trimSandboxDemoSessions } from "../lib/sandboxDemo";
 import { SANDBOX_DEMO_EMAIL, SANDBOX_DEMO_SESSION_MS, SANDBOX_DEMO_SLUG } from "../lib/sandboxDemoCalendar";
@@ -22,8 +22,9 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // the same logout, account deactivation and password-change controls.
 const REMEMBERED_DEVICE_EXPIRY = new Date("9999-12-31T23:59:59.999Z");
 
-// Business registration — creates a new tenant + company_owner user
-router.post("/auth/register", async (req, res): Promise<void> => {
+// Business registration — creates a new tenant + company_owner user.
+// /auth/signup is the public alias used by clients that do not send a session.
+async function registerBusiness(req: express.Request, res: express.Response): Promise<void> {
   const { companyName, ownerName, email, password } = req.body;
   if(typeof companyName!=="string"||!companyName.trim()||companyName.trim().length>120){
     res.status(400).json({error:"Business name is required and must be at most 120 characters"});return;
@@ -85,7 +86,10 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     token: `token-${user.id}`,
     sessionToken: rawToken,
   });
-});
+}
+
+router.post("/auth/register", (req, res) => { void registerBusiness(req, res); });
+router.post("/auth/signup", (req, res) => { void registerBusiness(req, res); });
 
 // Login — validates password (legacy seed users are available outside production only)
 router.post("/auth/login", async (req, res): Promise<void> => {

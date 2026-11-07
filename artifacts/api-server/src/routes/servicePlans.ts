@@ -1079,7 +1079,7 @@ export async function billPlanPeriod(
   const [plan] = await db.select().from(customerPlansTable).where(and(eq(customerPlansTable.id, planId), eq(customerPlansTable.tenantId, tenantId)));
   if (!plan) throw new Error("Plan not found");
 
-  const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, plan.customerId));
+  const [customer] = await db.select().from(customersTable).where(and(eq(customersTable.id, plan.customerId), eq(customersTable.tenantId, tenantId)));
   const [tenant] = await db.select({ taxRate: tenantsTable.taxRate }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
   const taxRate = tenant?.taxRate ?? 0;
   const subtotal = options?.resolvedPrice ?? plan.billingPrice;

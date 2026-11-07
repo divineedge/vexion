@@ -248,8 +248,8 @@ router.get("/routes/dashboard", async (req, res): Promise<void> => {
     ? await db
         .select({ job: jobsTable, propertyAddress: propertiesTable.address, propertyLat: propertiesTable.lat, propertyLng: propertiesTable.lng, customerName: customersTable.name })
         .from(jobsTable)
-        .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
-        .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
+        .leftJoin(propertiesTable, and(eq(jobsTable.propertyId, propertiesTable.id), eq(propertiesTable.tenantId, tenantId)))
+        .leftJoin(customersTable, and(eq(jobsTable.customerId, customersTable.id), eq(customersTable.tenantId, tenantId)))
         .where(
           and(
             eq(jobsTable.tenantId, tenantId),
@@ -324,8 +324,8 @@ router.get("/routes/:id/day", async (req, res): Promise<void> => {
   const rows = await db
     .select({ job: jobsTable, propertyAddress: propertiesTable.address, propertyLat: propertiesTable.lat, propertyLng: propertiesTable.lng, customerName: customersTable.name, assigneeName: usersTable.name, crewName: crewsTable.name })
     .from(jobsTable)
-    .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
-    .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
+    .leftJoin(propertiesTable, and(eq(jobsTable.propertyId, propertiesTable.id), eq(propertiesTable.tenantId, tenantId)))
+    .leftJoin(customersTable, and(eq(jobsTable.customerId, customersTable.id), eq(customersTable.tenantId, tenantId)))
     .leftJoin(usersTable, eq(jobsTable.assigneeId, usersTable.id))
     .leftJoin(crewsTable, eq(jobsTable.crewId, crewsTable.id))
     .where(
@@ -447,7 +447,7 @@ router.post("/routes/:id/resequence", async (req, res): Promise<void> => {
   const rows = await db
     .select({ job: jobsTable, propertyLat: propertiesTable.lat, propertyLng: propertiesTable.lng })
     .from(jobsTable)
-    .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
+    .leftJoin(propertiesTable, and(eq(jobsTable.propertyId, propertiesTable.id), eq(propertiesTable.tenantId, tenantId)))
     .where(
       and(
         eq(jobsTable.tenantId, tenantId),

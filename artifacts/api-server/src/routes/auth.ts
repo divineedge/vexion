@@ -1,3 +1,4 @@
+import { signupAccountFields } from "../lib/signupAccount";
 import { ensureTenantSlug } from "../lib/tenantSlug";
 import express, { Router, type IRouter } from "express";
 import { authBlocked,authFailure,verifySecondFactor } from "../lib/accountSecurity";
@@ -25,7 +26,7 @@ const REMEMBERED_DEVICE_EXPIRY = new Date("9999-12-31T23:59:59.999Z");
 // Business registration — creates a new tenant + company_owner user.
 // /auth/signup is the public alias used by clients that do not send a session.
 async function registerBusiness(req: express.Request, res: express.Response): Promise<void> {
-  const { companyName, ownerName, email, password } = req.body;
+  const { companyName, ownerName, email, password } = signupAccountFields(req.body);
   if(typeof companyName!=="string"||!companyName.trim()||companyName.trim().length>120){
     res.status(400).json({error:"Business name is required and must be at most 120 characters"});return;
   }
@@ -77,6 +78,7 @@ async function registerBusiness(req: express.Request, res: express.Response): Pr
       name: user.name,
       role: user.role,
       tenantId: user.tenantId,
+      business_id: user.tenantId,
       timezone: tenant?.timezone ?? "UTC",
       planTier: tenant.planTier,
       avatarUrl: null,
@@ -144,6 +146,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
       name: user.name,
       role: user.role,
       tenantId: user.tenantId,
+      business_id: user.tenantId,
       timezone: tenant?.timezone ?? "UTC",
       planTier: tenant?.planTier ?? "starter",
       avatarUrl: user.avatarUrl ?? null,
@@ -256,6 +259,7 @@ router.get("/auth/me", async (req, res): Promise<void> => {
     name: user.name,
     role: user.role,
     tenantId: user.tenantId,
+    business_id: user.tenantId,
     timezone: tenant?.timezone ?? "UTC",
     planTier: tenant?.planTier ?? "starter",
     avatarUrl: user.avatarUrl ?? null,

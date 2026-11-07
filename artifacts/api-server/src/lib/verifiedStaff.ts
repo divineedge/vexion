@@ -22,8 +22,14 @@ export async function requireVerifiedStaff(req: Request, res: Response, next: Ne
   if (!session) { res.status(401).json({ error: "Valid staff session required" }); return; }
   res.locals.staffTenantId = session.tenantId;
   res.locals.staffUserId = session.userId;
-  (req as Request & { verifiedTenantId?: number; verifiedUserId?: number }).verifiedTenantId = session.tenantId;
-  (req as Request & { verifiedTenantId?: number; verifiedUserId?: number }).verifiedUserId = session.userId;
+  const authenticated = req as Request & {
+    user?: { id: number; business_id: number };
+    verifiedTenantId?: number;
+    verifiedUserId?: number;
+  };
+  authenticated.user = { id: session.userId, business_id: session.tenantId };
+  authenticated.verifiedTenantId = session.tenantId;
+  authenticated.verifiedUserId = session.userId;
   next();
 }
 

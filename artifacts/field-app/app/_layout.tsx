@@ -18,6 +18,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { setBaseUrl } from '@workspace/api-client-react';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { OfflineProvider } from '@/contexts/OfflineContext';
+import { resolveApiBaseUrl } from '@/utils/apiBaseUrl';
 
 // expo-notifications executes Android push-registration side effects as soon as
 // its module loads. Android Expo Go intentionally omits that native capability,
@@ -28,10 +29,8 @@ const NotificationLifecycle = Platform.OS === 'android' && isRunningInExpoGo()
       default: module.NotificationLifecycle,
     })));
 
-// Set the API base URL so Expo (outside the proxy) can reach the API server.
-if (process.env.EXPO_PUBLIC_DOMAIN) {
-  setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
-}
+// customFetch prepends this base to every relative /api path, including login and logout.
+setBaseUrl(resolveApiBaseUrl());
 
 SplashScreen.preventAutoHideAsync();
 

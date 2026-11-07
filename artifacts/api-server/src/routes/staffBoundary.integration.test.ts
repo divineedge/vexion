@@ -170,6 +170,13 @@ describe.skipIf(!RUN)("server-wide verified staff boundary", () => {
 
   it("leaves explicit public route families outside the staff boundary", async () => {
     expect((await request(app).get("/healthz")).status).toBe(200);
+    expect((await request(app).get("/health")).status).toBe(200);
+    const signup = await request(app).post("/auth/signup").send({});
+    expect(signup.status).toBe(400);
+    expect(signup.body.error).not.toBe("Valid staff session required");
+    const login = await request(app).post("/auth/login").send({});
+    expect(login.status).toBe(400);
+    expect(login.body.error).not.toBe("Valid staff session required");
     expect((await request(app).get("/widget/services")).status).not.toBe(401);
     expect((await request(app).get("/portal/tenant-info")).status).not.toBe(401);
     expect((await request(app).post("/portal/auth/login").set("x-tenant-id", String(tenantAId)).send({})).status).toBe(400);

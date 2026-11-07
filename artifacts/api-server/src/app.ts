@@ -1,5 +1,6 @@
 import express, { type Express } from "express";
 import cors from "cors";
+import { corsOptions } from "./lib/publicAccess";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { oauthDiscoveryRouter } from "./routes/externalOAuth";
@@ -37,7 +38,7 @@ app.use(
     },
   }),
 );
-app.use(cors());
+app.use(cors(corsOptions));
 
 // Capture raw request body bytes before JSON parsing so webhook signature
 // verification can compare against the exact bytes the provider signed.

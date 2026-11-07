@@ -89,6 +89,7 @@ import externalMcpRouter from "./externalMcp";
 import externalWebhooksRouter from "./externalWebhooks";
 import externalOAuthRouter from "./externalOAuth";
 import { requireVerifiedStaff } from "../lib/verifiedStaff";
+import { isStaffSessionExempt } from "../lib/publicAccess";
 import experienceRouter from "./experience";
 import accountSecurityRouter,{publicAccountSecurityRouter} from "./accountSecurity";
 import reviewPhotosRouter,{publicReviewPhotosRouter} from "./reviewPhotos";
@@ -124,7 +125,10 @@ router.use(externalOAuthRouter);
  * else mounted after this point must present a valid active staff session.
  */
 router.use((req, res, next) => {
+  // Login, signup, and health must answer with no staff session. Register is
+  // the existing signup handler and stays on this list with its /auth/signup alias.
   const publicCustomerPath =
+    isStaffSessionExempt(req.method, req.path) ||
     req.path.startsWith("/public/") ||
     req.path.startsWith("/storage/public-objects/") ||
     req.path.startsWith("/storage/objects/") ||

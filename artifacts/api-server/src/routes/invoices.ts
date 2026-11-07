@@ -340,11 +340,11 @@ router.post("/invoices/from-job/:jobId", async (req, res): Promise<void> => {
 
   // Write lateFeeSchedule via raw SQL (Drizzle silently drops new JSONB cols in set())
   if (templateFields.lateFeeSchedule.length > 0) {
-    await db.execute(sql`UPDATE invoices SET late_fee_schedule = ${JSON.stringify(templateFields.lateFeeSchedule)}::jsonb WHERE id = ${invoice.id}`);
+    await db.execute(sql`UPDATE invoices SET late_fee_schedule = ${JSON.stringify(templateFields.lateFeeSchedule)}::jsonb WHERE id = ${invoice.id} AND tenant_id = ${tenantId}`);
     invoice.lateFeeSchedule = templateFields.lateFeeSchedule;
   }
 
-  await db.update(jobsTable).set({ invoiceId: invoice.id }).where(eq(jobsTable.id, jobId));
+  await db.update(jobsTable).set({ invoiceId: invoice.id }).where(and(eq(jobsTable.id, jobId), eq(jobsTable.tenantId, tenantId)));
   await db.insert(activityLogTable).values({ tenantId, userId, type: "invoice_sent", message: `Invoice ${invoiceNum} created from job`, entityId: invoice.id });
 
   res.status(201).json(formatInvoice(invoice));
@@ -587,7 +587,7 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
       if (!((updates.total ?? existing.total) > 0)) return { error: "Add a positive price before sending.", code: 422 };
       const [customer] = await tx.select().from(customersTable).where(and(eq(customersTable.id, existing.customerId), eq(customersTable.tenantId, tenantId)));
       if (!customer?.email || customer.archivedAt) return { error: "An active customer with an email address is required.", code: 422 };
-      const [invoice] = await tx.update(invoicesTable).set({ ...updates, ...(existing.creditApplied + existing.depositApplied > 0 && invoiceBalance(existing) === 0 ? { status: "paid", paidAt: new Date(), paymentMethod: existing.creditApplied > 0 ? "prepaid_credit" : "estimate_deposit" } : {}), publicToken: existing.publicToken ?? generateInvoiceToken() }).where(eq(invoicesTable.id, id)).returning();
+      const [invoice] = await tx.update(invoicesTable).set({ ...updates, ...(existing.creditApplied + existing.depositApplied > 0 && invoiceBalance(existing) === 0 ? { status: "paid", paidAt: new Date(), paymentMethod: existing.creditApplied > 0 ? "prepaid_credit" : "estimate_deposit" } : {}), publicToken: existing.publicToken ?? generateInvoiceToken() }).where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId))).returning();
       if (existing.status === "draft") await tx.insert(billingEmailQueueTable).values({ tenantId, invoiceId: id, status: "pending", attempts: 0 });
       return { invoice, name: customer.name };
     });
@@ -613,7 +613,7 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
     // Auto-send a review request, if the tenant has this trigger enabled.
     const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
     if (tenant?.reviewRequestOnInvoicePaid) {
-      const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, updated.customerId));
+      const [customer] = await db.select().from(customersTable).where(and(eq(customersTable.id, updated.customerId), eq(customersTable.tenantId, tenantId)));
       if (customer) {
         sendReviewRequest({ tenant, customer, jobId: updated.jobId, invoiceId: updated.id })
           .catch(err => logger.error({ err, invoiceId: updated.id }, "Failed to send review request on invoice paid"));
@@ -1066,7 +1066,7 @@ router.post("/invoices/:id/print-mail", async (req, res): Promise<void> => {
 
   const [updated] = await db.update(invoicesTable)
     .set({ lobLetterId: result.letterId, lobStatus: result.status ?? "requested" })
-    .where(eq(invoicesTable.id, id))
+    .where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)))
     .returning();
 
   res.json(formatInvoice(updated, row.customer.name));

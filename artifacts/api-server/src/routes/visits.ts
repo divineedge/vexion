@@ -262,7 +262,7 @@ router.post("/visits/:id/convert-to-estimate", async (req, res): Promise<void> =
 
   await db.update(visitsTable)
     .set({ convertedToEstimateId: estimate.id })
-    .where(eq(visitsTable.id, id));
+    .where(and(eq(visitsTable.id, id), eq(visitsTable.tenantId, tenantId)));
 
   res.status(201).json({ estimateId: estimate.id });
 });
@@ -293,7 +293,7 @@ router.post("/visits/:id/convert-to-job", requireVerifiedStaff, async (req, res)
 
   await db.update(visitsTable)
     .set({ convertedToJobId: job.id })
-    .where(eq(visitsTable.id, id));
+    .where(and(eq(visitsTable.id, id), eq(visitsTable.tenantId, tenantId)));
   if (job.assigneeId) {
     void resolveJobAssignmentRecipientIds(tenantId, job.assigneeId, null).then(recipientUserIds => sendStaffPush({
       tenantId,

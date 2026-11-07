@@ -1090,7 +1090,7 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
           db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
           db.select({ name: customersTable.name, email: customersTable.email })
             .from(customersTable)
-            .where(eq(customersTable.id, portalCustomerId))
+            .where(and(eq(customersTable.id, portalCustomerId), eq(customersTable.tenantId, tenantId)))
             .limit(1),
         ]);
         const tenant = tenantRow[0];
@@ -1476,7 +1476,7 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
           lineItems,
         }).returning();
         createdInvoiceId = invoice.id;
-        await tx.update(jobsTable).set({ invoiceId: invoice.id }).where(eq(jobsTable.id, id));
+        await tx.update(jobsTable).set({ invoiceId: invoice.id }).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
         // Activity log inside the same transaction for full atomicity
         await tx.insert(activityLogTable).values({ tenantId, userId, type: "invoice_created", message: `Draft invoice ${invoiceNum} auto-created on estimate-sourced job completion`, entityId: invoice.id });
       });
@@ -1488,7 +1488,7 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
       // a customer without autoInvoiceOnCompletion would leave them permanently unbilled.
       console.error({ err, jobId: id }, "Deferred invoice creation failed — flagging job for weekly billing sweep");
       try {
-        await db.update(jobsTable).set({ pendingWeeklyInvoice: true }).where(eq(jobsTable.id, id));
+        await db.update(jobsTable).set({ pendingWeeklyInvoice: true }).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
       } catch (fallbackErr) {
         console.error({ fallbackErr, jobId: id }, "Failed to set pendingWeeklyInvoice fallback — manual billing review required");
       }
@@ -1504,13 +1504,13 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
     const [customer] = await db
       .select({ autoInvoiceOnCompletion: customersTable.autoInvoiceOnCompletion, email: customersTable.email })
       .from(customersTable)
-      .where(eq(customersTable.id, updated.customerId));
+      .where(and(eq(customersTable.id, updated.customerId), eq(customersTable.tenantId, tenantId)));
 
     if (customer?.autoInvoiceOnCompletion && !updated.invoiceId) {
       const [tenantCadence] = await db.select({ nonRecurringInvoiceCadence: tenantsTable.nonRecurringInvoiceCadence }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
       if ((tenantCadence?.nonRecurringInvoiceCadence ?? "immediate") === "weekly") {
         // Weekly cadence: flag for the weekly batch sweep instead of invoicing immediately.
-        await db.update(jobsTable).set({ pendingWeeklyInvoice: true }).where(eq(jobsTable.id, id));
+        await db.update(jobsTable).set({ pendingWeeklyInvoice: true }).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
         res.json(formatJob({ ...updated, pendingWeeklyInvoice: true }));
         return;
       }
@@ -1539,7 +1539,7 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
             lineItems,
           }).returning();
           invoiceId = invoice.id;
-          await tx.update(jobsTable).set({ invoiceId: invoice.id }).where(eq(jobsTable.id, id));
+          await tx.update(jobsTable).set({ invoiceId: invoice.id }).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
         });
 
         await db.insert(activityLogTable).values({ tenantId, userId, type: "invoice_sent", message: `Auto-invoice ${invoiceNum} created on job completion`, entityId: invoiceId });
@@ -1844,7 +1844,7 @@ router.post("/jobs/:id/skip-next", async (req, res): Promise<void> => {
         if (skipReason!.action === "notify_customer" && customerId) {
           const [customer, tenant] = await Promise.all([
             db.select({ phone: customersTable.phone, name: customersTable.name, smsOptOut: customersTable.smsOptOut })
-              .from(customersTable).where(eq(customersTable.id, customerId)).limit(1),
+              .from(customersTable).where(and(eq(customersTable.id, customerId), eq(customersTable.tenantId, tenantId))).limit(1),
             db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
           ]);
           const c = customer[0];
@@ -2149,7 +2149,7 @@ router.post("/jobs/:id/approve-cancellation", async (req, res): Promise<void> =>
         db.select({
           stripeCustomerId: customersTable.stripeCustomerId,
           stripeDefaultPaymentMethodId: customersTable.stripeDefaultPaymentMethodId,
-        }).from(customersTable).where(eq(customersTable.id, claimedJob.customerId!)).limit(1),
+        }).from(customersTable).where(and(eq(customersTable.id, claimedJob.customerId!), eq(customersTable.tenantId, tenantId))).limit(1),
       ]);
 
       if (tenant?.cancellationFeeEnabled && (tenant.cancellationFeeAmount ?? 0) > 0) {
@@ -2181,7 +2181,7 @@ router.post("/jobs/:id/approve-cancellation", async (req, res): Promise<void> =>
           await Promise.all([
             db.update(invoicesTable)
               .set({ notes: `Auto-generated cancellation fee for Job #${id}. Stripe idempotency key: ${stripeIdempotencyKey}` } as any)
-              .where(eq(invoicesTable.id, chargeInvoice.id)),
+              .where(and(eq(invoicesTable.id, chargeInvoice.id), eq(invoicesTable.tenantId, tenantId))),
             db.update(jobsTable)
               .set({ cancellationChargeId: chargeInvoice.id } as any)
               .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId))),
@@ -2214,7 +2214,7 @@ router.post("/jobs/:id/approve-cancellation", async (req, res): Promise<void> =>
               } else {
                 logger.warn({ piStatus: pi.status, jobId: id }, "Stripe PI not immediately succeeded — invoice left as draft");
               }
-              await db.update(invoicesTable).set(invoiceUpdate).where(eq(invoicesTable.id, chargeInvoice.id));
+              await db.update(invoicesTable).set(invoiceUpdate).where(and(eq(invoicesTable.id, chargeInvoice.id), eq(invoicesTable.tenantId, tenantId)));
             } catch (stripeErr: any) {
               // Card errors surface a failed PI object inside the error; store
               // its URL so the delete endpoint knows no refund is needed.
@@ -2222,7 +2222,7 @@ router.post("/jobs/:id/approve-cancellation", async (req, res): Promise<void> =>
               if (failedPi?.id) {
                 await db.update(invoicesTable)
                   .set({ stripePaymentUrl: `https://dashboard.stripe.com/payments/${failedPi.id}` } as any)
-                  .where(eq(invoicesTable.id, chargeInvoice.id));
+                  .where(and(eq(invoicesTable.id, chargeInvoice.id), eq(invoicesTable.tenantId, tenantId)));
                 logger.warn({ code: stripeErr.code, piId: failedPi.id, jobId: id }, "Stripe card declined — draft invoice retained for manual collection");
               } else {
                 // Network/server error — no PI ID yet; deletion must use the

@@ -66,6 +66,7 @@ router.get("/inventory/locations", async (req, res): Promise<void> => {
     .from(inventoryLocationsTable)
     .where(eq(inventoryLocationsTable.tenantId, tenantId))
     .orderBy(inventoryLocationsTable.name);
+  res.set("Cache-Control", "private, no-store");
   res.json(rows.map(formatLocation));
 });
 

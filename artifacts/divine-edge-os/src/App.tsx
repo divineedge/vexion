@@ -1,9 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { setBaseUrl } from '@workspace/api-client-react';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Route, Switch, Router as WouterRouter, Redirect } from 'wouter';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { BASE_URL } from '@/lib/apiBaseUrl';
 
 import LoginPage from '@/pages/login';
 import SignupPage from '@/pages/signup';
@@ -68,6 +70,8 @@ import ResetPasswordPage from '@/pages/reset-password';
 
 import NotFound from '@/pages/not-found';
 import OnboardingWalkthrough, { useOnboarding } from '@/components/onboarding/OnboardingWalkthrough';
+
+setBaseUrl(BASE_URL);
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -38,7 +38,12 @@ app.use(
     },
   }),
 );
-app.use(cors(corsOptions));
+app.use(cors({
+  origin: ['https://workspacefield-app-production.up.railway.app'],
+  credentials: true,
+  methods: corsOptions.methods,
+  allowedHeaders: corsOptions.allowedHeaders,
+}));
 
 // Capture raw request body bytes before JSON parsing so webhook signature
 // verification can compare against the exact bytes the provider signed.

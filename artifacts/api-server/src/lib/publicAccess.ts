@@ -27,11 +27,9 @@ export function isStaffSessionExempt(method: string, path: string): boolean {
 }
 
 export const corsOptions: CorsOptions = {
-  origin(_origin, callback) {
-    // Reflect the request origin, including the production field app, so a
-    // browser can send credentials. Requests with no Origin stay allowed.
-    callback(null, true);
-  },
+  // credentials: true cannot be paired with Access-Control-Allow-Origin: *.
+  // The production field app origin is reflected, and credentialed requests are allowed.
+  origin: [FIELD_APP_ORIGIN],
   credentials: true,
   methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Accept", "Authorization", "Content-Type", "x-portal-token", "x-staff-session", "x-tenant-id", "x-user-id"],

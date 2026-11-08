@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
-import { customFetch } from '@workspace/api-client-react';
+import { customFetch, signupFailureMessage } from '@workspace/api-client-react';
 import type { AuthResponse } from '@workspace/api-client-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -61,8 +61,7 @@ export default function SignupPage() {
       localStorage.setItem('de_onboarding_new_biz', '1');
       setLocation('/dashboard');
     } catch (err: unknown) {
-      const msg = (err as { payload?: { error?: string } })?.payload?.error;
-      setError(msg ?? 'Something went wrong. Please try again.');
+      setError(signupFailureMessage(err));
     } finally {
       setLoading(false);
     }

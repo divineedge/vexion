@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
+import { upsertInventoryLocation } from '@/lib/inventoryLocations';
 import { ShrinkageReport } from '@/components/inventory/ShrinkageReport';
 
 function ItemLocationSection({ inventoryItemId }: { inventoryItemId: number }) {
@@ -263,7 +264,11 @@ export default function InventoryPage() {
   const adjustLocationStockMutation = useAdjustLocationStock();
 
   // Location hooks
-  const { data: locations } = useListInventoryLocations({ query: { queryKey: getListInventoryLocationsQueryKey() } });
+  const locationQueryKey = getListInventoryLocationsQueryKey();
+  const { data: locations } = useListInventoryLocations({
+    query: { queryKey: locationQueryKey },
+    request: { cache: 'no-store' },
+  });
   const createLocation = useCreateInventoryLocation();
   const updateLocation = useUpdateInventoryLocation();
   const deleteLocation = useDeleteInventoryLocation();
@@ -277,9 +282,10 @@ export default function InventoryPage() {
     if (!locForm.name) { toast.error('Location name is required'); return; }
     if (editingLocId) {
       updateLocation.mutate({ id: editingLocId, data: locForm }, {
-        onSuccess: () => {
+        onSuccess: (updated) => {
           toast.success('Location updated');
-          qc.invalidateQueries({ queryKey: getListInventoryLocationsQueryKey() });
+          qc.setQueryData(locationQueryKey, (current: InventoryLocation[] | undefined) => upsertInventoryLocation(current, updated));
+          void qc.invalidateQueries({ queryKey: locationQueryKey });
           setLocDialogOpen(false);
           setEditingLocId(null);
         },
@@ -287,9 +293,10 @@ export default function InventoryPage() {
       });
     } else {
       createLocation.mutate({ data: locForm }, {
-        onSuccess: () => {
+        onSuccess: (created) => {
           toast.success('Location created');
-          qc.invalidateQueries({ queryKey: getListInventoryLocationsQueryKey() });
+          qc.setQueryData(locationQueryKey, (current: InventoryLocation[] | undefined) => upsertInventoryLocation(current, created));
+          void qc.invalidateQueries({ queryKey: locationQueryKey });
           setLocDialogOpen(false);
         },
         onError: () => toast.error('Failed to create location'),

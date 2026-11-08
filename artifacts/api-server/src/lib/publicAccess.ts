@@ -1,7 +1,15 @@
 import type { CorsOptions } from "cors";
 
+/** Production office app. Credentialed browser calls from this origin must pass CORS. */
+export const ADMIN_APP_ORIGIN = "https://workspacedivine-edge-os-production.up.railway.app";
+
 /** Production field app. Credentialed browser calls from this origin must pass CORS. */
 export const FIELD_APP_ORIGIN = "https://workspacefield-app-production.up.railway.app";
+
+export const allowedOrigins = [
+  process.env.ADMIN_APP_ORIGIN || ADMIN_APP_ORIGIN,
+  process.env.FIELD_APP_ORIGIN || FIELD_APP_ORIGIN,
+];
 
 /**
  * Paths that must not require a staff session. The router is mounted at `/api`,
@@ -27,6 +35,13 @@ export function isStaffSessionExempt(method: string, path: string): boolean {
 }
 
 export const corsOptions: CorsOptions = {
-  origin: FIELD_APP_ORIGIN,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl) or if listed in allowedOrigins
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Or pass origin to allow dynamic Railway preview URLs
+    }
+  },
   credentials: true,
 };

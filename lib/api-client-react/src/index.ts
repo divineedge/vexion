@@ -5,6 +5,8 @@ export {
   setAuthTokenGetter,
   setUnauthorizedHandler,
   setDefaultHeaders,
+  getDefaultHeaders,
+  getBaseUrl,
   customFetch,
 } from "./custom-fetch";
 export type { AuthTokenGetter, UnauthorizedHandler } from "./custom-fetch";

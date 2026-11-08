@@ -28,6 +28,8 @@ import { Download, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, Loader2
 import { toast } from 'sonner';
 import { ImportHistoryDialog } from './ImportHistoryDialog';
 import { cn } from '@/lib/utils';
+import { Progress } from '@/components/ui/progress';
+import { commitImportWithProgress, successfulImportRows, type ImportProgressSnapshot } from '@/lib/importProgress';
 
 interface ImportExportControlsProps {
   entity: ImportExportEntity;
@@ -53,7 +55,7 @@ async function commitImportRequest(entity: ImportExportEntity, file: File, mappi
   return customFetch<ImportCommitResult>(`/api/${entity}/import/commit`, { method: 'POST', body: form });
 }
 
-type WizardStep = 'upload' | 'mapping' | 'result';
+type WizardStep = 'upload' | 'mapping' | 'importing' | 'result';
 const columnKey = (index: number) => `__column_${index}`;
 
 export function ImportExportControls({ entity, entityLabel, exportQuery = {}, onImportComplete }: ImportExportControlsProps) {
@@ -64,6 +66,7 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
   const [preview, setPreview] = useState<ImportPreviewResult | null>(null);
   const [mapping, setMapping] = useState<Record<string, string | null>>({});
   const [result, setResult] = useState<ImportCommitResult | null>(null);
+  const [progress, setProgress] = useState<ImportProgressSnapshot | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -95,6 +98,7 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
     setPreview(null);
     setMapping({});
     setResult(null);
+    setProgress(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -123,16 +127,32 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
     );
   };
 
+  const liveProgress = entity === 'customers' || entity === 'inventory';
+
+  const finishImport = (data: ImportCommitResult) => {
+    setResult(data);
+    setStep('result');
+    onImportComplete?.();
+  };
+
   const handleCommit = () => {
     if (!file) return;
+    if (liveProgress) {
+      const total = preview?.totalRows ?? 0;
+      setProgress({ processed: 0, total, percent: 0, created: 0, updated: 0, skipped: 0, failed: 0 });
+      setStep('importing');
+      void commitImportWithProgress(entity, file, mapping, setProgress, sourceParam)
+        .then(finishImport)
+        .catch(() => {
+          toast.error('Import failed. Please check the file and try again.');
+          setStep('mapping');
+        });
+      return;
+    }
     commitImport.mutate(
       { entity, file, mapping, source: sourceParam },
       {
-        onSuccess: (data) => {
-          setResult(data);
-          setStep('result');
-          onImportComplete?.();
-        },
+        onSuccess: finishImport,
         onError: () => toast.error('Import failed. Please check the file and try again.'),
       },
     );
@@ -181,7 +201,7 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
         onRolledBack={onImportComplete}
       />
 
-      <Dialog open={wizardOpen} onOpenChange={setWizardOpen}>
+      <Dialog open={wizardOpen} onOpenChange={(open) => { if (!open && step === 'importing') return; setWizardOpen(open); }}>
         <DialogContent className="sm:max-w-[90vw] md:max-w-4xl lg:max-w-6xl h-[90vh] md:h-[85vh] p-0 flex flex-col overflow-hidden gap-0 bg-background" data-testid="dialog-import-wizard">
           <div className="px-8 py-6 shrink-0 border-b">
             <DialogHeader>
@@ -189,6 +209,7 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
               <DialogDescription className="text-base mt-2">
                 {step === 'upload' && `Upload a CSV or Excel file with ${entityLabel.toLowerCase()} records to begin.`}
                 {step === 'mapping' && 'Match the columns from your uploaded file to the corresponding system fields.'}
+                {step === 'importing' && 'Import is running. Progress updates as each batch of rows is saved.'}
                 {step === 'result' && 'Import process complete. Review the summary below.'}
               </DialogDescription>
             </DialogHeader>
@@ -406,6 +427,26 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
               </div>
             )}
 
+            {step === 'importing' && progress && (
+              <div className="h-full flex items-center justify-center p-8" data-testid="import-progress">
+                <div className="w-full max-w-xl space-y-6">
+                  <div className="flex items-end justify-between gap-4">
+                    <p className="text-2xl font-semibold tracking-tight" data-testid="import-progress-count">
+                      {progress.processed.toLocaleString()} out of {progress.total.toLocaleString()} processed
+                    </p>
+                    <p className="text-3xl font-bold tabular-nums" data-testid="import-progress-percent">{progress.percent}%</p>
+                  </div>
+                  <Progress value={progress.percent} className="h-3" />
+                  <p className="text-base text-muted-foreground" data-testid="import-progress-summary">
+                    <span className="font-medium text-foreground">{successfulImportRows(progress).toLocaleString()} successful</span>
+                    {' · '}
+                    <span className={progress.failed > 0 ? 'font-medium text-destructive' : ''}>{progress.failed.toLocaleString()} failed</span>
+                    {progress.skipped > 0 ? ` · ${progress.skipped.toLocaleString()} skipped` : ''}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {step === 'result' && result && (
               <div className="p-8 max-w-4xl mx-auto w-full py-12" data-testid="import-result-summary">
                 <div className="flex flex-col items-center justify-center text-center mb-12">
@@ -481,7 +522,7 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
             )}
           </div>
 
-          {(step === 'mapping' || step === 'result') && (
+          {(step === 'mapping' || step === 'importing' || step === 'result') && (
             <div className="px-8 py-5 shrink-0 border-t bg-background flex items-center justify-between shadow-[0_-1px_3px_rgba(0,0,0,0.02)]">
               {step === 'mapping' && (
                 <>
@@ -507,6 +548,9 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
                     </Button>
                   </div>
                 </>
+              )}
+              {step === 'importing' && (
+                <div className="text-base text-muted-foreground">Saving rows. You can leave this open until the summary appears.</div>
               )}
               {step === 'result' && (
                 <>

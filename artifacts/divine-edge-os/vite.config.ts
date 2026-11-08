@@ -29,6 +29,9 @@ if (!basePath) {
 
 export default defineConfig({
   base: basePath,
+  define: {
+    'process.env.EXPO_PUBLIC_API_BASE_URL': JSON.stringify(process.env.EXPO_PUBLIC_API_BASE_URL ?? ''),
+  },
   plugins: [
     react(),
     tailwindcss(),

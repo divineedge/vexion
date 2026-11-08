@@ -17,6 +17,7 @@ import { customFetch, type AuthResponse } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
 import { mapLoginUser } from '@/utils/authUser';
+import { apiUrl } from '@/utils/apiBaseUrl';
 import { passwordSecurityError } from '@/utils/passwordRules';
 import { UnlockEnrollment, UnlockScreen } from '@/components/AuthUnlock';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
@@ -62,10 +63,7 @@ export default function SignupScreen() {
     setPending(true);
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const signupUrl = process.env.EXPO_PUBLIC_API_BASE_URL
-        ? `${process.env.EXPO_PUBLIC_API_BASE_URL.replace(/\/+$/, '')}/api/auth/signup`
-        : 'https://workspaceapi-server-production-21ea.up.railway.app/api/auth/signup';
-      const result = await customFetch<AuthResponse>(signupUrl, {
+      const result = await customFetch<AuthResponse>(apiUrl('/api/auth/signup'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

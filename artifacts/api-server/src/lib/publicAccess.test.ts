@@ -62,10 +62,20 @@ describe("field app CORS", () => {
     expect(response.headers["access-control-allow-credentials"]).toBe("true");
   });
 
-  it("reflects a Railway preview origin so credentialed calls can succeed", async () => {
-    const preview = "https://divine-edge-os-pr-14.up.railway.app";
-    const response = await request(app).get("/api/health").set("Origin", preview);
-    expect(response.headers["access-control-allow-origin"]).toBe(preview);
+  it.each([
+    "http://localhost:3000",
+    "http://localhost:8080",
+  ])("allows local development origin %s", async (origin) => {
+    const response = await request(app).get("/api/health").set("Origin", origin);
+    expect(response.status).toBe(200);
+    expect(response.headers["access-control-allow-origin"]).toBe(origin);
     expect(response.headers["access-control-allow-credentials"]).toBe("true");
+  });
+
+  it("rejects an origin that is not on the allowlist", async () => {
+    const response = await request(app).get("/api/health").set("Origin", "https://divine-edge-os-pr-14.up.railway.app");
+    expect(response.status).toBe(500);
+    expect(response.text).toContain("Not allowed by CORS");
+    expect(response.headers["access-control-allow-origin"]).toBeUndefined();
   });
 });

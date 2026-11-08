@@ -26,7 +26,7 @@ try {
   migrationClient.release();
 }
 
-const rawPort = process.env["PORT"];
+const PORT = process.env.PORT || 4000;
 await installDocumentReminderSchema();
 await installKpiSchema();
 await installWebsiteIntakeSchema();
@@ -37,17 +37,22 @@ await installP4pDamageSchema();
 await installJobEconomicsSchema();
 startEstimateReminderScheduler();
 
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
-
-const port = Number(rawPort);
+const port = Number(PORT);
 
 if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
+  throw new Error(`Invalid PORT value: "${PORT}"`);
 }
+
+async function testDb() {
+  try {
+    await pool.query("select id from tenants limit 1");
+    console.log("Database connected successfully.");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Database connection failed on startup:", message);
+  }
+}
+await testDb();
 
 app.listen(port, (err) => {
   if (err) {
@@ -55,6 +60,7 @@ app.listen(port, (err) => {
     process.exit(1);
   }
 
+  console.log(`Server running on port ${port}`);
   logger.info({ port }, "Server listening");
   startBackgroundSchedulers();
   startDueInvoicePayments();

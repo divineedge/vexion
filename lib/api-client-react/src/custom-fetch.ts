@@ -341,6 +341,8 @@ async function parseSuccessBody(
 export async function customFetch<T = unknown>(
   input: RequestInfo | URL,
   options: CustomFetchOptions = {},
+  retries = 2,
+  delay = 3000,
 ): Promise<T> {
   input = applyBaseUrl(input);
   const { responseType = "auto", headers: headersInit, ...init } = options;
@@ -387,7 +389,18 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  let response: Response;
+  try {
+    response = await fetch(input, { ...init, method, headers });
+  } catch (err) {
+    // Network TypeError means the request never completed (cold start or timeout).
+    if (err instanceof TypeError && retries > 0) {
+      console.warn(`Server waking up... retrying in ${delay}ms (${retries} attempts left)`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return customFetch<T>(input, options, retries - 1, delay);
+    }
+    throw err;
+  }
 
   if (!response.ok) {
     if (response.status === 401 && _authTokenGetter && _unauthorizedHandler) {

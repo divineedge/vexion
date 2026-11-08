@@ -1,6 +1,5 @@
 import express, { type Express } from "express";
 import cors from "cors";
-import { corsOptions } from "./lib/publicAccess";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { oauthDiscoveryRouter } from "./routes/externalOAuth";
@@ -38,12 +37,15 @@ app.use(
     },
   }),
 );
-app.use(cors({
-  origin: ['https://workspacefield-app-production.up.railway.app'],
+// Must be declared BEFORE any app routes.
+const fieldAppCors = cors({
+  origin: 'https://workspacefield-app-production.up.railway.app',
   credentials: true,
-  methods: corsOptions.methods,
-  allowedHeaders: corsOptions.allowedHeaders,
-}));
+});
+app.use(fieldAppCors);
+
+// Express 5 rejects app.options('*'). /{*path} is that same wildcard.
+app.options('/{*path}', fieldAppCors);
 
 // Capture raw request body bytes before JSON parsing so webhook signature
 // verification can compare against the exact bytes the provider signed.

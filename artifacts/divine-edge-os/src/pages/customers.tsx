@@ -292,18 +292,32 @@ export default function CustomersPage() {
       .then(data => setAvailableCampaigns((data ?? []).map((c: any) => ({ id: c.id, name: c.name }))))
       .catch(() => {});
   }, []);
-  const [sameAsPhysical, setSameAsPhysical] = useState(true);
+  const [useMailingAsService, setUseMailingAsService] = useState(true);
   const [noCardFilter, setNoCardFilter] = useState(false);
   const [addPaymentMethod, setAddPaymentMethod] = useState(false);
   const [stripePromise, setStripePromise] = useState<Promise<StripeInstance | null> | null>(null);
   const cardSetupRef = useRef<CardSetupSectionHandle>(null);
-  const selectPhysicalAddress = useCallback((item: AddressSuggestion) => {
-    setForm(f => ({
-      ...f, physicalAddress: item.address, physicalCity: item.city ?? '', physicalState: item.state ?? '',
-      physicalZip: item.zip ?? '', physicalLat: item.lat?.toString() ?? '', physicalLng: item.lng?.toString() ?? '',
-      ...(sameAsPhysical ? { billingAddress: item.address, billingCity: item.city ?? '', billingState: item.state ?? '', billingZip: item.zip ?? '' } : {}),
-    }));
-  }, [sameAsPhysical]);
+  const selectMailingAddress = useCallback((item: AddressSuggestion) => {
+    setForm(current => {
+      const next = {
+        ...current,
+        billingAddress: item.address,
+        billingCity: item.city ?? '',
+        billingState: item.state ?? '',
+        billingZip: item.zip ?? '',
+      };
+      if (!useMailingAsService) return next;
+      return {
+        ...next,
+        physicalAddress: item.address,
+        physicalCity: item.city ?? '',
+        physicalState: item.state ?? '',
+        physicalZip: item.zip ?? '',
+        physicalLat: item.lat?.toString() ?? '',
+        physicalLng: item.lng?.toString() ?? '',
+      };
+    });
+  }, [useMailingAsService]);
 
   // Load Stripe publishable key when the user opts to add a payment method
   useEffect(() => {
@@ -319,6 +333,7 @@ export default function CustomersPage() {
     if (params.get('action') === 'create') {
       setCreating(true);
       setForm(BLANK);
+      setUseMailingAsService(true);
       // Clean the URL without triggering a re-render loop
       setLocation(window.location.pathname, { replace: true });
     }
@@ -445,17 +460,30 @@ export default function CustomersPage() {
   const [duplicateCustomer, setDuplicateCustomer] = useState<{ existingCustomerId: number; error: string; archived?: boolean } | null>(null);
 
   const handleCreate = async (allowPossibleDuplicate = false) => {
+    const submitted: FormData = useMailingAsService
+      ? {
+          ...form,
+          physicalAddress: form.billingAddress,
+          physicalCity: form.billingCity,
+          physicalState: form.billingState,
+          physicalZip: form.billingZip,
+        }
+      : form;
     // Validate required fields according to the tenant's field configuration
     const missing = activeFields
-      .filter(f => f.required && !(form[f.key] as string | undefined)?.trim())
+      .filter(f => f.required && !(submitted[f.key] as string | undefined)?.trim())
       .map(f => f.label);
     // Name is always required as a hard minimum
-    if (!(form.name as string | undefined)?.trim()) {
+    if (!(submitted.name as string | undefined)?.trim()) {
       toast.error('Customer name is required');
       return;
     }
-    if (!(form.physicalAddress as string | undefined)?.trim()) {
-      toast.error('Physical / service address is required to create the first property');
+    if (!(submitted.billingAddress as string | undefined)?.trim()) {
+      toast.error('Mailing address is required');
+      return;
+    }
+    if (!(submitted.physicalAddress as string | undefined)?.trim()) {
+      toast.error('Service property address is required');
       return;
     }
     if (missing.length > 0) {
@@ -464,16 +492,16 @@ export default function CustomersPage() {
     }
     const customFieldValues: Record<string, string> = {};
     const body: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(form)) {
+    for (const [k, v] of Object.entries(submitted)) {
       if (k.startsWith('cf_')) customFieldValues[k.slice(3)] = v as string;
       else body[k] = v;
     }
     body.physicalPropertyType = 'residential';
     body.allowPossibleDuplicate = allowPossibleDuplicate === true;
-    body.physicalState = toStateAbbr(String(form.physicalState || ''));
-    body.billingState = toStateAbbr(String(form.billingState || ''));
-    body.physicalLat = form.physicalLat ? Number(form.physicalLat) : undefined;
-    body.physicalLng = form.physicalLng ? Number(form.physicalLng) : undefined;
+    body.physicalState = toStateAbbr(String(submitted.physicalState || ''));
+    body.billingState = toStateAbbr(String(submitted.billingState || ''));
+    body.physicalLat = submitted.physicalLat ? Number(submitted.physicalLat) : undefined;
+    body.physicalLng = submitted.physicalLng ? Number(submitted.physicalLng) : undefined;
     body.customFieldValues = customFieldValues;
     body.referringCustomerId = form.referringCustomerId ? Number(form.referringCustomerId) : undefined;
     delete body.referringCustomerName;
@@ -501,7 +529,7 @@ export default function CustomersPage() {
       setCreating(false);
       setDuplicateCustomer(null);
       setForm(BLANK);
-      setSameAsPhysical(true);
+      setUseMailingAsService(true);
       setCreateCampaignId('');
       setLocation(`/customers/${customer.id}`);
     } catch (error) {
@@ -530,7 +558,7 @@ export default function CustomersPage() {
             exportQuery={{ q: debouncedSearch || undefined, hasReminderFailure: reminderFailureFilter ? 'true' : undefined, ...(archiveView === 'all' ? { includeArchived: 'true' } : archiveView === 'archived' ? { archivedOnly: 'true' } : { activeOnly: 'true' }), ...(typeFilter !== 'all' ? { customerType: typeFilter } : {}) }}
             onImportComplete={() => qc.invalidateQueries({ queryKey: getListCustomersQueryKey() })}
           />
-          <Button title="Create a new customer" onClick={() => { setForm(f => ({ ...f, name: search.trim() || f.name })); setCreating(true); }} className="gap-2">
+          <Button title="Create a new customer" onClick={() => { setForm(f => ({ ...f, name: search.trim() || f.name })); setUseMailingAsService(true); setCreating(true); }} className="gap-2">
             <Plus className="w-4 h-4" /> Add Customer
           </Button>
         </div>
@@ -700,7 +728,7 @@ export default function CustomersPage() {
                       ? 'No customers with open balances found.'
                       : archiveView === 'archived'
                         ? 'No archived customers found.'
-                        : (<span>No customers found.{!search && tagFilter === '__all__' && typeFilter === 'all' && <> <button className="text-primary hover:underline" onClick={() => setCreating(true)}>Add one →</button></>}</span>)}
+                        : (<span>No customers found.{!search && tagFilter === '__all__' && typeFilter === 'all' && <> <button className="text-primary hover:underline" onClick={() => { setUseMailingAsService(true); setCreating(true); }}>Add one →</button></>}</span>)}
                 </TableCell></TableRow>
               ) : (
                 visibleCustomers.map(customer => {
@@ -998,36 +1026,47 @@ export default function CustomersPage() {
               )}
             </Section>
 
-            <Section title="Physical / Service Address" icon={<Home className="w-4 h-4" />}>
-              <p className="text-xs text-muted-foreground">This physical address becomes this customer's first property.</p>
-              <Field label="Street Address">
-                <AddressAutocomplete title="Customer physical or service address" value={form.physicalAddress as string} onChange={value => setForm(f => ({ ...f, physicalAddress: value, physicalLat: '', physicalLng: '', ...(sameAsPhysical ? { billingAddress: value } : {}) }))} onSelect={selectPhysicalAddress} placeholder="123 Main St" />
+            <Section title="Mailing / Billing Address" icon={<Home className="w-4 h-4" />}>
+              <Field label="Street Address" required>
+                <AddressAutocomplete title="Customer mailing or billing street address" value={form.billingAddress as string} onChange={value => setForm(current => {
+                  const next = { ...current, billingAddress: value };
+                  return useMailingAsService ? { ...next, physicalAddress: value, physicalLat: '', physicalLng: '' } : next;
+                })} onSelect={selectMailingAddress} placeholder="123 Main St" />
               </Field>
               <div className="grid grid-cols-3 gap-4">
-                <Field label="City"><Input value={form.physicalCity as string} onChange={e => { const value = e.target.value; setForm(f => ({ ...f, physicalCity: value, ...(sameAsPhysical ? { billingCity: value } : {}) })); }} /></Field>
-                <Field label="State"><Input maxLength={80} placeholder="State name or abbreviation" value={form.physicalState as string} onChange={e => { const value = e.target.value; setForm(f => ({ ...f, physicalState: value, ...(sameAsPhysical ? { billingState: value } : {}) })); }} /></Field>
-                <Field label="ZIP"><Input value={form.physicalZip as string} onChange={e => { const value = e.target.value; setForm(f => ({ ...f, physicalZip: value, ...(sameAsPhysical ? { billingZip: value } : {}) })); }} /></Field>
+                <Field label="City">
+                  <Input title="City" value={form.billingCity as string} onChange={e => { const value = e.target.value; setForm(current => useMailingAsService ? { ...current, billingCity: value, physicalCity: value } : { ...current, billingCity: value }); }} placeholder="Los Angeles" />
+                </Field>
+                <Field label="State">
+                  <Input title="State name or abbreviation" value={form.billingState as string} onChange={e => { const value = e.target.value; setForm(current => useMailingAsService ? { ...current, billingState: value, physicalState: value } : { ...current, billingState: value }); }} placeholder="California or CA" maxLength={80} />
+                </Field>
+                <Field label="ZIP">
+                  <Input title="ZIP/postal code" value={form.billingZip as string} onChange={e => { const value = e.target.value; setForm(current => useMailingAsService ? { ...current, billingZip: value, physicalZip: value } : { ...current, billingZip: value }); }} placeholder="90210" />
+                </Field>
               </div>
-              {form.physicalLat && form.physicalLng && <p className="text-xs text-muted-foreground">Location selected: {form.physicalLat}, {form.physicalLng}</p>}
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={useMailingAsService}
+                  onChange={e => {
+                    const checked = e.target.checked;
+                    setUseMailingAsService(checked);
+                    if (checked) setForm(current => ({ ...current, physicalAddress: current.billingAddress, physicalCity: current.billingCity, physicalState: current.billingState, physicalZip: current.billingZip, physicalLat: '', physicalLng: '' }));
+                  }}
+                />
+                Use mailing address as service property
+              </label>
             </Section>
-            {activeFields.some(f => f.key === 'billingAddress' && f.visible) && (
-              <Section title="Mailing Address" icon={<Home className="w-4 h-4" />}>
-                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sameAsPhysical} onChange={e => { const checked = e.target.checked; setSameAsPhysical(checked); if (checked) setForm(f => ({ ...f, billingAddress: f.physicalAddress, billingCity: f.physicalCity, billingState: f.physicalState, billingZip: f.physicalZip })); }} /> Same as physical address</label>
-                <Field label="Street Address" required={activeFields.find(f => f.key === 'billingAddress')?.required}>
-                  <AddressAutocomplete title="Customer mailing street address" value={form.billingAddress as string} onChange={value => { setSameAsPhysical(false); setField('billingAddress', value); }} onSelect={item => { setSameAsPhysical(false); setForm(f => ({ ...f, billingAddress: item.address, billingCity: item.city ?? '', billingState: item.state ?? '', billingZip: item.zip ?? '' })); }} placeholder="123 Main St" />
+            {!useMailingAsService && (
+              <Section title="Service Property Address" icon={<Home className="w-4 h-4" />}>
+                <p className="text-xs text-muted-foreground">Use this when the billing address is a P.O. Box or office and the work happens somewhere else.</p>
+                <Field label="Street Address" required>
+                  <AddressAutocomplete title="Service property street address" value={form.physicalAddress as string} onChange={value => setForm(current => ({ ...current, physicalAddress: value, physicalLat: '', physicalLng: '' }))} onSelect={item => setForm(current => ({ ...current, physicalAddress: item.address, physicalCity: item.city ?? '', physicalState: item.state ?? '', physicalZip: item.zip ?? '', physicalLat: item.lat?.toString() ?? '', physicalLng: item.lng?.toString() ?? '' }))} placeholder="123 Main St" />
                 </Field>
                 <div className="grid grid-cols-3 gap-4">
-                  <div className="col-span-1">
-                    <Field label="City">
-                      <Input title="City" value={form.billingCity as string} onChange={e => setField('billingCity', e.target.value)} placeholder="Los Angeles" />
-                    </Field>
-                  </div>
-                  <Field label="State">
-                    <Input title="State name or abbreviation" value={form.billingState as string} onChange={e => setField('billingState', e.target.value)} placeholder="California or CA" maxLength={80} />
-                  </Field>
-                  <Field label="ZIP">
-                    <Input title="ZIP/postal code" value={form.billingZip as string} onChange={e => setField('billingZip', e.target.value)} placeholder="90210" />
-                  </Field>
+                  <Field label="City"><Input value={form.physicalCity as string} onChange={e => setField('physicalCity', e.target.value)} /></Field>
+                  <Field label="State"><Input maxLength={80} placeholder="State name or abbreviation" value={form.physicalState as string} onChange={e => setField('physicalState', e.target.value)} /></Field>
+                  <Field label="ZIP"><Input value={form.physicalZip as string} onChange={e => setField('physicalZip', e.target.value)} /></Field>
                 </div>
               </Section>
             )}

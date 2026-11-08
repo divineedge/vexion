@@ -11,14 +11,17 @@ import { router } from 'expo-router';
 import { useAuth, type AuthUser } from '@/contexts/AuthContext';
 import { notificationRoute } from '@/utils/notificationRouting';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+if (Platform.OS !== 'web') {
+  // Initialize expo-notifications or add listeners here only for iOS/Android.
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 const deviceKey = (user: Pick<AuthUser, 'tenantId' | 'id'>) =>
   `field_app_notification_device:${user.tenantId}:${user.id}`;

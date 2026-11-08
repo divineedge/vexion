@@ -20,10 +20,9 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { OfflineProvider } from '@/contexts/OfflineContext';
 import { API_BASE_URL } from '@/utils/apiBaseUrl';
 
-// expo-notifications executes Android push-registration side effects as soon as
-// its module loads. Android Expo Go intentionally omits that native capability,
-// so defer loading our notification lifecycle and skip it in Expo Go.
-const NotificationLifecycle = Platform.OS === 'android' && isRunningInExpoGo()
+// expo-notifications registers native push side effects when its module loads.
+// Initialize listeners only on iOS and Android, and skip Android Expo Go.
+const NotificationLifecycle = Platform.OS === 'web' || (Platform.OS === 'android' && isRunningInExpoGo())
   ? null
   : lazy(() => import('@/components/NotificationLifecycle').then(module => ({
       default: module.NotificationLifecycle,

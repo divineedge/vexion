@@ -9,3 +9,4 @@ export {
 } from "./custom-fetch";
 export type { AuthTokenGetter, UnauthorizedHandler } from "./custom-fetch";
 export * from "./manual-hooks";
+export { signupFailureMessage } from "./signup-error";

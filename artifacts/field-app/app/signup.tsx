@@ -13,7 +13,7 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { customFetch, type AuthResponse } from '@workspace/api-client-react';
+import { customFetch, signupFailureMessage, type AuthResponse } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
 import { mapLoginUser } from '@/utils/authUser';
@@ -79,12 +79,7 @@ export default function SignupScreen() {
       });
       await signIn(result.sessionToken, userData, result.sessionToken);
     } catch (err: unknown) {
-      const apiMessage = err && typeof err === 'object' && 'data' in err
-        ? (err as { data?: { error?: string } }).data?.error
-        : undefined;
-      setError(err instanceof TypeError
-        ? "Can't reach the server — check your connection."
-        : apiMessage ?? 'Something went wrong. Please try again.');
+      setError(signupFailureMessage(err));
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setPending(false);

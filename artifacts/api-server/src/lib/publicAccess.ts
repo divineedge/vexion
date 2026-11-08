@@ -7,8 +7,11 @@ export const ADMIN_APP_ORIGIN = "https://workspacedivine-edge-os-production.up.r
 export const FIELD_APP_ORIGIN = "https://workspacefield-app-production.up.railway.app";
 
 export const allowedOrigins = [
-  process.env.ADMIN_APP_ORIGIN || ADMIN_APP_ORIGIN,
-  process.env.FIELD_APP_ORIGIN || FIELD_APP_ORIGIN,
+  'https://workspacefield-app-production.up.railway.app',
+  'https://workspacedivine-edge-os-production.up.railway.app',
+  // include localhost for local development if needed
+  'http://localhost:3000',
+  'http://localhost:8080',
 ];
 
 /**
@@ -36,11 +39,11 @@ export function isStaffSessionExempt(method: string, path: string): boolean {
 
 export const corsOptions: CorsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl) or if listed in allowedOrigins
+    // Allow requests with no origin (like mobile apps or curl) or if listed
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(null, true); // Or pass origin to allow dynamic Railway preview URLs
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,

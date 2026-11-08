@@ -1,4 +1,5 @@
-import { assertSoftwareCapacity } from "../lib/experienceCore";
+import { assertSoftwareCapacity, withSoftwareCapacity } from "../lib/experienceCore";
+import { importedCustomerAddresses, importedServiceProperty } from "../lib/customerImportAddress";
 import { saveAcquisitionAttribution } from "../lib/acquisitionRewards";
 import {customerMergePreview,mergeCustomers} from '../lib/customerMerge';
 import {z} from 'zod';
@@ -146,6 +147,51 @@ async function requireAdmin(req: import("express").Request, res: import("express
 // Bulk import / export
 // ---------------------------------------------------------------------------
 
+async function ensureImportedServiceProperty(tenantId: number, customerId: number, values: Record<string, unknown>): Promise<void> {
+  const property = importedServiceProperty(values);
+  if (!property) return;
+  const [existing] = await db.select({ id: propertiesTable.id }).from(propertiesTable)
+    .where(and(eq(propertiesTable.tenantId, tenantId), eq(propertiesTable.customerId, customerId)))
+    .limit(1);
+  if (existing) return;
+  await withSoftwareCapacity(tenantId, "properties", async (tx) => {
+    await tx.insert(propertiesTable).values({
+      tenantId,
+      customerId,
+      address: property.address,
+      city: property.city,
+      state: property.state,
+      zip: property.zip,
+      type: "residential",
+    });
+  });
+}
+
+async function deleteImportedServiceProperty(tenantId: number, customerId: number): Promise<void> {
+  const [customer] = await db.select({
+    billingAddress: customersTable.billingAddress,
+    physicalAddress: customersTable.physicalAddress,
+  }).from(customersTable).where(and(eq(customersTable.id, customerId), eq(customersTable.tenantId, tenantId))).limit(1);
+  if (!customer) return;
+  const addresses = [customer.billingAddress, customer.physicalAddress]
+    .filter((value): value is string => !!value?.trim())
+    .map((value) => value.trim().toLowerCase());
+  if (addresses.length === 0) return;
+  const properties = await db.select({ id: propertiesTable.id, address: propertiesTable.address }).from(propertiesTable)
+    .where(and(eq(propertiesTable.tenantId, tenantId), eq(propertiesTable.customerId, customerId)));
+  for (const property of properties) {
+    if (!addresses.includes(property.address.trim().toLowerCase())) continue;
+    const [jobRow] = await db.select({ count: sql<number>`count(*)` }).from(jobsTable)
+      .where(and(eq(jobsTable.tenantId, tenantId), eq(jobsTable.propertyId, property.id)));
+    const [estimateRow] = await db.select({ count: sql<number>`count(*)` }).from(estimatesTable)
+      .where(and(eq(estimatesTable.tenantId, tenantId), eq(estimatesTable.propertyId, property.id)));
+    if (Number(jobRow?.count ?? 0) > 0 || Number(estimateRow?.count ?? 0) > 0) continue;
+    await db.delete(propertiesTable).where(and(eq(propertiesTable.id, property.id), eq(propertiesTable.tenantId, tenantId)));
+  }
+}
+
+
+
 const customersImportExportConfig: ImportExportEntityConfig = {
   entityKey: "customers",
   fields: [
@@ -159,11 +205,15 @@ const customersImportExportConfig: ImportExportEntityConfig = {
     { key: "customerType", header: "Customer Type" },
     { key: "referralSource", header: "Referral Source" },
     { key: "referringCustomerEmail", header: "Referring Customer Email", hint: "Required when Referral Source is customer_referral" },
-    { key: "billingAddress", header: "Billing Address" },
+    { key: "billingAddress", header: "Billing Address", hint: "Mailing address. A service property is created from it unless Physical Address is different." },
     { key: "billingCity", header: "Billing City" },
     { key: "billingState", header: "Billing State" },
     { key: "billingZip", header: "Billing Zip" },
-    { key: "physicalAddress", header: "Physical Address" },
+    { key: "mailingAddress", header: "Mailing Address", hint: "Used when Billing Address is empty" },
+    { key: "mailingCity", header: "Mailing City" },
+    { key: "mailingState", header: "Mailing State" },
+    { key: "mailingZip", header: "Mailing Zip" },
+    { key: "physicalAddress", header: "Physical Address", hint: "Service property address. Leave blank to use the mailing address." },
     { key: "physicalCity", header: "Physical City" },
     { key: "physicalState", header: "Physical State" },
     { key: "physicalZip", header: "Physical Zip" },
@@ -278,14 +328,7 @@ const customersImportExportConfig: ImportExportEntityConfig = {
         customerType: optionalString(raw.customerType) ?? null,
         referralSource,
         referringCustomerId,
-        billingAddress: optionalString(raw.billingAddress) ?? null,
-        billingCity: optionalString(raw.billingCity) ?? null,
-        billingState: optionalString(raw.billingState) ?? null,
-        billingZip: optionalString(raw.billingZip) ?? null,
-        physicalAddress: optionalString(raw.physicalAddress) ?? null,
-        physicalCity: optionalString(raw.physicalCity) ?? null,
-        physicalState: optionalString(raw.physicalState) ?? null,
-        physicalZip: optionalString(raw.physicalZip) ?? null,
+        ...importedCustomerAddresses(raw),
         notes: optionalString(raw.notes) ?? null,
         tags,
         smsOptOut: optionalBoolean(raw.smsOptOut) ?? false,
@@ -304,11 +347,13 @@ const customersImportExportConfig: ImportExportEntityConfig = {
   },
   insert: async (tenantId, values) => {
     const [row] = await db.insert(customersTable).values({ tenantId, ...values } as typeof customersTable.$inferInsert).returning({ id: customersTable.id });
+    await ensureImportedServiceProperty(tenantId, row.id, values);
     return row.id;
   },
   update: async (tenantId, id, values) => {
     await db.update(customersTable).set(values as Partial<typeof customersTable.$inferInsert>)
       .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
+    await ensureImportedServiceProperty(tenantId, id, values);
   },
   getById: async (tenantId, id) => {
     const [row] = await db.select().from(customersTable).where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId))).limit(1);
@@ -317,6 +362,7 @@ const customersImportExportConfig: ImportExportEntityConfig = {
     return rest;
   },
   deleteById: async (tenantId, id) => {
+    await deleteImportedServiceProperty(tenantId, id);
     await db.delete(customersTable).where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
   },
   getDependents: async (tenantId, id) => {

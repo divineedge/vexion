@@ -46,7 +46,7 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      const data = await customFetch<AuthResponse>('/api/auth/register', {
+      const data = await customFetch<AuthResponse>('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

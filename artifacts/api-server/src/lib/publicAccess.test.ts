@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
-import { FIELD_APP_ORIGIN, corsOptions, isStaffSessionExempt } from "./publicAccess";
+import { ADMIN_APP_ORIGIN, FIELD_APP_ORIGIN, allowedOrigins, corsOptions, isStaffSessionExempt } from "./publicAccess";
 
 describe("public auth and health routes", () => {
   it.each([
@@ -52,6 +52,20 @@ describe("field app CORS", () => {
     const response = await request(app).get("/api/health").set("Origin", FIELD_APP_ORIGIN);
     expect(response.status).toBe(200);
     expect(response.headers["access-control-allow-origin"]).toBe(FIELD_APP_ORIGIN);
+    expect(response.headers["access-control-allow-credentials"]).toBe("true");
+  });
+
+  it("allows the production office app to call with credentials", async () => {
+    const response = await request(app).post("/api/auth/login").set("Origin", ADMIN_APP_ORIGIN).send({});
+    expect(allowedOrigins).toContain(ADMIN_APP_ORIGIN);
+    expect(response.headers["access-control-allow-origin"]).toBe(ADMIN_APP_ORIGIN);
+    expect(response.headers["access-control-allow-credentials"]).toBe("true");
+  });
+
+  it("reflects a Railway preview origin so credentialed calls can succeed", async () => {
+    const preview = "https://divine-edge-os-pr-14.up.railway.app";
+    const response = await request(app).get("/api/health").set("Origin", preview);
+    expect(response.headers["access-control-allow-origin"]).toBe(preview);
     expect(response.headers["access-control-allow-credentials"]).toBe("true");
   });
 });

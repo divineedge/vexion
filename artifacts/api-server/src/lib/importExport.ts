@@ -5,6 +5,7 @@ import type { Request, Response } from "express";
 import { db, importBatchesTable, usersTable, activityLogTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { getUserId } from "./tenantHelper";
+import { importProgressSnapshot, shouldReportImportProgress } from "./importProgress";
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -410,6 +411,15 @@ export async function handleImportCommit(
     batchId: 0,
   };
   const rowActions: ImportRowAction[] = [];
+  const streaming = String(req.body.stream ?? "") === "1";
+  if (streaming) {
+    res.status(200);
+    res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+    writeImportProgress(res, result);
+  }
 
   for (let i = 0; i < rows.length; i++) {
     const rowNumber = i + 2; // 1-based, plus header row
@@ -417,6 +427,7 @@ export async function handleImportCommit(
     const isBlank = rawRow.every((v) => (v ?? "").trim() === "");
     if (isBlank) {
       result.skipped++;
+      reportImportProgress(res, streaming, result);
       continue;
     }
 
@@ -439,6 +450,7 @@ export async function handleImportCommit(
         if (result.errors.length < MAX_REPORTED_ERRORS) {
           result.errors.push({ row: rowNumber, errors: parsed.errors });
         }
+        reportImportProgress(res, streaming, result);
         continue;
       }
 
@@ -467,36 +479,62 @@ export async function handleImportCommit(
         });
       }
     }
+    reportImportProgress(res, streaming, result);
   }
 
-  const userId = getUserId(req);
-  const [batch] = await db
-    .insert(importBatchesTable)
-    .values({
+  try {
+    const userId = getUserId(req);
+    const [batch] = await db
+      .insert(importBatchesTable)
+      .values({
+        tenantId,
+        userId,
+        entityKey: config.entityKey,
+        fileName: file.originalname,
+        status: "committed",
+        totalRows: result.total,
+        createdCount: result.created,
+        updatedCount: result.updated,
+        skippedCount: result.skipped,
+        failedCount: result.failed,
+        rowActions,
+      })
+      .returning({ id: importBatchesTable.id });
+    result.batchId = batch.id;
+
+    await db.insert(activityLogTable).values({
       tenantId,
       userId,
-      entityKey: config.entityKey,
-      fileName: file.originalname,
-      status: "committed",
-      totalRows: result.total,
-      createdCount: result.created,
-      updatedCount: result.updated,
-      skippedCount: result.skipped,
-      failedCount: result.failed,
-      rowActions,
-    })
-    .returning({ id: importBatchesTable.id });
-  result.batchId = batch.id;
+      type: "import_committed",
+      message: `Imported "${file.originalname}" (${config.entityKey}): ${result.created} created, ${result.updated} updated`,
+      entityId: batch.id,
+    });
+  } catch (err) {
+    if (!streaming) throw err;
+    res.write(`${JSON.stringify({ type: "error", error: err instanceof Error ? err.message : "Import failed" })}\n`);
+    res.end();
+    return;
+  }
 
-  await db.insert(activityLogTable).values({
-    tenantId,
-    userId,
-    type: "import_committed",
-    message: `Imported "${file.originalname}" (${config.entityKey}): ${result.created} created, ${result.updated} updated`,
-    entityId: batch.id,
-  });
-
+  if (streaming) {
+    res.write(`${JSON.stringify({ type: "complete", result })}\n`);
+    res.end();
+    return;
+  }
   res.json(result);
+}
+
+function reportImportProgress(res: Response, streaming: boolean, result: ImportCommitResponse): void {
+  if (!streaming) return;
+  const snapshot = importProgressSnapshot(result);
+  if (!shouldReportImportProgress(snapshot.processed, snapshot.total)) return;
+  writeImportProgress(res, result);
+}
+
+function writeImportProgress(res: Response, result: ImportCommitResponse): void {
+  const snapshot = importProgressSnapshot(result);
+  res.write(`${JSON.stringify({ type: "progress", ...snapshot })}\n`);
+  (res as Response & { flush?: () => void }).flush?.();
 }
 
 // ---------------------------------------------------------------------------

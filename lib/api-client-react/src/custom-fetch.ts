@@ -32,6 +32,10 @@ export function setBaseUrl(url: string | null): void {
   _baseUrl = url ? url.replace(/\/+$/, "") : null;
 }
 
+export function getBaseUrl(): string | null {
+  return _baseUrl;
+}
+
 /**
  * Register a getter that supplies a bearer auth token.  Before every fetch
  * the getter is invoked; when it returns a non-null string, an
@@ -58,6 +62,10 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): voi
  */
 export function setDefaultHeaders(headers: Record<string, string>): void {
   _defaultHeaders = { ...headers };
+}
+
+export function getDefaultHeaders(): Record<string, string> {
+  return { ..._defaultHeaders };
 }
 
 function isRequest(input: RequestInfo | URL): input is Request {

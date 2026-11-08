@@ -78,6 +78,35 @@ export interface ImportExportEntityConfig {
    * Return a string like "still has 2 jobs booked" or null if nothing specific is found.
    */
   getDependents?: (tenantId: number, id: number) => Promise<string | null>;
+  /**
+   * When set, a matching record is reported instead of overwritten.
+   * The caller decides whether to merge into that record or keep a separate one.
+   */
+  duplicateConflict?: (
+    tenantId: number,
+    existingId: number,
+    values: Record<string, unknown>,
+    rowNumber: number,
+  ) => Promise<ImportDuplicateConflict | null>;
+}
+
+export interface ImportDuplicateConflict {
+  row: number;
+  existingCustomer: {
+    id: number;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    address: string | null;
+    archived?: boolean;
+  };
+  incoming: {
+    name: string;
+    email: string;
+    phone: string;
+    address: string | null;
+    values: Record<string, unknown>;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -364,6 +393,8 @@ export interface ImportCommitResponse {
   updated: number;
   skipped: number;
   failed: number;
+  duplicateCount: number;
+  duplicates: ImportDuplicateConflict[];
   errors: ImportRowError[];
   /** Id of the import_batches record tracking this commit, usable to roll it back. */
   batchId: number;
@@ -407,6 +438,8 @@ export async function handleImportCommit(
     updated: 0,
     skipped: 0,
     failed: 0,
+    duplicateCount: 0,
+    duplicates: [],
     errors: [],
     batchId: 0,
   };
@@ -455,6 +488,15 @@ export async function handleImportCommit(
       }
 
       const existingId = await config.findExisting(tenantId, parsed.values);
+      if (existingId != null && config.duplicateConflict && String(req.body.forceCreate ?? "") !== "1") {
+        const conflict = await config.duplicateConflict(tenantId, existingId, parsed.values, rowNumber);
+        if (conflict) {
+          result.duplicateCount++;
+          if (result.duplicates.length < MAX_REPORTED_ERRORS) result.duplicates.push(conflict);
+          reportImportProgress(res, streaming, result);
+          continue;
+        }
+      }
       if (existingId != null) {
         const priorValues = await config.getById(tenantId, existingId);
         await config.update(tenantId, existingId, parsed.values);

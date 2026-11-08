@@ -6,6 +6,7 @@ export interface ImportProgressCounts {
   updated: number;
   skipped: number;
   failed: number;
+  duplicateCount?: number;
 }
 
 export interface ImportProgressSnapshot extends ImportProgressCounts {
@@ -14,9 +15,19 @@ export interface ImportProgressSnapshot extends ImportProgressCounts {
 }
 
 export function importProgressSnapshot(counts: ImportProgressCounts): ImportProgressSnapshot {
-  const processed = counts.created + counts.updated + counts.skipped + counts.failed;
+  const duplicateCount = counts.duplicateCount ?? 0;
+  const processed = counts.created + counts.updated + counts.skipped + counts.failed + duplicateCount;
   const percent = counts.total <= 0 ? 100 : Math.min(100, Math.round((processed / counts.total) * 100));
-  return { ...counts, processed, percent };
+  return {
+    total: counts.total,
+    created: counts.created,
+    updated: counts.updated,
+    skipped: counts.skipped,
+    failed: counts.failed,
+    duplicateCount,
+    processed,
+    percent,
+  };
 }
 
 /** Report after each batch, and again when the final row finishes. */

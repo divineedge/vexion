@@ -2,6 +2,9 @@ import { assertSoftwareCapacity, withSoftwareCapacity } from "../lib/experienceC
 import { importedCustomerAddresses, importedServiceProperty } from "../lib/customerImportAddress";
 import { saveAcquisitionAttribution } from "../lib/acquisitionRewards";
 import {customerMergePreview,mergeCustomers} from '../lib/customerMerge';
+import { duplicateCustomerConflict, explicitDuplicateOverride, formatPostalAddress } from '../lib/customerDuplicate';
+import { HrError } from '../lib/hrAccess';
+import type { ImportDuplicateConflict } from '../lib/importExport';
 import {z} from 'zod';
 import { Router, type IRouter } from "express";
 import { db, customersTable, propertiesTable, jobsTable, invoicesTable, estimatesTable, activityLogTable, propertyOwnershipHistoryTable, customerOtpSessionsTable, stopServiceFlagsTable, communicationsLogTable, tenantsTable } from "@workspace/db";
@@ -50,6 +53,42 @@ router.post('/customers/:id/merge',async(req,res)=>{
  const {sourceId}=z.object({sourceId:z.number().int().positive(),confirm:z.literal(true)}).strict().parse(req.body);
  res.json(await mergeCustomers(tenant,actor,id,sourceId));
 });
+router.post('/customers/merge', async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const actorId = getUserId(req);
+  if (!await isAdminRole(tenantId, actorId)) {
+    res.status(403).json({ error: 'Owner/admin access is required to merge customers' });
+    return;
+  }
+  const body = z.object({
+    primaryCustomerId: z.number().int().positive(),
+    duplicateCustomerId: z.number().int().positive().optional(),
+    incoming: z.record(z.string(), z.unknown()).optional(),
+    company_id: z.unknown().optional(),
+  }).parse(req.body);
+  try {
+    let duplicateCustomerId = body.duplicateCustomerId;
+    if (duplicateCustomerId == null) {
+      if (!body.incoming) {
+        res.status(400).json({ error: 'duplicateCustomerId or incoming customer details are required' });
+        return;
+      }
+      duplicateCustomerId = await insertIncomingCustomer(tenantId, body.incoming);
+    }
+    try {
+      const merged = await mergeCustomers(tenantId, actorId, body.primaryCustomerId, duplicateCustomerId);
+      res.json({ success: true, message: 'Customer records merged successfully', ...merged });
+    } catch (error) {
+      if (body.duplicateCustomerId == null) {
+        try { await deleteIncomingCustomer(tenantId, duplicateCustomerId); } catch { /* The merge error is the one to report. */ }
+      }
+      throw error;
+    }
+  } catch (error) {
+    const status = error instanceof HrError ? error.status : error instanceof z.ZodError ? 400 : 500;
+    res.status(status).json({ error: error instanceof Error ? error.message : 'Merge failed' });
+  }
+});
 
 function normalizeIdentityText(value: unknown): string {
   return typeof value === "string"
@@ -78,7 +117,18 @@ function normalizeIdentityAddress(value: unknown): string {
 async function findLikelyDuplicateCustomer(
   tenantId: number,
   values: { name?: unknown; email?: unknown; phone?: unknown; physicalAddress?: unknown },
-): Promise<{ id: number; name: string; archivedAt: Date | null } | null> {
+): Promise<{
+  id: number;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  physicalAddress: string | null;
+  physicalCity: string | null;
+  physicalState: string | null;
+  physicalZip: string | null;
+  archivedAt: Date | null;
+  mergedIntoCustomerId: number | null;
+} | null> {
   const email = normalizeIdentityText(values.email);
   const phone = normalizeIdentityPhone(values.phone);
   const name = normalizeIdentityText(values.name);
@@ -92,7 +142,11 @@ async function findLikelyDuplicateCustomer(
       email: customersTable.email,
       phone: customersTable.phone,
       physicalAddress: customersTable.physicalAddress,
+      physicalCity: customersTable.physicalCity,
+      physicalState: customersTable.physicalState,
+      physicalZip: customersTable.physicalZip,
       archivedAt: customersTable.archivedAt,
+      mergedIntoCustomerId: customersTable.mergedIntoCustomerId,
     }).from(customersTable).where(eq(customersTable.tenantId, tenantId)),
     address
       ? db.select({ customerId: propertiesTable.customerId, address: propertiesTable.address })
@@ -106,13 +160,69 @@ async function findLikelyDuplicateCustomer(
     list.push(normalizeIdentityAddress(property.address));
     propertyAddresses.set(property.customerId, list);
   }
-  return customers.find(customer => {
+  const match = customers.find(customer => {
     if (email && normalizeIdentityText(customer.email) === email) return true;
     if (phone && phone.length >= 7 && normalizeIdentityPhone(customer.phone) === phone) return true;
     if (!name || !address || normalizeIdentityText(customer.name) !== name) return false;
     const addresses = [normalizeIdentityAddress(customer.physicalAddress), ...(propertyAddresses.get(customer.id) ?? [])];
     return addresses.includes(address);
-  }) ?? null;
+  });
+  if (!match) return null;
+  if (!match.mergedIntoCustomerId) return match;
+  return customers.find(customer => customer.id === match.mergedIntoCustomerId) ?? match;
+}
+
+function textOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+async function insertIncomingCustomer(tenantId: number, values: Record<string, unknown>): Promise<number> {
+  const name = textOrNull(values.name);
+  if (!name) throw new HrError("Customer name is required");
+  return db.transaction(async (tx) => {
+    const [created] = await tx.insert(customersTable).values({
+      tenantId,
+      name,
+      email: textOrNull(values.email) ?? "",
+      phone: textOrNull(values.phone) ?? "",
+      secondaryPhone: textOrNull(values.secondaryPhone),
+      company: textOrNull(values.company),
+      customerType: textOrNull(values.customerType),
+      referralSource: textOrNull(values.referralSource),
+      referringCustomerId: Number.isInteger(Number(values.referringCustomerId)) && Number(values.referringCustomerId) > 0 ? Number(values.referringCustomerId) : null,
+      billingAddress: textOrNull(values.billingAddress),
+      billingCity: textOrNull(values.billingCity),
+      billingState: textOrNull(values.billingState),
+      billingZip: textOrNull(values.billingZip),
+      physicalAddress: textOrNull(values.physicalAddress),
+      physicalCity: textOrNull(values.physicalCity),
+      physicalState: textOrNull(values.physicalState),
+      physicalZip: textOrNull(values.physicalZip),
+      notes: textOrNull(values.notes),
+      tags: Array.isArray(values.tags) ? values.tags.filter((tag): tag is string => typeof tag === "string") : [],
+      smsOptOut: values.smsOptOut === true,
+      emailOptOut: values.emailOptOut === true,
+    }).returning({ id: customersTable.id });
+    const address = textOrNull(values.physicalAddress);
+    if (address) {
+      await assertSoftwareCapacity(tx, tenantId, "properties");
+      await tx.insert(propertiesTable).values({
+        tenantId,
+        customerId: created.id,
+        address,
+        city: textOrNull(values.physicalCity),
+        state: textOrNull(values.physicalState),
+        zip: textOrNull(values.physicalZip),
+        type: textOrNull(values.physicalPropertyType) ?? "residential",
+      });
+    }
+    return created.id;
+  });
+}
+
+async function deleteIncomingCustomer(tenantId: number, id: number): Promise<void> {
+  await db.delete(propertiesTable).where(and(eq(propertiesTable.tenantId, tenantId), eq(propertiesTable.customerId, id)));
+  await db.delete(customersTable).where(and(eq(customersTable.tenantId, tenantId), eq(customersTable.id, id)));
 }
 const CUSTOMER_REFERRAL_SOURCE = "customer_referral";
 
@@ -377,6 +487,45 @@ const customersImportExportConfig: ImportExportEntityConfig = {
     if (invoiceCount > 0) parts.push(`${invoiceCount} invoice${invoiceCount === 1 ? "" : "s"}`);
     if (propCount > 0) parts.push(`${propCount} propert${propCount === 1 ? "y" : "ies"}`);
     return parts.length > 0 ? `still has ${parts.join(", ")} — delete those first, then undo this import again` : null;
+  },
+  duplicateConflict: async (tenantId, existingId, values, rowNumber): Promise<ImportDuplicateConflict | null> => {
+    const columns = {
+      id: customersTable.id,
+      name: customersTable.name,
+      email: customersTable.email,
+      phone: customersTable.phone,
+      physicalAddress: customersTable.physicalAddress,
+      physicalCity: customersTable.physicalCity,
+      physicalState: customersTable.physicalState,
+      physicalZip: customersTable.physicalZip,
+      archivedAt: customersTable.archivedAt,
+      mergedIntoCustomerId: customersTable.mergedIntoCustomerId,
+    };
+    const [customer] = await db.select(columns).from(customersTable)
+      .where(and(eq(customersTable.id, existingId), eq(customersTable.tenantId, tenantId))).limit(1);
+    if (!customer) return null;
+    let shown = customer;
+    if (customer.mergedIntoCustomerId) {
+      const [primary] = await db.select(columns).from(customersTable)
+        .where(and(eq(customersTable.id, customer.mergedIntoCustomerId), eq(customersTable.tenantId, tenantId))).limit(1);
+      if (primary) shown = primary;
+    }
+    return {
+      row: rowNumber,
+      existingCustomer: duplicateCustomerConflict(shown).existingCustomer,
+      incoming: {
+        name: String(values.name ?? ""),
+        email: String(values.email ?? ""),
+        phone: String(values.phone ?? ""),
+        address: formatPostalAddress({
+          address: typeof values.physicalAddress === "string" ? values.physicalAddress : null,
+          city: typeof values.physicalCity === "string" ? values.physicalCity : null,
+          state: typeof values.physicalState === "string" ? values.physicalState : null,
+          zip: typeof values.physicalZip === "string" ? values.physicalZip : null,
+        }),
+        values,
+      },
+    };
   },
 };
 registerImportExportConfig(customersImportExportConfig);
@@ -662,7 +811,10 @@ router.post("/customers", async (req, res): Promise<void> => {
     notes, tags, customFieldValues,
     acquiredFromCampaignId,
   } = req.body;
-  if (typeof name !== "string" || !name.trim() || typeof email !== "string" || !email.trim() || typeof phone !== "string" || !phone.trim()) {
+  const forceSeparate = explicitDuplicateOverride(req.body);
+  const emailValue = typeof email === "string" ? email.trim() : "";
+  const phoneValue = typeof phone === "string" ? phone.trim() : "";
+  if (typeof name !== "string" || !name.trim() || (!forceSeparate && (!emailValue || !phoneValue))) {
     res.status(400).json({ error: "name, email, and phone are required" });
     return;
   }
@@ -685,13 +837,9 @@ router.post("/customers", async (req, res): Promise<void> => {
     res.status(400).json({ error: "physicalPropertyType must be a non-empty string when provided" });
     return;
   }
-  const duplicate = await findLikelyDuplicateCustomer(tenantId, { name, email, phone, physicalAddress });
-  if (duplicate && req.body.allowPossibleDuplicate !== true) {
-    res.status(409).json({
-      error: `Possible duplicate customer: ${duplicate.name}${duplicate.archivedAt ? " (archived)" : ""}`,
-      existingCustomerId: duplicate.id,
-      archived: !!duplicate.archivedAt,
-    });
+  const duplicate = await findLikelyDuplicateCustomer(tenantId, { name, email: emailValue, phone: phoneValue, physicalAddress });
+  if (duplicate && !forceSeparate) {
+    res.status(409).json(duplicateCustomerConflict(duplicate));
     return;
   }
   let referrer: { id: number; name: string } | null;
@@ -719,7 +867,7 @@ router.post("/customers", async (req, res): Promise<void> => {
 
   const { customer, createdPropertyId } = await db.transaction(async (tx) => {
     const [createdCustomer] = await tx.insert(customersTable).values({
-      tenantId, name, email, phone,
+      tenantId, name: name.trim(), email: emailValue, phone: phoneValue,
       secondaryPhone: secondaryPhone ?? null, company: company ?? null, customerType: customerType ?? null,
       referralSource: referralSource ?? null, billingAddress: billingAddress ?? null, billingCity: billingCity ?? null,
       referringCustomerId: referrer?.id ?? null,

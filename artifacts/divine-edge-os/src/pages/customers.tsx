@@ -29,6 +29,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { toast } from 'sonner';
 import { getActiveCustomerFields, isCustomerFieldVisible } from '@/lib/fieldConfig';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
+import { CustomerDuplicateDialog, type DuplicateCustomerDetails } from '@/components/customer/CustomerDuplicateDialog';
 import { AddressAutocomplete, type AddressSuggestion } from '@/components/shared/AddressAutocomplete';
 import { CUSTOMER_REFERRAL_SOURCE, ReferringCustomerPicker } from '@/components/customer/ReferringCustomerPicker';
 import { AcquisitionAttributionFields } from '@/components/customer/AcquisitionAttributionFields';
@@ -457,7 +458,8 @@ export default function CustomersPage() {
   const removeTag = (tag: string) => setForm(f => ({ ...f, tags: ((f.tags as string[]) ?? []).filter(t => t !== tag) }));
 
   const [creating_busy, setCreatingBusy] = useState(false);
-  const [duplicateCustomer, setDuplicateCustomer] = useState<{ existingCustomerId: number; error: string; archived?: boolean } | null>(null);
+  const [duplicateCustomer, setDuplicateCustomer] = useState<{ existing: DuplicateCustomerDetails; incoming: DuplicateCustomerDetails } | null>(null);
+  const pendingCreateBody = useRef<Record<string, unknown> | null>(null);
 
   const handleCreate = async (allowPossibleDuplicate = false) => {
     const submitted: FormData = useMailingAsService
@@ -498,6 +500,8 @@ export default function CustomersPage() {
     }
     body.physicalPropertyType = 'residential';
     body.allowPossibleDuplicate = allowPossibleDuplicate === true;
+    body.forceCreate = allowPossibleDuplicate === true;
+    pendingCreateBody.current = body;
     body.physicalState = toStateAbbr(String(submitted.physicalState || ''));
     body.billingState = toStateAbbr(String(submitted.billingState || ''));
     body.physicalLat = submitted.physicalLat ? Number(submitted.physicalLat) : undefined;
@@ -533,12 +537,65 @@ export default function CustomersPage() {
       setCreateCampaignId('');
       setLocation(`/customers/${customer.id}`);
     } catch (error) {
-      const detail = (error as { data?: { error?: string; existingCustomerId?: number; archived?: boolean } }).data;
-      if (detail?.existingCustomerId && detail.error) {
-        setDuplicateCustomer({ existingCustomerId: detail.existingCustomerId, error: detail.error, archived: detail.archived });
+      const detail = (error as { status?: number; data?: { error?: string; existingCustomerId?: number; existingCustomer?: DuplicateCustomerDetails } }).data;
+      const status = (error as { status?: number }).status;
+      if (status === 409 && detail?.existingCustomer) {
+        const address = [form.physicalAddress, form.physicalCity, form.physicalState, form.physicalZip].filter(Boolean).join(', ');
+        setDuplicateCustomer({
+          existing: detail.existingCustomer,
+          incoming: {
+            name: String(form.name ?? ''),
+            email: String(form.email ?? ''),
+            phone: String(form.phone ?? ''),
+            address,
+          },
+        });
+      } else if (status === 409 && detail?.existingCustomerId) {
+        try {
+          const existing = await customFetch<DuplicateCustomerDetails & { physicalAddress?: string | null; physicalCity?: string | null; physicalState?: string | null; physicalZip?: string | null }>(`/api/customers/${detail.existingCustomerId}`);
+          const address = [form.physicalAddress, form.physicalCity, form.physicalState, form.physicalZip].filter(Boolean).join(', ');
+          setDuplicateCustomer({
+            existing: {
+              ...existing,
+              address: existing.address || [existing.physicalAddress, existing.physicalCity, existing.physicalState, existing.physicalZip].filter(Boolean).join(', '),
+            },
+            incoming: { name: String(form.name ?? ''), email: String(form.email ?? ''), phone: String(form.phone ?? ''), address },
+          });
+        } catch {
+          toast.error(detail.error || 'Duplicate customer detected');
+        }
       } else {
         toast.error(detail?.error || 'Failed to create customer. Your entries are still here; please try again.');
       }
+    } finally {
+      setCreatingBusy(false);
+    }
+  };
+
+  const handleMergeDuplicate = async () => {
+    const existingId = duplicateCustomer?.existing.id;
+    const body = pendingCreateBody.current;
+    if (!existingId || !body) return;
+    setCreatingBusy(true);
+    try {
+      const created = await createCustomer.mutateAsync({
+        data: { ...body, allowPossibleDuplicate: true, forceCreate: true } as unknown as Parameters<typeof createCustomer.mutate>[0]['data'],
+      });
+      await customFetch('/api/customers/merge', {
+        method: 'POST',
+        body: JSON.stringify({ primaryCustomerId: existingId, duplicateCustomerId: created.id }),
+      });
+      qc.invalidateQueries({ queryKey: getListCustomersQueryKey() });
+      toast.success('Customer records merged successfully');
+      setDuplicateCustomer(null);
+      setCreating(false);
+      setForm(BLANK);
+      setSameAsPhysical(true);
+      setCreateCampaignId('');
+      setLocation(`/customers/${existingId}`);
+    } catch (error) {
+      const detail = (error as { data?: { error?: string } }).data;
+      toast.error(detail?.error || 'Could not merge these customers. Your entries are still here.');
     } finally {
       setCreatingBusy(false);
     }
@@ -917,20 +974,16 @@ export default function CustomersPage() {
       {/* Create Customer Sheet */}
       <Sheet open={creating} onOpenChange={setCreating}>
         <SheetContent className="w-[100vw] max-w-[100vw] sm:w-[75vw] sm:max-w-[75vw] overflow-y-auto">
-      <Dialog open={!!duplicateCustomer} onOpenChange={open => { if (!open) setDuplicateCustomer(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Possible duplicate customer</DialogTitle>
-            <DialogDescription>{duplicateCustomer?.error}. The email, phone, or name and service address match an existing record{duplicateCustomer?.archived ? ', including archived customers' : ''}. Your new-customer entries have been kept.</DialogDescription>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">Open the existing customer to avoid duplicate accounts. Only create a separate customer if this is genuinely a different billing account. Records, payments, and Stripe profiles will not be merged.</p>
-          <DialogFooter className="flex-wrap gap-2">
-            <Button variant="ghost" disabled={creating_busy} onClick={() => setDuplicateCustomer(null)}>Keep editing</Button>
-            <Button variant="outline" disabled={creating_busy} onClick={() => { const customerId = duplicateCustomer?.existingCustomerId; setDuplicateCustomer(null); setCreating(false); if (customerId) setLocation(`/customers/${customerId}`); }}>Open existing customer</Button>
-            <Button disabled={creating_busy} onClick={() => void handleCreate(true)}>{creating_busy ? 'Creating…' : 'Create separate customer'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CustomerDuplicateDialog
+        open={!!duplicateCustomer}
+        existing={duplicateCustomer?.existing ?? null}
+        incoming={duplicateCustomer?.incoming ?? null}
+        busy={creating_busy}
+        dismissLabel="Keep editing"
+        onDismiss={() => setDuplicateCustomer(null)}
+        onForceCreate={() => void handleCreate(true)}
+        onMerge={() => void handleMergeDuplicate()}
+      />
           <SheetHeader className="pb-4">
             <SheetTitle>Add New Customer</SheetTitle>
             <SheetDescription>Fill in the customer's details below.</SheetDescription>

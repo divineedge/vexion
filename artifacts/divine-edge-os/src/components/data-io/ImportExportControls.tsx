@@ -6,6 +6,7 @@ import {
   type ImportExportEntity,
   type ImportPreviewResult,
   type ImportCommitResult,
+  type ImportDuplicateConflict,
 } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -30,6 +31,7 @@ import { ImportHistoryDialog } from './ImportHistoryDialog';
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
 import { commitImportWithProgress, successfulImportRows, type ImportProgressSnapshot } from '@/lib/importProgress';
+import { CustomerDuplicateDialog } from '@/components/customer/CustomerDuplicateDialog';
 
 interface ImportExportControlsProps {
   entity: ImportExportEntity;
@@ -67,6 +69,10 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
   const [mapping, setMapping] = useState<Record<string, string | null>>({});
   const [result, setResult] = useState<ImportCommitResult | null>(null);
   const [progress, setProgress] = useState<ImportProgressSnapshot | null>(null);
+  const [duplicates, setDuplicates] = useState<ImportDuplicateConflict[]>([]);
+  const [duplicateIndex, setDuplicateIndex] = useState(0);
+  const [duplicateBusy, setDuplicateBusy] = useState(false);
+  const [unlistedDuplicates, setUnlistedDuplicates] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -99,6 +105,9 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
     setMapping({});
     setResult(null);
     setProgress(null);
+    setDuplicates([]);
+    setDuplicateIndex(0);
+    setUnlistedDuplicates(0);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -132,7 +141,48 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
   const finishImport = (data: ImportCommitResult) => {
     setResult(data);
     setStep('result');
+    const conflicts = entity === 'customers' ? data.duplicates ?? [] : [];
+    setDuplicates(conflicts);
+    setDuplicateIndex(0);
+    setUnlistedDuplicates(Math.max(0, (data.duplicateCount ?? conflicts.length) - conflicts.length));
     onImportComplete?.();
+  };
+
+  const currentDuplicate = duplicates[duplicateIndex] ?? null;
+  const advanceDuplicate = () => {
+    if (duplicateIndex + 1 >= duplicates.length) {
+      setDuplicates([]);
+      toast.success('Duplicate decisions saved');
+      onImportComplete?.();
+      return;
+    }
+    setDuplicateIndex(index => index + 1);
+  };
+  const resolveDuplicate = async (action: 'merge' | 'separate') => {
+    if (!currentDuplicate) return;
+    setDuplicateBusy(true);
+    try {
+      if (action === 'separate') {
+        await customFetch('/api/customers', {
+          method: 'POST',
+          body: JSON.stringify({ ...currentDuplicate.incoming.values, forceCreate: true }),
+        });
+      } else {
+        await customFetch('/api/customers/merge', {
+          method: 'POST',
+          body: JSON.stringify({
+            primaryCustomerId: currentDuplicate.existingCustomer.id,
+            incoming: currentDuplicate.incoming.values,
+          }),
+        });
+      }
+      advanceDuplicate();
+    } catch (error) {
+      const detail = (error as { data?: { error?: string } }).data;
+      toast.error(detail?.error || 'Could not resolve this duplicate. The other rows are unchanged.');
+    } finally {
+      setDuplicateBusy(false);
+    }
   };
 
   const handleCommit = () => {
@@ -201,6 +251,21 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
         onRolledBack={onImportComplete}
       />
 
+      <CustomerDuplicateDialog
+        open={wizardOpen && !!currentDuplicate}
+        existing={currentDuplicate?.existingCustomer ?? null}
+        incoming={currentDuplicate ? {
+          name: currentDuplicate.incoming.name,
+          email: currentDuplicate.incoming.email,
+          phone: currentDuplicate.incoming.phone,
+          address: currentDuplicate.incoming.address,
+        } : null}
+        busy={duplicateBusy}
+        position={currentDuplicate ? `Row ${currentDuplicate.row}, ${duplicateIndex + 1} of ${duplicates.length}${unlistedDuplicates > 0 ? ` (${unlistedDuplicates} more were left unchanged)` : ''}` : undefined}
+        onDismiss={() => setDuplicates([])}
+        onForceCreate={() => void resolveDuplicate('separate')}
+        onMerge={() => void resolveDuplicate('merge')}
+      />
       <Dialog open={wizardOpen} onOpenChange={(open) => { if (!open && step === 'importing') return; setWizardOpen(open); }}>
         <DialogContent className="sm:max-w-[90vw] md:max-w-4xl lg:max-w-6xl h-[90vh] md:h-[85vh] p-0 flex flex-col overflow-hidden gap-0 bg-background" data-testid="dialog-import-wizard">
           <div className="px-8 py-6 shrink-0 border-b">
@@ -460,10 +525,11 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
                     </div>
                   )}
                   <h3 className="text-3xl font-bold mb-4 tracking-tight">
-                    {result.failed === 0 ? 'Import Successful' : 'Import Complete with Errors'}
+                    {result.failed === 0 && !(result.duplicateCount) ? 'Import Successful' : result.failed === 0 ? 'Import needs a duplicate decision' : 'Import Complete with Errors'}
                   </h3>
                   <p className="text-lg text-muted-foreground max-w-lg mx-auto">
-                    Processed {(result.created + result.updated + result.skipped + result.failed).toLocaleString()} rows from <span className="font-medium text-foreground">{file?.name}</span>.
+                    Processed {(result.created + result.updated + result.skipped + result.failed + (result.duplicateCount ?? 0)).toLocaleString()} rows from <span className="font-medium text-foreground">{file?.name}</span>.
+                    {(result.duplicateCount ?? 0) > 0 ? ` ${(result.duplicateCount ?? 0).toLocaleString()} matching customers were left unchanged until you merge them or keep them separate.` : ''}
                   </p>
                 </div>
 

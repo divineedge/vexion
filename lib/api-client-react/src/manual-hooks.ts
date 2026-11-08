@@ -218,12 +218,35 @@ export interface ImportRowError {
   errors: string[];
 }
 
+export interface ImportCustomerSummary {
+  id: number;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  archived?: boolean;
+}
+
+export interface ImportDuplicateConflict {
+  row: number;
+  existingCustomer: ImportCustomerSummary;
+  incoming: {
+    name: string;
+    email: string;
+    phone: string;
+    address: string | null;
+    values: Record<string, unknown>;
+  };
+}
+
 export interface ImportCommitResult {
   total: number;
   created: number;
   updated: number;
   skipped: number;
   failed: number;
+  duplicateCount?: number;
+  duplicates?: ImportDuplicateConflict[];
   errors: ImportRowError[];
   /** Id of the import batch tracking this commit — pass to rollbackImportBatch to undo it. */
   batchId: number;

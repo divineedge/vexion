@@ -198,6 +198,7 @@ export default function SettingsPage() {
 
   // Branding
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoVersion, setLogoVersion] = useState(0);
   const [logoUploading, setLogoUploading] = useState(false);
   const logoFileRef = useRef<HTMLInputElement>(null);
   const [businessPhone, setBusinessPhone] = useState('');
@@ -422,25 +423,20 @@ export default function SettingsPage() {
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith('image/')) { toast.error('Only images are allowed'); return; }
+    if (file.type && !file.type.startsWith('image/')) { toast.error('Only images are allowed'); return; }
     if (file.size > 10 * 1024 * 1024) { toast.error('Image must be under 10 MB'); return; }
     setLogoUploading(true);
     try {
-      const { uploadURL, objectPath } = await customFetch<{ uploadURL: string; objectPath: string }>(
-        '/api/storage/uploads/request-url',
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }) },
-      );
-      const uploadRes = await fetch(uploadURL, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
-      if (!uploadRes.ok) throw new Error('Upload failed');
-      await new Promise<void>((resolve, reject) => {
-        updateSettings.mutate(
-          { data: { logoUrl: objectPath } },
-          { onSuccess: () => { setLogoUrl(objectPath); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); resolve(); }, onError: () => reject(new Error('Save failed')) },
-        );
-      });
+      const body = new FormData();
+      body.append('file', file);
+      const saved = await customFetch<{ logoUrl: string }>('/api/settings/logo', { method: 'POST', body });
+      setLogoUrl(saved.logoUrl);
+      setLogoVersion(Date.now());
+      qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() });
       toast.success('Logo updated');
-    } catch {
-      toast.error('Failed to upload logo');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to upload logo';
+      toast.error(message);
     } finally {
       setLogoUploading(false);
       e.target.value = '';
@@ -2076,7 +2072,7 @@ export default function SettingsPage() {
                   <div className="w-28 h-28 rounded-xl border-2 border-dashed border-border bg-muted/30 flex items-center justify-center overflow-hidden">
                     {logoUrl ? (
                       <img
-                        src={`${import.meta.env.BASE_URL}api/public/tenants/${settings?.tenantId}/logo`}
+                        src={`${import.meta.env.BASE_URL}api/public/tenants/${settings?.tenantId}/logo?v=${logoVersion || encodeURIComponent(logoUrl ?? '')}`}
                         alt="Business logo"
                         className="w-full h-full object-contain p-1"
                         onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
@@ -2096,7 +2092,7 @@ export default function SettingsPage() {
                   <input
                     ref={logoFileRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
                     className="hidden"
                     onChange={handleLogoUpload}
                   />

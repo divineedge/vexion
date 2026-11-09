@@ -1,6 +1,12 @@
-import { pgTable, text, serial, timestamp, boolean, real, jsonb, integer } from "drizzle-orm/pg-core";
+import { customType, integer, pgTable, text, serial, timestamp, boolean, real, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
 
 export const tenantsTable = pgTable("tenants", {
   scheduleWeatherLocations: jsonb("schedule_weather_locations"),
@@ -230,6 +236,14 @@ export const tenantsTable = pgTable("tenants", {
    */
   defaultInvoiceTemplateId: integer("default_invoice_template_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Image bytes for the company logo. Kept off `tenants` so settings reads do not load the file. */
+export const tenantLogosTable = pgTable("tenant_logos", {
+  tenantId: integer("tenant_id").primaryKey().references(() => tenantsTable.id),
+  contentType: text("content_type").notNull(),
+  bytes: bytea("bytes").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const insertTenantSchema = createInsertSchema(tenantsTable).omit({ id: true, createdAt: true });

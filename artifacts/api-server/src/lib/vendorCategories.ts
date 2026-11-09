@@ -1,6 +1,7 @@
 import {db,expenseCategoriesTable,vendorsTable,expenseEntriesTable} from '@workspace/db';
 import {eq,sql} from 'drizzle-orm';
 import type {HrDb} from './hrAccess';
+import { companyLogoBucketSql } from './companyLogo';
 import { installVendorExpenseDefaultsSchema } from './vendorExpenseDefaults';
 
 export const DEFAULT_EXPENSE_CATEGORIES=['supplies','fuel','equipment','insurance','payroll','rent','utilities','marketing','other'];
@@ -60,6 +61,13 @@ export async function installVendorCategoriesSchema(){
    created_at timestamptz NOT NULL DEFAULT now()
  )`);
  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS property_service_logs_source_job ON property_service_logs (property_id, source_job_id)`);
+ await db.execute(sql`CREATE TABLE IF NOT EXISTS tenant_logos (
+   tenant_id integer PRIMARY KEY REFERENCES tenants(id),
+   content_type text NOT NULL,
+   bytes bytea NOT NULL,
+   updated_at timestamptz NOT NULL DEFAULT now()
+ )`);
+ try { await db.execute(sql.raw(companyLogoBucketSql)); } catch { /* Storage policies exist only on Supabase. */ }
 }
 export async function listVendorCategories(tenantId:number,handle:HrDb=db,includeDeleted=false){
  const names=new Map(DEFAULT_EXPENSE_CATEGORIES.map(key=>[key,categoryLabel(key)]));

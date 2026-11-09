@@ -12,7 +12,8 @@ import {
   ObjectNotFoundError,
   ObjectStorageService,
 } from '../lib/objectStorage';
-import { db, mediaAttachmentsTable, customerOtpSessionsTable, tenantsTable, jobsTable, visitsTable, crewMembersTable, chemicalProductsTable } from '@workspace/db';
+import { db, mediaAttachmentsTable, customerOtpSessionsTable, tenantsTable, tenantLogosTable, jobsTable, visitsTable, crewMembersTable, chemicalProductsTable } from '@workspace/db';
+import { isPublishableLogoUrl, logoBytesBuffer, requestOrigin } from '../lib/companyLogo';
 import { eq, and, isNotNull, gt } from 'drizzle-orm';
 import { createHash } from 'crypto';
 import { requireVerifiedStaff, resolveVerifiedStaffIdentity, verifiedStaffIdentity } from '../lib/verifiedStaff';
@@ -336,8 +337,8 @@ router.get('/storage/objects/*path', async (req: Request, res: Response) => {
  *
  * Streams a tenant's business logo with no auth/ACL check — logos are
  * intentionally public branding shown on public estimate/invoice/review pages.
- * Uses the tenant's stored logoUrl (a private-storage object path) as the
- * source of truth, so the same upload flow as other private uploads applies.
+ * Serves the image stored for this company. A public object-storage URL is
+ * followed only when it points at this app or the configured Supabase project.
  */
 router.get('/public/tenants/:id/logo', async (req: Request, res: Response) => {
   try {
@@ -346,7 +347,22 @@ router.get('/public/tenants/:id/logo', async (req: Request, res: Response) => {
     if (isNaN(tenantId)) { res.status(400).json({ error: 'Invalid tenant id' }); return; }
 
     const [tenant] = await db.select({ logoUrl: tenantsTable.logoUrl }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+    const [stored] = await db.select({ contentType: tenantLogosTable.contentType, bytes: tenantLogosTable.bytes }).from(tenantLogosTable).where(eq(tenantLogosTable.tenantId, tenantId));
+    const bytes = logoBytesBuffer(stored?.bytes);
+    if (bytes && stored?.contentType) {
+      res.setHeader('Content-Type', stored.contentType);
+      res.setHeader('Content-Length', String(bytes.length));
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      if (stored.contentType === 'image/svg+xml') res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+      res.end(bytes);
+      return;
+    }
     if (!tenant?.logoUrl) { res.status(404).json({ error: 'No logo set' }); return; }
+    if (isPublishableLogoUrl(tenant.logoUrl, requestOrigin(req))) {
+      res.redirect(tenant.logoUrl);
+      return;
+    }
 
     const objectFile = await objectStorageService.getObjectEntityFile(tenant.logoUrl);
 

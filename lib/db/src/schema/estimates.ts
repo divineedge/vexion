@@ -66,6 +66,8 @@ export const estimatesTable = pgTable("estimates", {
   paymentRequirement: text("payment_requirement").notNull().default("none"),
   /** For deposit_pct: percentage (e.g. 20 = 20%). For deposit_fixed: dollar amount. */
   depositValue: real("deposit_value"),
+  /** Staff chose this estimate's deposit on the creation form instead of the company default. */
+  depositOverride: boolean("deposit_override").notNull().default(false),
   /** Timestamp when the deposit/full payment was collected */
   depositPaidAt: timestamp("deposit_paid_at", { withTimezone: true }),
   /** Stripe PaymentIntent ID for the deposit charge */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstMatchingDepositRule, unpaidScheduleDepositMessage, validateDepositRules, validateScheduleDeposit, type DepositRule } from "./companyDepositRules";
+import { estimateDepositSettingsDocument, firstMatchingDepositRule, mergeEstimateDepositSettings, readEstimateDepositSettings, readScheduleDeposit, unpaidScheduleDepositMessage, validateDepositRules, validateScheduleDeposit, type DepositRule } from "./companyDepositRules";
 import { propertyInvoiceGroups } from "./invoicePropertyGrouping";
 
 const rule: DepositRule = { id: "fixture", name: "Matching rule", enabled: true, minTotal: 500, maxTotal: 1000,
@@ -36,6 +36,18 @@ describe("configurable deposit matching and property grouping", () => {
     expect(unpaidScheduleDepositMessage({ enabled: true, mode: "percent", value: 20 }, 200, 0)).toContain("$40.00");
     expect(unpaidScheduleDepositMessage({ enabled: true, mode: "fixed", value: 50 }, 200, 50)).toBeNull();
     expect(unpaidScheduleDepositMessage({ enabled: true, mode: "percent", value: 10 }, 0, 0)).toContain("positive");
+  });
+  it("keeps deposit choices in one estimate settings document", () => {
+    const stored = { estimate_deposit_settings: { enabled: true, defaultType: "fixed", defaultAmount: 50, requireBeforeScheduling: true, allowEstimateOverrides: false, rules: [] } };
+    expect(readEstimateDepositSettings(stored)).toMatchObject({ enabled: true, defaultType: "fixed", defaultAmount: 50, requireBeforeScheduling: true, allowEstimateOverrides: false });
+    expect(readScheduleDeposit({ estimate_deposit_settings: { enabled: true, defaultType: "percent", defaultAmount: 20, requireBeforeScheduling: false, allowEstimateOverrides: false, rules: [] } })).toMatchObject({ enabled: false, value: 20 });
+    const legacy = readEstimateDepositSettings({ depositType: "percent", depositValue: 25, depositRules: [rule], scheduleDeposit: { enabled: false, mode: "fixed", value: null } });
+    expect(legacy).toMatchObject({ enabled: true, defaultAmount: 25, allowEstimateOverrides: true, requireBeforeScheduling: true });
+    expect(readEstimateDepositSettings({ depositRules: [{ ...rule, minTotal: null, maxTotal: null }] }).requireBeforeScheduling).toBe(true);
+    const merged = mergeEstimateDepositSettings({ depositType: "percent", depositValue: 25, depositRules: [rule] }, { requireBeforeScheduling: false, allowEstimateOverrides: false });
+    expect(merged.requireBeforeScheduling).toBe(false);
+    expect(estimateDepositSettingsDocument(merged).scheduleDeposit).toMatchObject({ enabled: false, mode: "percent", value: 25 });
+    expect(readEstimateDepositSettings({})).toMatchObject({ enabled: false, requireBeforeScheduling: false });
   });
   it("combines by default and splits by property without losing unassigned charges", () => {
     const lines = [{propertyId:1,total:100},{propertyId:2,total:200},{propertyId:1,total:50},{propertyId:null,total:10}];

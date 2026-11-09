@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import {
@@ -242,6 +242,23 @@ export default function EstimatesPage() {
     paymentRequirement: 'none',
     depositValue: '',
   });
+  const [depositCustomized, setDepositCustomized] = useState(false);
+  const depositSettingsQuery = useQuery({
+    queryKey: ['billing', 'estimate-deposit-settings'],
+    queryFn: () => customFetch<{ settings: { enabled: boolean; defaultType: 'fixed' | 'percent'; defaultAmount: number | null; allowEstimateOverrides: boolean } }>('/api/billing/estimate-deposit-settings'),
+    enabled: createOpen && !!canManageOffice,
+  });
+  const depositSettings = depositSettingsQuery.data?.settings;
+  const lockCompanyDeposit = !!depositSettings?.enabled && !depositSettings.allowEstimateOverrides;
+  useEffect(() => {
+    if (!createOpen) { setDepositCustomized(false); return; }
+    if (depositCustomized || !depositSettings?.enabled || depositSettings.defaultAmount == null) return;
+    setForm(current => ({
+      ...current,
+      paymentRequirement: depositSettings.defaultType === 'fixed' ? 'deposit_fixed' : 'deposit_pct',
+      depositValue: String(depositSettings.defaultAmount),
+    }));
+  }, [createOpen, depositCustomized, depositSettings]);
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyItem()]);
   const [catalogServices, setCatalogServices] = useState<CatalogService[] | null>(null);
   const [catalogPlans, setCatalogPlans] = useState<CatalogPlan[] | null>(null);
@@ -403,7 +420,8 @@ export default function EstimatesPage() {
         suppliesNeeded: createSupplies.length > 0 ? createSupplies : undefined,
         paymentRequirement: form.paymentRequirement as 'none' | 'full' | 'deposit_pct' | 'deposit_fixed',
         depositValue: form.paymentRequirement !== 'none' && form.depositValue ? parseFloat(form.depositValue) : undefined,
-      },
+        ...(depositCustomized && depositSettings?.allowEstimateOverrides ? { depositOverride: true } : {}),
+      } as Parameters<typeof createEstimate.mutate>[0] extends { data: infer Data } ? Data : never,
     }, {
       onSuccess: (e) => {
         toast.success('Estimate created');
@@ -414,6 +432,7 @@ export default function EstimatesPage() {
         setAddingCreateSupply(false);
         setCreateSupplySearch('');
         setCreateTerms(null);
+        setDepositCustomized(false);
         setForm({ customerId: '', propertyId: '', assigneeId: '', visitMode: 'scheduled', scheduledAt: '', expiresAt: '', notes: '', templateId: '', estimatedDurationMin: '', paymentRequirement: 'none', depositValue: '' });
         setSelectedId(e.id);
       },
@@ -1060,7 +1079,7 @@ export default function EstimatesPage() {
                 <Receipt className="w-4 h-4 text-muted-foreground" />
                 <label className="text-sm font-medium">Payment on acceptance</label>
               </div>
-              <Select value={form.paymentRequirement} onValueChange={v => setForm(f => ({ ...f, paymentRequirement: v, depositValue: '' }))}>
+              <Select value={form.paymentRequirement} disabled={lockCompanyDeposit} onValueChange={v => { setDepositCustomized(true); setForm(f => ({ ...f, paymentRequirement: v, depositValue: '' })); }}>
                 <SelectTrigger title="Choose what payment is required when the customer accepts this estimate">
                   <SelectValue />
                 </SelectTrigger>
@@ -1082,13 +1101,16 @@ export default function EstimatesPage() {
                     max={form.paymentRequirement === 'deposit_pct' ? 100 : undefined}
                     placeholder={form.paymentRequirement === 'deposit_pct' ? 'e.g. 25' : 'e.g. 150.00'}
                     value={form.depositValue}
-                    onChange={e => setForm(f => ({ ...f, depositValue: e.target.value }))}
+                    disabled={lockCompanyDeposit}
+                    onChange={e => { setDepositCustomized(true); setForm(f => ({ ...f, depositValue: e.target.value })); }}
                     className="flex-1"
                     title={form.paymentRequirement === 'deposit_pct' ? 'Percentage of estimate total due on acceptance' : 'Fixed dollar amount due on acceptance'}
                   />
                   <span className="text-xs text-muted-foreground">{form.paymentRequirement === 'deposit_pct' ? 'of total' : 'USD'}</span>
                 </div>
               )}
+              {lockCompanyDeposit && <p className="text-xs text-muted-foreground">This estimate uses the company default deposit. Turn on Deposit rules by estimate in Estimate Settings to choose a different amount here.</p>}
+              {depositSettings?.enabled && depositSettings.allowEstimateOverrides && <p className="text-xs text-muted-foreground">Change the amount to override the company default for this estimate. Leave it unchanged to use a matching deposit rule.</p>}
               {form.paymentRequirement !== 'none' && (
                 <p className="text-xs text-muted-foreground">
                   {form.paymentRequirement === 'full' && 'Customer will be prompted to pay the full estimate total when they accept.'}

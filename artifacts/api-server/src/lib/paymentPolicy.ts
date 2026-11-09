@@ -1,6 +1,6 @@
 import { db, tenantsTable, servicesTable, customersTable, jobsTable, estimatesTable, invoicesTable } from "@workspace/db";
 import { and, eq, sql, inArray } from "drizzle-orm";
-import { firstMatchingDepositRule, readScheduleDeposit, scheduleDepositAmount, unpaidScheduleDepositMessage, validateDepositRules, type DepositRule } from "./companyDepositRules";
+import { firstMatchingDepositRule, hasStoredEstimateDepositSettings, readEstimateDepositSettings, readScheduleDeposit, scheduleDepositAmount, unpaidScheduleDepositMessage, validateDepositRules, type DepositRule } from "./companyDepositRules";
 import { creditBalance, creditedInvoiceInsert, invoiceBalance } from "./customerCredit";
 import { enforceCrewCapacity,type CapacityApproval } from "./crewCapacity";
 import { invoiceDocumentDefaults } from "./invoiceDocumentDefaults";
@@ -26,12 +26,20 @@ export async function effectivePaymentPolicy(tx: Tx | typeof db, tenantId: numbe
   const serviceIds = [...new Set([...(context?.serviceIds ?? []), ...(serviceId ? [serviceId] : [])])].filter(id => Number.isInteger(id) && id > 0);
   const services = serviceIds.length ? await tx.select().from(servicesTable).where(and(inArray(servicesTable.id, serviceIds), eq(servicesTable.tenantId, tenantId))) : [];
   const raw = company?.paymentPolicy as (PaymentPolicy & { depositRules?: DepositRule[] }) | null;
-  const rules = raw?.depositRules ?? [];
+  const depositSettings = readEstimateDepositSettings(raw);
+  const storedDepositSettings = hasStoredEstimateDepositSettings(raw);
+  const rules = storedDepositSettings
+    ? (depositSettings.enabled && depositSettings.allowEstimateOverrides ? depositSettings.rules : [])
+    : raw?.depositRules ?? [];
   const ruleError = validateDepositRules(rules);
   if (ruleError) throw new Error(`Company deposit rules need correction: ${ruleError}`);
   const total = context?.total ?? (context?.subtotal !== undefined ? context.subtotal * (1 + (company?.taxRate ?? 0) / 100) : undefined);
   const matchedRule = firstMatchingDepositRule(rules, total, services.map(service => service.id));
   const companyPolicy = normalizePaymentPolicy(raw);
+  if (storedDepositSettings) {
+    companyPolicy.depositType = depositSettings.enabled ? depositSettings.defaultType : "none";
+    companyPolicy.depositValue = depositSettings.enabled ? depositSettings.defaultAmount : null;
+  }
   if (matchedRule) { companyPolicy.depositType = matchedRule.depositType; companyPolicy.depositValue = matchedRule.depositValue; }
   const servicePolicies = services.map(service => normalizePaymentPolicy(service.paymentPolicy));
   const amount = (policy: PaymentPolicy) => policy.depositType === "full" ? total ?? 1 : policy.depositType === "percent"
@@ -50,8 +58,10 @@ export async function estimatePaymentTerms(tx: Tx | typeof db, estimate: typeof 
   if (estimate.depositPaidAt || !["draft", "sent"].includes(estimate.status)) return estimate;
   const items = (selection?.lineItems ?? estimate.lineItems ?? []) as { serviceId?: number; isOptional?: boolean; acceptedByCustomer?: boolean }[];
   const total = selection?.total ?? estimate.total;
-  const { policy, depositConfigured } = await effectivePaymentPolicy(tx, estimate.tenantId, estimate.customerId, null,
+  const { policy, depositConfigured, company } = await effectivePaymentPolicy(tx, estimate.tenantId, estimate.customerId, null,
     { total, serviceIds: items.filter(item => !item.isOptional || item.acceptedByCustomer).map(item => item.serviceId!).filter(Boolean) });
+  const depositSettings = readEstimateDepositSettings(company?.paymentPolicy);
+  if (estimate.depositOverride && depositSettings.enabled && depositSettings.allowEstimateOverrides) return estimate;
   if (!depositConfigured && !policy.requirePrepay) return estimate;
   const paymentRequirement = policy.requirePrepay || policy.depositType === "full" ? "full" : policy.depositType === "fixed"
     ? "deposit_fixed" : policy.depositType === "percent" ? "deposit_pct" : "none";
@@ -63,9 +73,13 @@ export class SchedulingPaymentError extends Error { status = 422; }
 export async function schedulingPaymentCheck(tx: Tx, input: typeof jobsTable.$inferInsert) {
   const { policy, customer, company } = await effectivePaymentPolicy(tx, input.tenantId, input.customerId, input.serviceId, { subtotal: input.totalAmount ?? 0 });
   const confirmingSchedule = !input.status || input.status === "scheduled" || input.status === "in_progress";
-  // Require Deposit to Schedule is Estimate Settings: tenants.payment_policy.scheduleDeposit.
+  const depositSettings = readEstimateDepositSettings(company?.paymentPolicy);
+  const storedDepositSettings = hasStoredEstimateDepositSettings(company?.paymentPolicy);
+  // Require Deposit Before Scheduling is tenants.payment_policy.estimate_deposit_settings.
   const scheduleDeposit = readScheduleDeposit(company?.paymentPolicy);
-  const scheduleDepositApplies = confirmingSchedule && scheduleDeposit.enabled;
+  const scheduleDepositApplies = confirmingSchedule && (storedDepositSettings
+    ? depositSettings.enabled && depositSettings.requireBeforeScheduling
+    : scheduleDeposit.enabled);
   if (!policy.requirePrepay && !policy.requireCard && policy.depositType === "none" && !input.estimateId && !scheduleDepositApplies) return { reserveCredit: false, total: 0 };
   if (!customer) throw new SchedulingPaymentError("A customer is required before scheduling under this payment policy");
   await tx.select({ id: customersTable.id }).from(customersTable).where(eq(customersTable.id, customer.id)).for("update");
@@ -111,7 +125,8 @@ export async function schedulingPaymentCheck(tx: Tx, input: typeof jobsTable.$in
     if (scheduleMessage && (scheduleRequired >= estimateDepositRequired || scheduleRequired === 0)) throw new SchedulingPaymentError(scheduleMessage);
     if (scheduleRequired > depositRequired) depositRequired = scheduleRequired;
   }
-  if (depositRequired > 0 && Math.round(depositReceived * 100) < Math.round(depositRequired * 100)) throw new SchedulingPaymentError("The required estimate deposit must be received before this job can be scheduled");
+  const enforceDeposit = !storedDepositSettings || (depositSettings.enabled && depositSettings.requireBeforeScheduling);
+  if (enforceDeposit && depositRequired > 0 && Math.round(depositReceived * 100) < Math.round(depositRequired * 100)) throw new SchedulingPaymentError("The required estimate deposit must be received before this job can be scheduled");
   return { reserveCredit: false, total };
 }
 export async function jobScheduleDepositWarning(tenantId: number, job: { status: string; totalAmount: number; estimateId: number | null }) {

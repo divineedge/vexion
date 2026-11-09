@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstMatchingDepositRule, validateDepositRules, type DepositRule } from "./companyDepositRules";
+import { firstMatchingDepositRule, unpaidScheduleDepositMessage, validateDepositRules, validateScheduleDeposit, type DepositRule } from "./companyDepositRules";
 import { propertyInvoiceGroups } from "./invoicePropertyGrouping";
 
 const rule: DepositRule = { id: "fixture", name: "Matching rule", enabled: true, minTotal: 500, maxTotal: 1000,
@@ -27,6 +27,15 @@ describe("configurable deposit matching and property grouping", () => {
     expect(validateDepositRules([rule,rule])).not.toBeNull();
     expect(validateDepositRules([{...rule,depositType:"full",depositValue:null}])).toBeNull();
     expect(validateDepositRules([{...rule,depositType:"none",depositValue:null}])).toBeNull();
+  });
+  it("requires a fixed or percentage deposit before a job can be scheduled", () => {
+    expect(validateScheduleDeposit({ enabled: false, mode: "fixed", value: null })).toBeNull();
+    expect(validateScheduleDeposit({ enabled: true, mode: "percent", value: 25 })).toBeNull();
+    expect(validateScheduleDeposit({ enabled: true, mode: "percent", value: 101 })).not.toBeNull();
+    expect(unpaidScheduleDepositMessage({ enabled: true, mode: "fixed", value: 50 }, 0, 0)).toBe("A deposit of $50.00 is required before this job can be scheduled.");
+    expect(unpaidScheduleDepositMessage({ enabled: true, mode: "percent", value: 20 }, 200, 0)).toContain("$40.00");
+    expect(unpaidScheduleDepositMessage({ enabled: true, mode: "fixed", value: 50 }, 200, 50)).toBeNull();
+    expect(unpaidScheduleDepositMessage({ enabled: true, mode: "percent", value: 10 }, 0, 0)).toContain("positive");
   });
   it("combines by default and splits by property without losing unassigned charges", () => {
     const lines = [{propertyId:1,total:100},{propertyId:2,total:200},{propertyId:1,total:50},{propertyId:null,total:10}];

@@ -2,7 +2,8 @@ import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { usePortalListProperties, usePortalCreateServiceRequest, usePortalListJobs } from "@workspace/api-client-react";
+import { usePortalListProperties, usePortalCreateServiceRequest, usePortalListJobs, customFetch } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -29,6 +30,10 @@ export default function ServiceRequests() {
   const [, setLocation] = useLocation();
   const { data: properties, isLoading: isLoadingProperties } = usePortalListProperties();
   const createRequest = usePortalCreateServiceRequest();
+  const scheduleDeposit = useQuery({
+    queryKey: ["portal", "schedule-deposit"],
+    queryFn: () => customFetch<{ enabled: boolean; message: string | null }>("/api/portal/schedule-deposit"),
+  });
   const { data: allJobs } = usePortalListJobs();
   const openRequests = allJobs?.filter(j => j.status !== 'completed' && j.status !== 'cancelled') ?? [];
   const [requestSearch, setRequestSearch] = useState('');
@@ -66,6 +71,12 @@ export default function ServiceRequests() {
         <h1 className="text-3xl font-bold tracking-tight text-foreground">Request Service</h1>
         <p className="text-muted-foreground mt-1">Let us know what you need and we'll schedule a visit or provide a quote.</p>
       </div>
+
+      {scheduleDeposit.data?.message && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" data-testid="banner-portal-schedule-deposit">
+          {scheduleDeposit.data.message}
+        </div>
+      )}
 
       {openRequests.length > 0 && (
         <div className="rounded-xl border bg-muted/30 p-5 space-y-3">

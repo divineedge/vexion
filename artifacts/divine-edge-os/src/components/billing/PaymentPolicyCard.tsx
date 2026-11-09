@@ -104,7 +104,7 @@ function PaymentPolicyCardInner({ scope, id, canEdit, title }: Props) {
         <CardTitle className="text-base flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-primary" />{title ?? 'Payment requirements'}</CardTitle>
         <CardDescription>
           {isCompany
-            ? 'Company defaults. Services and customers can override deposits; a company prepayment requirement applies to every job.'
+            ? 'Estimate Settings default. New estimates use this deposit unless a rule, service, or customer override matches. A company prepayment requirement still applies to every job.'
             : scope === 'service'
               ? 'Overrides for this service. Customer settings take priority over service settings for deposit amount.'
               : 'Overrides for this customer. These take priority over service and company deposit settings.'}

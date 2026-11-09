@@ -162,7 +162,7 @@ function CompanyDepositRulesInner() {
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2"><ListOrdered className="w-4 h-4 text-primary" />Deposit rules by estimate</CardTitle>
         <CardDescription>
-          Rules are checked top to bottom and the first enabled match wins. Customer and service overrides still take priority; estimates that match no rule use the company default above.
+          New estimates read these rules from Estimate Settings. Rules are checked top to bottom and the first enabled match wins. Customer and service overrides still take priority; estimates that match no rule use the company default above.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

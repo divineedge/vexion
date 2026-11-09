@@ -944,7 +944,7 @@ export default function SchedulePage() {
           qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
           qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId) });
         },
-        onError: () => toast.error('Failed to update status'),
+        onError: (error: unknown) => toast.error(serverErrorMessage(error, 'Failed to update status')),
       },
     );
   };
@@ -2107,6 +2107,12 @@ export default function SchedulePage() {
                 )}
 
                 {/* Status change (non-tech) */}
+                {canManageJobs && (selectedJob as { scheduleDepositWarning?: string | null }).scheduleDepositWarning && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" data-testid="banner-schedule-deposit">
+                    {(selectedJob as { scheduleDepositWarning?: string | null }).scheduleDepositWarning}
+                  </div>
+                )}
+
                 {canManageJobs && (
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Update Status</label>

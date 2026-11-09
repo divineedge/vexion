@@ -29,6 +29,64 @@ export function validateDepositRules(value: unknown): string | null {
   return null;
 }
 
+/** Stored at tenants.payment_policy.scheduleDeposit. Invoice/scheduling settings, not estimate defaults. */
+export type ScheduleDepositSetting = {
+  enabled: boolean;
+  mode: "fixed" | "percent";
+  value: number | null;
+};
+
+export const scheduleDepositOff: ScheduleDepositSetting = { enabled: false, mode: "fixed", value: null };
+
+export function readScheduleDeposit(policy: unknown): ScheduleDepositSetting {
+  const nested = policy && typeof policy === "object" && !Array.isArray(policy)
+    ? (policy as { scheduleDeposit?: unknown }).scheduleDeposit
+    : undefined;
+  return normalizeScheduleDeposit(nested);
+}
+
+export function normalizeScheduleDeposit(value: unknown): ScheduleDepositSetting {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { ...scheduleDepositOff };
+  const raw = value as Partial<ScheduleDepositSetting>;
+  const mode = raw.mode === "percent" ? "percent" : "fixed";
+  const enabled = raw.enabled === true;
+  const amount = typeof raw.value === "number" && Number.isFinite(raw.value) ? raw.value : null;
+  return { enabled, mode, value: amount };
+}
+
+export function validateScheduleDeposit(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "Choose whether a deposit is required to schedule";
+  const raw = value as Partial<ScheduleDepositSetting>;
+  if (typeof raw.enabled !== "boolean" || (raw.mode !== "fixed" && raw.mode !== "percent")) return "Choose a fixed amount or a percentage";
+  if (!raw.enabled) return null;
+  if (typeof raw.value !== "number" || !Number.isFinite(raw.value) || raw.value <= 0) return "Enter a deposit greater than zero";
+  if (raw.mode === "percent" && raw.value > 100) return "Percentage cannot exceed 100";
+  if (raw.mode === "fixed" && raw.value > 1_000_000) return "Amount is too large";
+  if (Math.abs(raw.value * 100 - Math.round(raw.value * 100)) > 0.001) return "Use at most two decimal places";
+  return null;
+}
+
+export function scheduleDepositAmount(setting: ScheduleDepositSetting, total: number): { amount: number; needsPrice: boolean } {
+  if (!setting.enabled || !(setting.value && setting.value > 0)) return { amount: 0, needsPrice: false };
+  if (setting.mode === "percent") {
+    if (!(total > 0)) return { amount: 0, needsPrice: true };
+    return { amount: Math.round(total * setting.value) / 100, needsPrice: false };
+  }
+  return { amount: Math.round(setting.value * 100) / 100, needsPrice: false };
+}
+
+export function unpaidScheduleDepositMessage(setting: ScheduleDepositSetting, total: number, received: number): string | null {
+  if (!setting.enabled) return null;
+  const { amount, needsPrice } = scheduleDepositAmount(setting, total);
+  if (needsPrice && Math.round(received * 100) <= 0) {
+    return "Set a positive job or estimate total before scheduling. A percentage deposit is required.";
+  }
+  if (amount <= 0 || Math.round(received * 100) >= Math.round(amount * 100)) return null;
+  const money = amount.toLocaleString("en-US", { style: "currency", currency: "USD" });
+  if (setting.mode === "percent") return `A deposit of ${setting.value}% (${money}) is required before this job can be scheduled.`;
+  return `A deposit of ${money} is required before this job can be scheduled.`;
+}
+
 export function firstMatchingDepositRule(rules: DepositRule[], total: number | undefined, serviceIds: number[]) {
   return rules.find(rule => rule.enabled &&
     (rule.minTotal === null || total !== undefined && total >= rule.minTotal) &&

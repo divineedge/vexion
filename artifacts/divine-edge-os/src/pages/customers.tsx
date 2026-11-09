@@ -1,14 +1,14 @@
 import { StaffAuthorizationCheckbox } from '@/components/payments/CardAuthorization';
 import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import {
-  useListCustomers, getListCustomersQueryKey,
+  listCustomers, getListCustomersQueryKey,
   useCreateCustomer,
   useDeleteCustomer,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
   useListTags, getListTagsQueryKey,
   customFetch,
 } from '@workspace/api-client-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { loadStripe, type Stripe as StripeInstance } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { Card, CardContent } from '@/components/ui/card';
@@ -22,7 +22,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
-import { Search, Plus, Building, Phone, Mail, Save, X, User, Tag, FileText, Home, AlertTriangle, Filter, Zap, MapPin, CreditCard, DollarSign, Briefcase, MoreHorizontal, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Plus, Building, Phone, Mail, Save, X, User, Tag, FileText, Home, AlertTriangle, Filter, Zap, MapPin, CreditCard, DollarSign, Briefcase, MoreHorizontal, Trash2 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useLocation, useSearch } from 'wouter';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -280,7 +280,7 @@ export default function CustomersPage() {
   const [archiveView, setArchiveView] = useState<'active' | 'archived' | 'all'>('active');
   const [sortField, setSortField] = useState<'name' | 'totalSpend' | 'createdAt' | 'lastServiceDate'>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-  const [page, setPage] = useState(1);
+  const customerPageSize = 200;
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<Set<number>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleteConfirmation, setBulkDeleteConfirmation] = useState('');
@@ -346,18 +346,34 @@ export default function CustomersPage() {
 
   const queryParams = {
     q: debouncedSearch || undefined,
-    page,
-    limit: 50,
+    limit: customerPageSize,
     hasReminderFailure: reminderFailureFilter ? true : undefined,
     includeArchived: archiveView === 'all' ? true : undefined,
     archivedOnly: archiveView === 'archived' ? true : undefined,
     activeOnly: archiveView === 'active' ? true : undefined,
   };
 
-  const { data, isLoading } = useListCustomers(
-    queryParams as Parameters<typeof useListCustomers>[0],
-    { query: { queryKey: getListCustomersQueryKey(queryParams as Parameters<typeof useListCustomers>[0]) } },
-  );
+  const customerPages = useInfiniteQuery({
+    queryKey: getListCustomersQueryKey(queryParams as Parameters<typeof listCustomers>[0]),
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => listCustomers({ ...queryParams, page: pageParam } as Parameters<typeof listCustomers>[0]),
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((sum, page) => sum + (page.items?.length ?? 0), 0);
+      if (!lastPage.items?.length || loaded >= (lastPage.total ?? 0)) return undefined;
+      return allPages.length + 1;
+    },
+  });
+  useEffect(() => {
+    if (customerPages.hasNextPage && !customerPages.isFetchingNextPage) void customerPages.fetchNextPage();
+  }, [customerPages.hasNextPage, customerPages.isFetchingNextPage, customerPages.fetchNextPage]);
+  const data = customerPages.data ? {
+    items: customerPages.data.pages.flatMap(page => page.items),
+    total: customerPages.data.pages[0]?.total ?? 0,
+    customerLimit: (customerPages.data.pages[0] as { customerLimit?: number | null }).customerLimit ?? null,
+    activeCustomerCount: (customerPages.data.pages[0] as { activeCustomerCount?: number }).activeCustomerCount ?? 0,
+  } : undefined;
+  const isLoading = customerPages.isLoading;
+  const loadingMoreCustomers = customerPages.hasNextPage || customerPages.isFetchingNextPage;
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
   useEffect(() => {
     if (!creating || !settings?.businessState) return;
@@ -386,7 +402,6 @@ export default function CustomersPage() {
   ]));
 
   useEffect(() => {
-    setPage(1);
     setSelectedCustomerIds(new Set());
   }, [debouncedSearch, reminderFailureFilter, openBalanceFilter, noCardFilter, typeFilter, tagFilter, archiveView]);
 
@@ -406,8 +421,6 @@ export default function CustomersPage() {
       return sortDir === 'asc' ? cmp : -cmp;
     });
   const allVisibleSelected = visibleCustomers.length > 0 && visibleCustomers.every(customer => selectedCustomerIds.has(customer.id));
-  const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / 50));
-
   const toggleCustomerSelection = (customerId: number, selected: boolean) => {
     setSelectedCustomerIds(current => {
       const next = new Set(current);
@@ -544,7 +557,9 @@ export default function CustomersPage() {
     } catch (error) {
       const detail = (error as { status?: number; data?: { error?: string; existingCustomerId?: number; existingCustomer?: DuplicateCustomerDetails } }).data;
       const status = (error as { status?: number }).status;
-      if (status === 409 && detail?.existingCustomer) {
+      if (status === 402) {
+        toast.error(detail?.error || 'This plan has reached its customer limit. Upgrade the software plan to add more.');
+      } else if (status === 409 && detail?.existingCustomer) {
         const address = [form.physicalAddress, form.physicalCity, form.physicalState, form.physicalZip].filter(Boolean).join(', ');
         setDuplicateCustomer({
           existing: detail.existingCustomer,
@@ -647,6 +662,9 @@ export default function CustomersPage() {
             </div>
             {data?.total != null && (
               <span className="text-sm text-muted-foreground whitespace-nowrap" title="Customers matching current filters">{data.total.toLocaleString()} customer{data.total !== 1 ? 's' : ''}</span>
+            )}
+            {data?.customerLimit != null && data.activeCustomerCount >= data.customerLimit && (
+              <span className="text-sm text-amber-700" title="New customers are blocked until the software plan is upgraded">Plan limit reached ({data.customerLimit.toLocaleString()} customers). Upgrade to add more.</span>
             )}
             <Select value={archiveView} onValueChange={value => setArchiveView(value as 'active' | 'archived' | 'all')}>
               <SelectTrigger className="h-9 w-36 text-sm" title="Choose active, archived, or all customers" data-testid="select-customer-archive-view">
@@ -762,7 +780,7 @@ export default function CustomersPage() {
                   <Checkbox
                     checked={allVisibleSelected ? true : selectedCustomerIds.size > 0 ? 'indeterminate' : false}
                     onCheckedChange={checked => toggleVisibleCustomers(checked === true)}
-                    aria-label="Select all customers on this page"
+                    aria-label="Select all loaded customers"
                     data-testid="checkbox-select-page-customers"
                   />
                 </TableHead>
@@ -905,34 +923,8 @@ export default function CustomersPage() {
           {data && data.total > 0 && (
             <div className="px-4 py-3 border-t flex items-center justify-between gap-4">
               <div className="text-sm text-muted-foreground" data-testid="text-customer-page-summary">
-                Showing {((page - 1) * 50) + 1}–{Math.min(page * 50, data.total)} of {data.total.toLocaleString()} customers
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1"
-                  disabled={page <= 1 || isLoading}
-                  onClick={() => { setPage(current => Math.max(1, current - 1)); setSelectedCustomerIds(new Set()); }}
-                  data-testid="button-previous-customer-page"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  Previous
-                </Button>
-                <span className="text-sm text-muted-foreground px-2" data-testid="text-customer-page-number">
-                  Page {page} of {totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1"
-                  disabled={page >= totalPages || isLoading}
-                  onClick={() => { setPage(current => Math.min(totalPages, current + 1)); setSelectedCustomerIds(new Set()); }}
-                  data-testid="button-next-customer-page"
-                >
-                  Next
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
+                Showing {Math.min(data.items.length, data.total).toLocaleString()} of {data.total.toLocaleString()} customers
+                {loadingMoreCustomers ? ' — loading the rest…' : ''}
               </div>
             </div>
           )}

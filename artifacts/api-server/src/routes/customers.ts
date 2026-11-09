@@ -1,4 +1,6 @@
 import { assertSoftwareCapacity, withSoftwareCapacity } from "../lib/experienceCore";
+import { customerListPage } from "../lib/customerListPage";
+import { assertCustomerPlanLimit, CustomerPlanLimitError, readCustomerPlanUsage } from "../lib/customerCapacity";
 import { importedCustomerAddresses, importedServiceProperty } from "../lib/customerImportAddress";
 import { saveAcquisitionAttribution } from "../lib/acquisitionRewards";
 import {customerMergePreview,mergeCustomers} from '../lib/customerMerge';
@@ -456,9 +458,13 @@ const customersImportExportConfig: ImportExportEntityConfig = {
     return existing?.id ?? null;
   },
   insert: async (tenantId, values) => {
-    const [row] = await db.insert(customersTable).values({ tenantId, ...values } as typeof customersTable.$inferInsert).returning({ id: customersTable.id });
-    await ensureImportedServiceProperty(tenantId, row.id, values);
-    return row.id;
+    const rowId = await db.transaction(async (tx) => {
+      await assertCustomerPlanLimit(tenantId, 1, tx);
+      const [row] = await tx.insert(customersTable).values({ tenantId, ...values } as typeof customersTable.$inferInsert).returning({ id: customersTable.id });
+      return row.id;
+    });
+    await ensureImportedServiceProperty(tenantId, rowId, values);
+    return rowId;
   },
   update: async (tenantId, id, values) => {
     await db.update(customersTable).set(values as Partial<typeof customersTable.$inferInsert>)
@@ -688,10 +694,9 @@ async function fetchLastReminderFailures(tenantId: number, customerIds: number[]
 
 router.get("/customers", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { q, page = "1", limit = "20", hasReminderFailure, includeArchived, archivedOnly } = req.query as Record<string, string>;
-  const pageNum = Math.max(1, parseInt(page, 10));
-  const limitNum = Math.min(100, parseInt(limit, 10));
-  const offset = (pageNum - 1) * limitNum;
+  const { q, page, limit, hasReminderFailure, includeArchived, archivedOnly } = req.query as Record<string, string>;
+  const { page: pageNum, limit: limitNum } = customerListPage(page, limit);
+  const offset = limitNum == null ? 0 : (pageNum - 1) * limitNum;
 
   const archiveWhere = req.query.activeOnly==="true"
     ? and(eq(customersTable.tenantId,tenantId),isNull(customersTable.archivedAt))
@@ -739,13 +744,14 @@ router.get("/customers", async (req, res): Promise<void> => {
     .from(customersTable)
     .where(where);
 
-  const rows = await db
+  const customerQuery = db
     .select()
     .from(customersTable)
     .where(where)
-    .orderBy(desc(customersTable.createdAt))
-    .limit(limitNum)
-    .offset(offset);
+    .orderBy(desc(customersTable.createdAt));
+  const rows = limitNum == null
+    ? await customerQuery
+    : await customerQuery.limit(limitNum).offset(offset);
 
   const referrerIds = rows.map((row) => row.referringCustomerId).filter((value): value is number => value !== null);
   const [propCounts, primaryProperties, failureMap, lastServiceRows, referrers] = await Promise.all([
@@ -772,11 +778,13 @@ router.get("/customers", async (req, res): Promise<void> => {
         `) as unknown as Promise<{ rows: Array<{ customer_id: number; address: string }> }>
       : Promise.resolve({ rows: [] as Array<{ customer_id: number; address: string }> }),
     fetchLastReminderFailures(tenantId, rows.map(r => r.id)),
-    db
-      .select({ customerId: jobsTable.customerId, lastDate: sql<string>`max(${jobsTable.scheduledAt})` })
-      .from(jobsTable)
-      .where(and(eq(jobsTable.tenantId, tenantId), inArray(jobsTable.customerId, rows.map(r => r.id)), eq(jobsTable.status, 'completed')))
-      .groupBy(jobsTable.customerId),
+    rows.length > 0
+      ? db
+        .select({ customerId: jobsTable.customerId, lastDate: sql<string>`max(${jobsTable.scheduledAt})` })
+        .from(jobsTable)
+        .where(and(eq(jobsTable.tenantId, tenantId), inArray(jobsTable.customerId, rows.map(r => r.id)), eq(jobsTable.status, 'completed')))
+        .groupBy(jobsTable.customerId)
+      : Promise.resolve([]),
     referrerIds.length > 0
       ? db.select({ id: customersTable.id, name: customersTable.name }).from(customersTable)
           .where(and(eq(customersTable.tenantId, tenantId), inArray(customersTable.id, referrerIds)))
@@ -788,6 +796,7 @@ router.get("/customers", async (req, res): Promise<void> => {
   const lastServiceMap = Object.fromEntries(lastServiceRows.map(r => [r.customerId, r.lastDate]));
   const referrerMap = Object.fromEntries(referrers.map(r => [r.id, r.name]));
 
+  const planUsage = await readCustomerPlanUsage(tenantId);
   res.json({
     items: rows.map(c => ({ ...formatCustomer(c, {
       propertyCount: propMap[c.id] ?? 0,
@@ -795,9 +804,11 @@ router.get("/customers", async (req, res): Promise<void> => {
       lastReminderFailure: failureMap.get(c.id) ?? null,
       referringCustomerName: c.referringCustomerId ? referrerMap[c.referringCustomerId] ?? null : null,
     }), lastServiceDate: lastServiceMap[c.id] ?? null })),
-    total: count,
+    total: Number(count),
     page: pageNum,
-    limit: limitNum,
+    limit: limitNum ?? Number(count),
+    customerLimit: planUsage.limit,
+    activeCustomerCount: planUsage.activeCount,
   });
 });
 
@@ -865,7 +876,11 @@ router.post("/customers", async (req, res): Promise<void> => {
       : await geocodeAddress(physicalAddress, physicalCity, physicalState, physicalZip);
   }
 
-  const { customer, createdPropertyId } = await db.transaction(async (tx) => {
+  let customer: typeof customersTable.$inferSelect;
+  let createdPropertyId: number | undefined;
+  try {
+  ({ customer, createdPropertyId } = await db.transaction(async (tx) => {
+    await assertCustomerPlanLimit(tenantId, 1, tx);
     const [createdCustomer] = await tx.insert(customersTable).values({
       tenantId, name: name.trim(), email: emailValue, phone: phoneValue,
       secondaryPhone: secondaryPhone ?? null, company: company ?? null, customerType: customerType ?? null,
@@ -889,7 +904,14 @@ router.post("/customers", async (req, res): Promise<void> => {
       type: physicalPropertyType?.trim() || "residential",
     }).returning({ id: propertiesTable.id });
     return { customer: createdCustomer, createdPropertyId: property.id };
-  });
+  }));
+  } catch (error) {
+    if (error instanceof CustomerPlanLimitError) {
+      res.status(error.status).json({ error: error.message, code: error.code });
+      return;
+    }
+    throw error;
+  }
 
   await db.insert(activityLogTable).values({ tenantId, userId, type: "customer_added", message: `New customer "${name}" added${duplicate ? ` as a separate account after duplicate warning (matching record ${duplicate.id})` : ""}`, entityId: customer.id });
   void syncCustomerToMailchimp(tenantId, customer);

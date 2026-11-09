@@ -26,10 +26,14 @@ export const propertiesTable = pgTable("properties", {
   measurementPolygons: jsonb("measurement_polygons").default("[]"),
   /** Total serviceable area in sqft (sum of all active measurement zones) */
   serviceableAreaSqft: real("serviceable_area_sqft"),
+  /** Total perimeter in feet (sum of active section perimeters) */
+  perimeterLinearFeet: real("perimeter_linear_feet"),
   /** Cover photo URL (stored objectPath) */
   profilePhotoUrl: text("profile_photo_url"),
   /** Tags applied to this property — names drawn from the tenant's businessTagsTable library */
   tags: text("tags").array().default([]),
+  /** Inactive after a sale or move. History, measurements, and notes stay on the row. */
+  isArchived: boolean("is_archived").notNull().default(false),
   /** Set when the property is archived; null means active */
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

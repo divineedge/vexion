@@ -111,6 +111,7 @@ export default function PropertyDetailPage() {
     partsCost: '', laborCost: '', notes: '', performedAt: '',
   };
   const [repairForm, setRepairForm] = useState(EMPTY_REPAIR);
+  const [serviceLogs, setServiceLogs] = useState<Array<{ id: number; serviceName: string; performedAt: string }>>([]);
 
   const { data: property, isLoading } = useGetProperty(id, {
     query: { enabled: !!id, queryKey: getGetPropertyQueryKey(id) },
@@ -161,7 +162,10 @@ export default function PropertyDetailPage() {
 
   const preferredAreaUnit = (tenantSettings?.preferredAreaUnit as 'sqft' | 'acres') ?? 'sqft';
   const ZONE_COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#84CC16','#F97316','#EC4899','#6366F1'];
-  const rawZoneTypes = (tenantSettings as any)?.measurementZoneTypes as Array<{ id: string; name: string; color: string; mode?: 'area' | 'linear' }> | undefined;
+  const rawZoneTypes = (tenantSettings as any)?.measurementZoneTypes as Array<{ id: string; name: string; color: string; mode?: 'area' | 'linear' | 'both' }> | undefined;
+  const satelliteMeasurementMode = ((tenantSettings as any)?.satelliteMeasurementMode === 'area' || (tenantSettings as any)?.satelliteMeasurementMode === 'linear')
+    ? (tenantSettings as any).satelliteMeasurementMode as 'area' | 'linear'
+    : 'both';
   const zoneTypes = rawZoneTypes && rawZoneTypes.length > 0
     ? rawZoneTypes.map(zt => ({ ...zt, mode: zt.mode ?? 'area' as const }))
     // Legacy labels carry no mode info, so derived zone types always default to 'area'.
@@ -264,6 +268,13 @@ export default function PropertyDetailPage() {
     })();
   }, [property?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  React.useEffect(() => {
+    if (!id) return;
+    customFetch<Array<{ id: number; serviceName: string; performedAt: string }>>(`/api/properties/${id}/service-logs`)
+      .then(setServiceLogs)
+      .catch(() => setServiceLogs([]));
+  }, [id]);
+
   const loadOwnershipHistory = async () => {
     if (ownershipHistory.length > 0) return;
     setOwnershipLoading(true);
@@ -308,10 +319,10 @@ export default function PropertyDetailPage() {
   const handleArchiveProperty = async () => {
     setRecordActionBusy(true);
     try {
-      const archived = !(property as any).archivedAt;
+      const archived = !((property as any).isArchived || (property as any).archivedAt);
       await customFetch(`/api/properties/${id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ archivedAt: archived ? new Date().toISOString() : null }),
+        body: JSON.stringify({ isArchived: archived }),
       });
       qc.invalidateQueries({ queryKey: getGetPropertyQueryKey(id) });
       qc.invalidateQueries({ queryKey: ['properties'] });
@@ -383,6 +394,9 @@ export default function PropertyDetailPage() {
           toast.success(`Property transferred to ${updated.customerName}`);
           qc.invalidateQueries({ queryKey: getGetPropertyQueryKey(id) });
           setOwnershipHistory([]);
+          customFetch<Array<{ id: number; serviceName: string; performedAt: string }>>(`/api/properties/${id}/service-logs`)
+            .then(setServiceLogs)
+            .catch(() => undefined);
           setTransferOpen(false);
           setTransferForm({ newCustomerId: '', notes: '', customerSearch: '' });
         },
@@ -391,15 +405,16 @@ export default function PropertyDetailPage() {
     );
   };
 
-  const handleMeasurementsChange = (zones: MeasurementZone[], totalSqft: number) => {
+  const handleMeasurementsChange = (zones: MeasurementZone[], totalSqft: number, totalPerimeterFt = 0) => {
     setSavingMeasurements(true);
     updateMeasurements.mutate(
       {
         id,
         data: {
-          measurementPolygons: zones,
+          measurementPolygons: zones as unknown as NonNullable<Parameters<typeof updateMeasurements.mutate>[0]['data']['measurementPolygons']>,
           serviceableAreaSqft: totalSqft || undefined,
-        },
+          perimeterLinearFeet: totalPerimeterFt || undefined,
+        } as Parameters<typeof updateMeasurements.mutate>[0]['data'],
       },
       {
         onSuccess: () => {
@@ -545,9 +560,9 @@ export default function PropertyDetailPage() {
           </Button>
           {canManageOffice && (
             <>
-              <Button variant="outline" title={(property as any).archivedAt ? 'Restore this property' : 'Archive this property'} onClick={() => setArchiveDialogOpen(true)} className="gap-2">
-                {(property as any).archivedAt ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
-                {(property as any).archivedAt ? 'Unarchive' : 'Archive'}
+              <Button variant="outline" title={((property as any).isArchived || (property as any).archivedAt) ? 'Restore this property' : 'Archive this property and keep its measurements and history'} onClick={() => setArchiveDialogOpen(true)} className="gap-2">
+                {((property as any).isArchived || (property as any).archivedAt) ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
+                {((property as any).isArchived || (property as any).archivedAt) ? 'Unarchive' : 'Archive Property'}
               </Button>
               <Button variant="destructive" title="Permanently delete this property" onClick={() => setDeleteDialogOpen(true)} className="gap-2">
                 <Trash2 className="w-4 h-4" /> Delete
@@ -641,6 +656,7 @@ export default function PropertyDetailPage() {
                   geofenceLng={property.geofenceLng}
                   geofenceUnit={defaultGeofenceUnit}
                   preferredAreaUnit={preferredAreaUnit}
+                  defaultMeasurementMode={satelliteMeasurementMode}
                   zoneTypes={zoneTypes}
                   onPinChange={handlePinChange}
                   onMeasurementsChange={handleMeasurementsChange}
@@ -826,6 +842,20 @@ export default function PropertyDetailPage() {
               </Button>
             </CardHeader>
             <CardContent className="p-0">
+              {serviceLogs.length > 0 && (
+                <div className="border-b px-4 py-3">
+                  <p className="text-sm font-medium">Service dates kept with this land</p>
+                  <p className="text-xs text-muted-foreground mb-2">Completed visits from previous owners. Prices, invoices, and their messages are not included.</p>
+                  <ul className="space-y-1 text-sm">
+                    {serviceLogs.map(log => (
+                      <li key={log.id} className="flex justify-between gap-3">
+                        <span>{log.serviceName}</span>
+                        <span className="text-muted-foreground">{new Date(log.performedAt).toLocaleDateString()}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -1412,16 +1442,16 @@ export default function PropertyDetailPage() {
       <Dialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{(property as any).archivedAt ? 'Restore property?' : 'Archive property?'}</DialogTitle>
+            <DialogTitle>{((property as any).isArchived || (property as any).archivedAt) ? 'Restore property?' : 'Archive property?'}</DialogTitle>
             <DialogDescription>
-              {(property as any).archivedAt
+              {((property as any).isArchived || (property as any).archivedAt)
                 ? `Restore ${property.address} and make it active again?`
-                : `Archive ${property.address}? Its history will be retained, but it will no longer appear in active property workflows.`}
+                : `Archive ${property.address}? Measurements, notes, and service history stay on the record. It leaves active property lists until someone restores it or transfers it to a new customer.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" disabled={recordActionBusy} onClick={() => setArchiveDialogOpen(false)}>Cancel</Button>
-            <Button disabled={recordActionBusy} onClick={handleArchiveProperty}>{recordActionBusy ? 'Saving…' : (property as any).archivedAt ? 'Unarchive Property' : 'Archive Property'}</Button>
+            <Button disabled={recordActionBusy} onClick={handleArchiveProperty}>{recordActionBusy ? 'Saving…' : ((property as any).isArchived || (property as any).archivedAt) ? 'Unarchive Property' : 'Archive Property'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1558,7 +1588,7 @@ export default function PropertyDetailPage() {
               <GitMerge className="w-5 h-5" /> Transfer Property
             </SheetTitle>
             <SheetDescription>
-              Move this property to a different customer. All job history will be preserved on the property record.
+              The land keeps its drawings, area, perimeter, and property notes. Invoices, estimates, quotes, and the previous owner’s messages stay on their account. Completed service dates stay so the next crew can see what was done.
             </SheetDescription>
           </SheetHeader>
           <div className="space-y-5 pb-6">
@@ -1633,7 +1663,7 @@ export default function PropertyDetailPage() {
             <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 p-3">
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <p className="text-xs text-amber-700 dark:text-amber-400">
-                This action will reassign the property to the new customer. All existing jobs and history remain linked to this property.
+                Open visits for the previous owner are cancelled. Their invoices and messages are not copied to the new customer.
               </p>
             </div>
 

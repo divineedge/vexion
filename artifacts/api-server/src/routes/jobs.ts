@@ -45,7 +45,7 @@ import { automaticInvoiceSending, holdUnpricedJobs } from "../lib/billingAutomat
 import { chemicalCompletionError, normalizeFieldRequirements } from "../lib/serviceFieldRequirements";
 import { resolveJobAssignmentRecipientIds, sendStaffPush } from "../lib/pushNotifications";
 import { canAccessJobMessages } from "../lib/jobMessageAccess";
-import { type PricingTier } from "../lib/pricingMatrix";
+import { measurementChargeLines, resolveServicePrice, type PricingTier } from "../lib/pricingMatrix";
 import {
   importUpload,
   handleExportRequest,
@@ -74,7 +74,9 @@ type JobMeasurementPolygon = {
   label?: string | null;
   areaSqft?: number | null;
   lengthFt?: number | null;
-  mode?: "area" | "linear";
+  area_sqft?: number | null;
+  perimeter_linear_feet?: number | null;
+  mode?: "area" | "linear" | "both";
   enabled?: boolean;
 };
 type MeasurementZoneType = { id: string; name: string; mode?: "area" | "linear" };
@@ -109,12 +111,14 @@ async function resolveServiceJobSnapshot(
     };
   }
 
-  if (service.pricingMode !== "matrix" || !propertyId) {
+  const measuredModes = ["per_sqft", "per_linear_ft", "area_and_linear", "matrix"];
+  if (!measuredModes.includes(service.pricingMode) || !propertyId) {
     return { service, estimatedDuration: service.estimatedDuration ?? null };
   }
   const [property] = await db.select({
     measurementPolygons: propertiesTable.measurementPolygons,
     serviceableAreaSqft: propertiesTable.serviceableAreaSqft,
+    perimeterLinearFeet: propertiesTable.perimeterLinearFeet,
   }).from(propertiesTable).where(and(eq(propertiesTable.id, propertyId), eq(propertiesTable.tenantId, tenantId)));
   if (!property) return { service, estimatedDuration: service.estimatedDuration ?? null };
 
@@ -131,29 +135,35 @@ async function resolveServiceJobSnapshot(
     if (polygon.enabled === false) continue;
     const zone = polygon.zoneTypeId ? zoneById.get(polygon.zoneTypeId) : (polygon.label ? zoneByName.get(polygon.label) : undefined);
     if (service.linkedZoneTypeId && zone?.id !== service.linkedZoneTypeId && polygon.zoneTypeId !== service.linkedZoneTypeId) continue;
-    const mode = polygon.mode ?? zone?.mode ?? "area";
-    if (mode === "linear" && Number.isFinite(polygon.lengthFt)) { lengthFt += polygon.lengthFt!; foundMeasurement = true; }
-    if (mode !== "linear" && Number.isFinite(polygon.areaSqft)) { areaSqft += polygon.areaSqft!; foundMeasurement = true; }
+    const area = Number(polygon.area_sqft ?? polygon.areaSqft ?? 0);
+    const perimeter = Number(polygon.perimeter_linear_feet ?? polygon.lengthFt ?? 0);
+    if (Number.isFinite(area) && area > 0) { areaSqft += area; foundMeasurement = true; }
+    if (Number.isFinite(perimeter) && perimeter > 0) { lengthFt += perimeter; foundMeasurement = true; }
   }
   // An unlinked service can use the property's established aggregate area.
   if (!service.linkedZoneTypeId && !foundMeasurement && property.serviceableAreaSqft != null) {
     areaSqft = property.serviceableAreaSqft;
     foundMeasurement = true;
   }
+  if (!service.linkedZoneTypeId && lengthFt === 0 && property.perimeterLinearFeet != null && property.perimeterLinearFeet > 0) {
+    lengthFt = property.perimeterLinearFeet;
+    foundMeasurement = true;
+  }
   if (!foundMeasurement) return { service, estimatedDuration: service.estimatedDuration ?? null };
 
-  const quantity = service.linkedZoneTypeId && zoneById.get(service.linkedZoneTypeId)?.mode === "linear" ? lengthFt : areaSqft;
   const tiers = Array.isArray(service.pricingMatrix) ? service.pricingMatrix as PricingTier[] : [];
+  const basis = tiers.find(tier => tier.basis)?.basis ?? "area";
+  const quantity = basis === "linear" ? lengthFt : areaSqft;
   const tier = [...tiers].sort((a, b) => a.minSqft - b.minSqft)
     .find(candidate => quantity >= candidate.minSqft && (candidate.maxSqft === null || quantity <= candidate.maxSqft));
-  if (!tier) return { service, estimatedDuration: service.estimatedDuration ?? null };
-  const price = tier.maxSqft === null && tier.perSqftRate != null && tier.perSqftRate > 0
-    ? tier.perSqftRate * quantity : tier.price;
+  if (service.pricingMode === "matrix" && !tier) return { service, estimatedDuration: service.estimatedDuration ?? null };
+  const price = resolveServicePrice(service.pricingMode, service.basePrice, tiers, areaSqft, lengthFt, service.linearRate);
+  const lines = measurementChargeLines(service.name, service.pricingMode, service.basePrice, service.linearRate ?? 0, tiers, areaSqft, lengthFt);
   return {
     service,
-    estimatedDuration: tier.estimatedMinutes != null && tier.estimatedMinutes > 0 ? tier.estimatedMinutes : service.estimatedDuration ?? null,
+    estimatedDuration: tier?.estimatedMinutes != null && tier.estimatedMinutes > 0 ? tier.estimatedMinutes : service.estimatedDuration ?? null,
     totalAmount: price,
-    lineItems: [{ serviceId: service.id, description: service.name, quantity: 1, qty: 1, unitPrice: price, total: price }],
+    lineItems: lines.map(line => ({ serviceId: service.id, description: line.description, quantity: line.qty, qty: line.qty, unitPrice: line.unitPrice, total: line.total })),
   };
 }
 

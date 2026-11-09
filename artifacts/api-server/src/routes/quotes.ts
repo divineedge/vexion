@@ -1,7 +1,7 @@
 import { paymentGuardedJobInsert } from "../lib/paymentPolicy";
 import { Router, type IRouter } from "express";
 import { db, quotesTable, propertiesTable, customersTable, servicesTable, jobsTable, blueprintsTable, tenantsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { getTenantId } from "../lib/tenantHelper";
 import { resolveServicePrice, type PricingTier } from "../lib/pricingMatrix";
 import crypto from "crypto";
@@ -29,7 +29,9 @@ export interface QuoteMeasurementPolygon {
   zoneTypeId?: string | null;
   areaSqft?: number | null;
   lengthFt?: number | null;
-  mode?: "area" | "linear";
+  area_sqft?: number | null;
+  perimeter_linear_feet?: number | null;
+  mode?: "area" | "linear" | "both";
   enabled?: boolean;
 }
 
@@ -65,12 +67,10 @@ export function resolveQuoteMeasurements(
       continue;
     }
 
-    const mode = polygon.mode ?? configuredZoneType?.mode ?? "area";
-    if (mode === "linear") {
-      lengthFt += polygon.lengthFt ?? 0;
-    } else {
-      areaSqft += polygon.areaSqft ?? 0;
-    }
+    const area = Number(polygon.area_sqft ?? polygon.areaSqft ?? 0);
+    const perimeter = Number(polygon.perimeter_linear_feet ?? polygon.lengthFt ?? 0);
+    if (Number.isFinite(area)) areaSqft += area;
+    if (Number.isFinite(perimeter)) lengthFt += perimeter;
   }
 
   return {
@@ -110,10 +110,11 @@ router.post("/properties/:id/quotes", async (req, res): Promise<void> => {
   let serviceName = "Custom Quote";
   let serviceDescription: string | null = null;
   let calculatedPrice = 0;
-  let resolvedPriceType = ["flat", "per_sqft", "per_linear_ft", "matrix"].includes(priceType)
+  let resolvedPriceType = ["flat", "per_sqft", "per_linear_ft", "area_and_linear", "matrix"].includes(priceType)
     ? priceType
     : "flat";
   let resolvedAreaSqft = totalAreaSqft ? parseFloat(totalAreaSqft) : 0;
+  let resolvedPerimeterFt = 0;
 
   if (serviceId) {
     const [service] = await db
@@ -124,7 +125,7 @@ router.post("/properties/:id/quotes", async (req, res): Promise<void> => {
     if (service) {
       serviceName = service.name;
       serviceDescription = service.description ?? null;
-      resolvedPriceType = ["flat", "per_sqft", "per_linear_ft", "matrix"].includes(service.pricingMode)
+      resolvedPriceType = ["flat", "per_sqft", "per_linear_ft", "area_and_linear", "matrix"].includes(service.pricingMode)
         ? service.pricingMode
         : "flat";
 
@@ -140,19 +141,18 @@ router.post("/properties/:id/quotes", async (req, res): Promise<void> => {
         service.linkedZoneTypeId,
       );
       resolvedAreaSqft = measurements.areaSqft;
+      resolvedPerimeterFt = measurements.lengthFt;
 
       // Server always resolves the authoritative price from service configuration.
       // Client-supplied calculatedPrice is intentionally ignored for service-backed quotes
       // to prevent price manipulation.
-      const matrixQuantity = measurements.mode === "linear"
-        ? measurements.lengthFt
-        : measurements.areaSqft;
       calculatedPrice = resolveServicePrice(
         resolvedPriceType,
         service.basePrice,
         service.pricingMatrix as PricingTier[] | null,
-        resolvedPriceType === "matrix" ? matrixQuantity : measurements.areaSqft,
+        measurements.areaSqft,
         measurements.lengthFt,
+        service.linearRate,
       );
     }
   } else {
@@ -175,6 +175,7 @@ router.post("/properties/:id/quotes", async (req, res): Promise<void> => {
     serviceDescription,
     selectedZoneLabels: selectedZoneLabels ?? [],
     totalAreaSqft: resolvedAreaSqft || null,
+    perimeterLinearFeet: resolvedPerimeterFt || null,
     calculatedPrice,
     priceType: resolvedPriceType,
     status: "pending",
@@ -192,7 +193,7 @@ router.get("/properties/:id/quotes", async (req, res): Promise<void> => {
   const quotes = await db
     .select()
     .from(quotesTable)
-    .where(and(eq(quotesTable.propertyId, propertyId), eq(quotesTable.tenantId, tenantId)))
+    .where(and(eq(quotesTable.propertyId, propertyId), eq(quotesTable.tenantId, tenantId), isNull(quotesTable.detachedCustomerId)))
     .orderBy(quotesTable.createdAt);
 
   res.json(quotes.map(formatQuote));
@@ -215,7 +216,7 @@ publicQuotesRouter.get("/quotes/:token", async (req, res): Promise<void> => {
     .leftJoin(blueprintsTable, eq(quotesTable.blueprintId, blueprintsTable.id))
     .where(eq(quotesTable.token, token));
 
-  if (!row) { res.status(404).json({ error: "Quote not found" }); return; }
+  if (!row || row.quote.detachedCustomerId != null) { res.status(404).json({ error: "Quote not found" }); return; }
 
   const q = row.quote;
   const now = new Date();

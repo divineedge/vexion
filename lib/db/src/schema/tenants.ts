@@ -66,6 +66,8 @@ export const tenantsTable = pgTable("tenants", {
   ),
   /** Preferred area unit for measurements: 'sqft' | 'acres' */
   preferredAreaUnit: text("preferred_area_unit").notNull().default("sqft"),
+  /** Default satellite capture: 'area' | 'linear' | 'both' */
+  satelliteMeasurementMode: text("satellite_measurement_mode").notNull().default("both"),
   // ── Communications ───────────────────────────────────────────────────────
   /** Phone number used for automated service reminders and transactional SMS */
   mainPhoneNumber: text("main_phone_number"),

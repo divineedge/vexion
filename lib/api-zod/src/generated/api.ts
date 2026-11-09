@@ -845,7 +845,7 @@ export const GetPortalPropertyMeasurementsResponse = zod.object({
   "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs. For mode \'linear\' this is an open polyline path; for \'area\' (default) it is a closed polygon ring.'),
   "areaSqft": zod.number().describe('Computed polygon area in square feet. 0 for linear zones.'),
   "lengthFt": zod.number().nullish().describe('Computed polyline length in feet. Only set for mode \'linear\' zones (fence lines, edging, hedges, etc).'),
-  "mode": zod.enum(['area', 'linear']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
+  "mode": zod.enum(['area', 'linear', 'both']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
   "enabled": zod.boolean(),
   "color": zod.string()
 }))
@@ -2737,7 +2737,7 @@ export const ListPropertiesResponseItem = zod.object({
   "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs. For mode \'linear\' this is an open polyline path; for \'area\' (default) it is a closed polygon ring.'),
   "areaSqft": zod.number().describe('Computed polygon area in square feet. 0 for linear zones.'),
   "lengthFt": zod.number().nullish().describe('Computed polyline length in feet. Only set for mode \'linear\' zones (fence lines, edging, hedges, etc).'),
-  "mode": zod.enum(['area', 'linear']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
+  "mode": zod.enum(['area', 'linear', 'both']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
   "enabled": zod.boolean(),
   "color": zod.string()
 })).optional(),
@@ -2790,7 +2790,7 @@ export const CreatePropertyResponse = zod.object({
   "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs. For mode \'linear\' this is an open polyline path; for \'area\' (default) it is a closed polygon ring.'),
   "areaSqft": zod.number().describe('Computed polygon area in square feet. 0 for linear zones.'),
   "lengthFt": zod.number().nullish().describe('Computed polyline length in feet. Only set for mode \'linear\' zones (fence lines, edging, hedges, etc).'),
-  "mode": zod.enum(['area', 'linear']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
+  "mode": zod.enum(['area', 'linear', 'both']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
   "enabled": zod.boolean(),
   "color": zod.string()
 })).optional(),
@@ -2832,7 +2832,7 @@ export const GetPropertyResponse = zod.object({
   "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs. For mode \'linear\' this is an open polyline path; for \'area\' (default) it is a closed polygon ring.'),
   "areaSqft": zod.number().describe('Computed polygon area in square feet. 0 for linear zones.'),
   "lengthFt": zod.number().nullish().describe('Computed polyline length in feet. Only set for mode \'linear\' zones (fence lines, edging, hedges, etc).'),
-  "mode": zod.enum(['area', 'linear']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
+  "mode": zod.enum(['area', 'linear', 'both']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
   "enabled": zod.boolean(),
   "color": zod.string()
 })).optional(),
@@ -2867,7 +2867,7 @@ export const UpdatePropertyBody = zod.object({
   "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs. For mode \'linear\' this is an open polyline path; for \'area\' (default) it is a closed polygon ring.'),
   "areaSqft": zod.number().describe('Computed polygon area in square feet. 0 for linear zones.'),
   "lengthFt": zod.number().nullish().describe('Computed polyline length in feet. Only set for mode \'linear\' zones (fence lines, edging, hedges, etc).'),
-  "mode": zod.enum(['area', 'linear']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
+  "mode": zod.enum(['area', 'linear', 'both']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
   "enabled": zod.boolean(),
   "color": zod.string()
 })).optional(),
@@ -2899,7 +2899,7 @@ export const UpdatePropertyResponse = zod.object({
   "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs. For mode \'linear\' this is an open polyline path; for \'area\' (default) it is a closed polygon ring.'),
   "areaSqft": zod.number().describe('Computed polygon area in square feet. 0 for linear zones.'),
   "lengthFt": zod.number().nullish().describe('Computed polyline length in feet. Only set for mode \'linear\' zones (fence lines, edging, hedges, etc).'),
-  "mode": zod.enum(['area', 'linear']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
+  "mode": zod.enum(['area', 'linear', 'both']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
   "enabled": zod.boolean(),
   "color": zod.string()
 })).optional(),
@@ -2957,7 +2957,7 @@ export const UpdateGeofencePinResponse = zod.object({
   "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs. For mode \'linear\' this is an open polyline path; for \'area\' (default) it is a closed polygon ring.'),
   "areaSqft": zod.number().describe('Computed polygon area in square feet. 0 for linear zones.'),
   "lengthFt": zod.number().nullish().describe('Computed polyline length in feet. Only set for mode \'linear\' zones (fence lines, edging, hedges, etc).'),
-  "mode": zod.enum(['area', 'linear']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
+  "mode": zod.enum(['area', 'linear', 'both']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
   "enabled": zod.boolean(),
   "color": zod.string()
 })).optional(),
@@ -2984,7 +2984,7 @@ export const UpdatePropertyMeasurementsBody = zod.object({
   "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs. For mode \'linear\' this is an open polyline path; for \'area\' (default) it is a closed polygon ring.'),
   "areaSqft": zod.number().describe('Computed polygon area in square feet. 0 for linear zones.'),
   "lengthFt": zod.number().nullish().describe('Computed polyline length in feet. Only set for mode \'linear\' zones (fence lines, edging, hedges, etc).'),
-  "mode": zod.enum(['area', 'linear']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
+  "mode": zod.enum(['area', 'linear', 'both']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
   "enabled": zod.boolean(),
   "color": zod.string()
 })).optional(),
@@ -3013,7 +3013,7 @@ export const UpdatePropertyMeasurementsResponse = zod.object({
   "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs. For mode \'linear\' this is an open polyline path; for \'area\' (default) it is a closed polygon ring.'),
   "areaSqft": zod.number().describe('Computed polygon area in square feet. 0 for linear zones.'),
   "lengthFt": zod.number().nullish().describe('Computed polyline length in feet. Only set for mode \'linear\' zones (fence lines, edging, hedges, etc).'),
-  "mode": zod.enum(['area', 'linear']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
+  "mode": zod.enum(['area', 'linear', 'both']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
   "enabled": zod.boolean(),
   "color": zod.string()
 })).optional(),
@@ -3156,7 +3156,7 @@ export const GetQuoteByTokenResponse = zod.object({
   "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs. For mode \'linear\' this is an open polyline path; for \'area\' (default) it is a closed polygon ring.'),
   "areaSqft": zod.number().describe('Computed polygon area in square feet. 0 for linear zones.'),
   "lengthFt": zod.number().nullish().describe('Computed polyline length in feet. Only set for mode \'linear\' zones (fence lines, edging, hedges, etc).'),
-  "mode": zod.enum(['area', 'linear']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
+  "mode": zod.enum(['area', 'linear', 'both']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
   "enabled": zod.boolean(),
   "color": zod.string()
 })).optional(),
@@ -18286,7 +18286,7 @@ export const GetGuestDocumentPortalResponse = zod.object({
   "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs. For mode \'linear\' this is an open polyline path; for \'area\' (default) it is a closed polygon ring.'),
   "areaSqft": zod.number().describe('Computed polygon area in square feet. 0 for linear zones.'),
   "lengthFt": zod.number().nullish().describe('Computed polyline length in feet. Only set for mode \'linear\' zones (fence lines, edging, hedges, etc).'),
-  "mode": zod.enum(['area', 'linear']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
+  "mode": zod.enum(['area', 'linear', 'both']).optional().describe('Measurement mode this zone was drawn in. Defaults to \'area\' when absent (pre-existing zones).'),
   "enabled": zod.boolean(),
   "color": zod.string()
 }))

@@ -20,6 +20,8 @@ export const quotesTable = pgTable("quotes", {
   selectedZoneLabels: jsonb("selected_zone_labels").default("[]"),
   /** Total area in sqft for the selected zones */
   totalAreaSqft: real("total_area_sqft"),
+  /** Total perimeter in feet for the selected zones */
+  perimeterLinearFeet: real("perimeter_linear_feet"),
   /** Calculated price based on service base price × area (or flat rate) */
   calculatedPrice: real("calculated_price").notNull().default(0),
   /** Pricing type for this quote: 'flat' | 'per_sqft' */
@@ -32,6 +34,8 @@ export const quotesTable = pgTable("quotes", {
   respondedAt: timestamp("responded_at", { withTimezone: true }),
   /** Customer notes on respond */
   customerNote: text("customer_note"),
+  /** Previous owner when this quote was detached during a property transfer. */
+  detachedCustomerId: integer("detached_customer_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

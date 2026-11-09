@@ -24,6 +24,10 @@ export async function installVendorCategoriesSchema(){
  await db.execute(sql`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS contact_phone text`);
  await db.execute(sql`ALTER TABLE expense_entries ADD COLUMN IF NOT EXISTS shipping_amount real NOT NULL DEFAULT 0,ADD COLUMN IF NOT EXISTS capitalize_shipping boolean NOT NULL DEFAULT false`);
  await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS portal_show_measurements boolean NOT NULL DEFAULT true`);
+ await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS satellite_measurement_mode text NOT NULL DEFAULT 'both'`);
+ await db.execute(sql`ALTER TABLE properties ADD COLUMN IF NOT EXISTS perimeter_linear_feet real`);
+ await db.execute(sql`ALTER TABLE services ADD COLUMN IF NOT EXISTS linear_rate real NOT NULL DEFAULT 0`);
+ await db.execute(sql`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS perimeter_linear_feet real`);
  await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS document_link_destination text NOT NULL DEFAULT 'document'`);
  await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS automatic_invoice_payment_mode text NOT NULL DEFAULT 'manual'`);
  await db.execute(sql`ALTER TABLE customers ADD COLUMN IF NOT EXISTS automatic_payment_authorized_at timestamptz, ADD COLUMN IF NOT EXISTS payment_authorization_method_id text`);
@@ -41,8 +45,21 @@ export async function installVendorCategoriesSchema(){
  await db.execute(sql`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS contact_name text, ADD COLUMN IF NOT EXISTS office_phone text`);
  await db.execute(sql`CREATE TABLE IF NOT EXISTS expense_categories(tenant_id integer NOT NULL REFERENCES tenants(id),key text NOT NULL,name text NOT NULL,PRIMARY KEY(tenant_id,key))`);
  await db.execute(sql`ALTER TABLE expense_categories ADD COLUMN IF NOT EXISTS deleted_at timestamptz`);
- await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS max_customers integer`);
-}
+<await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS max_customers integer`);
+await db.execute(sql`ALTER TABLE properties ADD COLUMN IF NOT EXISTS is_archived boolean NOT NULL DEFAULT false`);
+await db.execute(sql`ALTER TABLE properties SET is_archived = TRUE WHERE archived_at IS NOT NULL AND is_archived = false`);
+await db.execute(sql`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS detached_customer_id integer`);
+await db.execute(sql`CREATE TABLE IF NOT EXISTS property_service_logs (
+    id serial PRIMARY KEY,
+    tenant_id integer NOT NULL REFERENCES tenants(id),
+    property_id integer NOT NULL REFERENCES properties(id),
+    service_id integer,
+    service_name text NOT NULL,
+    performed_at timestamp NOT NULL,
+    source_job_id integer,
+    created_at timestamp NOT NULL DEFAULT now()
+)`);
+await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS property_service_logs_source_job ON property_service_logs (property_id, source_job_id)`);
 export async function listVendorCategories(tenantId:number,handle:HrDb=db,includeDeleted=false){
  const names=new Map(DEFAULT_EXPENSE_CATEGORIES.map(key=>[key,categoryLabel(key)]));
  const legacy=await handle.execute(sql`SELECT DISTINCT category FROM ${vendorsTable} WHERE tenant_id=${tenantId} AND category IS NOT NULL AND category<>'' UNION SELECT DISTINCT category FROM ${expenseEntriesTable} WHERE tenant_id=${tenantId} AND category<>''`);

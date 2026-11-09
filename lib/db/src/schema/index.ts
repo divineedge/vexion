@@ -11,6 +11,7 @@ export * from "./customers";
 export * from './customerMerges';
 export * from "./properties";
 export * from "./propertyHistory";
+export * from "./propertyServiceLogs";
 export * from "./jobs";
 export * from "./crews";
 export * from "./inventory";

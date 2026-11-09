@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { directionsUrl } from '@/lib/directions';
 import {
   useListProperties, getListPropertiesQueryKey,
@@ -12,7 +12,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Plus, Navigation } from 'lucide-react';
+import { Search, Plus, Navigation, GitMerge } from 'lucide-react';
+import PropertyTransferDialog from '@/components/property/PropertyTransferDialog';
+import { customFetch } from '@workspace/api-client-react';
 import PropertyThumbnail from '@/components/media/PropertyThumbnail';
 import { useLocation } from 'wouter';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -53,10 +55,14 @@ export default function PropertiesPage() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [geofenceFilter, setGeofenceFilter] = useState(false);
   const [sizeSortDir, setSizeSortDir] = useState<'none' | 'asc' | 'desc'>('none');
+  const [archiveView, setArchiveView] = useState<'active' | 'archived'>('active');
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [addressMatches, setAddressMatches] = useState<Array<{ id: number; address: string; customerName: string | null; customerId: number; isArchived?: boolean; archivedAt?: string | null }>>([]);
 
+  const listParams = { q: debouncedSearch || undefined, includeArchived: archiveView === 'archived' ? true : undefined };
   const { data, isLoading } = useListProperties(
-    { q: debouncedSearch || undefined },
-    { query: { queryKey: getListPropertiesQueryKey({ q: debouncedSearch || undefined }) } }
+    listParams,
+    { query: { queryKey: getListPropertiesQueryKey(listParams) } }
   );
 
   const customerParams = { limit: 100 };
@@ -65,6 +71,18 @@ export default function PropertiesPage() {
   });
 
   const createProperty = useCreateProperty();
+
+  useEffect(() => {
+    if (!addOpen || form.address.trim().length < 4) {
+      setAddressMatches([]);
+      return;
+    }
+    let cancelled = false;
+    customFetch<typeof addressMatches>(`/api/properties/check?address=${encodeURIComponent(form.address.trim())}`)
+      .then(rows => { if (!cancelled) setAddressMatches(rows); })
+      .catch(() => { if (!cancelled) setAddressMatches([]); });
+    return () => { cancelled = true; };
+  }, [addOpen, form.address]);
 
   const handleCreate = () => {
     if (!form.address || !form.customerId) {
@@ -117,9 +135,14 @@ export default function PropertiesPage() {
             onImportComplete={() => qc.invalidateQueries({ queryKey: getListPropertiesQueryKey() })}
           />
           {canManageOffice && (
-            <Button onClick={() => setAddOpen(true)} className="gap-2" title="Add a new service property">
-              <Plus className="w-4 h-4" /> Add Property
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => setTransferOpen(true)} className="gap-2" title="Move an existing or archived property to another customer">
+                <GitMerge className="w-4 h-4" /> Transfer Property
+              </Button>
+              <Button onClick={() => setAddOpen(true)} className="gap-2" title="Add a new service property">
+                <Plus className="w-4 h-4" /> Add Property
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -145,6 +168,15 @@ export default function PropertiesPage() {
                 <SelectItem value="all">All Types</SelectItem>
                 <SelectItem value="residential">Residential</SelectItem>
                 <SelectItem value="commercial">Commercial</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={archiveView} onValueChange={value => setArchiveView(value as 'active' | 'archived')}>
+              <SelectTrigger className="w-44 h-9" title="Show active properties or properties archived after a sale or move">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active properties</SelectItem>
+                <SelectItem value="archived">Archived properties</SelectItem>
               </SelectContent>
             </Select>
             <button
@@ -173,12 +205,12 @@ export default function PropertiesPage() {
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Loading properties...</TableCell>
                 </TableRow>
-              ) : (data ?? []).filter(p => typeFilter === 'all' || p.type === typeFilter).filter(p => !geofenceFilter || !!(p as any).geofenceLat).length === 0 ? (
+              ) : (data ?? []).filter(p => archiveView === 'archived' ? !!((p as any).isArchived || (p as any).archivedAt) : !((p as any).isArchived || (p as any).archivedAt)).filter(p => typeFilter === 'all' || p.type === typeFilter).filter(p => !geofenceFilter || !!(p as any).geofenceLat).length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No properties found.</TableCell>
                 </TableRow>
               ) : (
-                (data ?? []).filter(p => typeFilter === 'all' || p.type === typeFilter).filter(p => !geofenceFilter || !!(p as any).geofenceLat).sort((a, b) => {
+                (data ?? []).filter(p => archiveView === 'archived' ? !!((p as any).isArchived || (p as any).archivedAt) : !((p as any).isArchived || (p as any).archivedAt)).filter(p => typeFilter === 'all' || p.type === typeFilter).filter(p => !geofenceFilter || !!(p as any).geofenceLat).sort((a, b) => {
                   if (sizeSortDir === 'none') return 0;
                   const aS = (a as any).size ?? (a as any).serviceableAreaSqft ?? 0;
                   const bS = (b as any).size ?? (b as any).serviceableAreaSqft ?? 0;
@@ -202,6 +234,7 @@ export default function PropertiesPage() {
                             onClick={e => e.stopPropagation()}
                           >{property.address}</a>
                           <div className="text-xs text-muted-foreground" title={`${property.city}, ${property.state} ${property.zip}`}>{property.city}, {property.state} {property.zip}</div>
+                          {((property as any).isArchived || (property as any).archivedAt) && <Badge variant="outline" className="mt-1">Archived</Badge>}
                         </div>
                       </div>
                     </TableCell>
@@ -261,6 +294,44 @@ export default function PropertiesPage() {
               <label className="text-sm font-medium">Street Address <span className="text-destructive">*</span></label>
               <AddressAutocomplete title="Property street address" placeholder="123 Main St" value={form.address} onChange={address => setForm(f => ({ ...f, address, lat: null, lng: null }))} onSelect={item => setForm(f => ({ ...f, address: item.address, city: item.city ?? '', state: item.state ?? '', zip: item.zip ?? '', lat: item.lat, lng: item.lng }))} />
               {form.lat !== null && form.lng !== null && <p className="text-xs text-muted-foreground mt-1">Location selected: {form.lat.toFixed(5)}, {form.lng.toFixed(5)}</p>}
+              {addressMatches.length > 0 && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm">
+                  <p className="font-medium">This address already exists</p>
+                  <p className="mt-1 text-muted-foreground">Transfer the existing property instead of creating a second record. Drawings and service dates move with the land. Billing stays with the current owner.</p>
+                  {addressMatches.slice(0, 3).map(match => (
+                    <p key={match.id} className="mt-1">{match.address}{match.customerName ? ` · ${match.customerName}` : ''}{(match.isArchived || match.archivedAt) ? ' · archived' : ''}</p>
+                  ))}
+                  {canManageOffice && form.customerId && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="mt-2"
+                      onClick={async () => {
+                        const match = addressMatches[0];
+                        if (Number(form.customerId) === match.customerId) {
+                          toast.error('That customer already owns this property');
+                          return;
+                        }
+                        try {
+                          await customFetch(`/api/properties/${match.id}/transfer`, {
+                            method: 'POST',
+                            body: JSON.stringify({ newCustomerId: Number(form.customerId) }),
+                          });
+                          toast.success('Property transferred');
+                          qc.invalidateQueries({ queryKey: getListPropertiesQueryKey() });
+                          setAddOpen(false);
+                          setForm(EMPTY_FORM);
+                          setLocation(`/properties/${match.id}`);
+                        } catch (error) {
+                          toast.error((error as { data?: { error?: string } }).data?.error || 'Transfer failed');
+                        }
+                      }}
+                    >
+                      Transfer existing property
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-3 gap-3">
@@ -329,6 +400,11 @@ export default function PropertiesPage() {
           </div>
         </SheetContent>
       </Sheet>
+      <PropertyTransferDialog
+        open={transferOpen}
+        onOpenChange={setTransferOpen}
+        onTransferred={() => qc.invalidateQueries({ queryKey: getListPropertiesQueryKey() })}
+      />
     </div>
   );
 }

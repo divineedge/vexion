@@ -26,7 +26,9 @@ import { Search, Plus, Building, Phone, Mail, Save, X, User, Tag, FileText, Home
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useLocation, useSearch } from 'wouter';
 import { useDebounce } from '@/hooks/use-debounce';
+import PropertyTransferDialog from '@/components/property/PropertyTransferDialog';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 import { getActiveCustomerFields, isCustomerFieldVisible } from '@/lib/fieldConfig';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import { CustomerDuplicateDialog, type DuplicateCustomerDetails } from '@/components/customer/CustomerDuplicateDialog';
@@ -265,6 +267,7 @@ const BLANK: FormData = {
 };
 
 export default function CustomersPage() {
+  const { canManageOffice } = useAuth();
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
   const [, setLocation] = useLocation();
@@ -283,6 +286,7 @@ export default function CustomersPage() {
   const [bulkDeleteConfirmation, setBulkDeleteConfirmation] = useState('');
 
   const [creating, setCreating] = useState(false);
+  const [transferCustomer, setTransferCustomer] = useState<{ id: number; name: string } | null>(null);
   const [form, setForm] = useState<FormData>(BLANK);
   const [tagInput, setTagInput] = useState('');
   const [createCampaignId, setCreateCampaignId] = useState('');
@@ -535,7 +539,8 @@ export default function CustomersPage() {
       setForm(BLANK);
       setUseMailingAsService(true);
       setCreateCampaignId('');
-      setLocation(`/customers/${customer.id}`);
+      if (canManageOffice) setTransferCustomer({ id: customer.id, name: customer.name });
+      else setLocation(`/customers/${customer.id}`);
     } catch (error) {
       const detail = (error as { status?: number; data?: { error?: string; existingCustomerId?: number; existingCustomer?: DuplicateCustomerDetails } }).data;
       const status = (error as { status?: number }).status;
@@ -615,6 +620,11 @@ export default function CustomersPage() {
             exportQuery={{ q: debouncedSearch || undefined, hasReminderFailure: reminderFailureFilter ? 'true' : undefined, ...(archiveView === 'all' ? { includeArchived: 'true' } : archiveView === 'archived' ? { archivedOnly: 'true' } : { activeOnly: 'true' }), ...(typeFilter !== 'all' ? { customerType: typeFilter } : {}) }}
             onImportComplete={() => qc.invalidateQueries({ queryKey: getListCustomersQueryKey() })}
           />
+          {canManageOffice && (
+            <Button variant="outline" title="Assign an existing or archived property to a customer" onClick={() => setTransferCustomer({ id: 0, name: '' })} className="gap-2">
+              Transfer Property
+            </Button>
+          )}
           <Button title="Create a new customer" onClick={() => { setForm(f => ({ ...f, name: search.trim() || f.name })); setUseMailingAsService(true); setCreating(true); }} className="gap-2">
             <Plus className="w-4 h-4" /> Add Customer
           </Button>
@@ -1237,6 +1247,17 @@ export default function CustomersPage() {
           </div>
         </SheetContent>
       </Sheet>
+      <PropertyTransferDialog
+        open={transferCustomer != null}
+        onOpenChange={open => {
+          if (open) return;
+          const customerId = transferCustomer && transferCustomer.id > 0 ? transferCustomer.id : null;
+          setTransferCustomer(null);
+          if (customerId) setLocation(`/customers/${customerId}`);
+        }}
+        presetCustomerId={transferCustomer && transferCustomer.id > 0 ? transferCustomer.id : undefined}
+        presetCustomerName={transferCustomer && transferCustomer.id > 0 ? transferCustomer.name : undefined}
+      />
     </div>
   );
 }

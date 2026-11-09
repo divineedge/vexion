@@ -1,7 +1,7 @@
 import { paymentGuardedJobInsert } from "../lib/paymentPolicy";
 import { Router, type IRouter } from "express";
 import { db, quotesTable, propertiesTable, customersTable, servicesTable, jobsTable, blueprintsTable, tenantsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { getTenantId } from "../lib/tenantHelper";
 import { resolveServicePrice, type PricingTier } from "../lib/pricingMatrix";
 import crypto from "crypto";
@@ -192,7 +192,7 @@ router.get("/properties/:id/quotes", async (req, res): Promise<void> => {
   const quotes = await db
     .select()
     .from(quotesTable)
-    .where(and(eq(quotesTable.propertyId, propertyId), eq(quotesTable.tenantId, tenantId)))
+    .where(and(eq(quotesTable.propertyId, propertyId), eq(quotesTable.tenantId, tenantId), isNull(quotesTable.detachedCustomerId)))
     .orderBy(quotesTable.createdAt);
 
   res.json(quotes.map(formatQuote));
@@ -215,7 +215,7 @@ publicQuotesRouter.get("/quotes/:token", async (req, res): Promise<void> => {
     .leftJoin(blueprintsTable, eq(quotesTable.blueprintId, blueprintsTable.id))
     .where(eq(quotesTable.token, token));
 
-  if (!row) { res.status(404).json({ error: "Quote not found" }); return; }
+  if (!row || row.quote.detachedCustomerId != null) { res.status(404).json({ error: "Quote not found" }); return; }
 
   const q = row.quote;
   const now = new Date();

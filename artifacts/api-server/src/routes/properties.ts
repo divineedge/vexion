@@ -1,7 +1,8 @@
 import { withSoftwareCapacity,assertSoftwareCapacity } from "../lib/experienceCore";
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, propertiesTable, customersTable, propertyOwnershipHistoryTable, activityLogTable, jobsTable, estimatesTable, tenantsTable, usersTable } from "@workspace/db";
-import { eq, and, ilike, sql, desc, isNull } from "drizzle-orm";
+import { db, propertiesTable, customersTable, propertyOwnershipHistoryTable, propertyServiceLogsTable, activityLogTable, jobsTable, estimatesTable, tenantsTable, usersTable, quotesTable, customerPlansTable, jobRequestsTable, websiteIntakeSubmissionsTable, servicesTable } from "@workspace/db";
+import { eq, and, ilike, sql, desc, isNull, isNotNull, or, inArray } from "drizzle-orm";
+import { propertyTransferPlan } from "../lib/propertyTransfer";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { resolveStaffSession } from "./auth";
@@ -491,6 +492,7 @@ function formatProperty(p: typeof propertiesTable.$inferSelect, customerName?: s
     measurementPolygons: withoutAutomaticSuggestedBoundary(p.measurementPolygons),
     serviceableAreaSqft: p.serviceableAreaSqft ?? null,
     customerName: customerName ?? null,
+    isArchived: p.isArchived || p.archivedAt != null,
     archivedAt: p.archivedAt?.toISOString() ?? null,
     createdAt: p.createdAt.toISOString(),
   };
@@ -530,11 +532,15 @@ router.get("/properties/check", async (req, res): Promise<void> => {
 
 router.get("/properties", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { customerId, q, includeArchived } = req.query as Record<string, string>;
+  const { customerId, q, includeArchived, archivedOnly } = req.query as Record<string, string>;
 
-  let baseWhere = includeArchived === "true"
-    ? eq(propertiesTable.tenantId, tenantId)
-    : and(eq(propertiesTable.tenantId, tenantId), isNull(propertiesTable.archivedAt));
+  const archived = or(eq(propertiesTable.isArchived, true), isNotNull(propertiesTable.archivedAt));
+  const active = and(eq(propertiesTable.isArchived, false), isNull(propertiesTable.archivedAt));
+  let baseWhere = archivedOnly === "true"
+    ? and(eq(propertiesTable.tenantId, tenantId), archived)
+    : includeArchived === "true"
+      ? eq(propertiesTable.tenantId, tenantId)
+      : and(eq(propertiesTable.tenantId, tenantId), active);
   if (customerId) {
     const cid = parseInt(customerId, 10);
     baseWhere = and(baseWhere, eq(propertiesTable.customerId, cid)) as typeof baseWhere;
@@ -625,7 +631,7 @@ router.get("/properties/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const [[row], lastJobRows] = await Promise.all([
+  const [[row], lastJobRows, lastLogRows] = await Promise.all([
     db
       .select({ property: propertiesTable, customerName: customersTable.name, customerPhone: customersTable.phone, customerEmail: customersTable.email })
       .from(propertiesTable)
@@ -640,10 +646,18 @@ router.get("/properties/:id", async (req, res): Promise<void> => {
       .where(and(eq(jobsTable.propertyId, id), eq(jobsTable.tenantId, tenantId), eq(jobsTable.status, 'completed')))
       .orderBy(desc(jobsTable.completedAt))
       .limit(1),
+    db
+      .select({ performedAt: propertyServiceLogsTable.performedAt })
+      .from(propertyServiceLogsTable)
+      .where(and(eq(propertyServiceLogsTable.propertyId, id), eq(propertyServiceLogsTable.tenantId, tenantId)))
+      .orderBy(desc(propertyServiceLogsTable.performedAt))
+      .limit(1),
   ]);
 
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
-  const lastServicedAt = lastJobRows[0]?.completedAt?.toISOString() ?? null;
+  const jobDate = lastJobRows[0]?.completedAt ?? null;
+  const logDate = lastLogRows[0]?.performedAt ?? null;
+  const lastServicedAt = [jobDate, logDate].filter((value): value is Date => value instanceof Date).sort((a, b) => b.getTime() - a.getTime())[0]?.toISOString() ?? null;
   res.json({ ...formatProperty(row.property, row.customerName), lastServicedAt, customerPhone: row.customerPhone ?? null, customerEmail: row.customerEmail ?? null });
 });
 
@@ -652,15 +666,16 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { address, city, state, zip, lat, lng, notes, type, measurementPolygons, serviceableAreaSqft, size, sizeUnit, tags, archivedAt } = req.body;
+  const { address, city, state, zip, lat, lng, notes, type, measurementPolygons, serviceableAreaSqft, size, sizeUnit, tags, archivedAt, isArchived } = req.body;
+  const archiveRequested = archivedAt !== undefined || isArchived !== undefined;
 
-  if (archivedAt !== undefined) {
+  if (archiveRequested) {
     const userId = getUserId(req);
     if (!(await isAdminRole(tenantId, userId))) {
       res.status(403).json({ error: "Restricted to owner/office/department manager roles" });
       return;
     }
-    if (archivedAt !== null && (
+    if (archivedAt !== undefined && archivedAt !== null && (
       typeof archivedAt !== "string"
       || !/^\d{4}-\d{2}-\d{2}T/.test(archivedAt)
       || Number.isNaN(Date.parse(archivedAt))
@@ -668,7 +683,15 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
       res.status(400).json({ error: "archivedAt must be an ISO timestamp string or null" });
       return;
     }
+    if (isArchived !== undefined && typeof isArchived !== "boolean") {
+      res.status(400).json({ error: "isArchived must be true or false" });
+      return;
+    }
   }
+  const nextArchived = isArchived === true || (isArchived !== false && archivedAt != null);
+  const archivePatch = !archiveRequested ? {} : nextArchived
+    ? { isArchived: true, archivedAt: archivedAt ? new Date(archivedAt) : new Date() }
+    : { isArchived: false, archivedAt: null };
 
   // Auto-geocode when address fields change and lat/lng not explicitly provided
   const addressChanged = address !== undefined || city !== undefined || state !== undefined || zip !== undefined;
@@ -703,9 +726,9 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
   }
 
   const [updated] = await db.transaction(async tx=>{
-    if(archivedAt===null){
-      const [existing]=await tx.select({archivedAt:propertiesTable.archivedAt}).from(propertiesTable).where(and(eq(propertiesTable.id,id),eq(propertiesTable.tenantId,tenantId))).for("update");
-      if(existing?.archivedAt)await assertSoftwareCapacity(tx,tenantId,"properties");
+    if(archiveRequested && !nextArchived){
+      const [existing]=await tx.select({archivedAt:propertiesTable.archivedAt,isArchived:propertiesTable.isArchived}).from(propertiesTable).where(and(eq(propertiesTable.id,id),eq(propertiesTable.tenantId,tenantId))).for("update");
+      if(existing?.archivedAt || existing?.isArchived)await assertSoftwareCapacity(tx,tenantId,"properties");
     }
     return tx.update(propertiesTable)
     .set({
@@ -722,7 +745,7 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
       ...(size !== undefined && { size }),
       ...(sizeUnit !== undefined && { sizeUnit }),
       ...(tags !== undefined && { tags }),
-      ...(archivedAt !== undefined && { archivedAt: archivedAt === null ? null : new Date(archivedAt) }),
+      ...archivePatch,
     })
     .where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)))
     .returning();
@@ -824,10 +847,15 @@ router.patch("/properties/:id/geofence", async (req, res): Promise<void> => {
   res.json(formatProperty(updated, row?.customerName));
 });
 
-// Transfer property to a new customer
+// Transfer property to a new customer. Physical measurements and land service dates stay.
+// Billing, quotes, messages, and the previous owner's jobs stay with that customer.
 router.post("/properties/:id/transfer", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) {
+    res.status(403).json({ error: "Restricted to owner/office/department manager roles" });
+    return;
+  }
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
@@ -837,37 +865,119 @@ router.post("/properties/:id/transfer", async (req, res): Promise<void> => {
   const [property] = await db.select().from(propertiesTable).where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)));
   if (!property) { res.status(404).json({ error: "Property not found" }); return; }
 
-  const newCustId = parseInt(newCustomerId, 10);
+  const newCustId = parseInt(String(newCustomerId), 10);
+  if (!Number.isInteger(newCustId)) { res.status(400).json({ error: "newCustomerId is required" }); return; }
+  if (newCustId === property.customerId) { res.status(400).json({ error: "Property already belongs to that customer" }); return; }
   const [newCustomer] = await db.select().from(customersTable).where(and(eq(customersTable.id, newCustId), eq(customersTable.tenantId, tenantId)));
   if (!newCustomer) { res.status(404).json({ error: "New customer not found" }); return; }
 
-  // All three writes are atomic in one transaction
+  const previousCustomerId = property.customerId;
   const result = await db.transaction(async (tx) => {
+    if (property.isArchived || property.archivedAt) await assertSoftwareCapacity(tx, tenantId, "properties");
+    const jobs = await tx.select({
+      id: jobsTable.id,
+      status: jobsTable.status,
+      completedAt: jobsTable.completedAt,
+      scheduledAt: jobsTable.scheduledAt,
+      serviceId: jobsTable.serviceId,
+      serviceName: servicesTable.name,
+      title: jobsTable.title,
+    }).from(jobsTable)
+      .leftJoin(servicesTable, eq(jobsTable.serviceId, servicesTable.id))
+      .where(and(eq(jobsTable.propertyId, id), eq(jobsTable.tenantId, tenantId)));
+    const plan = propertyTransferPlan(jobs);
+
+    if (plan.logs.length > 0) {
+      await tx.insert(propertyServiceLogsTable).values(plan.logs.map(log => ({
+        tenantId,
+        propertyId: id,
+        serviceId: log.serviceId,
+        serviceName: log.serviceName,
+        performedAt: log.performedAt,
+        sourceJobId: log.sourceJobId,
+      }))).onConflictDoNothing();
+    }
+    if (plan.cancelJobIds.length > 0) {
+      await tx.update(jobsTable).set({
+        status: "cancelled",
+        cancelReason: "Property transferred to a new owner",
+        isRecurrencePaused: true,
+        propertyId: null,
+      }).where(and(eq(jobsTable.tenantId, tenantId), inArray(jobsTable.id, plan.cancelJobIds)));
+    }
+    if (plan.detachJobIds.length > 0) {
+      await tx.update(jobsTable).set({ propertyId: null, isRecurrencePaused: true })
+        .where(and(eq(jobsTable.tenantId, tenantId), inArray(jobsTable.id, plan.detachJobIds)));
+    }
+
+    const detachedEstimates = await tx.update(estimatesTable).set({ propertyId: null })
+      .where(and(eq(estimatesTable.tenantId, tenantId), eq(estimatesTable.propertyId, id)))
+      .returning({ id: estimatesTable.id });
+    const detachedQuotes = await tx.update(quotesTable).set({ detachedCustomerId: previousCustomerId })
+      .where(and(eq(quotesTable.tenantId, tenantId), eq(quotesTable.propertyId, id), isNull(quotesTable.detachedCustomerId)))
+      .returning({ id: quotesTable.id });
+    await tx.update(jobRequestsTable).set({ propertyId: null })
+      .where(and(eq(jobRequestsTable.tenantId, tenantId), eq(jobRequestsTable.propertyId, id)));
+    await tx.update(websiteIntakeSubmissionsTable).set({ propertyId: null })
+      .where(and(eq(websiteIntakeSubmissionsTable.tenantId, tenantId), eq(websiteIntakeSubmissionsTable.propertyId, id)));
+    const cancelledPlans = await tx.update(customerPlansTable).set({ status: "cancelled", autoRenew: false })
+      .where(and(
+        eq(customerPlansTable.tenantId, tenantId),
+        eq(customerPlansTable.propertyId, id),
+        eq(customerPlansTable.customerId, previousCustomerId),
+        sql`${customerPlansTable.status} <> 'cancelled'`,
+      ))
+      .returning({ id: customerPlansTable.id });
+
     await tx.insert(propertyOwnershipHistoryTable).values({
       tenantId,
       propertyId: id,
-      previousCustomerId: property.customerId,
+      previousCustomerId,
       newCustomerId: newCustId,
       transferredByUserId: userId,
       notes: notes ?? null,
     });
 
     const [updated] = await tx.update(propertiesTable)
-      .set({ customerId: newCustId })
+      .set({ customerId: newCustId, isArchived: false, archivedAt: null })
       .where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)))
       .returning();
 
     await tx.insert(activityLogTable).values({
       tenantId, userId,
       type: "property_transferred",
-      message: `Property "${updated.address}" transferred to ${newCustomer.name}`,
+      message: `Property "${updated.address}" transferred to ${newCustomer.name}. Measurements stayed with the property. Billing and messages stayed with the previous owner.`,
       entityId: id,
     });
 
-    return updated;
+    return {
+      property: updated,
+      summary: {
+        serviceLogsKept: plan.logs.length,
+        jobsDetached: plan.detachJobIds.length,
+        estimatesDetached: detachedEstimates.length,
+        quotesDetached: detachedQuotes.length,
+        plansCancelled: cancelledPlans.length,
+      },
+    };
   });
 
-  res.json(formatProperty(result, newCustomer.name));
+  res.json({ ...formatProperty(result.property, newCustomer.name), transfer: result.summary });
+});
+
+router.get("/properties/:id/service-logs", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+  const rows = await db.select().from(propertyServiceLogsTable)
+    .where(and(eq(propertyServiceLogsTable.tenantId, tenantId), eq(propertyServiceLogsTable.propertyId, id)))
+    .orderBy(desc(propertyServiceLogsTable.performedAt));
+  res.json(rows.map(row => ({
+    id: row.id,
+    serviceId: row.serviceId,
+    serviceName: row.serviceName,
+    performedAt: row.performedAt.toISOString(),
+  })));
 });
 
 // POST /properties/backfill-geocodes — one-time admin endpoint to geocode all properties with null lat/lng

@@ -41,6 +41,20 @@ export async function installVendorCategoriesSchema(){
  await db.execute(sql`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS contact_name text, ADD COLUMN IF NOT EXISTS office_phone text`);
  await db.execute(sql`CREATE TABLE IF NOT EXISTS expense_categories(tenant_id integer NOT NULL REFERENCES tenants(id),key text NOT NULL,name text NOT NULL,PRIMARY KEY(tenant_id,key))`);
  await db.execute(sql`ALTER TABLE expense_categories ADD COLUMN IF NOT EXISTS deleted_at timestamptz`);
+ await db.execute(sql`ALTER TABLE properties ADD COLUMN IF NOT EXISTS is_archived boolean NOT NULL DEFAULT false`);
+ await db.execute(sql`UPDATE properties SET is_archived = true WHERE archived_at IS NOT NULL AND is_archived = false`);
+ await db.execute(sql`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS detached_customer_id integer`);
+ await db.execute(sql`CREATE TABLE IF NOT EXISTS property_service_logs (
+   id serial PRIMARY KEY,
+   tenant_id integer NOT NULL REFERENCES tenants(id),
+   property_id integer NOT NULL REFERENCES properties(id),
+   service_id integer,
+   service_name text NOT NULL,
+   performed_at timestamptz NOT NULL,
+   source_job_id integer,
+   created_at timestamptz NOT NULL DEFAULT now()
+ )`);
+ await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS property_service_logs_source_job ON property_service_logs (property_id, source_job_id)`);
 }
 export async function listVendorCategories(tenantId:number,handle:HrDb=db,includeDeleted=false){
  const names=new Map(DEFAULT_EXPENSE_CATEGORIES.map(key=>[key,categoryLabel(key)]));

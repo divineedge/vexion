@@ -75,6 +75,10 @@ export const tenantsTable = pgTable("tenants", {
   /** Default satellite capture: 'area' | 'linear' | 'both' */
   satelliteMeasurementMode: text("satellite_measurement_mode").notNull().default("both"),
   // ── Communications ───────────────────────────────────────────────────────
+  /** Automated service reminders: 'enabled' | 'disabled' | 'selective'. */
+  serviceRemindersMode: text("service_reminders_mode").notNull().default("enabled"),
+  /** Services that do not receive automated reminders when mode is selective. */
+  excludedReminderServiceIds: integer("excluded_reminder_service_ids").array().notNull().default([]),
   /** Phone number used for automated service reminders and transactional SMS */
   mainPhoneNumber: text("main_phone_number"),
   /** Phone number used for marketing/campaign SMS blasts */

@@ -24,6 +24,7 @@ export * from "./activityLog";
 export * from "./callbacks";
 export * from "./marketingCampaigns";
 export * from "./services";
+export * from "./matrixPricing";
 export * from "./chemicals";
 export * from "./equipment";
 export * from "./quotes";

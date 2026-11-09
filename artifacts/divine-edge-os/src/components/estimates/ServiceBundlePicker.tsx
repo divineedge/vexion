@@ -13,7 +13,17 @@ export interface BundleFields {
   unitPrice: number;
 }
 
-export interface CatalogServiceLite { id: number; name: string; basePrice: number; category: string | null; sku?: string | null }
+export interface CatalogServiceLite {
+  id: number;
+  name: string;
+  basePrice: number;
+  category: string | null;
+  sku?: string | null;
+  pricingMode?: string | null;
+  pricingMatrix?: unknown;
+  linearRate?: number | null;
+  linkedZoneTypeId?: string | null;
+}
 
 /** Read-side migration: legacy secondary service becomes first extra; dedupe; never include primary. */
 export function normalizeBundle<T extends Partial<BundleFields>>(item: T, catalog?: CatalogServiceLite[] | null): T {
@@ -59,6 +69,8 @@ interface Props {
   catalog: CatalogServiceLite[] | null | undefined;
   onChange: (patch: Partial<BundleFields>) => void;
   compact?: boolean;
+  /** Matrix and measurement price for a catalog service. Falls back to the catalog base price. */
+  priceFor?: (service: CatalogServiceLite) => number;
 }
 
 /**
@@ -66,11 +78,12 @@ interface Props {
  * Price math only runs on explicit selection changes. The primary's frozen price is derived
  * as current unitPrice minus current extras, so manual overrides survive add/remove.
  */
-export function ServiceBundlePicker({ item, catalog, onChange, compact }: Props) {
+export function ServiceBundlePicker({ item, catalog, onChange, compact, priceFor }: Props) {
   const n = normalizeBundle(item, catalog);
   const extras = n.bundledServices ?? [];
   const services = catalog ?? [];
   const extrasSum = (xs: BundledService[]) => xs.reduce((s, x) => s + x.unitPrice, 0);
+  const servicePrice = (svc: CatalogServiceLite) => priceFor?.(svc) ?? svc.basePrice;
   const prevDesc = combinedName(n.serviceName, extras);
   const descFor = (primary: string | undefined, xs: BundledService[]) =>
     !item.description || item.description === prevDesc ? combinedName(primary, xs) : item.description;
@@ -93,7 +106,7 @@ export function ServiceBundlePicker({ item, catalog, onChange, compact }: Props)
       serviceId: svc.id, serviceName: svc.name,
       bundledServices: xs, secondaryServiceId: xs[0]?.serviceId, secondaryServiceName: xs[0]?.serviceName,
       description: descFor(svc.name, xs),
-      unitPrice: Math.round((svc.basePrice + extrasSum(xs)) * 100) / 100,
+      unitPrice: Math.round((servicePrice(svc) + extrasSum(xs)) * 100) / 100,
     });
   }
   function setExtras(xs: BundledService[]) {
@@ -107,7 +120,7 @@ export function ServiceBundlePicker({ item, catalog, onChange, compact }: Props)
   const addExtra = (v: string) => {
     const svc = services.find(s => String(s.id) === v);
     if (!svc || svc.id === n.serviceId || extras.some(e => e.serviceId === svc.id)) return;
-    setExtras([...extras, { serviceId: svc.id, serviceName: svc.name, unitPrice: svc.basePrice }]);
+    setExtras([...extras, { serviceId: svc.id, serviceName: svc.name, unitPrice: servicePrice(svc) }]);
   };
   const available = services.filter(s => s.id !== n.serviceId && !extras.some(e => e.serviceId === s.id));
 

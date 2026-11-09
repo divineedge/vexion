@@ -39,7 +39,8 @@ import {
   useGetTenantSettings, getGetTenantSettingsQueryKey,
   useListInventoryItems, getListInventoryItemsQueryKey,
 } from '@workspace/api-client-react';
-import { ServiceBundlePicker, normalizeBundle, bundlePayload, type BundledService } from '@/components/estimates/ServiceBundlePicker';
+import { ServiceBundlePicker, normalizeBundle, bundlePayload, type BundledService, type CatalogServiceLite } from '@/components/estimates/ServiceBundlePicker';
+import { servicePriceForProperty, propertyServiceMeasurements } from '@/lib/pricingMatrix';
 import { useDebounce } from '@/hooks/use-debounce';
 import { format } from 'date-fns';
 import {
@@ -84,6 +85,8 @@ interface LineItem {
   // Catalog linking
   serviceId?: number;
   serviceName?: string;
+  /** Set when an admin types a price. Matrix prices refill only while this is false. */
+  priceOverridden?: boolean;
   secondaryServiceId?: number;
   secondaryServiceName?: string;
   /** Additional bundled services (primary excluded) */
@@ -94,12 +97,7 @@ interface LineItem {
   planBillingCycle?: string;
 }
 
-interface CatalogService {
-  id: number;
-  name: string;
-  basePrice: number;
-  category: string | null;
-}
+type CatalogService = CatalogServiceLite;
 
 interface CatalogPlan {
   id: number;
@@ -286,6 +284,25 @@ export default function EstimatesPage() {
     enabled: Boolean(selectedEstimate?.customerId), queryKey: getListPropertiesQueryKey(bookingPropertyParams),
   } });
   const { data: properties } = useListProperties({}, { query: { enabled: createOpen, queryKey: getListPropertiesQueryKey({}) } });
+  const createProperties = ((properties as { items?: Array<Record<string, unknown>> } | null)?.items ?? (Array.isArray(properties) ? properties : [])) as Array<{ id: number; customerId?: number; measurementPolygons?: unknown; serviceableAreaSqft?: number | null; perimeterLinearFeet?: number | null }>;
+  const selectedCreateProperty = createProperties.find(property => String(property.id) === form.propertyId) ?? null;
+  const catalogPrice = (service: CatalogService) => {
+    if (!selectedCreateProperty) return service.basePrice;
+    const measured = propertyServiceMeasurements(selectedCreateProperty, service);
+    if (service.pricingMode === 'matrix' && measured.areaSqft <= 0 && measured.lengthFt <= 0) return service.basePrice;
+    return servicePriceForProperty(service, selectedCreateProperty);
+  };
+  useEffect(() => {
+    if (!createOpen) return;
+    setLineItems(items => items.map(item => {
+      if (!item.serviceId || item.priceOverridden) return item;
+      const service = catalogServices?.find(row => row.id === item.serviceId);
+      if (!service) return item;
+      const extras = (item.bundledServices ?? []).reduce((sum, extra) => sum + extra.unitPrice, 0);
+      const unitPrice = Math.round((catalogPrice(service) + extras) * 100) / 100;
+      return unitPrice === item.unitPrice ? item : { ...item, unitPrice };
+    }));
+  }, [createOpen, form.propertyId, catalogServices, selectedCreateProperty]);
   const { data: templates } = useListEstimateTemplates({ query: { enabled: createOpen, queryKey: getListEstimateTemplatesQueryKey() } });
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
 
@@ -409,6 +426,7 @@ export default function EstimatesPage() {
           acceptedByCustomer: !i.isOptional,
           serviceId: i.serviceId ?? null,
           serviceName: i.serviceName ?? null,
+          priceOverridden: i.priceOverridden === true,
           ...bundlePayload(i),
           planTemplateId: i.planTemplateId ?? null,
           planTemplateName: i.planTemplateName ?? null,
@@ -1175,7 +1193,8 @@ export default function EstimatesPage() {
                       <ServiceBundlePicker
                         item={item}
                         catalog={catalogServices}
-                        onChange={patch => updateLineItem(idx, patch)}
+                        priceFor={catalogPrice}
+                        onChange={patch => updateLineItem(idx, { ...patch, priceOverridden: false })}
                       />
 
                       {/* Badges */}
@@ -1204,7 +1223,7 @@ export default function EstimatesPage() {
                       </div>
                       <div className="space-y-1">
                         <label className="text-xs text-muted-foreground">Unit Price</label>
-                        <Input type="number" min={0} step={0.01} title="Price per unit" value={item.unitPrice} onChange={e => updateLineItem(idx, { unitPrice: parseFloat(e.target.value) || 0 })} />
+                        <Input type="number" min={0} step={0.01} title="Price per unit. Editing this keeps your amount when the property measurement changes." value={item.unitPrice} onChange={e => updateLineItem(idx, { unitPrice: parseFloat(e.target.value) || 0, priceOverridden: true })} />
                       </div>
                       <div className="space-y-1">
                         <label className="text-xs text-muted-foreground">Markup %</label>
@@ -1696,7 +1715,8 @@ export default function EstimatesPage() {
                             compact
                             item={item}
                             catalog={catalogServices}
-                            onChange={patch => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, ...patch } : i))}
+                            priceFor={catalogPrice}
+                            onChange={patch => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, ...patch, priceOverridden: false } : i))}
                           />
                           <div className="flex items-center gap-2">
                             <input
@@ -1718,7 +1738,7 @@ export default function EstimatesPage() {
                               type="number" min={0} step={0.01}
                               className="w-24 border rounded-md px-2 py-1.5 text-sm bg-background text-right"
                               value={item.unitPrice}
-                              onChange={e => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, unitPrice: parseFloat(e.target.value) || 0 } : i))}
+                              onChange={e => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, unitPrice: parseFloat(e.target.value) || 0, priceOverridden: true } : i))}
                               title="Unit price ($)"
                             />
                             <span className="text-sm font-medium w-16 text-right shrink-0">${((item.qty || 0) * (item.unitPrice || 0)).toFixed(2)}</span>

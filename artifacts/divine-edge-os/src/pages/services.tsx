@@ -14,9 +14,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Search, Plus, Briefcase, DollarSign, Clock, Edit, Trash2, TrendingUp, Grid3X3, X, ChevronRight, Snowflake, Ruler } from 'lucide-react';
+import { Search, Plus, Briefcase, DollarSign, Clock, Edit, Trash2, TrendingUp, Grid3X3, X, Snowflake, Ruler } from 'lucide-react';
 import { useDebounce } from '@/hooks/use-debounce';
-import type { PricingTier } from '@/lib/pricingMatrix';
+import type { PriceRounding, PricingTier, TierCalculationMode } from '@/lib/pricingMatrix';
 import { PaymentPolicyCard } from '@/components/billing/PaymentPolicyCard';
 
 const mkKey = () => Math.random().toString(36).slice(2, 10);
@@ -61,6 +61,7 @@ type ServiceForm = {
   pricingMode: 'flat' | 'per_sqft' | 'per_linear_ft' | 'area_and_linear' | 'matrix';
   linearRate: string;
   matrixBasis: 'area' | 'linear' | 'both';
+  matrixRounding: PriceRounding;
   pricingMatrix: TierWithKey[];
   linkedZoneTypeId: string;
   offSeasonEnabled: boolean;
@@ -84,6 +85,7 @@ const EMPTY_FORM: ServiceForm = {
   pricingMode: 'flat',
   linearRate: '',
   matrixBasis: 'area',
+  matrixRounding: 'none',
   pricingMatrix: [],
   linkedZoneTypeId: '',
   offSeasonEnabled: false,
@@ -96,7 +98,7 @@ const EMPTY_FORM: ServiceForm = {
   showMaterialsOrParts: false,
 };
 
-const EMPTY_TIER: TierWithKey = { minSqft: 0, maxSqft: null, price: 0, _key: mkKey() };
+const EMPTY_TIER: TierWithKey = { minSqft: 0, maxSqft: null, price: 0, calculationMode: 'flat', _key: mkKey() };
 
 function TierRow({
   tier,
@@ -113,99 +115,87 @@ function TierRow({
   onChange: (t: TierWithKey) => void;
   onRemove: () => void;
 }) {
-  const isOpenEnded = tier.maxSqft === null;
+  const unitLabel = basis === 'linear' ? 'ft' : 'sq ft';
+  const mode: TierCalculationMode = tier.calculationMode === 'per_unit_above_base' ? 'per_unit_above_base' : 'flat';
 
-  // Local string states allow intermediate input (e.g. "5.", "0.0") without
-  // getting immediately coerced back through parseFloat and losing the cursor.
   const [minStr, setMinStr] = React.useState(index === 0 && tier.minSqft === 0 ? '0' : String(tier.minSqft || ''));
   const [maxStr, setMaxStr] = React.useState(tier.maxSqft != null ? String(tier.maxSqft) : '');
   const [priceStr, setPriceStr] = React.useState(tier.price ? String(tier.price) : '');
-  const [perSqftStr, setPerSqftStr] = React.useState(tier.perSqftRate != null ? String(tier.perSqftRate) : '');
+  const [unitStr, setUnitStr] = React.useState(tier.unitRate != null ? String(tier.unitRate) : tier.perSqftRate != null ? String(tier.perSqftRate) : '');
   const [perLinearStr, setPerLinearStr] = React.useState(tier.perLinearFtRate != null ? String(tier.perLinearFtRate) : '');
   const [minsStr, setMinsStr] = React.useState(tier.estimatedMinutes != null ? String(tier.estimatedMinutes) : '');
-
-  // Flush a numeric field to parent state — called onBlur or when value is clearly complete
   const commit = (patch: Partial<PricingTier>) => onChange({ ...tier, ...patch } as TierWithKey);
 
   return (
-    <div className="flex items-center gap-2 text-sm">
-      <span className="text-muted-foreground w-5 text-right shrink-0">{index + 1}.</span>
-      <Input
-        type="text"
-        inputMode="decimal"
-        title={basis === 'linear' ? 'Minimum perimeter in feet for this pricing tier' : 'Minimum property area (sq ft) for this pricing tier'}
-        placeholder={basis === 'linear' ? 'From ft' : 'From sqft'}
-        value={minStr}
-        onChange={e => {
-          setMinStr(e.target.value);
-          const n = parseFloat(e.target.value);
-          if (!isNaN(n)) commit({ minSqft: n });
-        }}
-        onBlur={() => {
-          const n = parseFloat(minStr);
-          const val = isNaN(n) ? 0 : n;
-          setMinStr(String(val));
-          commit({ minSqft: val });
-        }}
-        className="w-28 text-sm"
-      />
-      <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
-        {isOpenEnded ? (
-        <span className="w-28 text-xs text-muted-foreground px-2">{basis === 'linear' ? 'any length above' : 'any area above'}</span>
-      ) : (
+    <div className="rounded-md border bg-background p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium">Tier {index + 1}</p>
+        <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={onRemove} title="Remove this tier">
+          <X className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="text-xs text-muted-foreground">From</label>
         <Input
           type="text"
           inputMode="decimal"
-          title="Maximum property area (sq ft) for this tier — leave blank to make it open-ended"
-          placeholder="Up to sqft"
-          value={maxStr}
+          title={basis === 'linear' ? 'Minimum perimeter in feet for this pricing tier' : 'Minimum property area for this pricing tier'}
+          value={minStr}
           onChange={e => {
-            setMaxStr(e.target.value);
-            if (e.target.value === '') { commit({ maxSqft: null }); return; }
+            setMinStr(e.target.value);
             const n = parseFloat(e.target.value);
-            if (!isNaN(n)) commit({ maxSqft: n });
+            if (!isNaN(n)) commit({ minSqft: n });
           }}
           onBlur={() => {
-            if (maxStr === '') { commit({ maxSqft: null }); return; }
-            const n = parseFloat(maxStr);
-            if (isNaN(n)) { setMaxStr(''); commit({ maxSqft: null }); }
-            else { setMaxStr(String(n)); commit({ maxSqft: n }); }
+            const n = parseFloat(minStr);
+            const val = isNaN(n) ? 0 : n;
+            setMinStr(String(val));
+            commit({ minSqft: val });
           }}
           className="w-28 text-sm"
         />
-      )}
-      {isOpenEnded ? (
-        <div className="flex items-center gap-1 flex-1">
-          <span className="text-xs text-muted-foreground shrink-0">$</span>
+        <span className="text-xs text-muted-foreground">{unitLabel}</span>
+        {isLast ? (
+          <span className="text-xs text-muted-foreground">Open-ended — anything above this minimum</span>
+        ) : (
+          <>
+            <label className="text-xs text-muted-foreground">Up to</label>
+            <Input
+              type="text"
+              inputMode="decimal"
+              title="Maximum for this tier. The last tier covers anything above it."
+              placeholder="Maximum"
+              value={maxStr}
+              onChange={e => {
+                setMaxStr(e.target.value);
+                const n = parseFloat(e.target.value);
+                if (!isNaN(n)) commit({ maxSqft: n });
+              }}
+              onBlur={() => {
+                const n = parseFloat(maxStr);
+                if (isNaN(n)) { setMaxStr(''); }
+                else { setMaxStr(String(n)); commit({ maxSqft: n }); }
+              }}
+              className="w-28 text-sm"
+            />
+            <span className="text-xs text-muted-foreground">{unitLabel}</span>
+          </>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={mode} onValueChange={value => commit({ calculationMode: value === 'per_unit_above_base' ? 'per_unit_above_base' : 'flat' })}>
+          <SelectTrigger className="w-64" title="How this tier calculates its price"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="flat">Base price (flat rate)</SelectItem>
+            <SelectItem value="per_unit_above_base">Price per unit above base</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-muted-foreground">$</span>
           <Input
             type="text"
             inputMode="decimal"
-            title="Per square foot rate for properties larger than the min sqft of this open-ended tier"
-            placeholder="0.000"
-            value={perSqftStr}
-            onChange={e => {
-              setPerSqftStr(e.target.value);
-              if (e.target.value === '') { commit({ perSqftRate: undefined }); return; }
-              const n = parseFloat(e.target.value);
-              if (!isNaN(n)) commit({ perSqftRate: n });
-            }}
-            onBlur={() => {
-              if (perSqftStr === '') { commit({ perSqftRate: undefined }); return; }
-              const n = parseFloat(perSqftStr);
-              if (isNaN(n)) { setPerSqftStr(''); commit({ perSqftRate: undefined }); }
-              else { setPerSqftStr(String(n)); commit({ perSqftRate: n }); }
-            }}
-            className="flex-1 text-sm"
-          />
-          <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">{basis === 'linear' ? 'per ft' : 'per sq ft'}</span>
-        </div>
-      ) : (
-        <div className="flex items-center gap-1 flex-1">
-          <span className="text-xs text-muted-foreground shrink-0">$</span>
-          <Input
-            type="text"
-            inputMode="decimal"
-            title="Flat price charged for properties within this sqft tier"
+            title={mode === 'flat' ? 'Fixed dollar amount for this entire range' : 'Base price covering up to this tier minimum'}
             placeholder="0.00"
             value={priceStr}
             onChange={e => {
@@ -218,34 +208,56 @@ function TierRow({
               if (isNaN(n) || priceStr === '') { setPriceStr(''); commit({ price: 0 }); }
               else { setPriceStr(String(n)); commit({ price: n }); }
             }}
-            className="flex-1 text-sm"
+            className="w-28 text-sm"
           />
         </div>
-      )}
+        {mode === 'per_unit_above_base' && (
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground">+ $</span>
+            <Input
+              type="text"
+              inputMode="decimal"
+              title={`Rate charged for each ${unitLabel} above the tier minimum`}
+              placeholder="0.00"
+              value={unitStr}
+              onChange={e => {
+                setUnitStr(e.target.value);
+                const n = parseFloat(e.target.value);
+                if (!isNaN(n)) commit({ unitRate: n, perSqftRate: n });
+              }}
+              onBlur={() => {
+                const n = parseFloat(unitStr);
+                if (isNaN(n) || unitStr === '') { setUnitStr(''); commit({ unitRate: 0, perSqftRate: 0 }); }
+                else { setUnitStr(String(n)); commit({ unitRate: n, perSqftRate: n }); }
+              }}
+              className="w-24 text-sm"
+            />
+            <span className="text-xs text-muted-foreground">per {unitLabel} above the minimum</span>
+          </div>
+        )}
+      </div>
       {basis === 'both' && (
-        <div className="flex items-center gap-1 w-28">
-          <span className="text-xs text-muted-foreground shrink-0">$</span>
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-muted-foreground">+ $</span>
           <Input
             type="text"
             inputMode="decimal"
             title="Amount charged for each linear foot in this tier"
-            placeholder="/ft"
+            placeholder="0.00"
             value={perLinearStr}
             onChange={e => {
               setPerLinearStr(e.target.value);
-              if (e.target.value === '') { commit({ perLinearFtRate: undefined }); return; }
               const n = parseFloat(e.target.value);
               if (!isNaN(n)) commit({ perLinearFtRate: n });
             }}
             onBlur={() => {
-              if (perLinearStr === '') { commit({ perLinearFtRate: undefined }); return; }
               const n = parseFloat(perLinearStr);
-              if (isNaN(n)) { setPerLinearStr(''); commit({ perLinearFtRate: undefined }); }
+              if (isNaN(n) || perLinearStr === '') { setPerLinearStr(''); commit({ perLinearFtRate: undefined }); }
               else { setPerLinearStr(String(n)); commit({ perLinearFtRate: n }); }
             }}
-            className="text-sm"
+            className="w-24 text-sm"
           />
-          <span className="text-xs text-muted-foreground shrink-0">/ft</span>
+          <span className="text-xs text-muted-foreground">per linear ft</span>
         </div>
       )}
       <div className="flex items-center gap-1">
@@ -253,8 +265,8 @@ function TierRow({
         <Input
           type="text"
           inputMode="numeric"
-          placeholder="min"
-          title="Estimated duration in minutes for this sqft range"
+          placeholder="minutes"
+          title="Estimated duration in minutes for this range"
           value={minsStr}
           onChange={e => {
             setMinsStr(e.target.value);
@@ -268,18 +280,10 @@ function TierRow({
             if (isNaN(n)) { setMinsStr(''); commit({ estimatedMinutes: undefined }); }
             else { setMinsStr(String(n)); commit({ estimatedMinutes: n }); }
           }}
-          className="w-16 text-sm"
+          className="w-24 text-sm"
         />
+        <span className="text-xs text-muted-foreground">est. minutes</span>
       </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-        onClick={onRemove}
-      >
-        <X className="w-3.5 h-3.5" />
-      </Button>
     </div>
   );
 }
@@ -443,7 +447,8 @@ export default function ServicesPage() {
         : 'flat',
       linearRate: s.linearRate != null ? String(s.linearRate) : '',
       matrixBasis: (Array.isArray(s.pricingMatrix) && (s.pricingMatrix as PricingTier[])[0]?.basis) || 'area',
-      pricingMatrix: Array.isArray(s.pricingMatrix) ? (s.pricingMatrix as PricingTier[]).map(t => ({ ...t, _key: mkKey() })) : [],
+      matrixRounding: (Array.isArray(s.pricingMatrix) && (s.pricingMatrix as PricingTier[])[0]?.priceRounding) || 'none',
+      pricingMatrix: Array.isArray(s.pricingMatrix) ? (s.pricingMatrix as PricingTier[]).map(t => ({ ...t, unitRate: t.unitRate ?? t.perSqftRate, _key: mkKey() })) : [],
       linkedZoneTypeId: s.linkedZoneTypeId ?? '',
       offSeasonEnabled: hasOffSeason,
       offSeasonStartMonth: startMonth,
@@ -464,6 +469,10 @@ export default function ServicesPage() {
       toast.error('Add at least one pricing tier, or switch to Flat rate');
       return;
     }
+    if (form.pricingMode === 'matrix' && form.pricingMatrix.slice(0, -1).some(tier => tier.maxSqft == null || !(tier.maxSqft > tier.minSqft))) {
+      toast.error('Enter a maximum above the minimum for every tier except the last');
+      return;
+    }
 
     const offSeasonStart = form.offSeasonEnabled
       ? `${form.offSeasonStartMonth}-${form.offSeasonStartDay}`
@@ -482,8 +491,16 @@ export default function ServicesPage() {
       isActive: form.isActive,
       pricingMode: form.pricingMode,
       linearRate: form.linearRate,
+      priceRounding: form.matrixRounding,
       pricingMatrix: form.pricingMode === 'matrix'
-        ? form.pricingMatrix.map(({ _key, ...t }) => ({ ...t, basis: form.matrixBasis }))
+        ? form.pricingMatrix.map(({ _key, ...t }, index, all) => ({
+            ...t,
+            basis: form.matrixBasis,
+            priceRounding: form.matrixRounding,
+            calculationMode: t.calculationMode === 'per_unit_above_base' ? 'per_unit_above_base' : t.calculationMode === 'flat' ? 'flat' : undefined,
+            unitRate: t.calculationMode === 'per_unit_above_base' ? (t.unitRate ?? t.perSqftRate ?? 0) : t.unitRate,
+            maxSqft: index === all.length - 1 ? null : t.maxSqft,
+          }))
         : null,
       linkedZoneTypeId: form.linkedZoneTypeId || null,
       offSeasonStart,
@@ -505,37 +522,14 @@ export default function ServicesPage() {
   // Matrix tier helpers
   const addTier = () => {
     setForm(f => {
-      const tiers = f.pricingMatrix;
-      const hasOpen = tiers.some(t => t.maxSqft === null);
-      const boundedTiers = tiers.filter(t => t.maxSqft !== null);
-      const lastBounded = boundedTiers[boundedTiers.length - 1];
-
-      let newMin: number;
-      let newMax: number | null;
-
-      if (tiers.length === 0) {
-        // First tier: always create a bounded starter tier
-        newMin = 0;
-        newMax = 4999;
-      } else if (!hasOpen) {
-        // All tiers are bounded → add an open-ended catch-all above the last
-        const lastMax = (tiers[tiers.length - 1].maxSqft ?? 0);
-        newMin = lastMax + 1;
-        newMax = null;
-      } else {
-        // Has an open-ended tier → insert a bounded tier before it
-        newMin = lastBounded ? (lastBounded.maxSqft! + 1) : 0;
-        newMax = newMin + 4999;
-      }
-
-      const newTier: TierWithKey = { minSqft: newMin, maxSqft: newMax, price: 0, _key: mkKey() };
-
-      if (hasOpen) {
-        const openIdx = tiers.findIndex(t => t.maxSqft === null);
-        const updated = [...tiers.slice(0, openIdx), newTier, ...tiers.slice(openIdx)];
-        return { ...f, pricingMatrix: updated };
-      }
-      return { ...f, pricingMatrix: [...f.pricingMatrix, newTier] };
+      const tiers = f.pricingMatrix.map((tier, index) => {
+        if (index !== f.pricingMatrix.length - 1 || tier.maxSqft != null) return tier;
+        return { ...tier, maxSqft: tier.minSqft + 4999 };
+      });
+      const previous = tiers[tiers.length - 1];
+      const newMin = previous ? (previous.maxSqft != null ? previous.maxSqft + 1 : previous.minSqft + 1) : 0;
+      const newTier: TierWithKey = { minSqft: newMin, maxSqft: null, price: 0, calculationMode: 'flat', _key: mkKey() };
+      return { ...f, pricingMatrix: [...tiers, newTier] };
     });
   };
 
@@ -940,6 +934,18 @@ export default function ServicesPage() {
               ) : (
                 <div className="space-y-3">
                   <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Price rounding</label>
+                    <Select value={form.matrixRounding} onValueChange={value => setForm(f => ({ ...f, matrixRounding: value as PriceRounding }))}>
+                      <SelectTrigger title="How calculated matrix prices are rounded"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No rounding</SelectItem>
+                        <SelectItem value="nearest_1">Round to nearest $1</SelectItem>
+                        <SelectItem value="nearest_5">Round to nearest $5</SelectItem>
+                        <SelectItem value="nearest_10">Round to nearest $10</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
                     <label className="text-sm font-medium">Matrix measures</label>
                     <Select value={form.matrixBasis} onValueChange={value => setForm(f => ({ ...f, matrixBasis: value as ServiceForm['matrixBasis'] }))}>
                       <SelectTrigger title="Choose whether matrix tiers use area, linear footage, or both"><SelectValue /></SelectTrigger>
@@ -952,15 +958,8 @@ export default function ServicesPage() {
                   </div>
                   {/* Matrix tiers */}
                   <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium pb-1 border-b">
-                      <span className="w-5" />
-                      <span className="w-28">From (sqft)</span>
-                      <span className="w-4" />
-                      <span className="w-28">Up to (sqft)</span>
-                      <span className="flex-1">Price</span>
-                    </div>
                     {form.pricingMatrix.length === 0 && (
-                      <p className="text-xs text-muted-foreground text-center py-2">No tiers yet — click "Add tier" below</p>
+                      <p className="text-xs text-muted-foreground text-center py-2">No tiers yet. Add Tier 1, then as many more as you need. The last tier covers anything above its minimum.</p>
                     )}
                     {form.pricingMatrix.map((tier, i) => (
                       <TierRow
@@ -981,15 +980,11 @@ export default function ServicesPage() {
                       onClick={addTier}
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      {form.pricingMatrix.some(t => t.maxSqft === null)
-                        ? 'Add another bounded tier'
-                        : form.pricingMatrix.length === 0
-                          ? 'Add first tier'
-                          : 'Add open-ended tier (any area above X sqft)'}
+                      {form.pricingMatrix.length === 0 ? 'Add Tier 1' : `Add Tier ${form.pricingMatrix.length + 1}`}
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Each tier covers a sqft range. The last tier can be left open-ended (no upper bound) — enter a per-sqft rate or a flat price for that tier.
+                    Every tier except the last needs a maximum. The last tier is open-ended and prices anything above its minimum. A flat tier charges one amount. Price per unit above base charges that amount through the minimum, then the unit rate for each additional square foot or linear foot.
                   </p>
 
                   {/* Zone type linkage */}

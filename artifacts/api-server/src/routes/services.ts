@@ -4,6 +4,25 @@ import { eq, and, ilike, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { normalizeFieldRequirements } from "../lib/serviceFieldRequirements";
+import { syncServiceMatrix } from "../lib/matrixPricingStore";
+import { readPricingTiers, type PriceRounding, type PricingTier } from "../lib/pricingMatrix";
+
+const PRICE_ROUNDING = new Set<PriceRounding>(["none", "nearest_1", "nearest_5", "nearest_10"]);
+
+function storedPricingMatrix(pricingMode: string, pricingMatrix: unknown, priceRounding: unknown): PricingTier[] | null {
+  if (pricingMode !== "matrix") return null;
+  const tiers = readPricingTiers(pricingMatrix);
+  if (tiers.length === 0) return null;
+  const rounding = PRICE_ROUNDING.has(priceRounding as PriceRounding)
+    ? priceRounding as PriceRounding
+    : tiers.find(tier => tier.priceRounding && PRICE_ROUNDING.has(tier.priceRounding))?.priceRounding ?? "none";
+  return tiers.map((tier, index) => ({
+    ...tier,
+    maxSqft: index === tiers.length - 1 ? null : (typeof tier.maxSqft === "number" && Number.isFinite(tier.maxSqft) ? tier.maxSqft : null),
+    priceRounding: rounding,
+    calculationMode: tier.calculationMode === "per_unit_above_base" ? "per_unit_above_base" : tier.calculationMode === "flat" ? "flat" : tier.calculationMode,
+  }));
+}
 
 async function requireOfficeRole(req: import("express").Request, res: import("express").Response, tenantId: number): Promise<boolean> {
   const userId = getUserId(req);
@@ -67,7 +86,7 @@ router.post("/services", async (req, res): Promise<void> => {
   if (!await requireOfficeRole(req, res, tenantId)) return;
 
   const { name, description, category, basePrice, estimatedDuration, p4pPercentage, isActive,
-           pricingMode, pricingMatrix, linkedZoneTypeId, offSeasonStart, offSeasonEnd, fieldRequirements } = req.body;
+           pricingMode, pricingMatrix, priceRounding, linkedZoneTypeId, offSeasonStart, offSeasonEnd, fieldRequirements } = req.body;
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
 
   // Treat empty-string or non-numeric p4pPercentage as null (inherit global rate)
@@ -113,7 +132,7 @@ router.post("/services", async (req, res): Promise<void> => {
       p4pPercentage: parsedP4p,
       isActive: isActive !== false,
       pricingMode: resolvedMode,
-      pricingMatrix: resolvedMode === "matrix" && Array.isArray(pricingMatrix) ? pricingMatrix : null,
+      pricingMatrix: storedPricingMatrix(resolvedMode, pricingMatrix, priceRounding),
       linkedZoneTypeId: linkedZoneTypeId || null,
       offSeasonStart: parsedStart,
       offSeasonEnd: parsedEnd,
@@ -121,6 +140,7 @@ router.post("/services", async (req, res): Promise<void> => {
     })
     .returning();
 
+  await syncServiceMatrix(tenantId, service.id, service.pricingMode, service.pricingMatrix);
   res.status(201).json({ ...service, fieldRequirements: normalizeFieldRequirements(service.fieldRequirements), createdAt: service.createdAt.toISOString(), updatedAt: service.updatedAt.toISOString() });
 });
 
@@ -131,7 +151,7 @@ router.patch("/services/:id", async (req, res): Promise<void> => {
 
   const id = parseInt(req.params.id, 10);
   const { name, description, category, basePrice, estimatedDuration, p4pPercentage, isActive,
-           pricingMode, pricingMatrix, linkedZoneTypeId, offSeasonStart, offSeasonEnd, fieldRequirements } = req.body;
+           pricingMode, pricingMatrix, priceRounding, linkedZoneTypeId, offSeasonStart, offSeasonEnd, fieldRequirements } = req.body;
 
   const updates: Partial<typeof servicesTable.$inferInsert> = {};
   if (name !== undefined) updates.name = name;
@@ -146,9 +166,9 @@ router.patch("/services/:id", async (req, res): Promise<void> => {
     updates.pricingMode = ["flat", "per_sqft", "per_linear_ft", "area_and_linear", "matrix"].includes(pricingMode)
       ? pricingMode
       : "flat";
-    updates.pricingMatrix = pricingMode === "matrix" && Array.isArray(pricingMatrix) ? pricingMatrix : null;
+    updates.pricingMatrix = storedPricingMatrix(updates.pricingMode, pricingMatrix, priceRounding);
   } else if (pricingMatrix !== undefined) {
-    updates.pricingMatrix = Array.isArray(pricingMatrix) ? pricingMatrix : null;
+    updates.pricingMatrix = storedPricingMatrix("matrix", pricingMatrix, priceRounding);
   }
   if (linkedZoneTypeId !== undefined) updates.linkedZoneTypeId = linkedZoneTypeId || null;
   if (fieldRequirements !== undefined) updates.fieldRequirements = normalizeFieldRequirements(fieldRequirements);
@@ -181,6 +201,9 @@ router.patch("/services/:id", async (req, res): Promise<void> => {
     .returning();
 
   if (!updated) { res.status(404).json({ error: "Service not found" }); return; }
+  if (updates.pricingMode !== undefined || updates.pricingMatrix !== undefined) {
+    await syncServiceMatrix(tenantId, updated.id, updated.pricingMode, updated.pricingMatrix);
+  }
   res.json({ ...updated, fieldRequirements: normalizeFieldRequirements(updated.fieldRequirements), createdAt: updated.createdAt.toISOString(), updatedAt: updated.updatedAt.toISOString() });
 });
 

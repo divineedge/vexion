@@ -3,14 +3,20 @@
  */
 
 export type PricingBasis = "area" | "linear" | "both";
+export type TierCalculationMode = "flat" | "per_unit_above_base";
+export type PriceRounding = "none" | "nearest_1" | "nearest_5" | "nearest_10";
 
 export interface PricingTier {
   minSqft: number;
-  /** null = open-ended "above minSqft" tier */
+  /** null = open-ended "above minSqft" tier. The last tier is always open-ended. */
   maxSqft: number | null;
-  /** Flat price for this tier */
+  /** Flat price, or the base that covers up to this tier's minimum. */
   price: number;
-  /** Per-sqft rate for the open-ended tier; takes precedence over price when set */
+  /** flat = one price for the range. per_unit_above_base = base plus a rate past the minimum. */
+  calculationMode?: TierCalculationMode;
+  /** Dollars charged for each unit above the tier minimum. */
+  unitRate?: number;
+  /** Per-sqft rate for older open-ended tiers; takes precedence over price when calculationMode is absent. */
   perSqftRate?: number;
   /** Per-linear-foot rate used when the tier prices both area and perimeter. */
   perLinearFtRate?: number;
@@ -18,6 +24,58 @@ export interface PricingTier {
   basis?: PricingBasis;
   /** Estimated job duration in minutes for this sqft range (optional, overrides service-level estimatedDuration) */
   estimatedMinutes?: number;
+  /** Applied to this tier's calculated amount. */
+  priceRounding?: PriceRounding;
+}
+
+export function readPricingTiers(value: unknown): PricingTier[] {
+  if (Array.isArray(value)) return value as PricingTier[];
+  if (value && typeof value === "object" && Array.isArray((value as { tiers?: unknown }).tiers)) {
+    const doc = value as { tiers: PricingTier[]; priceRounding?: PriceRounding };
+    return doc.tiers.map(tier => ({ ...tier, priceRounding: tier.priceRounding ?? doc.priceRounding }));
+  }
+  return [];
+}
+
+export function roundMatrixPrice(amount: number, rounding: PriceRounding | null | undefined): number {
+  if (!Number.isFinite(amount)) return 0;
+  let rounded = amount;
+  if (rounding === "nearest_1") rounded = Math.round(amount);
+  else if (rounding === "nearest_5") rounded = Math.round(amount / 5) * 5;
+  else if (rounding === "nearest_10") rounded = Math.round(amount / 10) * 10;
+  return Math.round((rounded + Number.EPSILON) * 100) / 100;
+}
+
+function matchPricingTier(sorted: PricingTier[], quantity: number): PricingTier | null {
+  let matched: PricingTier | null = null;
+  for (const tier of sorted) {
+    if (quantity >= tier.minSqft && (tier.maxSqft === null || quantity <= tier.maxSqft)) matched = tier;
+  }
+  if (matched) return matched;
+  const last = sorted[sorted.length - 1];
+  if (last && quantity >= last.minSqft) return last;
+  return null;
+}
+
+function tierAmount(tier: PricingTier, basis: PricingBasis, quantity: number, area: number, length: number, linearRate: number): number {
+  const extraLinear = basis === "both" ? (tier.perLinearFtRate ?? linearRate) * length : 0;
+  if (tier.calculationMode === "per_unit_above_base") {
+    const rate = tier.unitRate ?? tier.perSqftRate ?? 0;
+    const above = Math.max(0, quantity - tier.minSqft) * rate;
+    return roundMatrixPrice(tier.price + above + extraLinear, tier.priceRounding);
+  }
+  if (tier.calculationMode === "flat") return roundMatrixPrice(tier.price + extraLinear, tier.priceRounding);
+  if (basis === "both") {
+    const areaCharge = tier.perSqftRate != null && tier.perSqftRate > 0 ? tier.perSqftRate * area : tier.price;
+    return roundMatrixPrice(areaCharge + extraLinear, tier.priceRounding);
+  }
+  if (basis === "linear") {
+    if (tier.perLinearFtRate != null && tier.perLinearFtRate > 0) return roundMatrixPrice(tier.perLinearFtRate * length, tier.priceRounding);
+    if (tier.maxSqft === null && tier.perSqftRate != null && tier.perSqftRate > 0) return roundMatrixPrice(tier.perSqftRate * length, tier.priceRounding);
+    return roundMatrixPrice(tier.price, tier.priceRounding);
+  }
+  if (tier.maxSqft === null && tier.perSqftRate != null && tier.perSqftRate > 0) return roundMatrixPrice(tier.perSqftRate * area, tier.priceRounding);
+  return roundMatrixPrice(tier.price, tier.priceRounding);
 }
 
 /**
@@ -35,7 +93,7 @@ export interface PricingTier {
 export function resolveServicePrice(
   pricingMode: string,
   basePrice: number,
-  pricingMatrix: PricingTier[] | null | undefined,
+  pricingMatrix: PricingTier[] | { tiers?: PricingTier[]; priceRounding?: PriceRounding } | null | undefined,
   areaSqft: number | null | undefined,
   lengthFt: number | null | undefined = 0,
   linearRate: number | null | undefined = 0,
@@ -45,37 +103,14 @@ export function resolveServicePrice(
   if (pricingMode === "per_sqft") return basePrice * area;
   if (pricingMode === "per_linear_ft") return basePrice * length;
   if (pricingMode === "area_and_linear") return basePrice * area + (linearRate ?? 0) * length;
-  if (pricingMode !== "matrix" || !pricingMatrix || pricingMatrix.length === 0) {
-    return basePrice;
-  }
-  const basis: PricingBasis = pricingMatrix.find((tier) => tier.basis)?.basis ?? "area";
+  const tiers = readPricingTiers(pricingMatrix);
+  if (pricingMode !== "matrix" || tiers.length === 0) return basePrice;
+  const basis: PricingBasis = tiers.find((tier) => tier.basis)?.basis ?? "area";
   const quantity = basis === "linear" ? length : area;
-  const sorted = [...pricingMatrix].sort((a, b) => a.minSqft - b.minSqft);
-
-  let matched: PricingTier | null = null;
-  for (const tier of sorted) {
-    if (quantity >= tier.minSqft && (tier.maxSqft === null || quantity <= tier.maxSqft)) {
-      matched = tier;
-    }
-  }
+  const sorted = [...tiers].sort((a, b) => a.minSqft - b.minSqft);
+  const matched = matchPricingTier(sorted, quantity);
   if (!matched) return basePrice;
-  if (basis === "both") {
-    const areaCharge = matched.perSqftRate != null && matched.perSqftRate > 0
-      ? matched.perSqftRate * area
-      : matched.price;
-    return areaCharge + (matched.perLinearFtRate ?? linearRate ?? 0) * length;
-  }
-  if (basis === "linear") {
-    if (matched.perLinearFtRate != null && matched.perLinearFtRate > 0) return matched.perLinearFtRate * length;
-    if (matched.maxSqft === null && matched.perSqftRate != null && matched.perSqftRate > 0) {
-      return matched.perSqftRate * length;
-    }
-    return matched.price;
-  }
-  if (matched.maxSqft === null && matched.perSqftRate != null && matched.perSqftRate > 0) {
-    return matched.perSqftRate * area;
-  }
-  return matched.price;
+  return tierAmount(matched, basis, quantity, area, length, linearRate ?? 0);
 }
 
 export interface MeasurementChargeLine {
@@ -116,7 +151,7 @@ export function measurementChargeLines(
     return lines;
   }
   const total = resolveServicePrice(pricingMode, basePrice, pricingMatrix, areaSqft, lengthFt, linearRate);
-  const basis = pricingMatrix?.find((tier) => tier.basis)?.basis;
+  const basis = readPricingTiers(pricingMatrix).find((tier) => tier.basis)?.basis;
   const metric = pricingMode === "per_linear_ft" || basis === "linear"
     ? `${Math.round(lengthFt).toLocaleString()} linear ft`
     : pricingMode === "per_sqft" || basis === "area" || !basis
@@ -142,9 +177,10 @@ export function resolveServiceDuration(
   pricingMatrix: PricingTier[] | null | undefined,
   areaSqft: number | null | undefined,
 ): number | null {
-  if (pricingMode === 'matrix' && pricingMatrix && pricingMatrix.length > 0) {
+  const durationTiers = readPricingTiers(pricingMatrix);
+  if (pricingMode === 'matrix' && durationTiers.length > 0) {
     const area = areaSqft ?? 0;
-    const sorted = [...pricingMatrix].sort((a, b) => a.minSqft - b.minSqft);
+    const sorted = [...durationTiers].sort((a, b) => a.minSqft - b.minSqft);
     for (const tier of sorted) {
       if (area >= tier.minSqft && (tier.maxSqft === null || area <= tier.maxSqft)) {
         if (tier.estimatedMinutes != null && tier.estimatedMinutes > 0) {
@@ -154,4 +190,58 @@ export function resolveServiceDuration(
     }
   }
   return estimatedDuration ?? null;
+}
+
+export interface MeasuredProperty {
+  measurementPolygons?: unknown;
+  serviceableAreaSqft?: number | null;
+  perimeterLinearFeet?: number | null;
+}
+
+export interface MeasuredService {
+  pricingMode?: string | null;
+  basePrice?: number | null;
+  linearRate?: number | null;
+  pricingMatrix?: unknown;
+  linkedZoneTypeId?: string | null;
+}
+
+/** Area and perimeter used to price one service on one property. */
+export function propertyServiceMeasurements(property: MeasuredProperty | null | undefined, service: MeasuredService | null | undefined): { areaSqft: number; lengthFt: number } {
+  const polygons = Array.isArray(property?.measurementPolygons) ? property.measurementPolygons : [];
+  const tiers = readPricingTiers(service?.pricingMatrix);
+  const basis = tiers.find(tier => tier.basis)?.basis
+    ?? (service?.pricingMode === "per_linear_ft" ? "linear" : "area");
+  const linked = service?.linkedZoneTypeId || null;
+  let area = 0;
+  let length = 0;
+  let foundArea = false;
+  let foundLength = false;
+  for (const raw of polygons) {
+    if (!raw || typeof raw !== "object") continue;
+    const zone = raw as { enabled?: boolean; zoneTypeId?: string; mode?: string; areaSqft?: number; lengthFt?: number };
+    if (zone.enabled === false) continue;
+    if (linked && zone.zoneTypeId !== linked) continue;
+    const mode = zone.mode ?? "area";
+    if (mode !== "linear" && typeof zone.areaSqft === "number" && zone.areaSqft > 0) {
+      area += zone.areaSqft;
+      foundArea = true;
+    }
+    if (mode !== "area" && typeof zone.lengthFt === "number" && zone.lengthFt > 0) {
+      length += zone.lengthFt;
+      foundLength = true;
+    }
+  }
+  if (!linked && basis !== "linear" && !foundArea && typeof property?.serviceableAreaSqft === "number") area = property.serviceableAreaSqft;
+  if (!linked && basis === "linear" && !foundLength && typeof property?.perimeterLinearFeet === "number") length = property.perimeterLinearFeet;
+  if (!linked && basis === "both") {
+    if (!foundArea && typeof property?.serviceableAreaSqft === "number") area = property.serviceableAreaSqft;
+    if (!foundLength && typeof property?.perimeterLinearFeet === "number") length = property.perimeterLinearFeet;
+  }
+  return { areaSqft: area, lengthFt: length };
+}
+
+export function servicePriceForProperty(service: MeasuredService, property: MeasuredProperty | null | undefined): number {
+  const { areaSqft, lengthFt } = propertyServiceMeasurements(property, service);
+  return resolveServicePrice(service.pricingMode ?? "flat", service.basePrice ?? 0, readPricingTiers(service.pricingMatrix), areaSqft, lengthFt, service.linearRate ?? 0);
 }

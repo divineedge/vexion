@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { propertyServiceMeasurements, servicePriceForProperty } from '@/lib/pricingMatrix';
 import { DeliveryHistory } from '@/components/billing/DeliveryHistory';
 import { PaymentPolicyCard } from '@/components/billing/PaymentPolicyCard';
 import { BillingEmailDeliveries } from '@/components/financials/BillingEmailDeliveries';
@@ -85,12 +86,12 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: 'bg-gray-200 text-gray-500 border-transparent',
 };
 
-interface LineItemRow { description: string; quantity: number; unitPrice: number; total: number; propertyId?: number | null; jobId?: number | null; serviceId?: number | null; inventoryItemId?: number | null; sku?: string | null; costPrice?: number | null; }
+interface LineItemRow { description: string; quantity: number; unitPrice: number; total: number; propertyId?: number | null; jobId?: number | null; serviceId?: number | null; inventoryItemId?: number | null; sku?: string | null; costPrice?: number | null; priceOverridden?: boolean; }
 type InvoiceGrouping = 'combined' | 'by_property';
 
 // ── Create Invoice Sheet ────────────────────────────────────────────────────────
 
-interface ServiceOption { id: number; name: string; description: string | null; basePrice: number; }
+interface ServiceOption { id: number; name: string; description: string | null; basePrice: number; pricingMode?: string | null; pricingMatrix?: unknown; linearRate?: number | null; linkedZoneTypeId?: string | null; }
 
 interface CreateInvoiceSheetProps {
   open: boolean;
@@ -242,10 +243,33 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
     }
   };
 
+  const propertyForLine = (line: LineItemRow, propertyId = line.propertyId) => {
+    const id = propertyId ?? defaultPropertyId;
+    return customerProperties.find(property => property.id === id) ?? null;
+  };
+  const pricedService = (service: ServiceOption, property: ReturnType<typeof propertyForLine>) => {
+    if (!property) return service.basePrice;
+    const measured = propertyServiceMeasurements(property, service);
+    if (service.pricingMode === 'matrix' && measured.areaSqft <= 0 && measured.lengthFt <= 0) return service.basePrice;
+    return servicePriceForProperty(service, property);
+  };
+  React.useEffect(() => {
+    setLineItems(prev => prev.map(line => {
+      if (!line.serviceId || line.priceOverridden || line.jobId != null) return line;
+      const service = (services ?? []).find(row => row.id === line.serviceId);
+      if (!service) return line;
+      const unitPrice = pricedService(service, propertyForLine(line));
+      return unitPrice === line.unitPrice ? line : { ...line, unitPrice, total: line.quantity * unitPrice };
+    }));
+  }, [defaultPropertyId, customerProperties, services]);
   const updateLineItem = (index: number, field: keyof LineItemRow, value: string | number | null) => {
     setLineItems(prev => prev.map((li, i) => {
       if (i !== index) return li;
-      const updated = { ...li, [field]: value };
+      const updated = { ...li, [field]: value, priceOverridden: field === 'unitPrice' ? true : li.priceOverridden };
+      if (field === 'propertyId' && li.serviceId && !li.priceOverridden) {
+        const service = (services ?? []).find(row => row.id === li.serviceId);
+        if (service) updated.unitPrice = pricedService(service, propertyForLine(li, value as number | null));
+      }
       updated.total = updated.quantity * updated.unitPrice;
       return updated;
     }));
@@ -259,7 +283,8 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
     setLineItems(prev => prev.map((li, i) => {
       if (i !== index) return li;
       const desc = svc.description?.trim() || svc.name;
-      const updated = { ...li, description: desc, unitPrice: svc.basePrice, total: li.quantity * svc.basePrice, serviceId: svc.id, inventoryItemId: null, sku: null, costPrice: null };
+      const unitPrice = pricedService(svc, propertyForLine(li));
+      const updated = { ...li, description: desc, unitPrice, total: li.quantity * unitPrice, serviceId: svc.id, inventoryItemId: null, sku: null, costPrice: null, priceOverridden: false };
       return updated;
     }));
   };
@@ -623,6 +648,7 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
                         placeholder="Unit Price"
                         value={li.unitPrice}
                         onChange={e => updateLineItem(i, 'unitPrice', parseFloat(e.target.value) || 0)}
+                        title="Price per unit. Editing this keeps your amount when measurements change."
                       />
                     </div>
                     <div className="space-y-0.5">

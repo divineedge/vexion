@@ -161,7 +161,12 @@ export function EmployeeAccountsPanel({ showEmployeeFileLinks = true }: { showEm
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(users ?? []).filter(u => !teamSearch.trim() || u.name.toLowerCase().includes(teamSearch.toLowerCase()) || u.email.toLowerCase().includes(teamSearch.toLowerCase())).filter(u => teamRoleFilter === 'all' || u.role === teamRoleFilter).map(u => {
+                  {(users ?? []).filter(u => {
+                    const needle = teamSearch.trim().toLowerCase();
+                    const name = (u.name || '').toLowerCase();
+                    const email = (u.email || '').toLowerCase();
+                    return (!needle || name.includes(needle) || email.includes(needle)) && (teamRoleFilter === 'all' || u.role === teamRoleFilter);
+                  }).map(u => {
                     const highlightUserId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('userId') : null;
                     const isHighlighted = highlightUserId && String(u.id) === highlightUserId;
                     return (

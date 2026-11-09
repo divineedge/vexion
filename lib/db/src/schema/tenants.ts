@@ -175,6 +175,11 @@ export const tenantsTable = pgTable("tenants", {
   ),
   /** Optional editable end-of-day equipment checklist. Empty disables the mode. */
   endOfDayChecklist: jsonb("end_of_day_checklist").default("[]"),
+  preTripEnabled: boolean("pre_trip_enabled").notNull().default(true),
+  postTripEnabled: boolean("post_trip_enabled").notNull().default(false),
+  promptEquipmentHours: boolean("prompt_equipment_hours").notNull().default(false),
+  promptFuelFillUp: boolean("prompt_fuel_fillup").notNull().default(false),
+  equipmentCategoryThresholds: jsonb("equipment_category_thresholds").notNull().default([]),
   // ── Equipment Cost Ledger ─────────────────────────────────────────────────
   /** $/gallon used to price Fuel Log task items that only capture gallons (no dollar amount) */
   fuelPricePerGallon: real("fuel_price_per_gallon").notNull().default(4.0),

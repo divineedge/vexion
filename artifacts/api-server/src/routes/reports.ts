@@ -909,4 +909,40 @@ router.get("/reports/revenue-per-hour", async (req, res): Promise<void> => {
   });
 });
 
+router.get("/reports/service-categories", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  if (!(await requireAdmin(tenantId, getUserId(req), res))) return;
+  const start = String(req.query.start ?? "");
+  const end = String(req.query.end ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || start > end) {
+    res.status(400).json({ error: "Use a valid date range (YYYY-MM-DD)" }); return;
+  }
+  try {
+    const result = await db.execute(sql`
+      SELECT COALESCE(NULLIF(s.category, ''), 'Uncategorized') AS category,
+        COUNT(j.id)::int AS jobs,
+        COALESCE(SUM(j.total_amount), 0)::float AS revenue,
+        COALESCE(SUM((
+          SELECT SUM(CASE WHEN (elem->>'costPrice') ~ '^-?[0-9]+(\\.[0-9]+)?$' AND (elem->>'quantity') ~ '^-?[0-9]+(\\.[0-9]+)?$'
+            THEN (elem->>'costPrice')::numeric * (elem->>'quantity')::numeric ELSE 0 END)
+          FROM jsonb_array_elements(COALESCE(j.job_parts, '[]'::jsonb)) elem
+        )), 0)::float AS material_cost
+      FROM jobs j
+      LEFT JOIN services s ON s.id = j.service_id AND s.tenant_id = j.tenant_id
+      WHERE j.tenant_id = ${tenantId} AND j.status = 'completed' AND j.archived_at IS NULL
+        AND j.completed_at >= ${start}::date AND j.completed_at < (${end}::date + interval '1 day')
+      GROUP BY 1
+      ORDER BY revenue DESC
+    `);
+    const categories = result.rows.map(row => {
+      const revenue = Number(row.revenue ?? 0);
+      const cost = Number(row.material_cost ?? 0);
+      return { category: String(row.category), jobs: Number(row.jobs ?? 0), revenue, cost, profit: revenue - cost };
+    });
+    res.json({ start, end, categories, summary: { jobs: categories.reduce((sum, row) => sum + row.jobs, 0), revenue: categories.reduce((sum, row) => sum + row.revenue, 0), profit: categories.reduce((sum, row) => sum + row.profit, 0) } });
+  } catch {
+    res.json({ start, end, categories: [], summary: {} });
+  }
+});
+
 export default router;

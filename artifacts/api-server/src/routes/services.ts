@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, servicesTable } from "@workspace/db";
-import { eq, and, ilike, desc } from "drizzle-orm";
+import { eq, and, ilike, desc, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { normalizeFieldRequirements } from "../lib/serviceFieldRequirements";
@@ -235,6 +235,48 @@ router.delete("/services/:id", async (req, res): Promise<void> => {
 
   const id = parseInt(req.params.id, 10);
   await db.delete(servicesTable).where(and(eq(servicesTable.id, id), eq(servicesTable.tenantId, tenantId)));
+  res.status(204).send();
+});
+
+router.get("/settings/service-categories", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const rows = await db.execute(sql`SELECT id, name, created_at AS "createdAt" FROM service_categories WHERE tenant_id=${tenantId} ORDER BY name`);
+  res.json({ categories: rows.rows });
+});
+
+router.post("/settings/service-categories", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  if (!await requireOfficeRole(req, res, tenantId)) return;
+  const name = String(req.body?.name ?? "").trim();
+  if (!name || name.length > 80) { res.status(400).json({ error: "Enter a category name up to 80 characters" }); return; }
+  const existing = await db.execute(sql`SELECT id FROM service_categories WHERE tenant_id=${tenantId} AND lower(name)=lower(${name}) LIMIT 1`);
+  if (existing.rows.length) { res.status(409).json({ error: "That category already exists" }); return; }
+  const inserted = await db.execute(sql`INSERT INTO service_categories (tenant_id, name) VALUES (${tenantId}, ${name}) RETURNING id, name`);
+  res.status(201).json(inserted.rows[0]);
+});
+
+router.patch("/settings/service-categories/:id", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  if (!await requireOfficeRole(req, res, tenantId)) return;
+  const id = parseInt(req.params.id, 10);
+  const name = String(req.body?.name ?? "").trim();
+  if (!name || name.length > 80) { res.status(400).json({ error: "Enter a category name up to 80 characters" }); return; }
+  const current = await db.execute(sql`SELECT name FROM service_categories WHERE id=${id} AND tenant_id=${tenantId}`);
+  if (!current.rows.length) { res.status(404).json({ error: "Category not found" }); return; }
+  const previous = String(current.rows[0].name);
+  await db.execute(sql`UPDATE service_categories SET name=${name} WHERE id=${id} AND tenant_id=${tenantId}`);
+  await db.execute(sql`UPDATE services SET category=${name} WHERE tenant_id=${tenantId} AND category=${previous}`);
+  res.json({ id, name });
+});
+
+router.delete("/settings/service-categories/:id", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  if (!await requireOfficeRole(req, res, tenantId)) return;
+  const id = parseInt(req.params.id, 10);
+  const current = await db.execute(sql`SELECT name FROM service_categories WHERE id=${id} AND tenant_id=${tenantId}`);
+  if (!current.rows.length) { res.status(404).json({ error: "Category not found" }); return; }
+  await db.execute(sql`UPDATE services SET category=NULL WHERE tenant_id=${tenantId} AND category=${String(current.rows[0].name)}`);
+  await db.execute(sql`DELETE FROM service_categories WHERE id=${id} AND tenant_id=${tenantId}`);
   res.status(204).send();
 });
 

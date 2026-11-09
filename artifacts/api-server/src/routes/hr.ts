@@ -50,11 +50,28 @@ router.put("/hr/access/:userId",async(req,res)=>{
 });
 router.get("/hr/employees",async(req,res)=>{
  const tenantId=getTenantId(req),actorId=getUserId(req),access=await hrAccess(tenantId,actorId);
- const rows=await db.select({id:usersTable.id,name:usersTable.name,email:usersTable.email,role:usersTable.role,isActive:usersTable.isActive,
- employmentStatus:employeeProfilesTable.employmentStatus,jobTitle:employeeProfilesTable.jobTitle,hireDate:employeeProfilesTable.hireDate})
- .from(usersTable).leftJoin(employeeProfilesTable,and(eq(employeeProfilesTable.userId,usersTable.id),eq(employeeProfilesTable.tenantId,tenantId)))
- .where(and(eq(usersTable.tenantId,tenantId),access.hasHrAccess?undefined:eq(usersTable.id,actorId))).orderBy(usersTable.name);
- res.json({employees:rows.map(row=>({...row,employmentStatus:row.employmentStatus??(row.isActive===false?"former":"active")})),hasHrAccess:access.hasHrAccess});
+ const scope=access.hasHrAccess?eq(usersTable.tenantId,tenantId):and(eq(usersTable.tenantId,tenantId),eq(usersTable.id,actorId));
+ const users=await db.select({id:usersTable.id,name:usersTable.name,email:usersTable.email,role:usersTable.role,isActive:usersTable.isActive})
+  .from(usersTable).where(scope).orderBy(usersTable.name);
+ let profiles: { userId: number; employmentStatus: string | null; jobTitle: string | null; hireDate: string | null }[] = [];
+ try {
+  profiles=await db.select({userId:employeeProfilesTable.userId,employmentStatus:employeeProfilesTable.employmentStatus,jobTitle:employeeProfilesTable.jobTitle,hireDate:employeeProfilesTable.hireDate})
+   .from(employeeProfilesTable).where(eq(employeeProfilesTable.tenantId,tenantId));
+ } catch {
+  profiles=[];
+ }
+ const byUser=new Map(profiles.map(profile=>[profile.userId,profile]));
+ const seen=new Set<number>();
+ const employees=users.filter(user=>{
+  if(seen.has(user.id))return false;
+  seen.add(user.id);
+  return true;
+ }).map(user=>{
+  const profile=byUser.get(user.id);
+  return { ...user, name: user.name || "Unnamed employee", jobTitle: profile?.jobTitle ?? null, hireDate: profile?.hireDate ?? null,
+   employmentStatus: profile?.employmentStatus ?? (user.isActive===false?"former":"active") };
+ });
+ res.json({employees, hasHrAccess: access.hasHrAccess, total: employees.length });
 });
 router.get("/hr/employees/:id",async(req,res)=>{
  const tenantId=getTenantId(req),actorId=getUserId(req),userId=id(req.params.id),{employee,access}=await employeeAccess(tenantId,actorId,userId);

@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { customFetch } from '@workspace/api-client-react';
 import EquipmentInspectionsPanel from '@/components/equipment/EquipmentInspectionsPanel';
 import { format } from 'date-fns';
 import {
@@ -1315,8 +1317,23 @@ export default function EquipmentPage() {
 
   const [mainTab, setMainTab] = useState<'fleet' | 'bulk_fuel' | 'fuel_report'>('fleet');
 
+  const maintenanceAlerts = useQuery({
+    queryKey: ['equipment-maintenance-alerts'],
+    queryFn: () => customFetch<{ alerts: { equipmentId: number; equipmentName: string; label: string; hours: number }[] }>('/api/equipment/maintenance-alerts'),
+  });
+
   return (
     <div className="min-w-0 overflow-x-hidden space-y-6 animate-in fade-in duration-500">
+      {(maintenanceAlerts.data?.alerts.length ?? 0) > 0 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <p className="font-medium">Maintenance is due</p>
+          <ul className="mt-1 space-y-1">
+            {maintenanceAlerts.data?.alerts.map(alert => (
+              <li key={`${alert.equipmentId}-${alert.label}`}>{alert.equipmentName}: {alert.label} at {alert.hours} hours</li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="shrink-0">
           <h1 className="text-3xl font-bold tracking-tight">Equipment & Fuel</h1>
@@ -1397,8 +1414,8 @@ export default function EquipmentPage() {
             />
           )}
           {isOwner && (
-            <Button variant="outline" size="icon" title="Equipment settings" aria-label="Equipment settings" onClick={() => setSettingsOpen(true)}>
-              <Settings className="w-4 h-4" />
+            <Button variant="outline" title="Equipment settings" aria-label="Equipment settings" onClick={() => setSettingsOpen(true)} className="gap-2">
+              <Settings className="w-4 h-4" /> Equipment settings
             </Button>
           )}
           {mainTab === 'fleet' && can('actions.addEquipment') && (

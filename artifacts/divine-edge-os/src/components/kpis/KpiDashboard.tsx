@@ -35,7 +35,7 @@ export function KpiDashboard() {
   const { user } = useAuth();
   const tenantId = user?.tenantId;
   const { data: tenant, isLoading: tenantLoading, isError: tenantError, refetch: refetchTenant } = useGetTenantSettings({ query: { queryKey: [...getGetTenantSettingsQueryKey(), tenantId], enabled: tenantId != null } });
-  const tz = tenant?.timezone ?? null;
+  const tz = tenant?.timezone || 'America/Denver';
   const today = todayInZone(tz);
   const timezoneError = tenantError || (!tenantLoading && !today);
   const thisYear = Number(today.slice(0, 4));

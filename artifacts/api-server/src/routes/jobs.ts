@@ -1,5 +1,5 @@
 import { formsGuardedJobUpdate,FormError,assertCompletedJobCreationAllowed } from "../lib/jobForms";
-import { paymentGuardedJobInsert, ensureScheduledJobPayment } from "../lib/paymentPolicy";
+import { paymentGuardedJobInsert, ensureScheduledJobPayment, jobScheduleDepositWarning } from "../lib/paymentPolicy";
 import { capacityCheckedJobUpdate } from "../lib/crewCapacity";
 import { creditedInvoiceInsert } from "../lib/customerCredit";
 import { Router, type IRouter } from "express";
@@ -453,7 +453,7 @@ router.post("/jobs/import/commit", requireVerifiedStaff, importUpload.single("fi
 
 function formatJob(
   j: typeof jobsTable.$inferSelect,
-  extras?: { customerName?: string | null; customerPhone?: string | null; customerNotes?: string | null; assigneeName?: string | null; propertyAddress?: string | null; propertyLat?:number|null; propertyLng?:number|null; propertyNotes?: string | null; crewName?: string | null; planName?: string | null; routeName?: string | null; serviceName?: string | null; fieldRequirements?: unknown }
+  extras?: { customerName?: string | null; customerPhone?: string | null; customerNotes?: string | null; assigneeName?: string | null; propertyAddress?: string | null; propertyLat?:number|null; propertyLng?:number|null; propertyNotes?: string | null; crewName?: string | null; planName?: string | null; routeName?: string | null; serviceName?: string | null; fieldRequirements?: unknown; scheduleDepositWarning?: string | null }
 ) {
   const rule = j.recurrenceRule as unknown as RecurrenceRule | null;
   return {
@@ -479,6 +479,7 @@ function formatJob(
     serviceId: j.serviceId ?? null,
     serviceName: extras?.serviceName ?? null,
     fieldRequirements: normalizeFieldRequirements(extras?.fieldRequirements),
+    scheduleDepositWarning: extras?.scheduleDepositWarning ?? null,
     planId: j.planId ?? null,
     planName: extras?.planName ?? null,
     cancelReason: j.cancelReason ?? null,
@@ -846,7 +847,8 @@ router.get("/jobs/:id", requireVerifiedStaff, async (req, res): Promise<void> =>
     .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
 
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
-  res.json(formatJob(row.job, { customerName: row.customerName, customerPhone: row.customerPhone, customerNotes: row.customerNotes, assigneeName: row.assigneeName, propertyAddress: row.propertyAddress, propertyLat:row.propertyLat,propertyLng:row.propertyLng,propertyNotes: row.propertyNotes, crewName: row.crewName, planName: row.planName, routeName: row.routeName, serviceName: row.serviceName, fieldRequirements: row.fieldRequirements }));
+  const scheduleDepositWarning = await jobScheduleDepositWarning(tenantId, row.job);
+  res.json(formatJob(row.job, { customerName: row.customerName, customerPhone: row.customerPhone, customerNotes: row.customerNotes, assigneeName: row.assigneeName, propertyAddress: row.propertyAddress, propertyLat:row.propertyLat,propertyLng:row.propertyLng,propertyNotes: row.propertyNotes, crewName: row.crewName, planName: row.planName, routeName: row.routeName, serviceName: row.serviceName, fieldRequirements: row.fieldRequirements, scheduleDepositWarning }));
 });
 
 router.patch("/jobs/:id", async (req, res): Promise<void> => {

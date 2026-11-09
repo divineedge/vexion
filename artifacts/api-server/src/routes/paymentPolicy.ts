@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, customersTable, servicesTable, tenantsTable, estimatesTable, jobsTable } from "@workspace/db";
 import { and, eq, sql, desc, inArray } from "drizzle-orm";
-import { validateDepositRules, type DepositRule } from "../lib/companyDepositRules";
+import { normalizeScheduleDeposit, validateDepositRules, validateScheduleDeposit, type DepositRule } from "../lib/companyDepositRules";
 import { customerInvoiceGrouping } from "../lib/invoicePropertyGrouping";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
@@ -57,6 +57,21 @@ router.patch("/billing/customer-invoice-grouping/:id", async (req, res) => {
   const result = await db.execute(sql`UPDATE customers SET payment_policy=jsonb_set(coalesce(payment_policy,'{}'::jsonb),'{invoiceGrouping}',${JSON.stringify(mode)}::jsonb,true) WHERE id=${Number(req.params.id)} AND tenant_id=${tenantId} RETURNING id`);
   if (!result.rows.length) { res.status(404).json({ error: "Customer not found" }); return; }
   res.json({ mode });
+});
+router.get("/billing/schedule-deposit", async (req, res) => {
+  const tenantId = getTenantId(req);
+  if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
+  const result = await db.execute(sql`SELECT payment_policy->'scheduleDeposit' AS rule FROM tenants WHERE id=${tenantId}`);
+  res.json({ rule: normalizeScheduleDeposit(result.rows[0]?.rule) });
+});
+router.patch("/billing/schedule-deposit", async (req, res) => {
+  const tenantId = getTenantId(req);
+  if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
+  const error = validateScheduleDeposit(req.body?.rule);
+  if (error) { res.status(400).json({ error }); return; }
+  const rule = normalizeScheduleDeposit(req.body.rule);
+  await db.execute(sql`UPDATE tenants SET payment_policy=jsonb_set(coalesce(payment_policy,'{}'::jsonb),'{scheduleDeposit}',${JSON.stringify(rule)}::jsonb,true) WHERE id=${tenantId}`);
+  res.json({ rule });
 });
 router.get("/billing/deposit-rules", async (req, res) => {
   const tenantId = getTenantId(req);

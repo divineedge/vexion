@@ -119,6 +119,12 @@ export async function capacityCheckedJobUpdate(where:SQL,updates:Partial<typeof 
       const next={...row,...updates};
       const schedulingChanged=next.crewId!==row.crewId||next.assigneeId!==row.assigneeId||next.scheduledAt.getTime()!==row.scheduledAt.getTime()||next.estimatedDuration!==row.estimatedDuration;
       const checked=schedulingChanged?await enforceCrewCapacity(tx,next,approval):next;
+      const wasConfirmed=["scheduled","in_progress"].includes(row.status);
+      const willConfirm=["scheduled","in_progress"].includes(checked.status??row.status);
+      if(!wasConfirmed&&willConfirm){
+        const {schedulingPaymentCheck}=await import("./paymentPolicy");
+        await schedulingPaymentCheck(tx,{...checked,status:checked.status??"scheduled"});
+      }
       const [saved]=await formsGuardedJobUpdate(tx).set({...updates,
         ...(dateChanged?{remindersSent:{}}:{}),
         ...(schedulingChanged?{capacityOverrideReason:checked.capacityOverrideReason??null,capacityOverrideBy:checked.capacityOverrideBy??null,capacityOverrideAt:checked.capacityOverrideAt??null}:{}),

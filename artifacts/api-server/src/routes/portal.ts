@@ -1,6 +1,7 @@
 import { acquisitionSettings, processAcquisitionRewards } from "../lib/acquisitionRewards";
 import { publicAppUrl } from "../lib/publicSite";
 import { createCustomerPushRouter } from "../lib/customerPush";
+import { readScheduleDeposit } from "../lib/companyDepositRules";
 import { estimatePaymentTerms } from "../lib/paymentPolicy";
 import { paymentGuardedJobInsert } from "../lib/paymentPolicy";
 import { invoiceBalance } from "../lib/customerCredit";
@@ -1362,6 +1363,18 @@ router.get("/portal/service-requests", requirePortalAuth, async (req: any, res):
 });
 
 // ---------------------------------------------------------------------------
+// GET /portal/schedule-deposit
+router.get("/portal/schedule-deposit", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalTenantId } = req.portalLocals as PortalLocals;
+  const [tenant] = await db.select({ paymentPolicy: tenantsTable.paymentPolicy }).from(tenantsTable).where(eq(tenantsTable.id, portalTenantId));
+  const rule = readScheduleDeposit(tenant?.paymentPolicy);
+  const message = !rule.enabled || !(rule.value && rule.value > 0) ? null
+    : rule.mode === "percent"
+      ? `A deposit of ${rule.value}% of the estimate or job total is required before this visit can be confirmed on the calendar. Your request stays pending until that deposit is collected.`
+      : `A deposit of $${rule.value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} is required before this visit can be confirmed on the calendar. Your request stays pending until that deposit is collected.`;
+  res.json({ enabled: rule.enabled, mode: rule.mode, value: rule.value, message });
+});
+
 // POST /portal/service-requests
 // ---------------------------------------------------------------------------
 router.post("/portal/service-requests", requirePortalAuth, async (req: any, res): Promise<void> => {

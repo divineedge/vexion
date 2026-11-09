@@ -6,6 +6,8 @@ import {
   isPublishableLogoUrl,
   publicLogoUrl,
   requestOrigin,
+  resolveStoredLogoUrl,
+  withLogoCacheBust,
   supabasePublicObjectUrl,
   supabaseStorageConfig,
   uploadLogoToSupabase,
@@ -58,5 +60,23 @@ describe("company logos", () => {
     expect(calls.some((call) => call.includes("/storage/v1/bucket"))).toBe(true);
     const visible = await uploadLogoToSupabase(4, png, "image/png", async () => ({ ok: true, status: 200 }));
     expect(visible).toBe("https://example.supabase.co/storage/v1/object/public/company-logos/4/logo.png");
+  });
+
+  it("persists the company-logos public URL, and the app URL when the bucket write fails", async () => {
+    process.env.SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role";
+    const methods: string[] = [];
+    const published = await resolveStoredLogoUrl(9, png, "image/png", "https://app.example", async (input, init) => {
+      methods.push(`${init?.method ?? "GET"} ${input}`);
+      const post = init?.method === "POST" && input.includes("/storage/v1/object/");
+      return { ok: !post, status: post ? 409 : 200 };
+    });
+    expect(published).toBe("https://example.supabase.co/storage/v1/object/public/company-logos/9/logo.png");
+    expect(methods.some((call) => call.startsWith("PUT "))).toBe(true);
+    const fallback = await resolveStoredLogoUrl(9, png, "image/png", "https://app.example", async () => {
+      throw new Error("storage unavailable");
+    });
+    expect(fallback).toBe("https://app.example/api/public/tenants/9/logo");
+    expect(withLogoCacheBust(published, 1700000000000)).toBe(`${published}?t=1700000000000`);
   });
 });

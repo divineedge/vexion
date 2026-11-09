@@ -15,7 +15,7 @@ import {
   useListSkipReasons, getListSkipReasonsQueryKey, useCreateSkipReason, useUpdateSkipReason, useDeleteSkipReason,
   customFetch,
 } from '@workspace/api-client-react';
-import type { FollowupTriggerConfig } from '@workspace/api-client-react';
+import type { FollowupTriggerConfig, GetTenantSettingsQueryResult } from '@workspace/api-client-react';
 import type { PaymentReminderRule } from '@workspace/api-client-react';
 import { Repeat as RepeatIcon, ClipboardList, Search } from 'lucide-react';
 import { format } from 'date-fns';
@@ -60,6 +60,16 @@ import { AddressAutocomplete, type AddressSuggestion } from '@/components/shared
 import ExternalAccessSettings from '@/components/settings/ExternalAccessSettings';
 import GrowthProgramsSettings from '@/components/settings/GrowthProgramsSettings';
 import { KpiSettings } from '@/components/kpis/KpiSettings';
+
+function companyInitial(name: string | null | undefined): string {
+  const letter = name?.trim().charAt(0).toUpperCase();
+  return letter || 'C';
+}
+
+function withLogoCacheBust(logoUrl: string, stamp: number): string {
+  const separator = logoUrl.includes('?') ? '&' : '?';
+  return `${logoUrl}${separator}t=${stamp}`;
+}
 
 export default function SettingsPage() {
   const { isSuperAdmin, isOwner, user, canManageOffice, can } = useAuth();
@@ -198,7 +208,9 @@ export default function SettingsPage() {
 
   // Branding
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [logoVersion, setLogoVersion] = useState(0);
+  const [logoCacheKey, setLogoCacheKey] = useState(() => Date.now());
+  const [logoFailed, setLogoFailed] = useState(false);
+  const pendingLogoUrl = useRef<string | null | undefined>(undefined);
   const [logoUploading, setLogoUploading] = useState(false);
   const logoFileRef = useRef<HTMLInputElement>(null);
   const [businessPhone, setBusinessPhone] = useState('');
@@ -345,8 +357,14 @@ export default function SettingsPage() {
         setZoneTypes(labels.map((name, i) => ({ id: String(i + 1), name, color: ZONE_COLORS[i % ZONE_COLORS.length], mode: 'area' as const })));
       }
       setCustomerFields(getActiveCustomerFields(settings));
-      // Branding
-      setLogoUrl(settings.logoUrl ?? null);
+      // Branding. A logo saved in this session stays on screen until settings catch up.
+      const incomingLogo = settings.logoUrl ?? null;
+      if (pendingLogoUrl.current !== undefined && incomingLogo !== pendingLogoUrl.current) {
+        setLogoUrl(pendingLogoUrl.current);
+      } else {
+        pendingLogoUrl.current = undefined;
+        setLogoUrl(incomingLogo);
+      }
       setBusinessPhone((settings as any).businessPhone ?? '');
       setBusinessEmail((settings as any).businessEmail ?? '');
       setBusinessWebsite((settings as any).businessWebsite ?? '');
@@ -430,8 +448,14 @@ export default function SettingsPage() {
       const body = new FormData();
       body.append('file', file);
       const saved = await customFetch<{ logoUrl: string }>('/api/settings/logo', { method: 'POST', body });
+      const stamp = Date.now();
+      pendingLogoUrl.current = saved.logoUrl;
       setLogoUrl(saved.logoUrl);
-      setLogoVersion(Date.now());
+      setLogoCacheKey(stamp);
+      setLogoFailed(false);
+      qc.setQueryData<GetTenantSettingsQueryResult>(getGetTenantSettingsQueryKey(), (current) =>
+        current ? { ...current, logoUrl: saved.logoUrl } : current,
+      );
       qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() });
       toast.success('Logo updated');
     } catch (error) {
@@ -2070,13 +2094,20 @@ export default function SettingsPage() {
               <div className="flex items-start gap-6">
                 <div className="flex-shrink-0">
                   <div className="w-28 h-28 rounded-xl border-2 border-dashed border-border bg-muted/30 flex items-center justify-center overflow-hidden">
-                    {logoUrl ? (
+                    {logoUrl && !logoFailed ? (
                       <img
-                        src={`${import.meta.env.BASE_URL}api/public/tenants/${settings?.tenantId}/logo?v=${logoVersion || encodeURIComponent(logoUrl ?? '')}`}
+                        src={withLogoCacheBust(logoUrl, logoCacheKey)}
                         alt="Business logo"
                         className="w-full h-full object-contain p-1"
-                        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        onError={() => setLogoFailed(true)}
                       />
+                    ) : logoFailed ? (
+                      <div
+                        className="flex h-full w-full items-center justify-center bg-muted text-2xl font-semibold text-muted-foreground"
+                        aria-label="Company logo unavailable"
+                      >
+                        {companyInitial(companyName || settings?.companyName)}
+                      </div>
                     ) : (
                       <ImageIcon className="w-10 h-10 text-muted-foreground/30" />
                     )}
@@ -2123,7 +2154,16 @@ export default function SettingsPage() {
                           updateSettings.mutate(
                             { data: { logoUrl: null } },
                             {
-                              onSuccess: () => { setLogoUrl(null); toast.success('Logo removed'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
+                              onSuccess: () => {
+                                pendingLogoUrl.current = null;
+                                setLogoUrl(null);
+                                setLogoFailed(false);
+                                qc.setQueryData<GetTenantSettingsQueryResult>(getGetTenantSettingsQueryKey(), (current) =>
+                                  current ? { ...current, logoUrl: null } : current,
+                                );
+                                toast.success('Logo removed');
+                                qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() });
+                              },
                               onError: () => toast.error('Failed to remove logo'),
                             },
                           );

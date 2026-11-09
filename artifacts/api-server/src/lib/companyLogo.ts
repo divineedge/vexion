@@ -86,6 +86,12 @@ export function publicLogoUrl(origin: string, tenantId: number): string {
   return `${origin.replace(/\/+$/, "")}/api/public/tenants/${tenantId}/logo`;
 }
 
+/** Appends a cache-busting query so a replacement at the same path is not shown from cache. */
+export function withLogoCacheBust(logoUrl: string, stamp: number): string {
+  const separator = logoUrl.includes("?") ? "&" : "?";
+  return `${logoUrl}${separator}t=${stamp}`;
+}
+
 export function isPublishableLogoUrl(logoUrl: string, origin: string): boolean {
   try {
     const target = new URL(logoUrl);
@@ -153,16 +159,30 @@ export async function uploadLogoToSupabase(
     body: JSON.stringify({ id: config.bucket, name: config.bucket, public: true }),
   });
   const objectPath = companyLogoObjectPath(tenantId, contentType);
-  const uploaded = await fetchImpl(
-    `${config.url}/storage/v1/object/${encodeURIComponent(config.bucket)}/${objectPath.split("/").map(encodeURIComponent).join("/")}`,
-    {
-      method: "POST",
-      headers: { ...headers, "Content-Type": contentType, "x-upsert": "true", "cache-control": "public, max-age=300" },
-      body: new Uint8Array(buffer),
-    },
-  );
+  const objectUrl = `${config.url}/storage/v1/object/${encodeURIComponent(config.bucket)}/${objectPath.split("/").map(encodeURIComponent).join("/")}`;
+  const uploadHeaders = { ...headers, "Content-Type": contentType, "x-upsert": "true", "cache-control": "public, max-age=300" };
+  const body = new Uint8Array(buffer);
+  let uploaded = await fetchImpl(objectUrl, { method: "POST", headers: uploadHeaders, body });
+  if (!uploaded.ok) uploaded = await fetchImpl(objectUrl, { method: "PUT", headers: uploadHeaders, body });
   if (!uploaded.ok) return null;
   const publicUrl = supabasePublicObjectUrl(config.url, config.bucket, objectPath);
   const visible = await fetchImpl(publicUrl, { method: "GET", headers: { Range: "bytes=0-0" } });
   return visible.ok ? publicUrl : null;
+}
+
+/** Public URL written to tenants.logo_url. The bucket URL is used only when that object can be read. */
+export async function resolveStoredLogoUrl(
+  tenantId: number,
+  buffer: Buffer,
+  contentType: string,
+  origin: string,
+  fetchImpl?: LogoFetch,
+): Promise<string> {
+  const fallback = publicLogoUrl(origin, tenantId);
+  try {
+    const published = await uploadLogoToSupabase(tenantId, buffer, contentType, fetchImpl);
+    return published ?? fallback;
+  } catch {
+    return fallback;
+  }
 }

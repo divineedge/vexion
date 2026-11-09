@@ -11,7 +11,7 @@ import { budgetServiceLinks } from "../lib/budgetServiceLinks";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { ObjectStorageService } from "../lib/objectStorage";
-import { logoContentType, logoUpload, publicLogoUrl, requestOrigin, uploadLogoToSupabase } from "../lib/companyLogo";
+import { logoContentType, logoUpload, requestOrigin, resolveStoredLogoUrl } from "../lib/companyLogo";
 import { buildGoogleAuthorizeUrl, exchangeGoogleCode } from "../lib/gmailProvider";
 import { normalizeChemicalRecordRequirements, parseChemicalRecordRequirements } from "../lib/chemicalRequirements";
 
@@ -235,13 +235,7 @@ router.post("/settings/logo", (req, res, next) => {
     res.status(400).json({ error: "Upload a PNG, JPEG, WebP, GIF, or SVG image of at most 10 MB" });
     return;
   }
-  let logoUrl = publicLogoUrl(requestOrigin(req), tenantId);
-  try {
-    const published = await uploadLogoToSupabase(tenantId, file.buffer, contentType);
-    if (published) logoUrl = published;
-  } catch {
-    // The company record still stores the image and serves it from the public logo URL.
-  }
+  const logoUrl = await resolveStoredLogoUrl(tenantId, file.buffer, contentType, requestOrigin(req));
   await db.transaction(async (tx) => {
     await tx.delete(tenantLogosTable).where(eq(tenantLogosTable.tenantId, tenantId));
     await tx.insert(tenantLogosTable).values({ tenantId, contentType, bytes: file.buffer });

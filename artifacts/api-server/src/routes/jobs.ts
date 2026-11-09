@@ -453,7 +453,7 @@ router.post("/jobs/import/commit", requireVerifiedStaff, importUpload.single("fi
 
 function formatJob(
   j: typeof jobsTable.$inferSelect,
-  extras?: { customerName?: string | null; customerPhone?: string | null; customerNotes?: string | null; assigneeName?: string | null; propertyAddress?: string | null; propertyLat?:number|null; propertyLng?:number|null; propertyNotes?: string | null; crewName?: string | null; planName?: string | null; routeName?: string | null; serviceName?: string | null; fieldRequirements?: unknown; scheduleDepositWarning?: string | null }
+  extras?: { customerName?: string | null; customerPhone?: string | null; customerNotes?: string | null; assigneeName?: string | null; propertyAddress?: string | null; propertyLat?:number|null; propertyLng?:number|null; propertyNotes?: string | null; crewName?: string | null; planName?: string | null; routeName?: string | null; serviceName?: string | null; fieldRequirements?: unknown; scheduleDepositWarning?: string | null; scheduleDepositInvoiceId?: number | null; scheduleDepositAmount?: number | null }
 ) {
   const rule = j.recurrenceRule as unknown as RecurrenceRule | null;
   return {
@@ -480,6 +480,8 @@ function formatJob(
     serviceName: extras?.serviceName ?? null,
     fieldRequirements: normalizeFieldRequirements(extras?.fieldRequirements),
     scheduleDepositWarning: extras?.scheduleDepositWarning ?? null,
+    scheduleDepositInvoiceId: extras?.scheduleDepositInvoiceId ?? null,
+    scheduleDepositAmount: extras?.scheduleDepositAmount ?? null,
     planId: j.planId ?? null,
     planName: extras?.planName ?? null,
     cancelReason: j.cancelReason ?? null,
@@ -847,8 +849,8 @@ router.get("/jobs/:id", requireVerifiedStaff, async (req, res): Promise<void> =>
     .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
 
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
-  const scheduleDepositWarning = await jobScheduleDepositWarning(tenantId, row.job);
-  res.json(formatJob(row.job, { customerName: row.customerName, customerPhone: row.customerPhone, customerNotes: row.customerNotes, assigneeName: row.assigneeName, propertyAddress: row.propertyAddress, propertyLat:row.propertyLat,propertyLng:row.propertyLng,propertyNotes: row.propertyNotes, crewName: row.crewName, planName: row.planName, routeName: row.routeName, serviceName: row.serviceName, fieldRequirements: row.fieldRequirements, scheduleDepositWarning }));
+  const scheduleDeposit = await jobScheduleDepositWarning(tenantId, row.job);
+  res.json(formatJob(row.job, { customerName: row.customerName, customerPhone: row.customerPhone, customerNotes: row.customerNotes, assigneeName: row.assigneeName, propertyAddress: row.propertyAddress, propertyLat:row.propertyLat,propertyLng:row.propertyLng,propertyNotes: row.propertyNotes, crewName: row.crewName, planName: row.planName, routeName: row.routeName, serviceName: row.serviceName, fieldRequirements: row.fieldRequirements, scheduleDepositWarning: scheduleDeposit?.message ?? null, scheduleDepositInvoiceId: scheduleDeposit?.invoiceId ?? null, scheduleDepositAmount: scheduleDeposit?.amount ?? null }));
 });
 
 router.patch("/jobs/:id", async (req, res): Promise<void> => {

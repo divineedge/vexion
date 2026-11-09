@@ -47,12 +47,15 @@ export const depositRulesQueryKey = ['billing', 'deposit-rules'] as const;
 const URL = '/api/billing/deposit-rules';
 const MAX_RULES = 50;
 
+const DEPOSIT_TYPES = ['none', 'fixed', 'percent', 'full'] as const;
 const toDraft = (r: DepositRule): DraftRule => ({
-  id: r.id, name: r.name, enabled: r.enabled,
-  min: r.minTotal != null ? String(r.minTotal) : '',
-  max: r.maxTotal != null ? String(r.maxTotal) : '',
-  serviceIds: [...(r.serviceIds ?? [])], serviceMatch: r.serviceMatch ?? 'any',
-  depositType: r.depositType, value: r.depositValue != null ? String(r.depositValue) : '',
+  id: r?.id || 'rule', name: r?.name ?? '', enabled: r?.enabled !== false,
+  min: r?.minTotal != null ? String(r.minTotal) : '',
+  max: r?.maxTotal != null ? String(r.maxTotal) : '',
+  serviceIds: Array.isArray(r?.serviceIds) ? r.serviceIds.filter(id => Number.isInteger(id)) : [],
+  serviceMatch: r?.serviceMatch === 'all' ? 'all' : 'any',
+  depositType: DEPOSIT_TYPES.includes(r?.depositType as typeof DEPOSIT_TYPES[number]) ? r.depositType : 'percent',
+  value: r?.depositValue != null ? String(r.depositValue) : '',
 });
 
 const newId = () =>
@@ -110,7 +113,10 @@ function CompanyDepositRulesInner({ embedded }: { embedded: boolean }) {
   const qc = useQueryClient();
   const query = useQuery<DepositRule[]>({
     queryKey: depositRulesQueryKey,
-    queryFn: async () => (await customFetch<{ rules: DepositRule[] }>(URL))?.rules ?? [],
+    queryFn: async () => {
+      const body = await customFetch<{ rules?: DepositRule[] }>(URL);
+      return Array.isArray(body?.rules) ? body.rules.filter(rule => rule && typeof rule === 'object') : [];
+    },
   });
   const { data: servicesRaw, isLoading: servicesLoading } = useListServices(undefined, { query: { queryKey: getListServicesQueryKey() } });
   const services = Array.isArray(servicesRaw) ? servicesRaw : [];
@@ -123,7 +129,7 @@ function CompanyDepositRulesInner({ embedded }: { embedded: boolean }) {
 
   // Only hydrate from server when there are no unsaved local edits.
   useEffect(() => {
-    if (query.data && !ready) { setDrafts(query.data.map(toDraft)); setReady(true); }
+    if (query.data && !ready) { setDrafts((Array.isArray(query.data) ? query.data : []).map(toDraft)); setReady(true); }
   }, [query.data]);
 
   const save = useMutation({

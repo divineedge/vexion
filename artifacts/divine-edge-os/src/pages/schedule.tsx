@@ -931,6 +931,12 @@ export default function SchedulePage() {
   const nextRange = () => setCurrentDate(p => view === 'week' ? addWeeks(p, 1) : addMonths(p, 1));
   const prevRange = () => setCurrentDate(p => view === 'week' ? subWeeks(p, 1) : subMonths(p, 1));
 
+  const [depositScheduleBlock, setDepositScheduleBlock] = useState<string | null>(null);
+  const openDepositInvoice = (job: { scheduleDepositInvoiceId?: number | null; estimateId?: number | null; invoiceId?: number | null }) => {
+    if (job.scheduleDepositInvoiceId) setLocation(`/financials?invoiceId=${job.scheduleDepositInvoiceId}`);
+    else if (job.invoiceId) setLocation(`/financials?invoiceId=${job.invoiceId}`);
+    else if (job.estimateId) setLocation(`/estimates?highlight=${job.estimateId}`);
+  };
   const handleStatusChange = (status: string) => {
     if (!selectedJobId) return;
     if (status === 'completed' && missingJobForms.length) { toast.error(`Submit required forms first: ${missingJobForms.join(', ')}`); return; }
@@ -944,7 +950,11 @@ export default function SchedulePage() {
           qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
           qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId) });
         },
-        onError: (error: unknown) => toast.error(serverErrorMessage(error, 'Failed to update status')),
+        onError: (error: unknown) => {
+          const message = serverErrorMessage(error, 'Failed to update status');
+          if (/required prior to scheduling/i.test(message)) setDepositScheduleBlock(message);
+          else toast.error(message);
+        },
       },
     );
   };
@@ -999,7 +1009,9 @@ export default function SchedulePage() {
           else setCapConflict({ kind: 'create', message: capacityConflictMessage(err), warnings: capacityConflictWarnings(err) });
           return;
         }
-        toast.error(serverErrorMessage(err, 'Failed to create job'));
+        const message = serverErrorMessage(err, 'Failed to create job');
+        if (/required prior to scheduling/i.test(message)) setDepositScheduleBlock(message);
+        else toast.error(message);
       },
     });
   };
@@ -1068,6 +1080,22 @@ export default function SchedulePage() {
         onConfirm={confirmMove}
         onCancel={() => { if (!capConflict) { setPendingMove(null); setMoveError(null); } }}
       />
+      <Dialog open={!!depositScheduleBlock} onOpenChange={open => { if (!open) setDepositScheduleBlock(null); }}>
+        <DialogContent data-testid="dialog-deposit-required">
+          <DialogHeader>
+            <DialogTitle>Deposit Required Before Scheduling.</DialogTitle>
+            <DialogDescription>{depositScheduleBlock}</DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDepositScheduleBlock(null)}>Close</Button>
+            {selectedJob && (selectedJob.estimateId || selectedJob.invoiceId || (selectedJob as { scheduleDepositInvoiceId?: number | null }).scheduleDepositInvoiceId) && (
+              <Button data-testid="button-deposit-dialog-invoice" onClick={() => { openDepositInvoice(selectedJob as { scheduleDepositInvoiceId?: number | null; estimateId?: number | null; invoiceId?: number | null }); setDepositScheduleBlock(null); }}>
+                {(selectedJob as { scheduleDepositInvoiceId?: number | null }).scheduleDepositInvoiceId || selectedJob.invoiceId ? 'Send deposit invoice' : 'Open estimate'}
+              </Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
       {/* No-card warning */}
       <Dialog open={noCardJobWarning} onOpenChange={open => { if (!open) setNoCardJobWarning(false); }}>
         <DialogContent>
@@ -2108,8 +2136,14 @@ export default function SchedulePage() {
 
                 {/* Status change (non-tech) */}
                 {canManageJobs && (selectedJob as { scheduleDepositWarning?: string | null }).scheduleDepositWarning && (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" data-testid="banner-schedule-deposit">
-                    {(selectedJob as { scheduleDepositWarning?: string | null }).scheduleDepositWarning}
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 space-y-2" data-testid="banner-schedule-deposit">
+                    <p className="font-medium">Deposit Required Before Scheduling.</p>
+                    <p>{(selectedJob as { scheduleDepositWarning?: string | null }).scheduleDepositWarning}</p>
+                    {((selectedJob as { scheduleDepositInvoiceId?: number | null; estimateId?: number | null; invoiceId?: number | null }).scheduleDepositInvoiceId || selectedJob.estimateId || selectedJob.invoiceId) && (
+                      <Button size="sm" variant="outline" className="h-8" data-testid="button-send-deposit-invoice" onClick={() => openDepositInvoice(selectedJob as { scheduleDepositInvoiceId?: number | null; estimateId?: number | null; invoiceId?: number | null })}>
+                        {(selectedJob as { scheduleDepositInvoiceId?: number | null }).scheduleDepositInvoiceId || selectedJob.invoiceId ? 'Send deposit invoice' : 'Open estimate'}
+                      </Button>
+                    )}
                   </div>
                 )}
 

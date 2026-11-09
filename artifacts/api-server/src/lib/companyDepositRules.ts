@@ -55,6 +55,15 @@ export type EstimateDepositSettings = {
   rules: DepositRule[];
 };
 
+export const defaultEstimateDepositSettings: EstimateDepositSettings = {
+  enabled: false,
+  defaultType: "percent",
+  defaultAmount: null,
+  requireBeforeScheduling: false,
+  allowEstimateOverrides: false,
+  rules: [],
+};
+
 export function hasStoredEstimateDepositSettings(policy: unknown): boolean {
   if (!policy || typeof policy !== "object" || Array.isArray(policy)) return false;
   const stored = (policy as Record<string, unknown>)[ESTIMATE_DEPOSIT_SETTINGS_KEY];
@@ -78,12 +87,25 @@ export function normalizeEstimateDepositSettings(value: unknown): EstimateDeposi
   const raw = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
   const defaultType = raw.defaultType === "fixed" ? "fixed" : "percent";
   return {
+    ...defaultEstimateDepositSettings,
     enabled: raw.enabled === true,
     defaultType,
     defaultAmount: depositAmount(raw.defaultAmount, defaultType),
     requireBeforeScheduling: raw.requireBeforeScheduling === true,
     allowEstimateOverrides: raw.allowEstimateOverrides === true,
     rules: rulesFrom(raw.rules),
+  };
+}
+
+/** Always returns a complete document, even when the tenant JSON has no deposit keys yet. */
+export function coerceEstimateDepositSettings(value: unknown): EstimateDepositSettings {
+  const settings = normalizeEstimateDepositSettings(value);
+  return {
+    ...defaultEstimateDepositSettings,
+    ...settings,
+    defaultType: settings.defaultType === "fixed" ? "fixed" : "percent",
+    defaultAmount: typeof settings.defaultAmount === "number" && Number.isFinite(settings.defaultAmount) ? settings.defaultAmount : null,
+    rules: Array.isArray(settings.rules) ? settings.rules : [],
   };
 }
 
@@ -225,6 +247,18 @@ export function scheduleDepositAmount(setting: ScheduleDepositSetting, total: nu
   return { amount: Math.round(setting.value * 100) / 100, needsPrice: false };
 }
 
+export function depositRequiredBeforeSchedulingMessage(amount: number): string {
+  const money = (Number.isFinite(amount) ? amount : 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
+  return `Deposit of ${money} required prior to scheduling`;
+}
+
+export function depositInvoiceSatisfied(invoice: { status?: string | null; total?: number | null; creditApplied?: number | null; depositApplied?: number | null }): boolean {
+  if (!invoice || invoice.status === "void" || invoice.status === "cancelled") return false;
+  if (invoice.status === "paid") return true;
+  const balance = Math.max(0, Math.round(((invoice.total ?? 0) - (invoice.creditApplied ?? 0) - (invoice.depositApplied ?? 0)) * 100));
+  return balance <= 0 && (invoice.total ?? 0) > 0;
+}
+
 export function unpaidScheduleDepositMessage(setting: ScheduleDepositSetting, total: number, received: number): string | null {
   if (!setting.enabled) return null;
   const { amount, needsPrice } = scheduleDepositAmount(setting, total);
@@ -232,9 +266,7 @@ export function unpaidScheduleDepositMessage(setting: ScheduleDepositSetting, to
     return "Set a positive job or estimate total before scheduling. A percentage deposit is required.";
   }
   if (amount <= 0 || Math.round(received * 100) >= Math.round(amount * 100)) return null;
-  const money = amount.toLocaleString("en-US", { style: "currency", currency: "USD" });
-  if (setting.mode === "percent") return `A deposit of ${setting.value}% (${money}) is required before this job can be scheduled.`;
-  return `A deposit of ${money} is required before this job can be scheduled.`;
+  return depositRequiredBeforeSchedulingMessage(amount);
 }
 
 export function firstMatchingDepositRule(rules: DepositRule[], total: number | undefined, serviceIds: number[]) {

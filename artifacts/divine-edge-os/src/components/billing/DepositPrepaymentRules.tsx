@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { customFetch } from '@workspace/api-client-react';
+import { Component, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { customFetch, getGetTenantSettingsQueryKey, useGetTenantSettings } from '@workspace/api-client-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,7 +23,6 @@ type EstimateDepositSettings = {
   rules?: unknown[];
 };
 
-const queryKey = ['billing', 'estimate-deposit-settings'] as const;
 const EMPTY: EstimateDepositSettings = {
   enabled: false,
   defaultType: 'percent',
@@ -32,13 +31,51 @@ const EMPTY: EstimateDepositSettings = {
   allowEstimateOverrides: false,
 };
 
+function coerceDepositSettings(value: unknown): EstimateDepositSettings {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value as Partial<EstimateDepositSettings> : {};
+  const defaultType = raw.defaultType === 'fixed' ? 'fixed' : 'percent';
+  const amount = typeof raw.defaultAmount === 'number' && Number.isFinite(raw.defaultAmount) ? raw.defaultAmount : null;
+  return {
+    ...EMPTY,
+    enabled: raw.enabled === true,
+    defaultType,
+    defaultAmount: amount,
+    requireBeforeScheduling: raw.requireBeforeScheduling === true,
+    allowEstimateOverrides: raw.allowEstimateOverrides === true,
+  };
+}
+
+class DepositSettingsBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    if (this.state.failed) {
+      return (
+        <Card data-testid="section-deposit-prepayment-rules">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Deposit &amp; Prepayment Rules</CardTitle>
+            <CardDescription>Required deposits stay off until this section can be read. Refresh Settings to try again.</CardDescription>
+          </CardHeader>
+        </Card>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function DepositPrepaymentRules({ canEdit }: { canEdit: boolean }) {
+  return (
+    <DepositSettingsBoundary>
+      <DepositPrepaymentRulesForm canEdit={canEdit} />
+    </DepositSettingsBoundary>
+  );
+}
+
+function DepositPrepaymentRulesForm({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
-  const query = useQuery<{ settings: EstimateDepositSettings }>({
-    queryKey,
-    queryFn: () => customFetch<{ settings: EstimateDepositSettings }>('/api/billing/estimate-deposit-settings'),
-    enabled: canEdit,
-  });
+  const tenantQuery = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
+  const tenantSettings = tenantQuery.data as { estimateDepositSettings?: unknown; estimate_deposits?: unknown } | undefined;
+  const loaded = coerceDepositSettings(tenantSettings?.estimateDepositSettings ?? tenantSettings?.estimate_deposits ?? EMPTY);
   const [enabled, setEnabled] = useState(false);
   const [defaultType, setDefaultType] = useState<DefaultType>('percent');
   const [amount, setAmount] = useState('');
@@ -47,22 +84,21 @@ export function DepositPrepaymentRules({ canEdit }: { canEdit: boolean }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!query.data || ready) return;
-    const settings = query.data.settings ?? EMPTY;
-    setEnabled(settings.enabled);
-    setDefaultType(settings.defaultType === 'fixed' ? 'fixed' : 'percent');
-    setAmount(settings.defaultAmount != null ? String(settings.defaultAmount) : '');
-    setRequireBeforeScheduling(settings.requireBeforeScheduling);
-    setAllowEstimateOverrides(settings.allowEstimateOverrides);
+    if (!tenantQuery.data || ready) return;
+    setEnabled(loaded.enabled === true);
+    setDefaultType(loaded.defaultType === 'fixed' ? 'fixed' : 'percent');
+    setAmount(loaded.defaultAmount != null ? String(loaded.defaultAmount) : '');
+    setRequireBeforeScheduling(loaded.requireBeforeScheduling === true);
+    setAllowEstimateOverrides(loaded.allowEstimateOverrides === true);
     setReady(true);
-  }, [query.data, ready]);
+  }, [tenantQuery.data, ready, loaded]);
 
   const save = useMutation({
     mutationFn: (settings: Omit<EstimateDepositSettings, 'rules'>) =>
       customFetch<{ settings: EstimateDepositSettings }>('/api/billing/estimate-deposit-settings', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings }),
       }),
-    onSuccess: (result) => { qc.setQueryData(queryKey, result); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
     onError: (error: unknown) => toast.error(error instanceof Error && error.message ? error.message : 'Failed to save deposit rules'),
   });
   const parsed = Number(amount);
@@ -89,10 +125,10 @@ export function DepositPrepaymentRules({ canEdit }: { canEdit: boolean }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {query.isLoading ? <Skeleton className="h-24 w-full" /> : query.isError ? (
+        {tenantQuery.isLoading ? <Skeleton className="h-24 w-full" /> : tenantQuery.isError ? (
           <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
-            <span className="flex items-center gap-2 text-destructive"><AlertTriangle className="w-4 h-4" />Could not load deposit rules.</span>
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => query.refetch()}><RefreshCw className="w-3.5 h-3.5" />Retry</Button>
+            <span className="flex items-center gap-2 text-destructive"><AlertTriangle className="w-4 h-4" />Could not load deposit rules. Required deposits stay off until they load.</span>
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => tenantQuery.refetch()}><RefreshCw className="w-3.5 h-3.5" />Retry</Button>
           </div>
         ) : (
           <>
@@ -101,14 +137,14 @@ export function DepositPrepaymentRules({ canEdit }: { canEdit: boolean }) {
                 <p className="text-sm font-medium">Enable Required Deposits/Prepayments</p>
                 <p className="text-xs text-muted-foreground">Off leaves new estimates without a company deposit and does not block scheduling for one.</p>
               </div>
-              <Switch checked={enabled} onCheckedChange={setEnabled} data-testid="switch-required-deposits" />
+              <Switch checked={enabled === true} onCheckedChange={setEnabled} data-testid="switch-required-deposits" />
             </div>
             {enabled && (
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium" htmlFor="select-default-deposit-type">Default deposit requirement</label>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Select value={defaultType} onValueChange={(value) => setDefaultType(value as DefaultType)}>
+                    <Select value={defaultType === 'fixed' ? 'fixed' : 'percent'} onValueChange={(value) => setDefaultType(value === 'fixed' ? 'fixed' : 'percent')}>
                       <SelectTrigger id="select-default-deposit-type" className="w-64" data-testid="select-default-deposit-type"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="percent">Percentage %</SelectItem>
@@ -128,14 +164,14 @@ export function DepositPrepaymentRules({ canEdit }: { canEdit: boolean }) {
                     <p className="text-sm font-medium">Require deposit before scheduling</p>
                     <p className="text-xs text-muted-foreground">Jobs created from estimates stay unscheduled until this deposit is paid. A paid invoice or a collected estimate deposit counts.</p>
                   </div>
-                  <Switch checked={requireBeforeScheduling} onCheckedChange={setRequireBeforeScheduling} data-testid="switch-require-deposit-before-scheduling" />
+                  <Switch checked={requireBeforeScheduling === true} onCheckedChange={setRequireBeforeScheduling} data-testid="switch-require-deposit-before-scheduling" />
                 </div>
                 <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
                   <div>
                     <p className="text-sm font-medium">Deposit rules by estimate</p>
                     <p className="text-xs text-muted-foreground">Override the default amount on an estimate. Matching rules apply automatically, and the estimate form can use a different amount.</p>
                   </div>
-                  <Switch checked={allowEstimateOverrides} onCheckedChange={setAllowEstimateOverrides} data-testid="switch-estimate-deposit-overrides" />
+                  <Switch checked={allowEstimateOverrides === true} onCheckedChange={setAllowEstimateOverrides} data-testid="switch-estimate-deposit-overrides" />
                 </div>
                 {allowEstimateOverrides && <CompanyDepositRules embedded />}
               </div>

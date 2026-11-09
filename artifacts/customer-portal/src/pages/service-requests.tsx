@@ -73,8 +73,9 @@ export default function ServiceRequests() {
       </div>
 
       {scheduleDeposit.data?.message && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" data-testid="banner-portal-schedule-deposit">
-          {scheduleDeposit.data.message}
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 space-y-1" data-testid="banner-portal-schedule-deposit">
+          <p className="font-medium">Deposit Required Before Scheduling.</p>
+          <p>{scheduleDeposit.data.message}</p>
         </div>
       )}
 

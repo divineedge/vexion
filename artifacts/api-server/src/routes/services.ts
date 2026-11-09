@@ -98,9 +98,15 @@ router.post("/services", async (req, res): Promise<void> => {
     return;
   }
 
-  const resolvedMode = ["flat", "per_sqft", "per_linear_ft", "area_and_linear", "matrix"].includes(pricingMode)
+  const resolvedMode = ["flat", "per_sqft", "per_linear_ft", "area_and_linear", "matrix", "hourly"].includes(pricingMode)
     ? pricingMode
     : "flat";
+  const hourlyRate = req.body.hourlyRate !== undefined && req.body.hourlyRate !== "" ? parseFloat(req.body.hourlyRate) : null;
+  const minimumHours = req.body.minimumBillableHours !== undefined && req.body.minimumBillableHours !== "" ? parseFloat(req.body.minimumBillableHours) : null;
+  if (resolvedMode === "hourly" && !(hourlyRate != null && hourlyRate > 0)) {
+    res.status(400).json({ error: "Enter an hourly rate greater than zero" });
+    return;
+  }
 
   // Off-season: both must be provided together or neither
   const mmddRe = /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
@@ -126,7 +132,9 @@ router.post("/services", async (req, res): Promise<void> => {
       name,
       description: description || null,
       category: category || null,
-      basePrice: parseFloat(basePrice) || 0,
+      basePrice: resolvedMode === "hourly" ? (hourlyRate ?? 0) : parseFloat(basePrice) || 0,
+      hourlyRate: resolvedMode === "hourly" ? hourlyRate : null,
+      minimumBillableMinutes: resolvedMode === "hourly" && minimumHours != null && minimumHours > 0 ? Math.round(minimumHours * 60) : null,
       linearRate: parseFloat(req.body.linearRate) || 0,
       estimatedDuration: estimatedDuration ? parseInt(estimatedDuration, 10) : null,
       p4pPercentage: parsedP4p,
@@ -163,12 +171,25 @@ router.patch("/services/:id", async (req, res): Promise<void> => {
   if (p4pPercentage !== undefined) updates.p4pPercentage = p4pPercentage !== "" && p4pPercentage != null ? parseFloat(p4pPercentage) : null;
   if (isActive !== undefined) updates.isActive = Boolean(isActive);
   if (pricingMode !== undefined) {
-    updates.pricingMode = ["flat", "per_sqft", "per_linear_ft", "area_and_linear", "matrix"].includes(pricingMode)
+    updates.pricingMode = ["flat", "per_sqft", "per_linear_ft", "area_and_linear", "matrix", "hourly"].includes(pricingMode)
       ? pricingMode
       : "flat";
     updates.pricingMatrix = storedPricingMatrix(updates.pricingMode, pricingMatrix, priceRounding);
   } else if (pricingMatrix !== undefined) {
     updates.pricingMatrix = storedPricingMatrix("matrix", pricingMatrix, priceRounding);
+  }
+  if (req.body.hourlyRate !== undefined) {
+    const rate = req.body.hourlyRate === "" || req.body.hourlyRate == null ? null : parseFloat(req.body.hourlyRate);
+    updates.hourlyRate = rate;
+    if ((updates.pricingMode ?? undefined) === "hourly" || req.body.pricingMode === "hourly") updates.basePrice = rate ?? 0;
+  }
+  if (req.body.minimumBillableHours !== undefined) {
+    const hours = req.body.minimumBillableHours === "" || req.body.minimumBillableHours == null ? null : parseFloat(req.body.minimumBillableHours);
+    updates.minimumBillableMinutes = hours != null && hours > 0 ? Math.round(hours * 60) : null;
+  }
+  if ((updates.pricingMode === "hourly" || req.body.pricingMode === "hourly") && !(Number(updates.hourlyRate ?? req.body.hourlyRate) > 0)) {
+    res.status(400).json({ error: "Enter an hourly rate greater than zero" });
+    return;
   }
   if (linkedZoneTypeId !== undefined) updates.linkedZoneTypeId = linkedZoneTypeId || null;
   if (fieldRequirements !== undefined) updates.fieldRequirements = normalizeFieldRequirements(fieldRequirements);

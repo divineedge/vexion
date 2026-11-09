@@ -19,8 +19,12 @@ export const servicesTable = pgTable("services", {
   /** Service-level P4P payout %. null = use tenant p4pMasterPercentage. */
   p4pPercentage: real("p4p_percentage"),
   isActive: boolean("is_active").notNull().default(true),
-  /** 'flat' = fixed basePrice; 'per_sqft'/'per_linear_ft' = basePrice rate; 'matrix' = measurement tiers */
+  /** 'flat' | 'per_sqft' | 'per_linear_ft' | 'area_and_linear' | 'matrix' | 'hourly' */
   pricingMode: text("pricing_mode").notNull().default("flat"),
+  /** Customer rate per hour when pricingMode is hourly. */
+  hourlyRate: real("hourly_rate"),
+  /** Shortest time to bill, in minutes. Null means bill the exact clocked time. */
+  minimumBillableMinutes: integer("minimum_billable_minutes"),
   /**
    * Measurement-based pricing tiers.
    * Array<{ minSqft: number, maxSqft: number | null, price: number, perSqftRate?: number }>

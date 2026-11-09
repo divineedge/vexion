@@ -572,8 +572,8 @@ export default function SettingsPage() {
 
   const initialSettingsTab = (() => {
     const t = new URLSearchParams(window.location.search).get('tab') ?? 'general';
-    if (t === 'payment-reminders' || t === 'schedule-deposit') return 'invoicing';
-    if (t === 'deposits' || t === 'deposit-rules' || t === 'estimate-deposits') return 'estimates';
+    if (t === 'payment-reminders') return 'invoicing';
+    if (t === 'deposits' || t === 'deposit-rules' || t === 'estimate-deposits' || t === 'schedule-deposit') return 'estimates';
     return t;
   })();
   const [settingsTab, setSettingsTab] = useState(initialSettingsTab);
@@ -1820,7 +1820,7 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Estimate Defaults</CardTitle>
-              <CardDescription>Company-wide defaults for new estimates, including deposit rules. Templates and wording are edited in Finance, Estimates.</CardDescription>
+              <CardDescription>Company-wide defaults for new estimates. Deposit rules are in Deposit &amp; Prepayment Rules below. Templates and wording are edited in Finance, Estimates.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-1.5">
@@ -1836,8 +1836,15 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
-          <PaymentPolicyCard scope="company" id={0} canEdit={!!canManageOffice} title="Deposits and prepayment (company default)" />
-          {canManageOffice && <CompanyDepositRules />}
+          <section className="space-y-4" data-testid="section-deposit-prepayment-rules">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight">Deposit &amp; Prepayment Rules</h2>
+              <p className="text-sm text-muted-foreground">Every company deposit setting is here. New estimates, converting an estimate to a job or invoice, and calendar scheduling all use these rules.</p>
+            </div>
+            <PaymentPolicyCard scope="company" id={0} canEdit={!!canManageOffice} title="Deposits and prepayment (company default)" />
+            {canManageOffice && <CompanyDepositRules />}
+            <ScheduleDepositCard canEdit={!!canManageOffice} />
+          </section>
           <EstimateReminderSettings />
           <DeclineReasonsSettings />
         </TabsContent>
@@ -1935,7 +1942,6 @@ export default function SettingsPage() {
                   </div>
                 </div>
               <DefaultWordingCard kind="invoice" />
-              <ScheduleDepositCard canEdit={!!canManageOffice} />
               <AchPaymentRules canEdit={!!canManageOffice} onOpenPayments={() => setSettingsTab('payments')} />
               <div className="flex flex-wrap items-center gap-2 pt-2 border-t">
                 <Button variant="outline" onClick={() => setLocation('/financials?tab=invoice-templates')} className="gap-1.5">

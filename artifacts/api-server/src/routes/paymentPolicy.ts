@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, customersTable, servicesTable, tenantsTable, estimatesTable, jobsTable } from "@workspace/db";
 import { and, eq, sql, desc, inArray } from "drizzle-orm";
-import { normalizeScheduleDeposit, validateDepositRules, validateScheduleDeposit, type DepositRule } from "../lib/companyDepositRules";
+import { estimateSettingsDepositKeys, normalizeScheduleDeposit, validateDepositRules, validateScheduleDeposit, type DepositRule } from "../lib/companyDepositRules";
 import { customerInvoiceGrouping } from "../lib/invoicePropertyGrouping";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
@@ -61,7 +61,7 @@ router.patch("/billing/customer-invoice-grouping/:id", async (req, res) => {
 router.get("/billing/schedule-deposit", async (req, res) => {
   const tenantId = getTenantId(req);
   if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
-  const result = await db.execute(sql`SELECT payment_policy->'scheduleDeposit' AS rule FROM tenants WHERE id=${tenantId}`);
+  const result = await db.execute(sql`SELECT payment_policy->${estimateSettingsDepositKeys.scheduleDeposit} AS rule FROM tenants WHERE id=${tenantId}`);
   res.json({ rule: normalizeScheduleDeposit(result.rows[0]?.rule) });
 });
 router.patch("/billing/schedule-deposit", async (req, res) => {
@@ -70,13 +70,13 @@ router.patch("/billing/schedule-deposit", async (req, res) => {
   const error = validateScheduleDeposit(req.body?.rule);
   if (error) { res.status(400).json({ error }); return; }
   const rule = normalizeScheduleDeposit(req.body.rule);
-  await db.execute(sql`UPDATE tenants SET payment_policy=jsonb_set(coalesce(payment_policy,'{}'::jsonb),'{scheduleDeposit}',${JSON.stringify(rule)}::jsonb,true) WHERE id=${tenantId}`);
+  await db.execute(sql`UPDATE tenants SET payment_policy=jsonb_set(coalesce(payment_policy,'{}'::jsonb), ARRAY[${estimateSettingsDepositKeys.scheduleDeposit}]::text[], ${JSON.stringify(rule)}::jsonb, true) WHERE id=${tenantId}`);
   res.json({ rule });
 });
 router.get("/billing/deposit-rules", async (req, res) => {
   const tenantId = getTenantId(req);
   if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
-  const result = await db.execute(sql`SELECT payment_policy->'depositRules' AS rules FROM tenants WHERE id=${tenantId}`);
+  const result = await db.execute(sql`SELECT payment_policy->${estimateSettingsDepositKeys.rules} AS rules FROM tenants WHERE id=${tenantId}`);
   const rules = result.rows[0]?.rules ?? [];
   const error = validateDepositRules(rules);
   if (error) { res.status(422).json({ error }); return; }
@@ -92,7 +92,7 @@ router.patch("/billing/deposit-rules", async (req, res) => {
     const owned = await db.select({ id: servicesTable.id }).from(servicesTable).where(and(eq(servicesTable.tenantId, tenantId), inArray(servicesTable.id, ids)));
     if (owned.length !== ids.length) { res.status(400).json({ error: "All services must belong to your company" }); return; }
   }
-  await db.execute(sql`UPDATE tenants SET payment_policy=jsonb_set(coalesce(payment_policy,'{}'::jsonb),'{depositRules}',${JSON.stringify(rules)}::jsonb,true) WHERE id=${tenantId}`);
+  await db.execute(sql`UPDATE tenants SET payment_policy=jsonb_set(coalesce(payment_policy,'{}'::jsonb), ARRAY[${estimateSettingsDepositKeys.rules}]::text[], ${JSON.stringify(rules)}::jsonb, true) WHERE id=${tenantId}`);
   res.json({ rules });
 });
 router.get("/billing/payment-policy/:scope/:id", async (req, res) => {

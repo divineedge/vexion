@@ -48,6 +48,11 @@ export interface SoftwarePlanInput {
   extraUserPriceCents?: number | null;
   /** @nullable */
   maxProperties: number | null;
+  /**
+   * Active customer maximum. Omit or null for an unlimited tier.
+   * @nullable
+   */
+  maxCustomers?: number | null;
   /** @nullable */
   cardFeeBps: number | null;
   /** @nullable */

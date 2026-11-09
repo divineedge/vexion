@@ -11,6 +11,8 @@ export const plansTable = pgTable("plans", {
   maxUsers: integer("max_users"),
   extraUserPriceCents: integer("extra_user_price_cents"),
   maxProperties: integer("max_properties"),
+  /** Active customer maximum. Null means this tier does not cap customers. */
+  maxCustomers: integer("max_customers"),
   active: boolean("active").notNull().default(true),
   billingInterval: text("billing_interval").notNull().default("month"),
   revision: integer("revision").notNull().default(1),

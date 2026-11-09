@@ -41,6 +41,7 @@ export async function installVendorCategoriesSchema(){
  await db.execute(sql`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS contact_name text, ADD COLUMN IF NOT EXISTS office_phone text`);
  await db.execute(sql`CREATE TABLE IF NOT EXISTS expense_categories(tenant_id integer NOT NULL REFERENCES tenants(id),key text NOT NULL,name text NOT NULL,PRIMARY KEY(tenant_id,key))`);
  await db.execute(sql`ALTER TABLE expense_categories ADD COLUMN IF NOT EXISTS deleted_at timestamptz`);
+ await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS max_customers integer`);
 }
 export async function listVendorCategories(tenantId:number,handle:HrDb=db,includeDeleted=false){
  const names=new Map(DEFAULT_EXPENSE_CATEGORIES.map(key=>[key,categoryLabel(key)]));

@@ -30,6 +30,7 @@ export const softwarePlanInput = z.object({
   maxUsers: z.number().int().min(1).max(100000).nullable(),
   extraUserPriceCents: z.number().int().min(0).max(10000000).nullable().optional(),
   maxProperties: z.number().int().min(1).max(10000000).nullable(),
+  maxCustomers: z.number().int().min(1).max(10000000).nullable().optional(),
   cardFeeBps: feeFields.cardFeeBps.nullable(), cardFeeFixedCents: feeFields.cardFeeFixedCents.nullable(),
   achFeeBps: feeFields.achFeeBps.nullable(), achFeeFixedCents: feeFields.achFeeFixedCents.nullable(),
   ...feeBoundsFields,

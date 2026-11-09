@@ -1,4 +1,4 @@
-ALTER TABLE "jobs" ADD COLUMN "source" text;--> statement-breakpoint
+ALTER TABLE "jobs" ADD COLUMN IF NOT EXISTS "source" text;--> statement-breakpoint
 -- Backfill: mark existing portal-submitted requests.
 -- The portal POST route always creates jobs with title='Service Request' and plan_id IS NULL.
 -- This is the best available signal for pre-migration portal requests.

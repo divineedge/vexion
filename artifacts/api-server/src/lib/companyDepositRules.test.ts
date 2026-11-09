@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coerceEstimateDepositSettings, defaultEstimateDepositSettings, depositInvoiceSatisfied, estimateDepositSettingsDocument, firstMatchingDepositRule, mergeEstimateDepositSettings, readEstimateDepositSettings, readScheduleDeposit, schedulingDepositTarget, unpaidScheduleDepositMessage, validateDepositRules, validateScheduleDeposit, type DepositRule } from "./companyDepositRules";
+import { coerceEstimateDepositSettings, defaultEstimateDepositSettings, depositInvoiceSatisfied, estimateDepositSettingsDocument, firstMatchingDepositRule, linkAcceptancePayment, mergeEstimateDepositSettings, readEstimateDepositSettings, readScheduleDeposit, schedulingDepositTarget, unpaidScheduleDepositMessage, validateDepositRules, validateScheduleDeposit, type DepositRule } from "./companyDepositRules";
 import { propertyInvoiceGroups } from "./invoicePropertyGrouping";
 
 const rule: DepositRule = { id: "fixture", name: "Matching rule", enabled: true, minTotal: 500, maxTotal: 1000,
@@ -61,6 +61,16 @@ describe("configurable deposit matching and property grouping", () => {
     expect(withSchedule.schedulingDepositValue).toBe(100);
     expect(withSchedule.schedulingDepositPercent).toBe(15);
     expect(readScheduleDeposit({ estimate_deposit_settings: withSchedule })).toMatchObject({ enabled: true, mode: "fixed", value: 100 });
+  });
+  it("keeps card-on-file and prepayment together", () => {
+    expect(linkAcceptancePayment(false, false)).toBe(false);
+    expect(linkAcceptancePayment(true, false)).toBe(true);
+    expect(coerceEstimateDepositSettings(undefined).require_card_on_acceptance).toBe(false);
+    const turnedOn = mergeEstimateDepositSettings({}, { require_card_on_acceptance: true, require_prepayment_on_acceptance: false });
+    expect(turnedOn.requireCardOnAcceptance).toBe(true);
+    expect(turnedOn.require_prepayment_on_acceptance).toBe(true);
+    const kept = mergeEstimateDepositSettings({ estimate_deposit_settings: turnedOn }, { enabled: true });
+    expect(kept.requirePrepaymentOnAcceptance).toBe(true);
   });
   it("combines by default and splits by property without losing unassigned charges", () => {
     const lines = [{propertyId:1,total:100},{propertyId:2,total:200},{propertyId:1,total:50},{propertyId:null,total:10}];

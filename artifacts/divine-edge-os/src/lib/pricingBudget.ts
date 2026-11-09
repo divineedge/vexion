@@ -9,13 +9,13 @@ export function pricingBudgetRate(year: BudgetYear | undefined, serviceId: numbe
   if (target === 'auto' && matches.length > 1) return null;
   if (matches.length === 1 && target !== 'company') {
     const d = matches[0];
-    const result = computeDivision(d);
-    return { hourly: result.requiredHourlyRate, floor: result.minimumShowUpCost, label: `${year.year} ${d.name} division` };
+    const result = computeDivision(d, year.annualWorkingWeeks);
+    return { hourly: result.requiredHourlyRate, floor: result.jobFloorPrice, label: `${year.year} ${d.name} division` };
   }
   if (target !== 'company' && target !== 'auto') return null;
   const result = computeCompanyTotal(year);
   return {
-    hourly: result.combinedRequiredHourlyRate, floor: result.combinedMinimumShowUpCost,
+    hourly: result.combinedRequiredHourlyRate, floor: result.companyJobFloorPrice,
     label: `${year.year} company total${target === 'auto' ? ' (service unassigned)' : ''}`,
   };
 }

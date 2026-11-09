@@ -79,6 +79,7 @@ describe("budget man-hour rate", () => {
     const twoEmployees = budgetWithWorkers(2);
     const year = {
       ...defaultBudgetYear(2026),
+      annualWorkingWeeks: 50,
       divisions: [oneEmployee, twoEmployees],
     };
 
@@ -88,5 +89,30 @@ describe("budget man-hour rate", () => {
     expect(result.combinedManHours).toBe(10_000);
     expect(result.combinedTotalAnnualCosts).toBe(350_000);
     expect(result.combinedRequiredHourlyRate).toBe(35);
+    expect(result.monthlyOverheadExpense).toBe(result.combinedAnnualOverhead / 12);
+  });
+
+  it("prices seasonal labor on weeks worked and parks year-round off-season pay in overhead", () => {
+    const division = budgetWithWorkers(1);
+    division.technicianSchedule = "seasonal";
+    division.weeksWorkedPerYear = 32;
+    division.yearRoundPay = true;
+    division.weeklyBillableHours = 35;
+    const result = computeDivision(division, 48);
+    expect(result.capacityWeeks).toBe(32);
+    expect(result.payrollWeeks).toBe(48);
+    expect(result.annualBillableHours).toBe(Math.round(2 * 35 * 32));
+    expect(result.employeeLaborCost).toBe(25 * 40 * 32 * 1);
+    expect(result.offSeasonPayrollOverhead).toBe(25 * 40 * 16);
+  });
+
+  it("rolls custom division overhead into company miscellaneous", () => {
+    const division = budgetWithWorkers(0);
+    division.customOverhead = [{ id: "storage", name: "Storage yard", monthlyAmount: 100 }];
+    const year = { ...defaultBudgetYear(2026), annualWorkingWeeks: 50, divisions: [division] };
+    const result = computeCompanyTotal(year);
+    const misc = result.overheadByCategory.find(line => line.key === "miscOverhead");
+    expect(misc?.effective).toBe(1200);
+    expect(result.monthlyOverheadExpense).toBe(100);
   });
 });

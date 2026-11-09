@@ -236,6 +236,18 @@ export default function BudgetPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
           <div className="flex items-center gap-2 border rounded-lg px-3 py-1.5">
+            <span className="text-xs text-muted-foreground">Annual working weeks</span>
+            <input
+              type="number"
+              min={1}
+              max={52}
+              className="w-14 text-sm font-medium border-0 p-0 bg-transparent focus:outline-none"
+              value={year.annualWorkingWeeks ?? 48}
+              onChange={e => updateYear(y => ({ ...y, annualWorkingWeeks: Math.min(52, Math.max(1, parseFloat(e.target.value) || 1)) }))}
+              aria-label="Annual working weeks"
+            />
+          </div>
+          <div className="flex items-center gap-2 border rounded-lg px-3 py-1.5">
             <span className="text-xs text-muted-foreground">Year</span>
             <input
               type="number"
@@ -345,7 +357,7 @@ export default function BudgetPage() {
           key={`company-${currentYear}`}
           year={year}
           onJobPricingFloorChange={next => updateYear(y => ({ ...y, companyJobPricingFloor: next }))}
-          onOverrideChange={overrides => updateYear(y => ({ ...y, overheadOverrides: overrides }))}
+          onCompanyFloorChange={override => updateYear(y => ({ ...y, companyFloorPriceOverride: override }))}
           onCompanyCheckupChange={(which, c) => updateYear(y => ({ ...y, [which]: c }))}
         />
       ) : activeDivision ? (
@@ -378,8 +390,9 @@ export default function BudgetPage() {
         <DivisionPanel
           key={`${currentYear}-${activeDivision.id}`}
           division={activeDivision}
+          annualWorkingWeeks={year.annualWorkingWeeks ?? 48}
           onChange={updated => updateDivision(activeDivision.id, updated)}
-          previousResults={previousDivision ? computeDivision(previousDivision) : null}
+          previousResults={previousDivision ? computeDivision(previousDivision, previousYear?.annualWorkingWeeks) : null}
           previousYear={previousDivision ? previousYear!.year : undefined}
         />
         </>

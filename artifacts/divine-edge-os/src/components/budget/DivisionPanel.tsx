@@ -7,17 +7,22 @@ import {
   Users, Building2, Target, TrendingUp, Clock, Package, Timer, AlertTriangle, Calculator,
 } from 'lucide-react';
 import {
-  DivisionBudget, computeDivision, OVERHEAD_CATEGORIES,
+  DivisionBudget, computeDivision, OVERHEAD_CATEGORIES, resolvedWeeklyBillableHours, type CustomOverheadLine,
 } from '@/lib/budgetCalc';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Plus, Trash2 } from 'lucide-react';
 import { NumField, Section, ResultCard, $, pct } from './shared';
 import { CheckupPanel } from './CheckupPanel';
 import { ScopedJobPricingFloor } from './ScopedJobPricingFloor';
-import { divisionFloorBaseline, divisionCrewHoursYear } from '@/lib/jobPricingFloorBaseline';
+import { divisionFloorBaseline } from '@/lib/jobPricingFloorBaseline';
 
 export function DivisionPanel({
-  division, onChange, previousResults, previousYear,
+  division, annualWorkingWeeks, onChange, previousResults, previousYear,
 }: {
   division: DivisionBudget;
+  annualWorkingWeeks: number;
   onChange: (d: DivisionBudget) => void;
   previousResults?: ReturnType<typeof computeDivision> | null;
   previousYear?: number;
@@ -25,16 +30,16 @@ export function DivisionPanel({
   const set = <K extends keyof DivisionBudget>(key: K, val: DivisionBudget[K]) =>
     onChange({ ...division, [key]: val });
 
-  const results = useMemo(() => computeDivision(division), [division]);
+  const results = useMemo(() => computeDivision(division, annualWorkingWeeks), [division, annualWorkingWeeks]);
 
-  const jpfBaseline = useMemo(() => divisionFloorBaseline(division), [division]);
+  const jpfBaseline = useMemo(() => divisionFloorBaseline(division, annualWorkingWeeks), [division, annualWorkingWeeks]);
 
   const budgetedForCheckup = useMemo(() => ({
     revenue: results.requiredRevenue,
     laborCost: results.totalLaborCost,
     materialCost: division.estimatedAnnualMaterialCost,
     overheadByCategory: OVERHEAD_CATEGORIES.map(({ key, label }) => ({
-      key, label, annual: (Number(division[key]) || 0) * 12,
+      key, label, annual: (Number(division[key]) || 0) * 12 + (key === 'miscOverhead' ? results.customOverheadAnnual + results.offSeasonPayrollOverhead : 0),
     })),
   }), [division, results]);
 
@@ -47,9 +52,7 @@ export function DivisionPanel({
         <Section title="Company & Work Capacity" icon={Clock}>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-2">
             <NumField label="Number of Crews" value={division.crewCount} onChange={v => set('crewCount', v)} prefix="" hint="Field crews producing revenue" />
-            <NumField label="Work Weeks / Year" value={division.workWeeksPerYear} onChange={v => set('workWeeksPerYear', v)} prefix="" hint="e.g., 28–44 weeks for seasonal" />
-            <NumField label="Work Days / Week" value={division.workDaysPerWeek} onChange={v => set('workDaysPerWeek', v)} prefix="" hint="Production days only" />
-            <NumField label="Billable Hours / Day / Worker" value={division.billableHoursPerDay} onChange={v => set('billableHoursPerDay', v)} prefix="" hint="Productive job-site hours contributed by each worker" />
+            <NumField label="Weekly Billable Hours / Technician" value={resolvedWeeklyBillableHours(division)} onChange={v => set('weeklyBillableHours', v)} prefix="" hint="Productive hours each technician can sell in a working week" />
             <NumField label="Production Efficiency %" value={division.productionEfficiencyPct} onChange={v => set('productionEfficiencyPct', Math.min(100, v))} prefix="%" hint="% of hours that are billable (vs. drive time, setup)" />
           </div>
           <div className="mt-4 flex items-center justify-between gap-4 rounded-lg border p-3">
@@ -66,7 +69,7 @@ export function DivisionPanel({
             />
           </div>
           <div className="mt-4 p-3 rounded-lg bg-muted/40 text-sm">
-            <span className="font-medium">{results.manHoursYear.toLocaleString()} billable man-hours / year</span>
+            <span className="font-medium">{results.annualBillableHours.toLocaleString()} annual billable hours</span>
             <span className="text-muted-foreground">
               {' '}across {results.productiveWorkers} productive worker{results.productiveWorkers !== 1 ? 's' : ''} on {division.crewCount} crew{division.crewCount !== 1 ? 's' : ''}
               {results.ownerIsProducing ? ' (including the owner/manager)' : ''}
@@ -83,6 +86,31 @@ export function DivisionPanel({
             <NumField label="Avg. Hrs / Week" value={division.avgEmployeeHoursPerWeek} onChange={v => set('avgEmployeeHoursPerWeek', v)} prefix="" hint="Including drive time, meetings" />
             <NumField label="Payroll Burden %" value={division.payrollBurdenPct} onChange={v => set('payrollBurdenPct', v)} prefix="%" hint="Taxes, FICA, WC — typically 18–25%" />
           </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Technician work schedule</label>
+              <Select value={division.technicianSchedule === 'seasonal' ? 'seasonal' : 'year_round'} onValueChange={value => set('technicianSchedule', value === 'seasonal' ? 'seasonal' : 'year_round')}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="year_round">Year-round</SelectItem>
+                  <SelectItem value="seasonal">Seasonal</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">{division.technicianSchedule === 'seasonal' ? 'Labor and capacity use the weeks this crew actually works.' : `Uses the company annual working weeks (${annualWorkingWeeks}).`}</p>
+            </div>
+            {division.technicianSchedule === 'seasonal' && (
+              <NumField label="Weeks Worked per Year" value={division.weeksWorkedPerYear ?? division.workWeeksPerYear} onChange={v => set('weeksWorkedPerYear', v)} prefix="" hint="Example: 32 weeks for mowing or spraying" />
+            )}
+          </div>
+          {division.technicianSchedule === 'seasonal' && (
+            <div className="mt-4 flex items-center justify-between gap-4 rounded-lg border p-3">
+              <div>
+                <p className="text-sm font-medium">Pay technicians year-round</p>
+                <p className="text-xs text-muted-foreground">Wages for weeks outside the working season are overhead, spread across the billable hours they do work.</p>
+              </div>
+              <Switch checked={division.yearRoundPay === true} onCheckedChange={checked => set('yearRoundPay', checked)} aria-label="Pay technicians year-round" />
+            </div>
+          )}
           <div className="mt-4 p-3 rounded-lg bg-muted/40 text-sm space-y-0.5">
             <p>
               <span className="font-medium">{results.productiveWorkers}</span> productive workers total
@@ -105,6 +133,17 @@ export function DivisionPanel({
                 onChange={v => set(key, v)}
               />
             ))}
+          </div>
+          <div className="mt-4 space-y-2">
+            <p className="text-xs font-medium">Custom overhead categories</p>
+            {(division.customOverhead ?? []).map(line => (
+              <div key={line.id} className="flex items-center gap-2">
+                <Input value={line.name} onChange={event => set('customOverhead', (division.customOverhead ?? []).map(item => item.id === line.id ? { ...item, name: event.target.value } : item))} placeholder="Category name" />
+                <Input type="number" min={0} className="w-32" value={line.monthlyAmount} onChange={event => set('customOverhead', (division.customOverhead ?? []).map(item => item.id === line.id ? { ...item, monthlyAmount: parseFloat(event.target.value) || 0 } : item))} />
+                <Button type="button" variant="ghost" size="icon" onClick={() => set('customOverhead', (division.customOverhead ?? []).filter(item => item.id !== line.id))} aria-label={`Remove ${line.name || 'custom overhead'}`}><Trash2 className="w-4 h-4" /></Button>
+              </div>
+            ))}
+            <Button type="button" variant="outline" size="sm" className="gap-1" onClick={() => set('customOverhead', [...(division.customOverhead ?? []), { id: crypto.randomUUID(), name: '', monthlyAmount: 0 } satisfies CustomOverheadLine])}><Plus className="w-3.5 h-3.5" /> Add overhead category</Button>
           </div>
           <div className="mt-4 p-3 rounded-lg bg-muted/40 text-sm flex items-center justify-between">
             <span className="text-muted-foreground">Monthly overhead total</span>
@@ -171,7 +210,7 @@ export function DivisionPanel({
             saved={division.jobPricingFloor}
             baseline={jpfBaseline}
             onChange={next => set('jobPricingFloor', next)}
-            baselineNote={`Overhead is this division's monthly overhead plus owner salary ÷ 12 (the owner is not also charged as crew labor). Billable hours are crew-hours: ${division.crewCount} crew${division.crewCount !== 1 ? 's' : ''} × on-site hours ÷ 12 = ${Math.round(divisionCrewHoursYear(division) / 12).toLocaleString()} crew hrs/mo, not the ${results.manHoursYear.toLocaleString()} man-hours/yr used for the rate above. Stop times and direct costs are example values.`}
+            baselineNote={`Overhead per billable hour is this division's annual overhead divided by ${results.capacityWeeks} working weeks and ${results.weeklyBillableHours} weekly billable hours per technician. The stop calculator still shows that same burden as a monthly figure. Stop times and direct costs are example values.`}
           />
         </Section>
 
@@ -267,13 +306,17 @@ export function DivisionPanel({
         {/* Minimum show-up cost */}
         <Card>
           <CardHeader className="pb-2 pt-4">
-            <CardTitle className="text-sm flex items-center gap-2"><Package className="w-4 h-4 text-muted-foreground" /> Minimum Show-Up Cost</CardTitle>
+            <CardTitle className="text-sm flex items-center gap-2"><Package className="w-4 h-4 text-muted-foreground" /> Job Floor Price</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{results.minimumShowUpCost > 0 ? $(results.minimumShowUpCost, 2) : '—'}</p>
+            <p className="text-xs text-muted-foreground">Calculated cost floor</p>
+            <p className="text-3xl font-bold">{results.jobFloorCalculated > 0 ? $(results.jobFloorCalculated, 2) : '—'}</p>
             <p className="text-xs text-muted-foreground mt-1">
-              What to charge just to send a crew out — {division.minimumVisitHours} minimum billed man-hour{division.minimumVisitHours !== 1 ? 's' : ''} × {$(results.requiredHourlyRate, 2)}/man-hr target rate. Never quote below this, even for the smallest job.
+              Labor, materials, and overhead for {division.minimumVisitHours} hour{division.minimumVisitHours !== 1 ? 's' : ''}, using {results.capacityWeeks} working weeks.
             </p>
+            <div className="mt-3">
+              <NumField label="Floor price override" value={division.floorPriceOverride ?? 0} onChange={v => set('floorPriceOverride', v > 0 ? v : null)} hint={division.floorPriceOverride != null ? `Using ${$(results.jobFloorPrice, 2)}. Clear to zero to follow the calculated floor.` : 'Leave at zero to keep the calculated floor.'} />
+            </div>
           </CardContent>
         </Card>
 

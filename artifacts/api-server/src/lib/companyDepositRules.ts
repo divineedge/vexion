@@ -51,8 +51,16 @@ export type EstimateDepositSettings = {
   defaultType: "fixed" | "percent";
   defaultAmount: number | null;
   requireBeforeScheduling: boolean;
+  /** Active scheduling deposit: 'percent' of the estimate total, or a fixed dollar amount. */
+  schedulingDepositType: "fixed" | "percent";
+  schedulingDepositValue: number | null;
+  /** Remembered inputs so switching between % and $ does not drop the other amount. */
+  schedulingDepositPercent: number | null;
+  schedulingDepositFixed: number | null;
   allowEstimateOverrides: boolean;
   rules: DepositRule[];
+  scheduling_deposit_type?: "fixed" | "percent";
+  scheduling_deposit_value?: number | null;
 };
 
 export const defaultEstimateDepositSettings: EstimateDepositSettings = {
@@ -60,6 +68,12 @@ export const defaultEstimateDepositSettings: EstimateDepositSettings = {
   defaultType: "percent",
   defaultAmount: null,
   requireBeforeScheduling: false,
+  schedulingDepositType: "percent",
+  schedulingDepositValue: null,
+  schedulingDepositPercent: null,
+  schedulingDepositFixed: null,
+  scheduling_deposit_type: "percent",
+  scheduling_deposit_value: null,
   allowEstimateOverrides: false,
   rules: [],
 };
@@ -83,15 +97,42 @@ function rulesFrom(value: unknown): DepositRule[] {
   return validateDepositRules(value) === null && Array.isArray(value) ? value as DepositRule[] : [];
 }
 
+function depositMode(value: unknown): "fixed" | "percent" | null {
+  return value === "fixed" || value === "percent" ? value : null;
+}
+
+function schedulingFields(raw: Record<string, unknown>, fallbackType: "fixed" | "percent", fallbackAmount: number | null) {
+  const explicitType = depositMode(raw.scheduling_deposit_type) ?? depositMode(raw.schedulingDepositType);
+  const explicitValue = raw.scheduling_deposit_value ?? raw.schedulingDepositValue;
+  const schedulingDepositType = explicitType ?? fallbackType;
+  const schedulingDepositPercent = depositAmount(
+    raw.scheduling_deposit_percent ?? raw.schedulingDepositPercent ?? (schedulingDepositType === "percent" ? explicitValue : fallbackType === "percent" ? fallbackAmount : null),
+    "percent",
+  );
+  const schedulingDepositFixed = depositAmount(
+    raw.scheduling_deposit_fixed ?? raw.schedulingDepositFixed ?? (schedulingDepositType === "fixed" ? explicitValue : fallbackType === "fixed" ? fallbackAmount : null),
+    "fixed",
+  );
+  const schedulingDepositValue = schedulingDepositType === "fixed"
+    ? schedulingDepositFixed ?? depositAmount(explicitValue, "fixed") ?? (fallbackType === "fixed" ? fallbackAmount : null)
+    : schedulingDepositPercent ?? depositAmount(explicitValue, "percent") ?? (fallbackType === "percent" ? fallbackAmount : null);
+  return { schedulingDepositType, schedulingDepositValue, schedulingDepositPercent, schedulingDepositFixed };
+}
+
 export function normalizeEstimateDepositSettings(value: unknown): EstimateDepositSettings {
   const raw = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
   const defaultType = raw.defaultType === "fixed" ? "fixed" : "percent";
+  const defaultAmount = depositAmount(raw.defaultAmount, defaultType);
+  const scheduling = schedulingFields(raw, defaultType, defaultAmount);
   return {
     ...defaultEstimateDepositSettings,
     enabled: raw.enabled === true,
     defaultType,
-    defaultAmount: depositAmount(raw.defaultAmount, defaultType),
+    defaultAmount,
     requireBeforeScheduling: raw.requireBeforeScheduling === true,
+    ...scheduling,
+    scheduling_deposit_type: scheduling.schedulingDepositType,
+    scheduling_deposit_value: scheduling.schedulingDepositValue,
     allowEstimateOverrides: raw.allowEstimateOverrides === true,
     rules: rulesFrom(raw.rules),
   };
@@ -105,6 +146,12 @@ export function coerceEstimateDepositSettings(value: unknown): EstimateDepositSe
     ...settings,
     defaultType: settings.defaultType === "fixed" ? "fixed" : "percent",
     defaultAmount: typeof settings.defaultAmount === "number" && Number.isFinite(settings.defaultAmount) ? settings.defaultAmount : null,
+    schedulingDepositType: settings.schedulingDepositType === "fixed" ? "fixed" : "percent",
+    schedulingDepositValue: typeof settings.schedulingDepositValue === "number" && Number.isFinite(settings.schedulingDepositValue) ? settings.schedulingDepositValue : null,
+    schedulingDepositPercent: typeof settings.schedulingDepositPercent === "number" && Number.isFinite(settings.schedulingDepositPercent) ? settings.schedulingDepositPercent : null,
+    schedulingDepositFixed: typeof settings.schedulingDepositFixed === "number" && Number.isFinite(settings.schedulingDepositFixed) ? settings.schedulingDepositFixed : null,
+    scheduling_deposit_type: settings.schedulingDepositType === "fixed" ? "fixed" : "percent",
+    scheduling_deposit_value: typeof settings.schedulingDepositValue === "number" && Number.isFinite(settings.schedulingDepositValue) ? settings.schedulingDepositValue : null,
     rules: Array.isArray(settings.rules) ? settings.rules : [],
   };
 }
@@ -131,12 +178,21 @@ function legacyEstimateDepositSettings(policy: unknown): EstimateDepositSettings
     enabled = defaultAmount != null;
   }
   if (!enabled && rules.some(rule => rule.enabled && rule.depositType !== "none")) enabled = true;
+  const requireBeforeScheduling = schedule.enabled || root.requirePrepay === true || enabled;
+  const schedulingDepositType = schedule.enabled ? schedule.mode : defaultType;
+  const schedulingDepositValue = schedule.enabled ? depositAmount(schedule.value, schedule.mode) : defaultAmount;
   return {
     enabled,
     defaultType,
     defaultAmount,
     // Older companies already blocked scheduling whenever a deposit was required.
-    requireBeforeScheduling: schedule.enabled || root.requirePrepay === true || enabled,
+    requireBeforeScheduling,
+    schedulingDepositType,
+    schedulingDepositValue,
+    schedulingDepositPercent: schedulingDepositType === "percent" ? schedulingDepositValue : defaultType === "percent" ? defaultAmount : null,
+    schedulingDepositFixed: schedulingDepositType === "fixed" ? schedulingDepositValue : defaultType === "fixed" ? defaultAmount : null,
+    scheduling_deposit_type: schedulingDepositType,
+    scheduling_deposit_value: schedulingDepositValue,
     allowEstimateOverrides: rules.length > 0,
     rules,
   };
@@ -153,15 +209,28 @@ export function readEstimateDepositSettings(policy: unknown): EstimateDepositSet
 export function validateEstimateDepositSettings(value: unknown): string | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return "Choose the deposit and prepayment rules";
   const raw = value as Record<string, unknown>;
-  const hasToggle = "enabled" in raw || "defaultType" in raw || "requireBeforeScheduling" in raw || "allowEstimateOverrides" in raw || "defaultAmount" in raw;
+  const hasToggle = "enabled" in raw || "defaultType" in raw || "requireBeforeScheduling" in raw || "allowEstimateOverrides" in raw || "defaultAmount" in raw
+    || "scheduling_deposit_type" in raw || "schedulingDepositType" in raw || "scheduling_deposit_value" in raw || "schedulingDepositValue" in raw;
   if (hasToggle) {
-    if (typeof raw.enabled !== "boolean" || typeof raw.requireBeforeScheduling !== "boolean" || typeof raw.allowEstimateOverrides !== "boolean") return "Choose whether deposits are required";
-    if (raw.defaultType !== "fixed" && raw.defaultType !== "percent") return "Choose a percentage or a fixed dollar amount";
+    if (("enabled" in raw || "requireBeforeScheduling" in raw || "allowEstimateOverrides" in raw || "defaultType" in raw || "defaultAmount" in raw)
+      && (typeof raw.enabled !== "boolean" || typeof raw.requireBeforeScheduling !== "boolean" || typeof raw.allowEstimateOverrides !== "boolean")) return "Choose whether deposits are required";
+    if ("defaultType" in raw && raw.defaultType !== "fixed" && raw.defaultType !== "percent") return "Choose a percentage or a fixed dollar amount";
     if (raw.enabled) {
       if (typeof raw.defaultAmount !== "number" || !Number.isFinite(raw.defaultAmount) || raw.defaultAmount <= 0) return "Enter a default deposit greater than zero";
       if (raw.defaultType === "percent" && raw.defaultAmount > 100) return "Percentage cannot exceed 100";
       if (raw.defaultType === "fixed" && raw.defaultAmount > 1_000_000) return "Amount is too large";
       if (Math.abs(raw.defaultAmount * 100 - Math.round(raw.defaultAmount * 100)) > 0.001) return "Use at most two decimal places";
+    }
+    const scheduleType = raw.scheduling_deposit_type ?? raw.schedulingDepositType;
+    const scheduleValue = raw.scheduling_deposit_value ?? raw.schedulingDepositValue;
+    if (scheduleType !== undefined && scheduleType !== "fixed" && scheduleType !== "percent") return "Choose a percentage or a fixed dollar amount for scheduling";
+    if (raw.enabled === true && raw.requireBeforeScheduling === true) {
+      const type = scheduleType === "fixed" ? "fixed" : scheduleType === "percent" ? "percent" : null;
+      if (!type) return "Choose a percentage or a fixed dollar amount for scheduling";
+      if (typeof scheduleValue !== "number" || !Number.isFinite(scheduleValue) || scheduleValue <= 0) return "Enter the deposit required before scheduling";
+      if (type === "percent" && scheduleValue > 100) return "Percentage cannot exceed 100";
+      if (type === "fixed" && scheduleValue > 1_000_000) return "Amount is too large";
+      if (Math.abs(scheduleValue * 100 - Math.round(scheduleValue * 100)) > 0.001) return "Use at most two decimal places";
     }
   }
   if ("rules" in raw) {
@@ -177,11 +246,16 @@ export function mergeEstimateDepositSettings(policy: unknown, patch: unknown): E
   const raw = patch && typeof patch === "object" && !Array.isArray(patch) ? patch as Record<string, unknown> : {};
   const defaultType = raw.defaultType === "fixed" || raw.defaultType === "percent" ? raw.defaultType : current.defaultType;
   const enabled = typeof raw.enabled === "boolean" ? raw.enabled : current.enabled;
+  const schedulingType = depositMode(raw.scheduling_deposit_type) ?? depositMode(raw.schedulingDepositType) ?? current.schedulingDepositType;
   return normalizeEstimateDepositSettings({
     enabled,
     defaultType,
     defaultAmount: "defaultAmount" in raw ? raw.defaultAmount : current.defaultAmount,
     requireBeforeScheduling: typeof raw.requireBeforeScheduling === "boolean" ? raw.requireBeforeScheduling : current.requireBeforeScheduling,
+    scheduling_deposit_type: schedulingType,
+    scheduling_deposit_value: "scheduling_deposit_value" in raw ? raw.scheduling_deposit_value : "schedulingDepositValue" in raw ? raw.schedulingDepositValue : current.schedulingDepositValue,
+    scheduling_deposit_percent: "scheduling_deposit_percent" in raw ? raw.scheduling_deposit_percent : "schedulingDepositPercent" in raw ? raw.schedulingDepositPercent : current.schedulingDepositPercent,
+    scheduling_deposit_fixed: "scheduling_deposit_fixed" in raw ? raw.scheduling_deposit_fixed : "schedulingDepositFixed" in raw ? raw.schedulingDepositFixed : current.schedulingDepositFixed,
     allowEstimateOverrides: typeof raw.allowEstimateOverrides === "boolean" ? raw.allowEstimateOverrides : current.allowEstimateOverrides,
     rules: "rules" in raw ? raw.rules : current.rules,
   });
@@ -196,8 +270,8 @@ export function estimateDepositSettingsDocument(settings: EstimateDepositSetting
     depositRules: settings.rules,
     scheduleDeposit: {
       enabled: settings.enabled && settings.requireBeforeScheduling,
-      mode: settings.defaultType,
-      value: settings.defaultAmount,
+      mode: settings.schedulingDepositType,
+      value: settings.schedulingDepositValue,
     } satisfies ScheduleDepositSetting,
   };
 }
@@ -207,8 +281,8 @@ export function readScheduleDeposit(policy: unknown): ScheduleDepositSetting {
     const settings = readEstimateDepositSettings(policy);
     return {
       enabled: settings.enabled && settings.requireBeforeScheduling,
-      mode: settings.defaultType,
-      value: settings.defaultAmount,
+      mode: settings.schedulingDepositType ?? "percent",
+      value: settings.schedulingDepositValue ?? null,
     };
   }
   const nested = policy && typeof policy === "object" && !Array.isArray(policy)
@@ -238,13 +312,21 @@ export function validateScheduleDeposit(value: unknown): string | null {
   return null;
 }
 
-export function scheduleDepositAmount(setting: ScheduleDepositSetting, total: number): { amount: number; needsPrice: boolean } {
-  if (!setting.enabled || !(setting.value && setting.value > 0)) return { amount: 0, needsPrice: false };
-  if (setting.mode === "percent") {
+/** Percentage of the estimate total, or a fixed dollar amount capped at that total. */
+export function schedulingDepositTarget(type: "fixed" | "percent", value: number | null, total: number): { amount: number; needsPrice: boolean } {
+  if (!(typeof value === "number" && Number.isFinite(value) && value > 0)) return { amount: 0, needsPrice: false };
+  if (type === "percent") {
     if (!(total > 0)) return { amount: 0, needsPrice: true };
-    return { amount: Math.round(total * setting.value) / 100, needsPrice: false };
+    return { amount: Math.round(total * value) / 100, needsPrice: false };
   }
-  return { amount: Math.round(setting.value * 100) / 100, needsPrice: false };
+  const fixed = Math.round(value * 100) / 100;
+  if (total > 0 && fixed > total) return { amount: Math.round(total * 100) / 100, needsPrice: false };
+  return { amount: fixed, needsPrice: false };
+}
+
+export function scheduleDepositAmount(setting: ScheduleDepositSetting, total: number): { amount: number; needsPrice: boolean } {
+  if (!setting.enabled) return { amount: 0, needsPrice: false };
+  return schedulingDepositTarget(setting.mode, setting.value, total);
 }
 
 export function depositRequiredBeforeSchedulingMessage(amount: number): string {
@@ -261,7 +343,7 @@ export function depositInvoiceSatisfied(invoice: { status?: string | null; total
 
 export function unpaidScheduleDepositMessage(setting: ScheduleDepositSetting, total: number, received: number): string | null {
   if (!setting.enabled) return null;
-  const { amount, needsPrice } = scheduleDepositAmount(setting, total);
+  const { amount, needsPrice } = schedulingDepositTarget(setting.mode, setting.value, total);
   if (needsPrice && Math.round(received * 100) <= 0) {
     return "Set a positive job or estimate total before scheduling. A percentage deposit is required.";
   }

@@ -1,6 +1,6 @@
 import { db, tenantsTable, servicesTable, customersTable, jobsTable, estimatesTable, invoicesTable } from "@workspace/db";
 import { and, eq, sql, inArray } from "drizzle-orm";
-import { depositInvoiceSatisfied, depositRequiredBeforeSchedulingMessage, firstMatchingDepositRule, hasStoredEstimateDepositSettings, readEstimateDepositSettings, readScheduleDeposit, scheduleDepositAmount, unpaidScheduleDepositMessage, validateDepositRules, type DepositRule } from "./companyDepositRules";
+import { depositInvoiceSatisfied, depositRequiredBeforeSchedulingMessage, firstMatchingDepositRule, hasStoredEstimateDepositSettings, readEstimateDepositSettings, readScheduleDeposit, schedulingDepositTarget, unpaidScheduleDepositMessage, validateDepositRules, type DepositRule } from "./companyDepositRules";
 import { creditBalance, creditedInvoiceInsert, invoiceBalance } from "./customerCredit";
 import { enforceCrewCapacity,type CapacityApproval } from "./crewCapacity";
 import { invoiceDocumentDefaults } from "./invoiceDocumentDefaults";
@@ -89,9 +89,11 @@ export async function schedulingPaymentCheck(tx: Tx, input: typeof jobsTable.$in
   const total = Math.round((input.totalAmount ?? 0) * (1 + (company?.taxRate ?? 0) / 100) * 100) / 100;
   let depositRequired = policy.depositType === "full" ? total : policy.depositType === "percent" ? total * (policy.depositValue ?? 0) / 100 : policy.depositType === "fixed" ? policy.depositValue ?? 0 : 0;
   let depositReceived = 0;
+  let estimateTotal = 0;
   if (input.estimateId) {
     const [estimate] = await tx.select().from(estimatesTable).where(and(eq(estimatesTable.id, input.estimateId), eq(estimatesTable.tenantId, input.tenantId), eq(estimatesTable.customerId, customer.id)));
     if (estimate) {
+      estimateTotal = estimate.total ?? 0;
       const estimateRequirement = estimate.paymentRequirement;
       if (estimateRequirement === "full") depositRequired = Math.max(depositRequired, estimate.total);
       if (estimateRequirement === "deposit_fixed") depositRequired = Math.max(depositRequired, estimate.depositValue ?? 0);
@@ -122,9 +124,15 @@ export async function schedulingPaymentCheck(tx: Tx, input: typeof jobsTable.$in
   }
   const estimateDepositRequired = depositRequired;
   if (scheduleDepositApplies) {
-    const scheduleRequired = scheduleDepositAmount(scheduleDeposit, total).amount;
-    const scheduleMessage = unpaidScheduleDepositMessage(scheduleDeposit, total, depositReceived);
-    if (scheduleMessage && (scheduleRequired >= estimateDepositRequired || scheduleRequired === 0)) throw new SchedulingPaymentError(depositRequiredBeforeSchedulingMessage(scheduleRequired || depositRequired));
+    const basis = estimateTotal > 0 ? estimateTotal : total;
+    const target = schedulingDepositTarget(scheduleDeposit.mode, scheduleDeposit.value, basis);
+    const scheduleRequired = target.amount;
+    const scheduleMessage = target.needsPrice && Math.round(depositReceived * 100) <= 0
+      ? "Set a positive job or estimate total before scheduling. A percentage deposit is required."
+      : scheduleRequired > 0 && Math.round(depositReceived * 100) < Math.round(scheduleRequired * 100)
+        ? depositRequiredBeforeSchedulingMessage(scheduleRequired)
+        : null;
+    if (scheduleMessage && (scheduleRequired >= estimateDepositRequired || target.needsPrice)) throw new SchedulingPaymentError(scheduleMessage);
     if (scheduleRequired > depositRequired) depositRequired = scheduleRequired;
   }
   const enforceDeposit = !storedDepositSettings || (depositSettings.enabled && depositSettings.requireBeforeScheduling);
@@ -154,7 +162,7 @@ export async function jobScheduleDepositWarning(tenantId: number, job: { status:
   }
   const message = unpaidScheduleDepositMessage(setting, total, received);
   if (!message) return null;
-  const amount = scheduleDepositAmount(setting, total).amount;
+  const amount = schedulingDepositTarget(setting.mode, setting.value, total).amount;
   return { message: depositRequiredBeforeSchedulingMessage(amount || total), amount: amount || total, estimateId: job.estimateId, invoiceId };
 }
 export async function ensureScheduledJobPayment(tx: Tx, job: typeof jobsTable.$inferSelect) {

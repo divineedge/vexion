@@ -25,12 +25,11 @@ describe("job pricing floor baselines", () => {
     expect(b.monthlyOverhead).toBeCloseTo(computeDivision(d).monthlyOverhead + 5000, 2);
   });
 
-  it("company overhead honours shared-cost overrides plus owner salaries once", () => {
+  it("company overhead sums every division and keeps owner salaries once", () => {
     const a = div("A", { ownerSalaryAnnual: 12000, generalLiabilityInsurance: 300 }), b = div("B", { ownerSalaryAnnual: 24000, generalLiabilityInsurance: 300 });
     const auto = companyFloorBaseline(yearOf([a, b]));
-    const ins = 300 * 12 * 2; // same policy entered on both divisions
-    const overridden = companyFloorBaseline(yearOf([a, b], { overheadOverrides: { generalLiabilityInsurance: 3600 } }));
-    expect(auto.monthlyOverhead - overridden.monthlyOverhead).toBeCloseTo((ins - 3600) / 12, 2);
+    const ignored = companyFloorBaseline(yearOf([a, b], { overheadOverrides: { generalLiabilityInsurance: 3600 } }));
+    expect(auto.monthlyOverhead).toBeCloseTo(ignored.monthlyOverhead, 2);
     const noOwner = companyFloorBaseline(yearOf([div("A", { ...a, ownerSalaryAnnual: 0 }), div("B", { ...b, ownerSalaryAnnual: 0 })]));
     expect(auto.monthlyOverhead - noOwner.monthlyOverhead).toBeCloseTo(3000, 2);
   });

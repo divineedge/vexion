@@ -1,4 +1,4 @@
-import { BudgetYear, DivisionBudget, computeDivision, computeCompanyTotal } from './budgetCalc';
+import { BudgetYear, DivisionBudget, capacityWeeks, computeDivision, computeCompanyTotal, resolvedWeeklyBillableHours } from './budgetCalc';
 import { JobPricingFloorInputs, defaultJobPricingFloor } from './jobPricingFloor';
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -8,8 +8,8 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
  * site for one hour counts once regardless of headcount. Uses the same
  * weeks x days x billable hours x efficiency capacity as the man-hour budget.
  */
-export function divisionCrewHoursYear(d: DivisionBudget): number {
-  const perCrew = d.workWeeksPerYear * d.workDaysPerWeek * d.billableHoursPerDay * (d.productionEfficiencyPct / 100);
+export function divisionCrewHoursYear(d: DivisionBudget, annualWorkingWeeks?: number): number {
+  const perCrew = capacityWeeks(d, annualWorkingWeeks) * resolvedWeeklyBillableHours(d) * (d.productionEfficiencyPct / 100);
   return Math.max(0, d.crewCount) * Math.max(0, perCrew);
 }
 
@@ -25,9 +25,9 @@ export function divisionCrewHoursYear(d: DivisionBudget): number {
  * shared validation forces the user to enter real hours.
  * Stop times and direct job costs have no budget source; they are scenario seeds.
  */
-export function divisionFloorBaseline(d: DivisionBudget): JobPricingFloorInputs {
+export function divisionFloorBaseline(d: DivisionBudget, annualWorkingWeeks?: number): JobPricingFloorInputs {
   const base = defaultJobPricingFloor();
-  const res = computeDivision(d);
+  const res = computeDivision(d, annualWorkingWeeks);
   const paidPerCrew = Math.max(0, Math.round(d.employeesPerCrew));
   return {
     ...base,
@@ -35,7 +35,7 @@ export function divisionFloorBaseline(d: DivisionBudget): JobPricingFloorInputs 
     payrollBurdenPct: r2(d.payrollBurdenPct),
     crewMembers: Math.max(1, paidPerCrew),
     monthlyOverhead: r2(res.monthlyOverhead + d.ownerSalaryAnnual / 12),
-    monthlyBillableHours: r2(divisionCrewHoursYear(d) / 12),
+    monthlyBillableHours: r2(divisionCrewHoursYear(d, annualWorkingWeeks) / 12),
     targetMarginPct: Math.min(99, r2(d.targetNetMarginPct)),
   };
 }
@@ -53,7 +53,7 @@ export function companyFloorBaseline(year: BudgetYear): JobPricingFloorInputs {
     const h = Math.max(0, d.crewCount * d.employeesPerCrew);
     heads += h; wageSum += h * d.avgEmployeeHourlyRate; burdenWeighted += h * d.avgEmployeeHourlyRate * d.payrollBurdenPct;
     crews += Math.max(0, d.crewCount);
-    crewHours += divisionCrewHoursYear(d);
+    crewHours += divisionCrewHoursYear(d, year.annualWorkingWeeks);
     ownerSalaries += d.ownerSalaryAnnual;
   }
   return {

@@ -38,6 +38,15 @@ export const OVERHEAD_CATEGORIES: { key: keyof OverheadLineItems; label: string 
   { key: 'miscOverhead', label: 'Miscellaneous Overhead' },
 ];
 
+export interface CustomOverheadLine {
+  id: string;
+  name: string;
+  /** Monthly amount, same basis as the standard overhead categories. */
+  monthlyAmount: number;
+}
+
+export type TechnicianSchedule = 'year_round' | 'seasonal';
+
 const zeroOverhead = (): OverheadLineItems => ({
   vehiclePayments: 0, fuelMaintenance: 0, generalLiabilityInsurance: 0, vehicleInsurance: 0,
   workersComp: 0, equipmentPayments: 0, equipmentRepair: 0, officeRent: 0, marketingAdvertising: 0,
@@ -79,6 +88,16 @@ export interface DivisionBudget extends OverheadLineItems {
   workWeeksPerYear: number;
   workDaysPerWeek: number;
   billableHoursPerDay: number;
+  /** Billable hours each technician can sell in a working week. When omitted, days × hours/day is used. */
+  weeklyBillableHours?: number;
+  technicianSchedule?: TechnicianSchedule;
+  /** Production weeks for a seasonal crew. Year-round crews use the company annual working weeks. */
+  weeksWorkedPerYear?: number;
+  /** Seasonal crews paid through the off-season. Those wages are overhead, not productive labor. */
+  yearRoundPay?: boolean;
+  customOverhead?: CustomOverheadLine[];
+  /** Manual division job floor. Null follows the calculated cost baseline. */
+  floorPriceOverride?: number | null;
   productionEfficiencyPct: number;
   ownerSalaryAnnual: number;
   ownerWorksInField: boolean;
@@ -106,6 +125,11 @@ export function defaultDivision(name = 'Main'): DivisionBudget {
     workWeeksPerYear: 32,
     workDaysPerWeek: 5,
     billableHoursPerDay: 8,
+    technicianSchedule: 'year_round',
+    weeksWorkedPerYear: 32,
+    yearRoundPay: false,
+    customOverhead: [],
+    floorPriceOverride: null,
     productionEfficiencyPct: 80,
     ownerSalaryAnnual: 65000,
     ownerWorksInField: true,
@@ -149,6 +173,24 @@ function migrateFlatToDivision(raw: any, name = 'Main'): DivisionBudget {
     ? Math.max(0, Number(raw.minimumVisitHours)) : 1;
   merged.serviceIds = Array.isArray(raw.serviceIds)
     ? [...new Set<number>(raw.serviceIds.filter((id: unknown) => typeof id === 'number' && Number.isSafeInteger(id) && id > 0))] : [];
+  merged.weeklyBillableHours = Number.isFinite(Number(raw.weeklyBillableHours))
+    ? Math.max(0, Number(raw.weeklyBillableHours))
+    : Math.max(0, Number(merged.workDaysPerWeek) || 0) * Math.max(0, Number(merged.billableHoursPerDay) || 0);
+  merged.technicianSchedule = raw.technicianSchedule === 'seasonal' ? 'seasonal' : 'year_round';
+  merged.weeksWorkedPerYear = Number.isFinite(Number(raw.weeksWorkedPerYear))
+    ? Math.max(0, Number(raw.weeksWorkedPerYear))
+    : merged.workWeeksPerYear;
+  merged.yearRoundPay = raw.yearRoundPay === true;
+  merged.customOverhead = Array.isArray(raw.customOverhead)
+    ? raw.customOverhead.flatMap((line: any) => {
+        const name = typeof line?.name === 'string' ? line.name.trim() : '';
+        const monthlyAmount = Number(line?.monthlyAmount);
+        if (!name || !Number.isFinite(monthlyAmount) || monthlyAmount < 0) return [];
+        return [{ id: typeof line.id === 'string' && line.id ? line.id : crypto.randomUUID(), name, monthlyAmount }];
+      })
+    : [];
+  merged.floorPriceOverride = typeof raw.floorPriceOverride === 'number' && Number.isFinite(raw.floorPriceOverride) && raw.floorPriceOverride >= 0
+    ? raw.floorPriceOverride : null;
   return merged;
 }
 
@@ -157,6 +199,10 @@ export interface BudgetYear {
   year: number;
   divisions: DivisionBudget[];
   overheadOverrides: Partial<OverheadLineItems>;
+  /** Weeks the company actually produces. Overhead and year-round payroll use this, not a 12-month average. */
+  annualWorkingWeeks?: number;
+  /** Manual company-wide job floor. Null follows the aggregated division baseline. */
+  companyFloorPriceOverride?: number | null;
   companyMidYearCheckup: CheckupData;
   companyEndYearCheckup: CheckupData;
   savedAt?: string;
@@ -170,6 +216,8 @@ export function defaultBudgetYear(year = new Date().getFullYear()): BudgetYear {
     year,
     divisions: [defaultDivision('Main')],
     overheadOverrides: {},
+    annualWorkingWeeks: 48,
+    companyFloorPriceOverride: null,
     companyMidYearCheckup: defaultCheckup(),
     companyEndYearCheckup: defaultCheckup(),
   };
@@ -189,6 +237,10 @@ export function migrateBudgetPayload(saved: unknown): BudgetYear[] {
           ? raw.divisions.map((d: any) => migrateFlatToDivision(d, d.name ?? 'Main'))
           : [defaultDivision('Main')],
         overheadOverrides: (raw.overheadOverrides && typeof raw.overheadOverrides === 'object') ? raw.overheadOverrides : {},
+        annualWorkingWeeks: Number.isFinite(Number(raw.annualWorkingWeeks)) && Number(raw.annualWorkingWeeks) > 0
+          ? Number(raw.annualWorkingWeeks) : 48,
+        companyFloorPriceOverride: typeof raw.companyFloorPriceOverride === 'number' && Number.isFinite(raw.companyFloorPriceOverride) && raw.companyFloorPriceOverride >= 0
+          ? raw.companyFloorPriceOverride : null,
         companyMidYearCheckup: migrateCheckup(raw.companyMidYearCheckup),
         companyEndYearCheckup: migrateCheckup(raw.companyEndYearCheckup),
         savedAt: raw.savedAt,
@@ -201,6 +253,8 @@ export function migrateBudgetPayload(saved: unknown): BudgetYear[] {
       year: raw?.year ?? new Date().getFullYear(),
       divisions: [migrateFlatToDivision(raw ?? {}, 'Main')],
       overheadOverrides: {},
+      annualWorkingWeeks: 48,
+      companyFloorPriceOverride: null,
       companyMidYearCheckup: defaultCheckup(),
       companyEndYearCheckup: defaultCheckup(),
       savedAt: raw?.savedAt,
@@ -209,8 +263,43 @@ export function migrateBudgetPayload(saved: unknown): BudgetYear[] {
   });
 }
 
+export function resolvedWeeklyBillableHours(d: DivisionBudget): number {
+  if (typeof d.weeklyBillableHours === 'number' && Number.isFinite(d.weeklyBillableHours)) return Math.max(0, d.weeklyBillableHours);
+  return Math.max(0, d.workDaysPerWeek) * Math.max(0, d.billableHoursPerDay);
+}
+
+/** Production weeks. Seasonal crews use weeks worked. Year-round crews use the company working-week setting when it is provided. */
+export function capacityWeeks(d: DivisionBudget, annualWorkingWeeks?: number): number {
+  if (d.technicianSchedule === 'seasonal') {
+    const worked = Number(d.weeksWorkedPerYear);
+    return Number.isFinite(worked) && worked > 0 ? worked : d.workWeeksPerYear;
+  }
+  if (d.technicianSchedule === 'year_round' && typeof annualWorkingWeeks === 'number' && annualWorkingWeeks > 0) return annualWorkingWeeks;
+  return d.workWeeksPerYear;
+}
+
+export function payrollWeeks(d: DivisionBudget, capacity: number, annualWorkingWeeks?: number): number {
+  const fullYear = typeof annualWorkingWeeks === 'number' && annualWorkingWeeks > 0 ? annualWorkingWeeks : d.workWeeksPerYear;
+  if (d.technicianSchedule === 'seasonal' && d.yearRoundPay) return fullYear;
+  return capacity;
+}
+
+export function customOverheadMonthly(d: DivisionBudget): number {
+  return (d.customOverhead ?? []).reduce((sum, line) => sum + (Number(line.monthlyAmount) || 0), 0);
+}
+
+export function calculatedJobFloor(d: Pick<DivisionBudget, 'estimatedAnnualMaterialCost' | 'minimumVisitHours'>, results: { totalLaborCost: number; annualOverhead: number; manHoursYear: number }): number {
+  if (!(results.manHoursYear > 0)) return 0;
+  const cost = results.totalLaborCost + results.annualOverhead + (Number(d.estimatedAnnualMaterialCost) || 0);
+  return (cost / results.manHoursYear) * Math.max(0, Number(d.minimumVisitHours) || 0);
+}
+
+export function effectiveJobFloor(calculated: number, override: number | null | undefined): number {
+  return typeof override === 'number' && Number.isFinite(override) && override >= 0 ? override : calculated;
+}
+
 // ── Division-level computed results ─────────────────────────────────────────
-export function computeDivision(d: DivisionBudget) {
+export function computeDivision(d: DivisionBudget, annualWorkingWeeks?: number) {
   // Man-hours, not crew-hours: every productive person contributes capacity.
   // The owner/manager remains a productive worker when staff are added unless
   // the user explicitly marks them as office-only.
@@ -218,18 +307,23 @@ export function computeDivision(d: DivisionBudget) {
   const ownerIsProducing = d.ownerWorksInField !== false;
   const ownerProductiveWorkers = ownerIsProducing ? 1 : 0;
   const productiveWorkers = totalEmployees + ownerProductiveWorkers;
-  const manHoursPerProductiveWorker =
-    d.workWeeksPerYear * d.workDaysPerWeek * d.billableHoursPerDay *
-    (d.productionEfficiencyPct / 100);
+  const weeks = capacityWeeks(d, annualWorkingWeeks);
+  const paidWeeks = payrollWeeks(d, weeks, annualWorkingWeeks);
+  const weeklyBillableHours = resolvedWeeklyBillableHours(d);
+  const manHoursPerProductiveWorker = weeks * weeklyBillableHours * (d.productionEfficiencyPct / 100);
   const manHoursYear = productiveWorkers * manHoursPerProductiveWorker;
 
-  const employeeAnnualWages =
-    totalEmployees * d.avgEmployeeHourlyRate * d.avgEmployeeHoursPerWeek * d.workWeeksPerYear;
+  const wagePerWeek = totalEmployees * d.avgEmployeeHourlyRate * d.avgEmployeeHoursPerWeek;
+  const employeeAnnualWages = wagePerWeek * weeks;
   const employeeLaborCost = employeeAnnualWages * (1 + d.payrollBurdenPct / 100);
+  const offSeasonWages = wagePerWeek * Math.max(0, paidWeeks - weeks);
+  const offSeasonPayrollOverhead = offSeasonWages * (1 + d.payrollBurdenPct / 100);
   const totalLaborCost = employeeLaborCost + d.ownerSalaryAnnual;
 
-  const monthlyOverhead = OVERHEAD_CATEGORIES.reduce((s, { key }) => s + (Number(d[key]) || 0), 0);
-  const annualOverhead = monthlyOverhead * 12;
+  const standardMonthly = OVERHEAD_CATEGORIES.reduce((s, { key }) => s + (Number(d[key]) || 0), 0);
+  const customMonthly = customOverheadMonthly(d);
+  const monthlyOverhead = standardMonthly + customMonthly;
+  const annualOverhead = monthlyOverhead * 12 + offSeasonPayrollOverhead;
   const totalAnnualCosts = totalLaborCost + annualOverhead;
 
   const requiredRevenue = d.targetNetMarginPct >= 100 ? 0 :
@@ -249,11 +343,13 @@ export function computeDivision(d: DivisionBudget) {
     ? requiredHourlyRate - ownerOnlyRequiredHourlyRate
     : 0;
   const employeeBurdenedCostPerProductiveHour = manHoursPerProductiveWorker > 0
-    ? (d.avgEmployeeHourlyRate * d.avgEmployeeHoursPerWeek * d.workWeeksPerYear *
+    ? (d.avgEmployeeHourlyRate * d.avgEmployeeHoursPerWeek * weeks *
       (1 + d.payrollBurdenPct / 100)) / manHoursPerProductiveWorker
     : 0;
   const netProfit = requiredRevenue - totalAnnualCosts;
   const minimumShowUpCost = requiredHourlyRate * d.minimumVisitHours;
+  const jobFloorCalculated = calculatedJobFloor(d, { totalLaborCost, annualOverhead, manHoursYear });
+  const jobFloorPrice = effectiveJobFloor(jobFloorCalculated, d.floorPriceOverride);
 
   // Pay-for-performance: employee earns whichever is greater — their
   // guaranteed base rate, or their cut of revenue-per-hour — never both.
@@ -277,6 +373,10 @@ export function computeDivision(d: DivisionBudget) {
 
   return {
     manHoursYear: Math.round(manHoursYear),
+    capacityWeeks: weeks,
+    payrollWeeks: paidWeeks,
+    weeklyBillableHours,
+    annualBillableHours: Math.round(manHoursYear),
     totalEmployees,
     productiveWorkers,
     ownerIsProducing,
@@ -286,6 +386,8 @@ export function computeDivision(d: DivisionBudget) {
     employeeLaborCost,
     totalLaborCost,
     monthlyOverhead,
+    customOverheadAnnual: customMonthly * 12,
+    offSeasonPayrollOverhead,
     annualOverhead,
     totalAnnualCosts,
     requiredRevenue,
@@ -300,6 +402,8 @@ export function computeDivision(d: DivisionBudget) {
     employeeBurdenedCostPerProductiveHour,
     netProfit,
     minimumShowUpCost,
+    jobFloorCalculated,
+    jobFloorPrice,
     employeeTotalPayPerHour,
     companyLaborCostPerHour,
     isP4PActive,
@@ -312,7 +416,8 @@ export type DivisionResults = ReturnType<typeof computeDivision>;
 
 // ── Company-wide rollup across every division ───────────────────────────────
 export function computeCompanyTotal(year: BudgetYear) {
-  const rows = year.divisions.map(division => ({ division, results: computeDivision(division) }));
+  const annualWorkingWeeks = typeof year.annualWorkingWeeks === 'number' && year.annualWorkingWeeks > 0 ? year.annualWorkingWeeks : undefined;
+  const rows = year.divisions.map(division => ({ division, results: computeDivision(division, annualWorkingWeeks) }));
 
   const combinedManHours = rows.reduce((s, r) => s + r.results.manHoursYear, 0);
   const combinedTotalEmployees = rows.reduce((s, r) => s + r.results.totalEmployees, 0);
@@ -320,11 +425,12 @@ export function computeCompanyTotal(year: BudgetYear) {
   const combinedLaborCost = rows.reduce((s, r) => s + r.results.totalLaborCost, 0);
   const combinedMaterialCost = year.divisions.reduce((s, d) => s + d.estimatedAnnualMaterialCost, 0);
 
+  const customAnnual = rows.reduce((s, r) => s + r.results.customOverheadAnnual, 0);
+  const offSeasonAnnual = rows.reduce((s, r) => s + r.results.offSeasonPayrollOverhead, 0);
   const overheadByCategory = OVERHEAD_CATEGORIES.map(({ key, label }) => {
-    const auto = year.divisions.reduce((s, d) => s + (Number(d[key]) || 0), 0) * 12;
-    const override = year.overheadOverrides[key];
-    const effective = override !== undefined ? override : auto;
-    return { key, label, auto, override, effective };
+    const auto = year.divisions.reduce((s, d) => s + (Number(d[key]) || 0), 0) * 12
+      + (key === 'miscOverhead' ? customAnnual + offSeasonAnnual : 0);
+    return { key, label, auto, override: undefined as number | undefined, effective: auto };
   });
   const combinedAnnualOverhead = overheadByCategory.reduce((s, o) => s + o.effective, 0);
   const combinedTotalAnnualCosts = combinedLaborCost + combinedAnnualOverhead;
@@ -345,6 +451,11 @@ export function computeCompanyTotal(year: BudgetYear) {
     ? rows.reduce((s, r) => s + r.division.minimumVisitHours, 0) / rows.length
     : 1;
   const combinedMinimumShowUpCost = combinedRequiredHourlyRate * combinedMinimumVisitHours;
+  const companyJobFloorCalculated = combinedManHours > 0
+    ? ((combinedLaborCost + combinedAnnualOverhead + combinedMaterialCost) / combinedManHours) * combinedMinimumVisitHours
+    : 0;
+  const companyJobFloorPrice = effectiveJobFloor(companyJobFloorCalculated, year.companyFloorPriceOverride);
+  const monthlyOverheadExpense = combinedAnnualOverhead / 12;
 
   return {
     rows,
@@ -362,6 +473,10 @@ export function computeCompanyTotal(year: BudgetYear) {
     combinedBreakEvenRate,
     combinedNetProfit,
     combinedMinimumShowUpCost,
+    annualWorkingWeeks: annualWorkingWeeks ?? 0,
+    monthlyOverheadExpense,
+    companyJobFloorCalculated,
+    companyJobFloorPrice,
   };
 }
 

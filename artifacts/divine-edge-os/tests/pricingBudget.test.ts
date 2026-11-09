@@ -9,16 +9,16 @@ describe('service-linked pricing budget', () => {
   year.divisions = [lawn, landscaping];
 
   it('selects a different division for each service automatically', () => {
-    expect(pricingBudgetRate(year, 11)?.hourly).toBe(computeDivision(lawn).requiredHourlyRate);
-    expect(pricingBudgetRate(year, 22)?.floor).toBe(computeDivision(landscaping).minimumShowUpCost);
+    expect(pricingBudgetRate(year, 11)?.hourly).toBe(computeDivision(lawn, year.annualWorkingWeeks).requiredHourlyRate);
+    expect(pricingBudgetRate(year, 22)?.floor).toBe(computeDivision(landscaping, year.annualWorkingWeeks).jobFloorPrice);
     expect(pricingBudgetRate(year, 22)?.label).toContain('Landscaping');
   });
   it('uses the company minimum for unassigned services and explicit company targets', () => {
     const company = computeCompanyTotal(year);
-    expect(pricingBudgetRate(year, 99)?.floor).toBe(company.combinedMinimumShowUpCost);
+    expect(pricingBudgetRate(year, 99)?.floor).toBe(company.companyJobFloorPrice);
     expect(pricingBudgetRate(year, null)?.floor).toBeGreaterThan(0);
     expect(pricingBudgetRate(year, 11, 'company')?.hourly).toBe(company.combinedRequiredHourlyRate);
-    expect(pricingBudgetRate(year, 11, 'company')?.floor).toBe(company.combinedMinimumShowUpCost);
+    expect(pricingBudgetRate(year, 11, 'company')?.floor).toBe(company.companyJobFloorPrice);
   });
   it('applies the labor minimum before adding material selling prices', () => {
     expect(recommendedJobPrice(0.25, 30, { hourly: 100, floor: 150 })).toBe(180);

@@ -5,31 +5,22 @@ import type { JobPricingFloorInputs } from '@/lib/jobPricingFloor';
 import { companyFloorBaseline } from '@/lib/jobPricingFloorBaseline';
 import { ScopedJobPricingFloor } from './ScopedJobPricingFloor';
 import {
-  BudgetYear, computeCompanyTotal, OverheadLineItems, OVERHEAD_CATEGORIES,
+  BudgetYear, computeCompanyTotal,
 } from '@/lib/budgetCalc';
 import { NumField, Section, ResultCard, $, pct } from './shared';
 import { CheckupPanel } from './CheckupPanel';
 
 export function CompanyTotalPanel({
-  year, onOverrideChange, onCompanyCheckupChange, onJobPricingFloorChange,
+  year, onCompanyFloorChange, onCompanyCheckupChange, onJobPricingFloorChange,
 }: {
   onJobPricingFloorChange: (next: JobPricingFloorInputs | undefined) => void;
   year: BudgetYear;
-  onOverrideChange: (overrides: Partial<OverheadLineItems>) => void;
+  onCompanyFloorChange: (override: number | null) => void;
   onCompanyCheckupChange: (which: 'companyMidYearCheckup' | 'companyEndYearCheckup', c: BudgetYear['companyMidYearCheckup']) => void;
 }) {
   const totals = useMemo(() => computeCompanyTotal(year), [year]);
 
   const jpfBaseline = useMemo(() => companyFloorBaseline(year), [year]);
-
-  const setOverride = (key: keyof OverheadLineItems, val: number) => {
-    onOverrideChange({ ...year.overheadOverrides, [key]: val });
-  };
-  const clearOverride = (key: keyof OverheadLineItems) => {
-    const next = { ...year.overheadOverrides };
-    delete next[key];
-    onOverrideChange(next);
-  };
 
   const budgetedForCheckup = useMemo(() => ({
     revenue: totals.combinedRequiredRevenue,
@@ -61,39 +52,28 @@ export function CompanyTotalPanel({
         </Card>
 
         {/* Overhead rollup with override capability */}
-        <Section title="Combined Overhead (editable)" icon={Building2}>
+        <Section title="Company overhead (from divisions)" icon={Building2}>
           <p className="text-xs text-muted-foreground pt-1 pb-3">
-            Each line defaults to the sum of every division's entry. If a cost is shared and got
-            counted in more than one division (e.g. one insurance policy entered on two budgets),
-            override it here with the real combined company total.
+            These totals add every division. Custom categories that are not in the standard list are included in Miscellaneous Overhead.
           </p>
           <div className="space-y-2">
             {totals.overheadByCategory.map(o => (
-              <div key={o.key} className="flex items-center gap-3">
-                <span className="text-xs text-muted-foreground w-48 shrink-0">{o.label}</span>
-                <span className="text-xs text-muted-foreground w-24 shrink-0">auto: {$(o.auto)}</span>
-                <div className="flex-1 max-w-[160px]">
-                  <NumField
-                    label=""
-                    value={o.override ?? o.auto}
-                    onChange={v => setOverride(o.key, v)}
-                  />
-                </div>
-                {o.override !== undefined && (
-                  <button
-                    type="button"
-                    className="text-xs text-primary underline"
-                    onClick={() => clearOverride(o.key)}
-                  >
-                    reset to auto
-                  </button>
-                )}
+              <div key={o.key} className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted-foreground">{o.label}</span>
+                <span className="font-medium tabular-nums">{$(o.effective)}</span>
               </div>
             ))}
           </div>
-          <div className="mt-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm flex items-center justify-between">
-            <span className="text-amber-800">Combined annual overhead</span>
-            <span className="font-bold text-amber-900">{$(totals.combinedAnnualOverhead)} / yr</span>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm">
+              <p className="text-amber-800">Combined annual overhead</p>
+              <p className="font-bold text-amber-900">{$(totals.combinedAnnualOverhead)} / yr</p>
+            </div>
+            <div className="p-3 rounded-lg border text-sm">
+              <p className="text-muted-foreground">Monthly overhead expense</p>
+              <p className="font-bold">{$(totals.monthlyOverheadExpense)} / mo</p>
+              <p className="text-[11px] text-muted-foreground">Annual overhead ÷ 12, for cash-flow reference. Rates still use {year.annualWorkingWeeks ?? totals.annualWorkingWeeks} working weeks.</p>
+            </div>
           </div>
         </Section>
 
@@ -105,7 +85,7 @@ export function CompanyTotalPanel({
             saved={year.companyJobPricingFloor}
             baseline={jpfBaseline}
             onChange={onJobPricingFloorChange}
-            baselineNote="Overhead is the combined annual overhead above (including your overrides) plus all owner salaries, ÷ 12. Wage and burden are averaged across paid employees; crew size is average paid employees per crew. Billable hours are total crew-hours across every division's crews ÷ 12, not man-hours. Stop times and direct costs are example values."
+            baselineNote="The company floor adds each division's labor, materials, and overhead, then divides by combined billable hours. The stop calculator shows that burden on a monthly basis. Stop times and direct costs are example values."
           />
         </Section>
 
@@ -166,13 +146,17 @@ export function CompanyTotalPanel({
 
         <Card>
           <CardHeader className="pb-2 pt-4">
-            <CardTitle className="text-sm flex items-center gap-2"><Package className="w-4 h-4 text-muted-foreground" /> Combined Minimum Show-Up Cost</CardTitle>
+            <CardTitle className="text-sm flex items-center gap-2"><Package className="w-4 h-4 text-muted-foreground" /> Company Job Floor Price</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{totals.combinedMinimumShowUpCost > 0 ? $(totals.combinedMinimumShowUpCost, 2) : '—'}</p>
+            <p className="text-xs text-muted-foreground">Calculated company floor</p>
+            <p className="text-3xl font-bold">{totals.companyJobFloorCalculated > 0 ? $(totals.companyJobFloorCalculated, 2) : '—'}</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Blended across divisions using each division's own minimum visit hours and the combined rate.
+              Live sum of division labor, materials, and overhead per billable hour, times the average minimum visit.
             </p>
+            <div className="mt-3">
+              <NumField label="Company floor override" value={year.companyFloorPriceOverride ?? 0} onChange={v => onCompanyFloorChange(v > 0 ? v : null)} hint={year.companyFloorPriceOverride != null ? `Using ${$(totals.companyJobFloorPrice, 2)}.` : 'Leave at zero to follow the division math.'} />
+            </div>
           </CardContent>
         </Card>
       </div>

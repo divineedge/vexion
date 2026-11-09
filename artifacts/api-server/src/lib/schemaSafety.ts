@@ -13,6 +13,15 @@ const ADDITIVE_SETTINGS_SQL = [
   `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS excluded_reminder_service_ids integer[] NOT NULL DEFAULT '{}'`,
   `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS require_card_on_acceptance boolean NOT NULL DEFAULT false`,
   `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS require_prepayment_on_acceptance boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS chemical_record_config jsonb DEFAULT '{}'::jsonb`,
+  `ALTER TABLE chemical_products ADD COLUMN IF NOT EXISTS safety_notes text`,
+  `ALTER TABLE chemical_applications ADD COLUMN IF NOT EXISTS humidity real`,
+  `ALTER TABLE chemical_applications ADD COLUMN IF NOT EXISTS precipitation_chance real`,
+  `ALTER TABLE chemical_applications ADD COLUMN IF NOT EXISTS rain_status text`,
+  `ALTER TABLE chemical_applications ADD COLUMN IF NOT EXISTS dilution_rate text`,
+  `ALTER TABLE chemical_applications ADD COLUMN IF NOT EXISTS custom_field_values jsonb DEFAULT '{}'::jsonb`,
+  `ALTER TABLE chemical_applications ADD COLUMN IF NOT EXISTS clock_in_at timestamptz`,
+  `ALTER TABLE chemical_applications ADD COLUMN IF NOT EXISTS clock_out_at timestamptz`,
 ];
 
 export async function installAdditiveSettingsSchema(): Promise<void> {

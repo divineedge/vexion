@@ -4,6 +4,7 @@ import { ObjectStorageService } from "../lib/objectStorage";
 import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { normalizeChemicalRecordRequirements, parseStrictChemicalAppliedAt, validateChemicalRecordRequirements, validateSuppliedChemicalApplicationFields } from "../lib/chemicalRequirements";
+import { coerceChemicalRecordConfig, validateConfiguredChemicalRecord } from "../lib/chemicalRecordConfig";
 
 const router: IRouter = Router();
 import { parseCurrentChemicalWeather } from "../lib/chemicalWeather";
@@ -76,7 +77,7 @@ router.get("/chemical-products", async (req, res): Promise<void> => {
 
 router.post("/chemical-products", requireOfficeRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { name, epaRegNumber, activeIngredients, signalWord, rei, phi, labelSdsUrl, unit, rainfastHours } = req.body;
+  const { name, epaRegNumber, activeIngredients, signalWord, rei, phi, labelSdsUrl, unit, rainfastHours, safetyNotes } = req.body;
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
   const [row] = await db.insert(chemicalProductsTable).values({
     tenantId,
@@ -89,6 +90,7 @@ router.post("/chemical-products", requireOfficeRole, async (req, res): Promise<v
     labelSdsUrl: labelSdsUrl ?? null,
     unit: unit ?? "oz",
     rainfastHours: rainfastHours != null ? parseFloat(rainfastHours) : null,
+    safetyNotes: typeof safetyNotes === "string" ? safetyNotes.trim() || null : null,
   }).returning();
   res.status(201).json({ ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() });
 });
@@ -96,7 +98,7 @@ router.post("/chemical-products", requireOfficeRole, async (req, res): Promise<v
 router.patch("/chemical-products/:id", requireOfficeRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-  const { name, epaRegNumber, activeIngredients, signalWord, rei, phi, labelSdsUrl, unit, isActive, rainfastHours } = req.body;
+  const { name, epaRegNumber, activeIngredients, signalWord, rei, phi, labelSdsUrl, unit, isActive, rainfastHours, safetyNotes } = req.body;
   const [row] = await db.update(chemicalProductsTable).set({
     ...(name && { name }),
     ...(epaRegNumber !== undefined && { epaRegNumber }),
@@ -108,6 +110,7 @@ router.patch("/chemical-products/:id", requireOfficeRole, async (req, res): Prom
     ...(unit && { unit }),
     ...(isActive !== undefined && { isActive }),
     ...(rainfastHours !== undefined && { rainfastHours: rainfastHours != null ? parseFloat(rainfastHours) : null }),
+    ...(safetyNotes !== undefined && { safetyNotes: typeof safetyNotes === "string" ? safetyNotes.trim() || null : null }),
   }).where(and(eq(chemicalProductsTable.id, id), eq(chemicalProductsTable.tenantId, tenantId))).returning();
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
   res.json({ ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() });
@@ -402,6 +405,7 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
     treatedArea, areaUnit, treatedZoneName,
     targetPest, applicationMethod, windSpeed, windDirection, temperature,
     appliedAt, applicatorName, applicatorLicenseNumber, notes,
+    humidity, precipitationChance, rainStatus, dilutionRate, customFieldValues, clockInAt, clockOutAt,
   } = req.body;
 
   const parsedVolume = Number(volumeApplied);
@@ -449,14 +453,15 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
   }
 
   const [tenant] = await db
-    .select({ chemicalRecordRequirements: tenantsTable.chemicalRecordRequirements })
+    .select({ chemicalRecordRequirements: tenantsTable.chemicalRecordRequirements, chemicalRecordConfig: tenantsTable.chemicalRecordConfig })
     .from(tenantsTable)
     .where(eq(tenantsTable.id, tenantId));
   const requirements = normalizeChemicalRecordRequirements(tenant?.chemicalRecordRequirements);
-  const requirementErrors = validateChemicalRecordRequirements(
-    { ...req.body, applicatorName: resolvedApplicatorName },
-    requirements,
-  );
+  const recordConfig = coerceChemicalRecordConfig(tenant?.chemicalRecordConfig, tenant?.chemicalRecordRequirements);
+  const requirementErrors = {
+    ...validateChemicalRecordRequirements({ ...req.body, applicatorName: resolvedApplicatorName }, requirements),
+    ...validateConfiguredChemicalRecord({ ...req.body, applicatorName: resolvedApplicatorName, productName: hasProduct || hasMixture ? "selected" : "" }, recordConfig),
+  };
   if (Object.keys(requirementErrors).length > 0) {
     res.status(400).json({ error: "Complete all required chemical record fields", fields: requirementErrors });
     return;
@@ -547,6 +552,13 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
     windSpeed: windSpeed ? parseFloat(windSpeed) : null,
     windDirection: typeof windDirection === "string" ? windDirection.trim() : null,
     temperature: temperature ? parseFloat(temperature) : null,
+    humidity: humidity != null && humidity !== "" ? parseFloat(humidity) : null,
+    precipitationChance: precipitationChance != null && precipitationChance !== "" ? parseFloat(precipitationChance) : null,
+    rainStatus: rainStatus === "rain" || rainStatus === "dry" ? rainStatus : null,
+    dilutionRate: typeof dilutionRate === "string" ? dilutionRate.trim() || null : null,
+    customFieldValues: customFieldValues && typeof customFieldValues === "object" ? customFieldValues : {},
+    clockInAt: typeof clockInAt === "string" && clockInAt ? new Date(clockInAt) : null,
+    clockOutAt: typeof clockOutAt === "string" && clockOutAt ? new Date(clockOutAt) : null,
     appliedAt: parsedAppliedAt,
     breakdown,
     notes: typeof notes === "string" ? notes.trim() : null,

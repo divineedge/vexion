@@ -3,6 +3,7 @@ import { DefaultWordingCard } from '@/components/settings/DefaultWordingCard';
 import { DepositPrepaymentRules } from '@/components/billing/DepositPrepaymentRules';
 import { AchPaymentRules } from '@/components/billing/AchPaymentRules';
 import { EstimateReminderSettings } from '@/components/billing/EstimateReminderSettings';
+import { ChemicalComplianceSettings } from '@/components/settings/ChemicalComplianceSettings';
 import { useLocation } from 'wouter';
 import {
   useGetTenantSettings, getGetTenantSettingsQueryKey,
@@ -636,6 +637,7 @@ export default function SettingsPage() {
           <TabsTrigger value="estimates"><FileText className="w-4 h-4 mr-2" />Estimates</TabsTrigger>
           <p className="w-full text-[11px] font-semibold uppercase tracking-wide text-muted-foreground px-2 pt-3 first:pt-1">Field operations</p>
           <TabsTrigger value="operational"><SettingsIcon className="w-4 h-4 mr-2" />Operational</TabsTrigger>
+          {canManageOffice && <TabsTrigger value="chemical-compliance" data-testid="tab-chemical-compliance"><FlaskConical className="w-4 h-4 mr-2" />Chemical Compliance</TabsTrigger>}
           <TabsTrigger value="measurements"><MapPin className="w-4 h-4 mr-2" />Maps & Quotes</TabsTrigger>
           <TabsTrigger value="skip-reasons"><SkipForward className="w-4 h-4 mr-2" />Skip Reasons</TabsTrigger>
           <p className="w-full text-[11px] font-semibold uppercase tracking-wide text-muted-foreground px-2 pt-3 first:pt-1">Messaging</p>
@@ -2055,6 +2057,11 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+        {canManageOffice && (
+          <TabsContent value="chemical-compliance" className="space-y-6 focus-visible:outline-none">
+            <ChemicalComplianceSettings canEdit={!!canManageOffice} />
+          </TabsContent>
+        )}
         {/* ── Chemicals ── */}
         {isOwner && (
           <TabsContent value="advanced" className="space-y-6 focus-visible:outline-none">

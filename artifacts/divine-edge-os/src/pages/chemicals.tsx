@@ -15,6 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
@@ -273,16 +274,16 @@ export default function ChemicalsPage() {
   const [prodFormOpen, setProdFormOpen] = useState(false);
   const [editingProd, setEditingProd] = useState<ChemicalProduct | null>(null);
   const [safetyProd, setSafetyProd] = useState<ChemicalProduct | null>(null);
-  const [prodForm, setProdForm] = useState({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz', rainfastHours: '' });
+  const [prodForm, setProdForm] = useState({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz', rainfastHours: '', safetyNotes: '' });
 
   const openAddProd = () => {
     setEditingProd(null);
-    setProdForm({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz', rainfastHours: '' });
+    setProdForm({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz', rainfastHours: '', safetyNotes: '' });
     setProdFormOpen(true);
   };
   const openEditProd = (p: ChemicalProduct) => {
     setEditingProd(p);
-    setProdForm({ name: p.name, epaRegNumber: p.epaRegNumber ?? '', activeIngredients: p.activeIngredients ?? '', signalWord: p.signalWord ?? '', rei: p.rei != null ? String(p.rei) : '', phi: p.phi != null ? String(p.phi) : '', labelSdsUrl: p.labelSdsUrl ?? '', unit: p.unit, rainfastHours: (p as any).rainfastHours != null ? String((p as any).rainfastHours) : '' });
+    setProdForm({ name: p.name, epaRegNumber: p.epaRegNumber ?? '', activeIngredients: p.activeIngredients ?? '', signalWord: p.signalWord ?? '', rei: p.rei != null ? String(p.rei) : '', phi: p.phi != null ? String(p.phi) : '', labelSdsUrl: p.labelSdsUrl ?? '', unit: p.unit, rainfastHours: (p as any).rainfastHours != null ? String((p as any).rainfastHours) : '', safetyNotes: (p as any).safetyNotes ?? '' });
     setProdFormOpen(true);
   };
   const saveProd = () => {
@@ -297,6 +298,7 @@ export default function ChemicalsPage() {
       labelSdsUrl: prodForm.labelSdsUrl.trim() || (editingProd ? null : undefined),
       unit: prodForm.unit,
       rainfastHours: prodForm.rainfastHours ? parseFloat(prodForm.rainfastHours) : undefined,
+      safetyNotes: prodForm.safetyNotes,
     } as any;
     if (editingProd) {
       updateChemProduct.mutate({ id: editingProd.id, data }, {
@@ -707,6 +709,10 @@ export default function ChemicalsPage() {
                     <p className="text-xs text-muted-foreground">Hours people must stay out after application</p>
                     <Input type="number" min={0} placeholder="4" value={prodForm.rei} onChange={e => setProdForm(f => ({ ...f, rei: e.target.value }))} />
                   </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Pre-entry warning and safety notes</label>
+                  <Textarea rows={3} placeholder="Keep children and pets off the turf until the re-entry interval ends." value={prodForm.safetyNotes} onChange={e => setProdForm(f => ({ ...f, safetyNotes: e.target.value }))} />
                 </div>
                 <div className="space-y-1.5">
                    <label className="text-sm font-medium">External label / SDS URL</label>

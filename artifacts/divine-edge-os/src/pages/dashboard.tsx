@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Briefcase, Inbox, MessageSquare, Ban, CalendarSearch, ChevronDown, ChevronUp } from 'lucide-react';
+import { RainRiskBanner } from '@/components/schedule/RainRiskBanner';
 import { MyTasksWidget } from '@/components/tasks/MyTasksWidget';
 import { FollowupQueueWidget } from '@/components/followups/FollowupQueueWidget';
 import { useAuth } from '@/contexts/AuthContext';
@@ -31,6 +32,7 @@ export default function DashboardPage() {
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Portal activity banner — shown at top when there's pending customer activity */}
       {canManageOffice && <PortalActivityWidget />}
+      {canManageOffice && <RainRiskBanner date={todayStr} enabled />}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>

@@ -64,6 +64,7 @@ import { StaffNotesPanel } from '@/components/StaffNotesPanel';
 import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '@/components/jobs/JobFormFields';
 import { useAuth } from '@/contexts/AuthContext';
 import { ScheduleWeather } from '@/components/schedule/ScheduleWeather';
+import { RainRiskBanner } from '@/components/schedule/RainRiskBanner';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -167,6 +168,11 @@ const EMPTY_CHEMICAL_FORM = {
   windSpeed: '',
   windDirection: '',
   temperature: '',
+  humidity: '',
+  precipitationChance: '',
+  rainStatus: '',
+  dilutionRate: '',
+  customFieldValues: {} as Record<string, string>,
   appliedAt: '',
   applicatorName: '',
   applicatorLicenseNumber: '',
@@ -392,7 +398,13 @@ export default function SchedulePage() {
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
   const durationUnit = settings?.durationUnit ?? 'minutes';
   const chemicalRequirements = normalizeChemicalRecordRequirements(settings?.chemicalRecordRequirements);
-  const chemicalFieldIsRequired = (key: ChemicalRequirementKey) => chemicalRequirements[key];
+  const chemicalConfigQuery = useQuery({
+    queryKey: ['chemical-record-config'],
+    queryFn: () => customFetch<{ fields: Record<string, string>; customFields: Array<{ id: string; label: string; type: string; status: string; options: string[] }> }>('/api/settings/chemical-record-config'),
+    enabled: chemFormOpen,
+  });
+  const showChemicalField = (key: string) => chemicalConfigQuery.data?.fields?.[key] !== 'hidden';
+  const chemicalFieldIsRequired = (key: ChemicalRequirementKey) => chemicalConfigQuery.data?.fields?.[key] === 'required' || (!chemicalConfigQuery.data && chemicalRequirements[key]);
 
   // Services on this job that a chemical record may be tied to: primary service + line-item services.
   const chemJobServices = (() => {
@@ -439,7 +451,13 @@ export default function SchedulePage() {
     }
     if (chemicalRequirements.applicatorName && !chemForm.applicatorName.trim()) errors.applicatorName = 'Applicator name is required';
     if (chemicalRequirements.applicatorLicenseNumber && !chemForm.applicatorLicenseNumber.trim()) errors.applicatorLicenseNumber = 'Applicator license number is required';
-    if (chemicalRequirements.notes && !chemForm.notes.trim()) errors.notes = 'Notes are required';
+    if ((chemicalConfigQuery.data?.fields?.notes === 'required' || (!chemicalConfigQuery.data && chemicalRequirements.notes)) && !chemForm.notes.trim()) errors.notes = 'Notes are required';
+    if (chemicalConfigQuery.data?.fields?.humidity === 'required' && !chemForm.humidity) errors.humidity = 'Humidity is required';
+    if (chemicalConfigQuery.data?.fields?.precipitation === 'required' && !chemForm.precipitationChance) errors.precipitation = 'Rain chance is required';
+    if (chemicalConfigQuery.data?.fields?.dilutionRate === 'required' && !chemForm.dilutionRate.trim()) errors.dilutionRate = 'Dilution rate is required';
+    for (const field of chemicalConfigQuery.data?.customFields ?? []) {
+      if (field.status === 'required' && !String(chemForm.customFieldValues[field.id] ?? '').trim()) errors[`custom:${field.id}`] = `${field.label} is required`;
+    }
 
     setChemFormErrors(errors);
     if (Object.keys(errors).length > 0) toast.error('Complete all required chemical information');
@@ -1133,6 +1151,7 @@ export default function SchedulePage() {
       <div className="flex flex-col gap-3 shrink-0">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Schedule</h1>
+          {canManageOffice && <RainRiskBanner date={format(new Date(), 'yyyy-MM-dd')} enabled />}
           <p className="text-muted-foreground mt-1">
             {view === 'week'
               ? `Week of ${format(startOfWeek(currentDate, { weekStartsOn: 1 }), 'MMMM d, yyyy')}`
@@ -3124,6 +3143,23 @@ export default function SchedulePage() {
                         applicatorName: currentUser?.name ?? user?.name ?? f.applicatorName,
                         applicatorLicenseNumber: license || f.applicatorLicenseNumber,
                       }));
+                      if (selectedJobId) {
+                        customFetch<{ weather: { temperatureF: number | null; windMph: number | null; windDirection: string | null; humidityPct: number | null; precipitationChance: number | null; rainStatus: string } | null; treatedAreaSqft: number | null }>(`/api/jobs/${selectedJobId}/chemical-conditions`)
+                          .then(conditions => {
+                            setChemForm(current => ({
+                              ...current,
+                              treatedArea: current.treatedArea || (conditions.treatedAreaSqft ? String(Math.round(conditions.treatedAreaSqft)) : ''),
+                              areaUnit: current.treatedArea ? current.areaUnit : 'sqft',
+                              temperature: current.temperature || (conditions.weather?.temperatureF != null ? String(Math.round(conditions.weather.temperatureF)) : ''),
+                              windSpeed: current.windSpeed || (conditions.weather?.windMph != null ? String(Math.round(conditions.weather.windMph)) : ''),
+                              windDirection: current.windDirection || conditions.weather?.windDirection || '',
+                              humidity: current.humidity || (conditions.weather?.humidityPct != null ? String(Math.round(conditions.weather.humidityPct)) : ''),
+                              precipitationChance: current.precipitationChance || (conditions.weather?.precipitationChance != null ? String(Math.round(conditions.weather.precipitationChance)) : ''),
+                              rainStatus: current.rainStatus || conditions.weather?.rainStatus || '',
+                            }));
+                          })
+                          .catch(() => undefined);
+                      }
                       setChemFormErrors({});
                       setChemFormOpen(true);
                     }} title="Log a chemical application for this job">
@@ -3549,6 +3585,14 @@ export default function SchedulePage() {
               </div>
             </div>
 
+            {showChemicalField('dilutionRate') && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Dilution / mix rate {chemicalConfigQuery.data?.fields?.dilutionRate === 'required' && <span className="text-destructive">*</span>}</label>
+                <Input placeholder="e.g. 2 oz / gal" value={chemForm.dilutionRate} onChange={e => setChemForm(f => ({ ...f, dilutionRate: e.target.value }))} />
+                {chemFormErrors.dilutionRate && <p className="text-xs text-destructive">{chemFormErrors.dilutionRate}</p>}
+              </div>
+            )}
+
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Wind (mph) {chemicalFieldIsRequired('windSpeed') && <span className="text-destructive">*</span>}</label>
@@ -3573,6 +3617,47 @@ export default function SchedulePage() {
                 {chemFormErrors.temperature && <p className="text-xs text-destructive">{chemFormErrors.temperature}</p>}
               </div>
             </div>
+            {(showChemicalField('humidity') || showChemicalField('precipitation')) && (
+              <div className="grid grid-cols-2 gap-4">
+                {showChemicalField('humidity') && (
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Humidity (%) {chemicalConfigQuery.data?.fields?.humidity === 'required' && <span className="text-destructive">*</span>}</label>
+                    <Input type="number" min={0} max={100} value={chemForm.humidity} onChange={e => setChemForm(f => ({ ...f, humidity: e.target.value }))} />
+                    {chemFormErrors.humidity && <p className="text-xs text-destructive">{chemFormErrors.humidity}</p>}
+                  </div>
+                )}
+                {showChemicalField('precipitation') && (
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Rain chance (%) {chemicalConfigQuery.data?.fields?.precipitation === 'required' && <span className="text-destructive">*</span>}</label>
+                    <Input type="number" min={0} max={100} value={chemForm.precipitationChance} onChange={e => setChemForm(f => ({ ...f, precipitationChance: e.target.value }))} />
+                    <p className="text-xs text-muted-foreground">{chemForm.rainStatus === 'rain' ? 'Rain is being recorded. You can change this reading.' : 'Captured from the property forecast. You can change this reading.'}</p>
+                    {chemFormErrors.precipitation && <p className="text-xs text-destructive">{chemFormErrors.precipitation}</p>}
+                  </div>
+                )}
+              </div>
+            )}
+            {(chemicalConfigQuery.data?.customFields ?? []).map(field => (
+              <div key={field.id} className="space-y-1.5">
+                <label className="text-sm font-medium">{field.label} {field.status === 'required' && <span className="text-destructive">*</span>}</label>
+                {field.type === 'dropdown' ? (
+                  <Select value={chemForm.customFieldValues[field.id] ?? ''} onValueChange={value => setChemForm(f => ({ ...f, customFieldValues: { ...f.customFieldValues, [field.id]: value } }))}>
+                    <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                    <SelectContent>{field.options.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent>
+                  </Select>
+                ) : field.type === 'checkbox' ? (
+                  <Select value={chemForm.customFieldValues[field.id] ?? 'false'} onValueChange={value => setChemForm(f => ({ ...f, customFieldValues: { ...f.customFieldValues, [field.id]: value } }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="true">Yes</SelectItem>
+                      <SelectItem value="false">No</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input type={field.type === 'number' ? 'number' : 'text'} value={chemForm.customFieldValues[field.id] ?? ''} onChange={e => setChemForm(f => ({ ...f, customFieldValues: { ...f.customFieldValues, [field.id]: e.target.value } }))} />
+                )}
+                {chemFormErrors[`custom:${field.id}`] && <p className="text-xs text-destructive">{chemFormErrors[`custom:${field.id}`]}</p>}
+              </div>
+            ))}
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Applicator Name {chemicalFieldIsRequired('applicatorName') && <span className="text-destructive">*</span>}</label>
@@ -3611,6 +3696,11 @@ export default function SchedulePage() {
                       windSpeed: chemForm.windSpeed ? parseFloat(chemForm.windSpeed) : undefined,
                       windDirection: chemForm.windDirection || undefined,
                       temperature: chemForm.temperature ? parseFloat(chemForm.temperature) : undefined,
+                      humidity: chemForm.humidity ? parseFloat(chemForm.humidity) : undefined,
+                      precipitationChance: chemForm.precipitationChance ? parseFloat(chemForm.precipitationChance) : undefined,
+                      rainStatus: chemForm.rainStatus || undefined,
+                      dilutionRate: chemForm.dilutionRate || undefined,
+                      customFieldValues: chemForm.customFieldValues,
                       appliedAt: new Date(chemForm.appliedAt).toISOString(),
                       applicatorName: chemForm.applicatorName.trim() || undefined,
                       applicatorLicenseNumber: chemForm.applicatorLicenseNumber || undefined,

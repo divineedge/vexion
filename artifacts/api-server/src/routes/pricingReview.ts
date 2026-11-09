@@ -6,6 +6,8 @@ import { isAdminRole } from "../lib/roles";
 import { requireVerifiedStaff } from "../lib/verifiedStaff";
 import { GetPricingHistoryReportResponse } from "@workspace/api-zod";
 import { zonedDayBounds } from "./timeTracking";
+import { companyTimezone } from "../lib/companyTimezone";
+import { logger } from "../lib/logger";
 
 const router = Router();
 router.use("/reports/pricing-review", requireVerifiedStaff);
@@ -13,7 +15,8 @@ router.get("/reports/pricing-review", async (req, res) => {
   const tenantId = getTenantId(req);
   if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
   const [tenant] = await db.select({ timezone: tenantsTable.timezone }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
-  const parts = new Intl.DateTimeFormat("en-US",{timeZone:tenant.timezone,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
+  const timezone = companyTimezone(tenant?.timezone);
+  const parts = new Intl.DateTimeFormat("en-US",{timeZone:timezone,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
   const calendar = Object.fromEntries(parts.map(part=>[part.type,part.value]));
   const today = `${calendar.year}-${calendar.month}-${calendar.day}`;
   const to = String(req.query.to ?? today);
@@ -22,9 +25,14 @@ router.get("/reports/pricing-review", async (req, res) => {
   if (!valid(from) || !valid(to) || from > to || Date.parse(to)-Date.parse(from) > 731*86400000) {
     res.status(400).json({ error: "Choose a valid date range of at most two years" }); return;
   }
-  const start = zonedDayBounds(from,tenant.timezone)!.start;
-  const end = zonedDayBounds(to,tenant.timezone)!.end;
-  const [history, budget, missing] = await Promise.all([
+  const startBounds = zonedDayBounds(from, timezone);
+  const endBounds = zonedDayBounds(to, timezone);
+  if (!startBounds || !endBounds) { res.status(400).json({ error: "Choose a valid date range of at most two years" }); return; }
+  const start = startBounds.start;
+  const end = endBounds.end;
+  let history; let budget; let missing;
+  try {
+  [history, budget, missing] = await Promise.all([
     db.execute(sql`
       WITH durations AS (
         SELECT job_id, SUM(CASE WHEN NOT is_active THEN GREATEST(0,
@@ -54,6 +62,11 @@ router.get("/reports/pricing-review", async (req, res) => {
     db.execute(sql`SELECT budget_data FROM tenants WHERE id=${tenantId}`),
     db.execute(sql`SELECT count(*)::int AS count FROM jobs WHERE tenant_id=${tenantId} AND status='completed' AND completed_at IS NULL`),
   ]);
+  } catch (error) {
+    logger.error({ err: error, tenantId }, "Pricing review could not be read. Returning an empty report.");
+    res.json({ budgetJson: null, missingCompletionDates: 0, jobs: [] });
+    return;
+  }
   res.json(GetPricingHistoryReportResponse.parse({
     budgetJson: budget.rows[0]?.budget_data == null ? null : JSON.stringify(budget.rows[0].budget_data),
     missingCompletionDates: Number(missing.rows[0]?.count ?? 0),

@@ -24,7 +24,7 @@ export const tenantsTable = pgTable("tenants", {
   planTier: text("plan_tier").notNull().default("starter"),
   stripeEnabled: boolean("stripe_enabled").notNull().default(false),
   quickbooksEnabled: boolean("quickbooks_enabled").notNull().default(false),
-  timezone: text("timezone").notNull().default("America/New_York"),
+  timezone: text("timezone").notNull().default("America/Denver"),
   workdayCutoffTime: text("workday_cutoff_time").notNull().default("18:00"),
   overageMaterialBuffer: real("overage_material_buffer").notNull().default(10),
   taxRate: real("tax_rate").notNull().default(8.5),
@@ -43,6 +43,7 @@ export const tenantsTable = pgTable("tenants", {
   logoUrl: text("logo_url"),
   customFields: jsonb("custom_fields").default("[]"),
   /** Tenant-configured required fields for new chemical application records. */
+  chemicalRecordConfig: jsonb("chemical_record_config").default("{}"),
   chemicalRecordRequirements: jsonb("chemical_record_requirements").default(
     '{"treatedArea":false,"treatedZoneName":false,"targetPest":false,"applicationMethod":false,"windSpeed":false,"windDirection":false,"temperature":false,"applicatorName":false,"applicatorLicenseNumber":false,"notes":false}',
   ),

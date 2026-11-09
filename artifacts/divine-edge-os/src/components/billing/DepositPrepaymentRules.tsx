@@ -183,7 +183,7 @@ function DepositPrepaymentRulesForm({ canEdit }: { canEdit: boolean }) {
   const saveRef = useRef(save.mutateAsync);
   saveRef.current = save.mutateAsync;
   const autosave = useSettingsAutosave((patch) => saveRef.current(patch.settings as Omit<EstimateDepositSettings, 'rules'>));
-  useAutosaveFields({ settings }, ready, autosave.queue, canEdit && !invalid && !scheduleInvalid);
+  useAutosaveFields({ settings }, ready && !tenantQuery.isError, autosave.queue, canEdit && !invalid && !scheduleInvalid);
 
   if (!canEdit) return null;
   return (
@@ -195,13 +195,14 @@ function DepositPrepaymentRulesForm({ canEdit }: { canEdit: boolean }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {tenantQuery.isLoading ? <Skeleton className="h-24 w-full" /> : tenantQuery.isError ? (
-          <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
-            <span className="flex items-center gap-2 text-destructive"><AlertTriangle className="w-4 h-4" />Could not load deposit rules. Required deposits stay off until they load.</span>
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => tenantQuery.refetch()}><RefreshCw className="w-3.5 h-3.5" />Retry</Button>
-          </div>
-        ) : (
+        {tenantQuery.isLoading ? <Skeleton className="h-24 w-full" /> : (
           <>
+            {tenantQuery.isError && (
+              <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                <span className="flex items-center gap-2 text-destructive"><AlertTriangle className="w-4 h-4" />Saved deposit rules could not be read. The fields below are the safe defaults and will not replace your saved rules until they load.</span>
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => tenantQuery.refetch()}><RefreshCw className="w-3.5 h-3.5" />Retry</Button>
+              </div>
+            )}
             <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
               <div>
                 <p className="text-sm font-medium">Enable Required Deposits/Prepayments</p>

@@ -15,7 +15,9 @@ import { logoContentType, logoUpload, publicLogoUrl, requestOrigin, uploadLogoTo
 import { buildGoogleAuthorizeUrl, exchangeGoogleCode } from "../lib/gmailProvider";
 import { normalizeChemicalRecordRequirements, parseChemicalRecordRequirements } from "../lib/chemicalRequirements";
 import { normalizeExcludedReminderServiceIds, normalizeServiceReminderMode } from "../lib/serviceReminderPolicy";
-import { readEstimateDepositSettings, withAcceptanceColumns } from "../lib/companyDepositRules";
+import { defaultEstimateDepositSettings, readEstimateDepositSettings, withAcceptanceColumns } from "../lib/companyDepositRules";
+import { logger } from "../lib/logger";
+import { selectTenantById } from "../lib/schemaSafety";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -210,11 +212,29 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
 }
 
 router.get("/settings", async (req, res): Promise<void> => {
-  await ensureTenantSlug(getTenantId(req));
   const tenantId = getTenantId(req);
-  const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  try {
+    await ensureTenantSlug(tenantId);
+  } catch (error) {
+    logger.error({ err: error, tenantId }, "Tenant slug setup failed. Settings will still load from the stored row.");
+  }
+  const tenant = await selectTenantById(tenantId);
   if (!tenant) { res.status(404).json({ error: "Tenant not found" }); return; }
-  res.json(formatTenant(tenant));
+  try {
+    res.json(formatTenant(tenant));
+  } catch (error) {
+    logger.error({ err: error, tenantId }, "Settings formatting failed. Returning deposit and reminder defaults with the stored company identity.");
+    const deposits = { ...defaultEstimateDepositSettings };
+    res.json({
+      id: tenant.id,
+      tenantId: tenant.id,
+      companyName: tenant.name ?? "",
+      estimateDepositSettings: deposits,
+      estimate_deposits: deposits,
+      serviceRemindersMode: "enabled",
+      excludedReminderServiceIds: [],
+    });
+  }
 });
 
 router.post("/settings/logo", (req, res, next) => {

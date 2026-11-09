@@ -6,6 +6,9 @@ import { customerInvoiceGrouping } from "../lib/invoicePropertyGrouping";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { normalizePaymentPolicy, ensureScheduledJobPayment, SchedulingPaymentError } from "../lib/paymentPolicy";
+import { logger } from "../lib/logger";
+import { isMissingColumnError } from "../lib/settingsFallback";
+import { selectTenantById } from "../lib/schemaSafety";
 import { achPolicySchema, getAchPolicy } from "../lib/achPolicy";
 const router = Router();
 router.get("/billing/ach-policy", async (req, res) => {
@@ -59,16 +62,19 @@ router.patch("/billing/customer-invoice-grouping/:id", async (req, res) => {
   res.json({ mode });
 });
 async function loadCompanyPolicy(tenantId: number) {
-  const [row] = await db.select({
-    paymentPolicy: tenantsTable.paymentPolicy,
-    requireCardOnAcceptance: tenantsTable.requireCardOnAcceptance,
-    requirePrepaymentOnAcceptance: tenantsTable.requirePrepaymentOnAcceptance,
-  }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
-  return row;
+  const row = await selectTenantById(tenantId);
+  return row ? { paymentPolicy: row.paymentPolicy, requireCardOnAcceptance: row.requireCardOnAcceptance, requirePrepaymentOnAcceptance: row.requirePrepaymentOnAcceptance } : undefined;
 }
 async function saveEstimateDepositSettings(tenantId: number, settings: EstimateDepositSettings) {
   const linked = settings.requireCardOnAcceptance === true || settings.requirePrepaymentOnAcceptance === true;
-  await db.execute(sql`UPDATE tenants SET require_card_on_acceptance=${linked}, require_prepayment_on_acceptance=${linked}, payment_policy=coalesce(payment_policy,'{}'::jsonb) || ${JSON.stringify(estimateDepositSettingsDocument(settings))}::jsonb WHERE id=${tenantId}`);
+  const document = JSON.stringify(estimateDepositSettingsDocument(settings));
+  try {
+    await db.execute(sql`UPDATE tenants SET require_card_on_acceptance=${linked}, require_prepayment_on_acceptance=${linked}, payment_policy=coalesce(payment_policy,'{}'::jsonb) || ${document}::jsonb WHERE id=${tenantId}`);
+  } catch (error) {
+    if (!isMissingColumnError(error)) throw error;
+    logger.error({ err: error, tenantId }, "Acceptance columns are not in the database yet. Deposit settings were merged into the existing payment policy.");
+    await db.execute(sql`UPDATE tenants SET payment_policy=coalesce(payment_policy,'{}'::jsonb) || ${document}::jsonb WHERE id=${tenantId}`);
+  }
 }
 router.get("/billing/estimate-deposit-settings", async (req, res) => {
   const tenantId = getTenantId(req);
@@ -122,9 +128,7 @@ router.get("/billing/deposit-rules", async (req, res) => {
   if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
   const company = await loadCompanyPolicy(tenantId);
   const rules = withAcceptanceColumns(readEstimateDepositSettings(company?.paymentPolicy), company).rules;
-  const error = validateDepositRules(rules);
-  if (error) { res.status(422).json({ error }); return; }
-  res.json({ rules });
+  res.json({ rules: Array.isArray(rules) ? rules : [] });
 });
 router.patch("/billing/deposit-rules", async (req, res) => {
   const tenantId = getTenantId(req), rules = req.body?.rules;

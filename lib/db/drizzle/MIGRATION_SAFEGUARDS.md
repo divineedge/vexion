@@ -4,7 +4,9 @@ Schema changes are additive. A migration may add a table, column, or index. It d
 
 - Add columns with `ADD COLUMN IF NOT EXISTS` and a safe default. Existing rows keep their values.
 - Create new tables with `CREATE TABLE IF NOT EXISTS`. Do not recreate a table to change it.
-- Settings JSON is merged. New keys are added. Old keys stay.
+- Settings JSON is merged with `{ ...existingSettings, ...newUpdates }` or PostgreSQL `||`. New keys are added. Old keys stay.
+- Startup applies `ADD COLUMN IF NOT EXISTS` for settings columns and logs a failed step without rewriting customers, properties, schedules, services, inventory, or custom settings.
+- A settings read that finds a missing column or a null JSON document returns the safe default object. It does not answer with a 500.
 - When two branches both change a migration or an API route, keep both changes. Do not take one side of the conflict if that deletes a column, a route, or a settings field.
 - A destructive statement (`DROP TABLE`, `DROP COLUMN`, `TRUNCATE`) needs the comment `-- destructive-allowed` on that line and a reason a reviewer can check.
 

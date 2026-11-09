@@ -44,12 +44,12 @@ export function EstimateReminderSettings() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (data && !initialized.current) {
-      initialized.current = true;
-      setEnabled(!!data.enabled);
-      setRules((data.rules ?? []).map(r => ({ ...r, channels: r.channels ?? [], notifyAdmin: !!r.notifyAdmin, createTask: !!r.createTask })));
-      setReady(true);
-    }
+    if (!data || initialized.current) return;
+    const rules = Array.isArray(data.rules) ? data.rules : [];
+    initialized.current = true;
+    setEnabled(data.enabled === true);
+    setRules(rules.map(r => ({ ...r, offsetDays: Number(r?.offsetDays) || 1, label: r?.label ?? '', channels: Array.isArray(r?.channels) ? r.channels : [], notifyAdmin: !!r?.notifyAdmin, createTask: !!r?.createTask })));
+    setReady(true);
   }, [data]);
 
   const errors = rules.map(r => ruleError(r, rules));
@@ -66,7 +66,7 @@ export function EstimateReminderSettings() {
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch.settings) });
     qc.setQueryData(KEY, res);
   });
-  useAutosaveFields({ settings: buildPayload(enabled, rules) }, ready, autosave.queue, !hasErrors);
+  useAutosaveFields({ settings: buildPayload(enabled, rules) }, ready && !isError, autosave.queue, !hasErrors);
 
   const update = (idx: number, patch: Partial<EstimateReminderRule>) => {
     setDirty(true);
@@ -85,14 +85,6 @@ export function EstimateReminderSettings() {
   };
 
   if (isLoading) return <Skeleton className="h-56 w-full rounded-xl" />;
-  if (isError) {
-    return (
-      <Card><CardContent className="p-6 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground"><AlertTriangle className="w-4 h-4 text-destructive" /> Couldn't load estimate reminder settings.</div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-1.5"><RefreshCw className="w-3.5 h-3.5" /> Retry</Button>
-      </CardContent></Card>
-    );
-  }
 
   return (
     <Card data-testid="card-estimate-reminders">
@@ -106,6 +98,12 @@ export function EstimateReminderSettings() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {isError && (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
+            <div className="flex items-center gap-2 text-muted-foreground"><AlertTriangle className="w-4 h-4 text-destructive" /> Saved reminder settings could not be read. These defaults stay unsaved until the request succeeds.</div>
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-1.5"><RefreshCw className="w-3.5 h-3.5" /> Retry</Button>
+          </div>
+        )}
         <div className="flex gap-2 rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
           <Info className="w-4 h-4 shrink-0 mt-0.5" />
           <p>Timing counts days after an estimate is sent. <strong className="text-foreground">Older sent estimates without a recorded send date start their timing from the day reminders are turned on</strong>, so nobody gets a burst of overdue reminders at activation. Reminders stop once an estimate is accepted, declined or expired.</p>

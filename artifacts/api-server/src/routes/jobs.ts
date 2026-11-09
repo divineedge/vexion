@@ -1441,11 +1441,24 @@ router.post("/jobs/:id/reopen", async (req, res): Promise<void> => {
   res.json(formatJob(updated));
 });
 
+async function openJobReservations(tenantId: number, jobId: number) {
+  try {
+    const rows = await db.execute(sql`SELECT r.id, r.inventory_item_id AS "inventoryItemId", i.name, r.quantity::float AS quantity, r.unit_cost::float AS "unitCost"
+      FROM inventory_reservations r JOIN inventory_items i ON i.id=r.inventory_item_id
+      WHERE r.company_id=${tenantId} AND r.job_id=${jobId} AND r.status='reserved'`);
+    return rows.rows;
+  } catch {
+    return [];
+  }
+}
+
 router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
+  let inventoryReconciliation: unknown[] = [];
+  const finish = (job: Record<string, unknown>) => { res.json({ ...job, inventoryReconciliation }); };
   const blocker = await chemicalCompletionBlocker(tenantId, id);
   if (blocker) { res.status(422).json({ error: blocker, message: blocker }); return; }
 
@@ -1476,20 +1489,21 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
   // Run chemical timer expiry, rainfast weather alert (fire-and-forget), and blueprint archival
   // via the shared helper so every completion path has identical side effects.
   await runJobCompletionSideEffects({ id, tenantId, userId, jobTitle: billedJob.title, propertyId: billedJob.propertyId, blueprintId: (billedJob as any).blueprintId ?? null, completedAt: now });
+  inventoryReconciliation = await openJobReservations(tenantId, id);
 
   // If this job was converted from an estimate with "Invoice after job" chosen, auto-create a draft invoice now.
   await holdUnpricedJobs(tenantId);
   if (billedJob.planId) {
-    res.json(formatJob(billedJob));
+    finish(formatJob(billedJob));
     return;
   }
   if (billedJob.totalAmount <= 0 || billedJob.holdFromBilling) {
-    res.json(formatJob({ ...billedJob, holdFromBilling: true }));
+    finish(formatJob({ ...billedJob, holdFromBilling: true }));
     return;
   }
   // Recurring visits belong to their billing cycle, never one invoice per completion.
   if (billedJob.recurrenceRule || billedJob.recurrenceParentId) {
-    res.json(formatJob(billedJob));
+    finish(formatJob(billedJob));
     return;
   }
   const sendAutomatically = await automaticInvoiceSending(tenantId);
@@ -1542,7 +1556,7 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
     }
     // Return the job whether or not invoice creation succeeded;
     // pendingWeeklyInvoice=true in the fallback branch guarantees it will be billed
-    res.json(formatJob(deferredInvoiceCreated ? updated : { ...updated, pendingWeeklyInvoice: true }));
+    finish(formatJob(deferredInvoiceCreated ? updated : { ...updated, pendingWeeklyInvoice: true }));
     return;
   }
 
@@ -1558,7 +1572,7 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
       if ((tenantCadence?.nonRecurringInvoiceCadence ?? "immediate") === "weekly") {
         // Weekly cadence: flag for the weekly batch sweep instead of invoicing immediately.
         await db.update(jobsTable).set({ pendingWeeklyInvoice: true }).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
-        res.json(formatJob({ ...updated, pendingWeeklyInvoice: true }));
+        finish(formatJob({ ...updated, pendingWeeklyInvoice: true }));
         return;
       }
       try {
@@ -1609,7 +1623,7 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
     }
   }
 
-  res.json(formatJob(billedJob));
+  finish(formatJob(billedJob));
 });
 
 // ── Complete & Invoice (atomic) ───────────────────────────────────────────────
@@ -1712,6 +1726,7 @@ router.post("/jobs/:id/complete-and-invoice", async (req, res): Promise<void> =>
   if (!wasAlreadyCompleted) {
     await runJobCompletionSideEffects({ id, tenantId, userId, jobTitle: job.title, propertyId: job.propertyId, blueprintId: (job as any).blueprintId ?? null, completedAt: now });
   }
+  const inventoryReconciliation = await openJobReservations(tenantId, id);
 
   res.status(201).json({
     ...invoice,
@@ -1723,6 +1738,7 @@ router.post("/jobs/:id/complete-and-invoice", async (req, res): Promise<void> =>
     stripePaymentUrl: invoice.stripePaymentUrl ?? null,
     publicToken: invoice.publicToken ?? null,
     createdAt: invoice.createdAt.toISOString(),
+    inventoryReconciliation,
   });
 });
 

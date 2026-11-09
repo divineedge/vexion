@@ -118,6 +118,7 @@ export const adminNavSections: NavSection[] = [
     roles: ['canManageOffice'],
     items: [
       { name: 'Vendors', href: '/vendors', icon: Store, permissionKey: 'pages.billing' },
+      { name: 'Invoice intake', href: '/vendors/documents/process', icon: FileText, permissionKey: 'pages.billing' },
     ],
   },
   {

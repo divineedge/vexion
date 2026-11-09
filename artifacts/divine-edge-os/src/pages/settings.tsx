@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DefaultWordingCard } from '@/components/settings/DefaultWordingCard';
-import { PaymentPolicyCard } from '@/components/billing/PaymentPolicyCard';
+import { DepositPrepaymentRules } from '@/components/billing/DepositPrepaymentRules';
 import { AchPaymentRules } from '@/components/billing/AchPaymentRules';
-import { CompanyDepositRules } from '@/components/billing/CompanyDepositRules';
-import { ScheduleDepositCard } from '@/components/billing/ScheduleDepositCard';
 import { EstimateReminderSettings } from '@/components/billing/EstimateReminderSettings';
 import { useLocation } from 'wouter';
 import {
@@ -1843,15 +1841,7 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
-          <section className="space-y-4" data-testid="section-deposit-prepayment-rules">
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight">Deposit &amp; Prepayment Rules</h2>
-              <p className="text-sm text-muted-foreground">Every company deposit setting is here. New estimates, converting an estimate to a job or invoice, and calendar scheduling all use these rules.</p>
-            </div>
-            <PaymentPolicyCard scope="company" id={0} canEdit={!!canManageOffice} title="Deposits and prepayment (company default)" />
-            {canManageOffice && <CompanyDepositRules />}
-            <ScheduleDepositCard canEdit={!!canManageOffice} />
-          </section>
+          <DepositPrepaymentRules canEdit={!!canManageOffice} />
           <EstimateReminderSettings />
           <DeclineReasonsSettings />
         </TabsContent>

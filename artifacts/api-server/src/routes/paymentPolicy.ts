@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, customersTable, servicesTable, tenantsTable, estimatesTable, jobsTable } from "@workspace/db";
 import { and, eq, sql, desc, inArray } from "drizzle-orm";
-import { estimateSettingsDepositKeys, normalizeScheduleDeposit, validateDepositRules, validateScheduleDeposit, type DepositRule } from "../lib/companyDepositRules";
+import { estimateDepositSettingsDocument, mergeEstimateDepositSettings, normalizeScheduleDeposit, readEstimateDepositSettings, validateDepositRules, validateEstimateDepositSettings, validateScheduleDeposit, type DepositRule, type EstimateDepositSettings } from "../lib/companyDepositRules";
 import { customerInvoiceGrouping } from "../lib/invoicePropertyGrouping";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
@@ -58,11 +58,40 @@ router.patch("/billing/customer-invoice-grouping/:id", async (req, res) => {
   if (!result.rows.length) { res.status(404).json({ error: "Customer not found" }); return; }
   res.json({ mode });
 });
+async function loadCompanyPolicy(tenantId: number) {
+  const [row] = await db.select({ paymentPolicy: tenantsTable.paymentPolicy }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  return row?.paymentPolicy;
+}
+async function saveEstimateDepositSettings(tenantId: number, settings: EstimateDepositSettings) {
+  await db.execute(sql`UPDATE tenants SET payment_policy=coalesce(payment_policy,'{}'::jsonb) || ${JSON.stringify(estimateDepositSettingsDocument(settings))}::jsonb WHERE id=${tenantId}`);
+}
+router.get("/billing/estimate-deposit-settings", async (req, res) => {
+  const tenantId = getTenantId(req);
+  if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
+  res.json({ settings: readEstimateDepositSettings(await loadCompanyPolicy(tenantId)) });
+});
+router.patch("/billing/estimate-deposit-settings", async (req, res) => {
+  const tenantId = getTenantId(req);
+  if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
+  const error = validateEstimateDepositSettings(req.body?.settings ?? req.body);
+  if (error) { res.status(400).json({ error }); return; }
+  const patch = req.body?.settings ?? req.body;
+  if (Array.isArray(patch?.rules)) {
+    const ids = [...new Set((patch.rules as DepositRule[]).flatMap(rule => rule.serviceIds))];
+    if (ids.length) {
+      const owned = await db.select({ id: servicesTable.id }).from(servicesTable).where(and(eq(servicesTable.tenantId, tenantId), inArray(servicesTable.id, ids)));
+      if (owned.length !== ids.length) { res.status(400).json({ error: "All services must belong to your company" }); return; }
+    }
+  }
+  const settings = mergeEstimateDepositSettings(await loadCompanyPolicy(tenantId), patch);
+  await saveEstimateDepositSettings(tenantId, settings);
+  res.json({ settings });
+});
 router.get("/billing/schedule-deposit", async (req, res) => {
   const tenantId = getTenantId(req);
   if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
-  const result = await db.execute(sql`SELECT payment_policy->${estimateSettingsDepositKeys.scheduleDeposit} AS rule FROM tenants WHERE id=${tenantId}`);
-  res.json({ rule: normalizeScheduleDeposit(result.rows[0]?.rule) });
+  const settings = readEstimateDepositSettings(await loadCompanyPolicy(tenantId));
+  res.json({ rule: normalizeScheduleDeposit({ enabled: settings.enabled && settings.requireBeforeScheduling, mode: settings.defaultType, value: settings.defaultAmount }) });
 });
 router.patch("/billing/schedule-deposit", async (req, res) => {
   const tenantId = getTenantId(req);
@@ -70,14 +99,19 @@ router.patch("/billing/schedule-deposit", async (req, res) => {
   const error = validateScheduleDeposit(req.body?.rule);
   if (error) { res.status(400).json({ error }); return; }
   const rule = normalizeScheduleDeposit(req.body.rule);
-  await db.execute(sql`UPDATE tenants SET payment_policy=jsonb_set(coalesce(payment_policy,'{}'::jsonb), ARRAY[${estimateSettingsDepositKeys.scheduleDeposit}]::text[], ${JSON.stringify(rule)}::jsonb, true) WHERE id=${tenantId}`);
-  res.json({ rule });
+  const settings = mergeEstimateDepositSettings(await loadCompanyPolicy(tenantId), {
+    enabled: rule.enabled ? true : undefined,
+    requireBeforeScheduling: rule.enabled,
+    defaultType: rule.mode,
+    defaultAmount: rule.value,
+  });
+  await saveEstimateDepositSettings(tenantId, settings);
+  res.json({ rule: { enabled: settings.enabled && settings.requireBeforeScheduling, mode: settings.defaultType, value: settings.defaultAmount } });
 });
 router.get("/billing/deposit-rules", async (req, res) => {
   const tenantId = getTenantId(req);
   if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
-  const result = await db.execute(sql`SELECT payment_policy->${estimateSettingsDepositKeys.rules} AS rules FROM tenants WHERE id=${tenantId}`);
-  const rules = result.rows[0]?.rules ?? [];
+  const rules = readEstimateDepositSettings(await loadCompanyPolicy(tenantId)).rules;
   const error = validateDepositRules(rules);
   if (error) { res.status(422).json({ error }); return; }
   res.json({ rules });
@@ -92,8 +126,9 @@ router.patch("/billing/deposit-rules", async (req, res) => {
     const owned = await db.select({ id: servicesTable.id }).from(servicesTable).where(and(eq(servicesTable.tenantId, tenantId), inArray(servicesTable.id, ids)));
     if (owned.length !== ids.length) { res.status(400).json({ error: "All services must belong to your company" }); return; }
   }
-  await db.execute(sql`UPDATE tenants SET payment_policy=jsonb_set(coalesce(payment_policy,'{}'::jsonb), ARRAY[${estimateSettingsDepositKeys.rules}]::text[], ${JSON.stringify(rules)}::jsonb, true) WHERE id=${tenantId}`);
-  res.json({ rules });
+  const settings = mergeEstimateDepositSettings(await loadCompanyPolicy(tenantId), { rules });
+  await saveEstimateDepositSettings(tenantId, settings);
+  res.json({ rules: settings.rules });
 });
 router.get("/billing/payment-policy/:scope/:id", async (req, res) => {
   const tenantId = getTenantId(req), id = Number(req.params.id);
@@ -114,7 +149,16 @@ router.patch("/billing/payment-policy/:scope/:id", async (req, res) => {
       body.depositType === "percent" && body.depositValue > 100) { res.status(400).json({ error: "Invalid payment policy" }); return; }
   const policy = normalizePaymentPolicy(body);
   const result = req.params.scope === "company"
-    ? await db.execute(sql`UPDATE tenants SET payment_policy=coalesce(payment_policy,'{}'::jsonb) || ${JSON.stringify(policy)}::jsonb WHERE id=${tenantId} RETURNING id`)
+    ? await db.execute(sql`UPDATE tenants SET payment_policy=coalesce(payment_policy,'{}'::jsonb) || ${JSON.stringify({
+        ...estimateDepositSettingsDocument(mergeEstimateDepositSettings(await loadCompanyPolicy(tenantId), {
+          enabled: policy.depositType === "fixed" || policy.depositType === "percent" || policy.depositType === "full",
+          ...(policy.depositType === "fixed" || policy.depositType === "percent" ? { defaultType: policy.depositType, defaultAmount: policy.depositValue } : {}),
+          ...(policy.depositType === "full" ? { defaultType: "percent", defaultAmount: 100 } : {}),
+          ...(policy.requirePrepay ? { requireBeforeScheduling: true } : {}),
+        })),
+        requirePrepay: policy.requirePrepay,
+        requireCard: policy.requireCard,
+      })}::jsonb WHERE id=${tenantId} RETURNING id`)
     : req.params.scope === "customer"
     ? await db.execute(sql`UPDATE customers SET payment_policy=coalesce(payment_policy,'{}'::jsonb) || ${JSON.stringify(policy)}::jsonb WHERE id=${id} AND tenant_id=${tenantId} RETURNING id`)
     : req.params.scope === "service"

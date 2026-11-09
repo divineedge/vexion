@@ -100,13 +100,13 @@ function summarize(d: DraftRule, serviceName: (id: number) => string) {
   return `When ${total} and ${svc}: ${dep}`;
 }
 
-export function CompanyDepositRules() {
+export function CompanyDepositRules({ embedded = false }: { embedded?: boolean }) {
   const { canManageOffice } = useAuth();
   if (!canManageOffice) return null;
-  return <CompanyDepositRulesInner />;
+  return <CompanyDepositRulesInner embedded={embedded} />;
 }
 
-function CompanyDepositRulesInner() {
+function CompanyDepositRulesInner({ embedded }: { embedded: boolean }) {
   const qc = useQueryClient();
   const query = useQuery<DepositRule[]>({
     queryKey: depositRulesQueryKey,
@@ -158,11 +158,13 @@ function CompanyDepositRulesInner() {
   const busy = false; // Valid edits made during a save are queued, not blocked.
 
   return (
-    <Card data-testid="card-company-deposit-rules">
+    <Card data-testid="card-company-deposit-rules" className={embedded ? 'shadow-none' : undefined}>
       <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2"><ListOrdered className="w-4 h-4 text-primary" />Deposit rules by estimate</CardTitle>
+        <CardTitle className="text-base flex items-center gap-2"><ListOrdered className="w-4 h-4 text-primary" />{embedded ? 'Estimate override rules' : 'Deposit rules by estimate'}</CardTitle>
         <CardDescription>
-          New estimates read these rules from Estimate Settings. Rules are checked top to bottom and the first enabled match wins. Customer and service overrides still take priority; estimates that match no rule use the company default above.
+          {embedded
+            ? 'Checked top to bottom. The first match replaces the default deposit on that estimate. On the estimate form, change Payment on acceptance to use a one-off amount instead.'
+            : 'New estimates read these rules from Estimate Settings. Rules are checked top to bottom and the first enabled match wins. Customer and service overrides still take priority; estimates that match no rule use the company default above.'}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

@@ -4,6 +4,7 @@ import { companyDocumentLink } from "../lib/documentLinks";
 import { validCardChoice, authorizeSavedCard, CARD_AUTHORIZATION_VERSION } from "../lib/cardAuthorization";
 import { payEstimateDeposit } from "./portal";
 import { paymentGuardedJobInsert, effectivePaymentPolicy, estimatePaymentTerms } from "../lib/paymentPolicy";
+import { readEstimateDepositSettings } from "../lib/companyDepositRules";
 import { creditedInvoiceInsert } from "../lib/customerCredit";
 import { Router, type IRouter } from "express";
 import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesTable, usersTable, tenantsTable, blueprintsTable, communicationsLogTable, estimateTemplatesTable, invoicesTable } from "@workspace/db";
@@ -450,6 +451,8 @@ router.post("/estimates", async (req, res): Promise<void> => {
   const { subtotal, tax, total } = calcTotals(items);
   const { policy: depositPolicy, depositConfigured } = await effectivePaymentPolicy(db, tenantId, customerId, req.body.serviceId,
     { total, serviceIds: items.filter(item => !item.isOptional || item.acceptedByCustomer).map(item => item.serviceId!).filter(Boolean) });
+  const depositSettings = readEstimateDepositSettings(wordingDefaults?.paymentPolicy);
+  const customized = depositSettings.enabled && depositSettings.allowEstimateOverrides && req.body.depositOverride === true;
   const policyRequirement = depositPolicy.requirePrepay || depositPolicy.depositType === "full" ? "full" : depositPolicy.depositType === "fixed"
     ? "deposit_fixed" : depositPolicy.depositType === "percent" ? "deposit_pct" : "none";
 
@@ -478,8 +481,13 @@ router.post("/estimates", async (req, res): Promise<void> => {
     total,
     estimatedDurationMin: estimatedDurationMin != null ? parseInt(String(estimatedDurationMin), 10) : null,
     suppliesNeeded: normaliseSupplies(suppliesNeeded),
-    paymentRequirement: depositConfigured || depositPolicy.requirePrepay ? (total > 0 ? policyRequirement : "none") : paymentRequirement ?? "none",
-    depositValue: depositConfigured || depositPolicy.requirePrepay ? (policyRequirement === "deposit_fixed" ? Math.min(depositPolicy.depositValue ?? 0, total) : depositPolicy.depositValue) : depositValue != null ? parseFloat(String(depositValue)) : null,
+    paymentRequirement: customized
+      ? (total > 0 ? paymentRequirement ?? "none" : "none")
+      : depositConfigured || depositPolicy.requirePrepay ? (total > 0 ? policyRequirement : "none") : paymentRequirement ?? "none",
+    depositValue: customized
+      ? (paymentRequirement === "deposit_fixed" ? Math.min(parseFloat(String(depositValue ?? 0)) || 0, total) : paymentRequirement === "deposit_pct" ? parseFloat(String(depositValue)) : null)
+      : depositConfigured || depositPolicy.requirePrepay ? (policyRequirement === "deposit_fixed" ? Math.min(depositPolicy.depositValue ?? 0, total) : depositPolicy.depositValue) : depositValue != null ? parseFloat(String(depositValue)) : null,
+    depositOverride: customized,
     status: "draft",
   }).returning();
 

@@ -30,6 +30,8 @@ export const propertiesTable = pgTable("properties", {
   profilePhotoUrl: text("profile_photo_url"),
   /** Tags applied to this property — names drawn from the tenant's businessTagsTable library */
   tags: text("tags").array().default([]),
+  /** Inactive after a sale or move. History, measurements, and notes stay on the row. */
+  isArchived: boolean("is_archived").notNull().default(false),
   /** Set when the property is archived; null means active */
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

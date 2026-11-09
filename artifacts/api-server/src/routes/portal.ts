@@ -1198,6 +1198,8 @@ router.get("/portal/properties", requirePortalAuth, async (req: any, res): Promi
       and(
         eq(propertiesTable.customerId, portalCustomerId),
         eq(propertiesTable.tenantId, portalTenantId),
+        eq(propertiesTable.isArchived, false),
+        isNull(propertiesTable.archivedAt),
       ),
     )
     .orderBy(propertiesTable.address);

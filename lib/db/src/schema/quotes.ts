@@ -32,6 +32,8 @@ export const quotesTable = pgTable("quotes", {
   respondedAt: timestamp("responded_at", { withTimezone: true }),
   /** Customer notes on respond */
   customerNote: text("customer_note"),
+  /** Previous owner when this quote was detached during a property transfer. */
+  detachedCustomerId: integer("detached_customer_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

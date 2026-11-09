@@ -61,6 +61,7 @@ import { AddressAutocomplete, type AddressSuggestion } from '@/components/shared
 import ExternalAccessSettings from '@/components/settings/ExternalAccessSettings';
 import GrowthProgramsSettings from '@/components/settings/GrowthProgramsSettings';
 import { KpiSettings } from '@/components/kpis/KpiSettings';
+import { ServiceReminderSettings, type ServiceReminderMode } from '@/components/settings/ServiceReminderSettings';
 
 export default function SettingsPage() {
   const { isSuperAdmin, isOwner, user, canManageOffice, can } = useAuth();
@@ -1758,10 +1759,16 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><Send className="w-5 h-5" /> Automated Service Reminders</CardTitle>
               <CardDescription>
-                The system automatically sends reminders to customers before their scheduled jobs.
+                Choose whether upcoming jobs send the 7-day and 24-hour reminders, and limit them to selected services.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
+              <ServiceReminderSettings
+                canEdit={!!canManageOffice}
+                loaded={!!settings}
+                mode={((settings as { serviceRemindersMode?: ServiceReminderMode } | undefined)?.serviceRemindersMode) ?? 'enabled'}
+                excludedServiceIds={((settings as { excludedReminderServiceIds?: number[] } | undefined)?.excludedReminderServiceIds) ?? []}
+              />
               <div className="grid grid-cols-2 gap-4">
                 <div className="rounded-lg border p-4 flex items-start gap-3">
                   <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
@@ -1783,7 +1790,7 @@ export default function SettingsPage() {
                 </div>
               </div>
               <div className="rounded-md bg-muted/40 border border-dashed p-3 text-sm text-muted-foreground">
-                <p>Reminders are dispatched every 15 minutes. A customer's opt-out preference is respected — toggled on their customer record.</p>
+                <p>Reminders are dispatched every 15 minutes. Disabled and unchecked services are not queued. A customer's opt-out preference is still respected.</p>
                 <p className="mt-1">Staff can also trigger a manual reminder from any job's detail view.</p>
               </div>
             </CardContent>

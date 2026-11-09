@@ -14,6 +14,7 @@ import { ObjectStorageService } from "../lib/objectStorage";
 import { logoContentType, logoUpload, publicLogoUrl, requestOrigin, uploadLogoToSupabase } from "../lib/companyLogo";
 import { buildGoogleAuthorizeUrl, exchangeGoogleCode } from "../lib/gmailProvider";
 import { normalizeChemicalRecordRequirements, parseChemicalRecordRequirements } from "../lib/chemicalRequirements";
+import { normalizeExcludedReminderServiceIds, normalizeServiceReminderMode } from "../lib/serviceReminderPolicy";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -178,6 +179,8 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     quickShortcuts: (tenant.quickShortcuts as string[] | null) ?? ["new-job", "new-customer", "new-invoice"],
     // Notification Templates
     notificationTemplates: (tenant.notificationTemplates as Record<string, string> | null) ?? {},
+    serviceRemindersMode: normalizeServiceReminderMode(tenant.serviceRemindersMode),
+    excludedReminderServiceIds: tenant.excludedReminderServiceIds ?? [],
     // Portal slug
     slug: tenant.slug ?? null,
     // Estimate & Invoice defaults
@@ -606,6 +609,23 @@ router.patch("/settings", async (req, res): Promise<void> => {
 
   // notification_templates uses a raw SQL update because Drizzle's ORM mapper
   // can silently drop newly-added jsonb columns from the update set.
+  if (req.body.serviceRemindersMode !== undefined) {
+    const mode = normalizeServiceReminderMode(req.body.serviceRemindersMode);
+    if (!["enabled", "disabled", "selective"].includes(req.body.serviceRemindersMode)) {
+      res.status(400).json({ error: "Choose enabled, disabled, or selective service reminders" });
+      return;
+    }
+    updates.serviceRemindersMode = mode;
+  }
+  if (req.body.excludedReminderServiceIds !== undefined) {
+    const ids = normalizeExcludedReminderServiceIds(req.body.excludedReminderServiceIds);
+    if (!ids) { res.status(400).json({ error: "Choose valid services to exclude from automated reminders" }); return; }
+    if (ids.length) {
+      const owned = await db.select({ id: servicesTable.id }).from(servicesTable).where(and(eq(servicesTable.tenantId, tenantId), inArray(servicesTable.id, ids)));
+      if (owned.length !== ids.length) { res.status(400).json({ error: "All reminder services must belong to your company" }); return; }
+    }
+    updates.excludedReminderServiceIds = ids;
+  }
   if (notificationTemplates !== undefined) {
     await db.execute(sql`
       UPDATE tenants

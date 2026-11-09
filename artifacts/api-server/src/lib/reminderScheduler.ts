@@ -15,6 +15,7 @@ import { logger } from "./logger";
 import { sendSms, type SmsProviderConfig } from "./smsProvider";
 import { sendCustomerVisitPush } from "./customerPush";
 import { sendEmail, buildReminderEmailBody, buildReminderSmsBody, applyTemplate, type EmailProviderConfig } from "./emailProvider";
+import { automatedServiceReminderAllowed, jobServiceIds } from "./serviceReminderPolicy";
 
 interface RemindersSent {
   sent7d?: boolean;
@@ -90,6 +91,7 @@ async function processReminders() {
   for (const row of jobs) {
     const { job, customer, tenant, propertyAddress } = row;
     if (!customer || !tenant) continue;
+    if (!automatedServiceReminderAllowed(tenant.serviceRemindersMode, tenant.excludedReminderServiceIds, jobServiceIds(job))) continue;
     if (customer.smsOptOut && customer.emailOptOut && !job.pushReminderEnabled) continue;
 
     const remindersSent = (job.remindersSent as RemindersSent) ?? {};
@@ -251,6 +253,10 @@ export async function previewWeeklyReminders(tenantId: number) {
   const now = new Date();
   const weekOut = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
+  const [tenant] = await db.select({
+    serviceRemindersMode: tenantsTable.serviceRemindersMode,
+    excludedReminderServiceIds: tenantsTable.excludedReminderServiceIds,
+  }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
   const jobs = await db
     .select({ job: jobsTable, customerName: customersTable.name, customerEmail: customersTable.email, customerPhone: customersTable.phone, smsOptOut: customersTable.smsOptOut, emailOptOut: customersTable.emailOptOut })
     .from(jobsTable)
@@ -268,7 +274,8 @@ export async function previewWeeklyReminders(tenantId: number) {
 
   return jobs.map(({ job, customerName, customerEmail, customerPhone, smsOptOut, emailOptOut }) => {
     const remindersSent = (job.remindersSent as RemindersSent) ?? {};
-    const wouldSend = !remindersSent.sent7d && !(smsOptOut && emailOptOut) && (!!customerEmail || !!customerPhone);
+    const wouldSend = !remindersSent.sent7d && !(smsOptOut && emailOptOut) && (!!customerEmail || !!customerPhone)
+      && automatedServiceReminderAllowed(tenant?.serviceRemindersMode, tenant?.excludedReminderServiceIds, jobServiceIds(job));
     return {
       jobId: job.id,
       jobTitle: job.title,

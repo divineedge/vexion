@@ -41,6 +41,7 @@ import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
 import { checkRainBeforeWindow } from "../lib/weatherCheck";
 import { datedJobInvoiceItems } from "../lib/invoiceServiceDate";
+import { hourlyChargeForJob, saveHourlyJobCharge } from "../lib/hourlyBilling";
 import { automaticInvoiceSending, holdUnpricedJobs } from "../lib/billingAutomation";
 import { chemicalCompletionError, normalizeFieldRequirements } from "../lib/serviceFieldRequirements";
 import { resolveJobAssignmentRecipientIds, sendStaffPush } from "../lib/pushNotifications";
@@ -99,6 +100,28 @@ async function resolveServiceJobSnapshot(
     eq(servicesTable.id, id), eq(servicesTable.tenantId, tenantId), eq(servicesTable.isActive, true),
   ));
   if (!service) throw new Error("Selected service is not active or is not available");
+
+  if (service.pricingMode === "hourly") {
+    const rate = service.hourlyRate ?? service.basePrice ?? 0;
+    return {
+      service,
+      estimatedDuration: service.estimatedDuration ?? null,
+      totalAmount: 0,
+      lineItems: [{
+        serviceId: service.id,
+        description: `${service.name} - billed from crew time @ $${rate.toFixed(2)}/hr`,
+        quantity: 0,
+        qty: 0,
+        unitPrice: rate,
+        total: 0,
+        billingType: "hourly",
+        hourlyRate: rate,
+        billableHours: 0,
+        priceOverridden: false,
+        hoursOverridden: false,
+      }],
+    };
+  }
 
   // Flat services never depend on property measurements.
   if (service.pricingMode === "flat") {
@@ -1044,6 +1067,14 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     baseUpdate,{actorId:getUserId(req),reason:req.body.capacityOverrideReason});
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  let completedJob = updated;
+  if (status === "completed" && currentJob.status !== "completed") {
+    const charge = await saveHourlyJobCharge(tenantId, id, new Date());
+    if (charge) {
+      const [refreshed] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
+      if (refreshed) completedJob = refreshed;
+    }
+  }
   if (didChangeAssignment) {
     notifyJobAssignment(
       tenantId,
@@ -1068,10 +1099,10 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
       );
   }
 
-  res.json(formatJob(updated));
+  res.json(formatJob(completedJob));
 
   // If this is a portal-submitted job and the status changed, notify the customer
-  const portalCustomerId = updated.customerId;
+  const portalCustomerId = completedJob.customerId;
   if (
     updated.source === "portal" &&
     status !== undefined &&
@@ -1437,42 +1468,44 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
     .returning();
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  const hourly = await saveHourlyJobCharge(tenantId, id, now);
+  const billedJob = hourly ? { ...updated, lineItems: hourly.lineItems, totalAmount: hourly.totalAmount, billableMinutes: hourly.billableMinutes } : updated;
 
   await db.insert(activityLogTable).values({ tenantId, userId, type: "job_completed", message: `Job "${updated.title}" completed`, entityId: id });
 
   // Run chemical timer expiry, rainfast weather alert (fire-and-forget), and blueprint archival
   // via the shared helper so every completion path has identical side effects.
-  await runJobCompletionSideEffects({ id, tenantId, userId, jobTitle: updated.title, propertyId: updated.propertyId, blueprintId: (updated as any).blueprintId ?? null, completedAt: now });
+  await runJobCompletionSideEffects({ id, tenantId, userId, jobTitle: billedJob.title, propertyId: billedJob.propertyId, blueprintId: (billedJob as any).blueprintId ?? null, completedAt: now });
 
   // If this job was converted from an estimate with "Invoice after job" chosen, auto-create a draft invoice now.
   await holdUnpricedJobs(tenantId);
-  if (updated.planId) {
-    res.json(formatJob(updated));
+  if (billedJob.planId) {
+    res.json(formatJob(billedJob));
     return;
   }
-  if (updated.totalAmount <= 0 || updated.holdFromBilling) {
-    res.json(formatJob({ ...updated, holdFromBilling: true }));
+  if (billedJob.totalAmount <= 0 || billedJob.holdFromBilling) {
+    res.json(formatJob({ ...billedJob, holdFromBilling: true }));
     return;
   }
   // Recurring visits belong to their billing cycle, never one invoice per completion.
-  if (updated.recurrenceRule || updated.recurrenceParentId) {
-    res.json(formatJob(updated));
+  if (billedJob.recurrenceRule || billedJob.recurrenceParentId) {
+    res.json(formatJob(billedJob));
     return;
   }
   const sendAutomatically = await automaticInvoiceSending(tenantId);
   // On success → return early. On failure → flag the job for the weekly billing sweep so it is never permanently unbilled.
-  if ((updated as any).invoiceAfterJob && (updated as any).estimateId && updated.customerId && !updated.invoiceId) {
+  if ((billedJob as any).invoiceAfterJob && (billedJob as any).estimateId && billedJob.customerId && !billedJob.invoiceId) {
     let deferredInvoiceCreated = false;
     try {
       const [tenant] = await db.select({ taxRate: tenantsTable.taxRate }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
       const taxRate = tenant?.taxRate ?? 0;
-      const lineItems = await datedJobInvoiceItems(tenantId, updated);
-      const subtotal = updated.totalAmount ?? 0;
+      const lineItems = await datedJobInvoiceItems(tenantId, billedJob);
+      const subtotal = billedJob.totalAmount ?? 0;
       const tax = Math.round(subtotal * (taxRate / 100) * 100) / 100;
       const total = subtotal + tax;
       const invoiceNum = `INV-${Date.now().toString().slice(-8)}`;
       const [billingCustomer] = await db.select({ email: customersTable.email }).from(customersTable)
-        .where(and(eq(customersTable.id, updated.customerId), eq(customersTable.tenantId, tenantId)));
+        .where(and(eq(customersTable.id, billedJob.customerId), eq(customersTable.tenantId, tenantId)));
       let createdInvoiceId: number | null = null;
 
       await db.transaction(async tx => {
@@ -1480,8 +1513,8 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
           ...await invoiceDocumentDefaults(tenantId),
           tenantId,
           invoiceNumber: invoiceNum,
-          customerId: updated.customerId!,
-          jobId: updated.id,
+          customerId: billedJob.customerId!,
+          jobId: billedJob.id,
           status: sendAutomatically && billingCustomer?.email ? "sent" : "draft",
           publicToken: sendAutomatically && billingCustomer?.email ? crypto.randomBytes(32).toString("hex") : null,
           subtotal,
@@ -1531,8 +1564,8 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
       try {
         const [tenant] = await db.select({ taxRate: tenantsTable.taxRate }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
         const taxRate = tenant?.taxRate ?? 0;
-        const lineItems = await datedJobInvoiceItems(tenantId, updated);
-        const subtotal = updated.totalAmount ?? 0;
+        const lineItems = await datedJobInvoiceItems(tenantId, billedJob);
+        const subtotal = billedJob.totalAmount ?? 0;
         const tax = subtotal * (taxRate / 100);
         const total = subtotal + tax;
         const invoiceNum = `INV-${Date.now().toString().slice(-8)}`;
@@ -1576,7 +1609,7 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
     }
   }
 
-  res.json(formatJob(updated));
+  res.json(formatJob(billedJob));
 });
 
 // ── Complete & Invoice (atomic) ───────────────────────────────────────────────
@@ -1598,7 +1631,12 @@ router.post("/jobs/:id/complete-and-invoice", async (req, res): Promise<void> =>
 
   if (!job) { res.status(404).json({ error: "Job not found" }); return; }
   if (job.status === "cancelled") { res.status(422).json({ error: "Cannot invoice a cancelled job" }); return; }
-  if (!(job.totalAmount > 0)) { res.status(422).json({ error: "Add a customer price before creating an invoice. Free or plan-covered work can be completed without invoicing." }); return; }
+  const hourlyInvoice = await saveHourlyJobCharge(tenantId, id, job.completedAt ?? new Date());
+  const pricedJob = hourlyInvoice ? { ...job, lineItems: hourlyInvoice.lineItems, totalAmount: hourlyInvoice.totalAmount, billableMinutes: hourlyInvoice.billableMinutes } : job;
+  if (!(pricedJob.totalAmount > 0)) {
+    res.status(422).json({ error: hourlyInvoice ? "Clock crew time on this hourly job before creating an invoice." : "Add a customer price before creating an invoice. Free or plan-covered work can be completed without invoicing." });
+    return;
+  }
   if (job.status !== "completed") {
     const blocker = await chemicalCompletionBlocker(tenantId, id);
     if (blocker) { res.status(422).json({ error: blocker, message: blocker }); return; }
@@ -1608,8 +1646,8 @@ router.post("/jobs/:id/complete-and-invoice", async (req, res): Promise<void> =>
 
   const taxRate = tenantRow?.taxRate ?? 0;
   const completionTime = job.completedAt ?? new Date();
-  const lineItems = await datedJobInvoiceItems(tenantId, { ...job, completedAt: completionTime });
-  const subtotal = job.totalAmount ?? 0;
+  const lineItems = await datedJobInvoiceItems(tenantId, { ...pricedJob, completedAt: completionTime });
+  const subtotal = pricedJob.totalAmount ?? 0;
   const tax = Math.round(subtotal * (taxRate / 100) * 100) / 100;
   const total = subtotal + tax;
   const invoiceNum = `INV-${Date.now().toString().slice(-8)}`;

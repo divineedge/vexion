@@ -43,6 +43,8 @@ interface Service {
   pricingMatrix: PricingTier[] | null;
   linkedZoneTypeId: string | null;
   linearRate?: number | null;
+  hourlyRate?: number | null;
+  minimumBillableMinutes?: number | null;
   offSeasonStart: string | null;
   offSeasonEnd: string | null;
   fieldRequirements?: { requiresChemicalApplication?: boolean; showMaterialsOrParts?: boolean; invoiceDateBasis?: "completed" | "scheduled" } | null;
@@ -58,8 +60,10 @@ type ServiceForm = {
   estimatedDuration: string;
   p4pPercentage: string;
   isActive: boolean;
-  pricingMode: 'flat' | 'per_sqft' | 'per_linear_ft' | 'area_and_linear' | 'matrix';
+  pricingMode: 'flat' | 'per_sqft' | 'per_linear_ft' | 'area_and_linear' | 'matrix' | 'hourly';
   linearRate: string;
+  hourlyRate: string;
+  minimumBillableHours: string;
   matrixBasis: 'area' | 'linear' | 'both';
   pricingMatrix: TierWithKey[];
   linkedZoneTypeId: string;
@@ -83,6 +87,8 @@ const EMPTY_FORM: ServiceForm = {
   isActive: true,
   pricingMode: 'flat',
   linearRate: '',
+  hourlyRate: '',
+  minimumBillableHours: '',
   matrixBasis: 'area',
   pricingMatrix: [],
   linkedZoneTypeId: '',
@@ -438,10 +444,12 @@ export default function ServicesPage() {
       estimatedDuration: s.estimatedDuration != null ? String(s.estimatedDuration) : '',
       p4pPercentage: s.p4pPercentage != null ? String(s.p4pPercentage) : '',
       isActive: s.isActive,
-      pricingMode: ['flat', 'per_sqft', 'per_linear_ft', 'area_and_linear', 'matrix'].includes(s.pricingMode)
+      pricingMode: ['flat', 'per_sqft', 'per_linear_ft', 'area_and_linear', 'matrix', 'hourly'].includes(s.pricingMode)
         ? s.pricingMode as ServiceForm['pricingMode']
         : 'flat',
       linearRate: s.linearRate != null ? String(s.linearRate) : '',
+      hourlyRate: s.hourlyRate != null ? String(s.hourlyRate) : s.pricingMode === 'hourly' ? String(s.basePrice) : '',
+      minimumBillableHours: s.minimumBillableMinutes != null ? String(Math.round((s.minimumBillableMinutes / 60) * 100) / 100) : '',
       matrixBasis: (Array.isArray(s.pricingMatrix) && (s.pricingMatrix as PricingTier[])[0]?.basis) || 'area',
       pricingMatrix: Array.isArray(s.pricingMatrix) ? (s.pricingMatrix as PricingTier[]).map(t => ({ ...t, _key: mkKey() })) : [],
       linkedZoneTypeId: s.linkedZoneTypeId ?? '',
@@ -460,6 +468,10 @@ export default function ServicesPage() {
 
   const handleSave = () => {
     if (!form.name) { toast.error('Service name is required'); return; }
+    if (form.pricingMode === 'hourly' && (!(Number(form.hourlyRate) > 0))) {
+      toast.error('Enter an hourly rate greater than zero');
+      return;
+    }
     if (form.pricingMode === 'matrix' && form.pricingMatrix.length === 0) {
       toast.error('Add at least one pricing tier, or switch to Flat rate');
       return;
@@ -476,7 +488,9 @@ export default function ServicesPage() {
       name: form.name,
       description: form.description,
       category: form.category,
-      basePrice: form.basePrice,
+      basePrice: form.pricingMode === 'hourly' ? form.hourlyRate : form.basePrice,
+      hourlyRate: form.pricingMode === 'hourly' ? form.hourlyRate : null,
+      minimumBillableHours: form.pricingMode === 'hourly' ? form.minimumBillableHours : null,
       estimatedDuration: form.estimatedDuration,
       p4pPercentage: form.p4pPercentage,
       isActive: form.isActive,
@@ -694,6 +708,8 @@ export default function ServicesPage() {
                         <span title={`Rate: $${s.basePrice.toFixed(2)} per linear foot`}>${s.basePrice.toFixed(2)}/ft</span>
                       ) : s.pricingMode === 'area_and_linear' ? (
                         <span title={`$${s.basePrice.toFixed(2)} per square foot plus $${(s.linearRate ?? 0).toFixed(2)} per linear foot`}>${s.basePrice.toFixed(2)}/sqft + ${(s.linearRate ?? 0).toFixed(2)}/ft</span>
+                      ) : s.pricingMode === 'hourly' ? (
+                        <span title={`Hourly rate: $${(s.hourlyRate ?? s.basePrice).toFixed(2)}`}>${(s.hourlyRate ?? s.basePrice).toFixed(2)}/hr</span>
                       ) : s.pricingMode === 'per_sqft' ? (
                         <span title={`Rate: $${s.basePrice.toFixed(2)} per square foot`}>${s.basePrice.toFixed(2)}/sqft</span>
                       ) : (
@@ -829,7 +845,7 @@ export default function ServicesPage() {
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium">Pricing</p>
                 <div className="flex border rounded-lg overflow-hidden text-xs">
-                  {(['flat', 'per_sqft', 'per_linear_ft', 'area_and_linear', 'matrix'] as const).map(m => (
+                  {(['flat', 'hourly', 'per_sqft', 'per_linear_ft', 'area_and_linear', 'matrix'] as const).map(m => (
                     <button
                       key={m}
                       type="button"
@@ -838,7 +854,9 @@ export default function ServicesPage() {
                     >
                       {m === 'flat'
                         ? 'Flat rate'
-                        : m === 'per_sqft'
+                        : m === 'hourly'
+                          ? 'Hourly / time'
+                          : m === 'per_sqft'
                           ? 'Per sqft'
                           : m === 'per_linear_ft'
                             ? 'Per linear ft'
@@ -850,7 +868,19 @@ export default function ServicesPage() {
                 </div>
               </div>
 
-              {form.pricingMode !== 'matrix' ? (
+              {form.pricingMode === 'hourly' ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Hourly rate ($/hr)</label>
+                    <Input type="number" min={0} step="0.01" title="Amount charged for each hour of crew time clocked on the job" placeholder="75.00" value={form.hourlyRate} onChange={e => setForm(f => ({ ...f, hourlyRate: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Minimum hours (optional)</label>
+                    <Input type="number" min={0} step="0.25" title="Shortest time to bill once the crew has clocked in. Leave blank to bill the exact time." placeholder="1" value={form.minimumBillableHours} onChange={e => setForm(f => ({ ...f, minimumBillableHours: e.target.value }))} />
+                  </div>
+                  <p className="col-span-2 text-xs text-muted-foreground">The invoice uses the crew timers on the job. One hour and 45 minutes bills as 1.75 hours. You can change the hours or the price on the invoice before sending it.</p>
+                </div>
+              ) : form.pricingMode !== 'matrix' ? (
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">

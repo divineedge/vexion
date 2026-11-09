@@ -5,6 +5,7 @@ import { creditedInvoiceInsert, invoiceBalance, voidCreditedInvoice } from "../l
 import { Router, type IRouter } from "express";
 import { db, invoicesTable, customersTable, jobsTable, activityLogTable, tenantsTable, integrationSyncLogsTable, customerPlansTable, stopServiceFlagsTable, invoiceTemplatesTable, propertiesTable, servicesTable, billingEmailQueueTable } from "@workspace/db";
 import { invoiceServiceDate } from "../lib/invoiceServiceDate";
+import { saveHourlyJobCharge } from "../lib/hourlyBilling";
 import { eq, and, sql, inArray, ne, isNull } from "drizzle-orm";
 import crypto from "crypto";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
@@ -307,12 +308,14 @@ router.post("/invoices/from-job/:jobId", async (req, res): Promise<void> => {
   }
 
   const invoiceNum = `INV-${Date.now().toString().slice(-6)}`;
-  const [service] = job.serviceId ? await db.select().from(servicesTable).where(and(eq(servicesTable.id, job.serviceId), eq(servicesTable.tenantId, tenantId))) : [];
-  const serviceDate = invoiceServiceDate(job, service?.fieldRequirements, tenant?.timezone ?? "America/New_York");
-  const sourceItems = (job.lineItems as Array<Record<string, unknown>>) ?? [];
-  const lineItems = (sourceItems.length ? sourceItems : [{ description: job.title, quantity: 1, unitPrice: job.totalAmount, total: job.totalAmount }])
-    .map(item => ({ ...item, description: `${item.description || job.title}${serviceDate ? ` — ${serviceDate}` : ""}` }));
-  const subtotal = job.totalAmount;
+  const hourly = await saveHourlyJobCharge(tenantId, job.id, job.completedAt ?? new Date());
+  const pricedJob = hourly ? { ...job, lineItems: hourly.lineItems, totalAmount: hourly.totalAmount } : job;
+  const [service] = pricedJob.serviceId ? await db.select().from(servicesTable).where(and(eq(servicesTable.id, pricedJob.serviceId), eq(servicesTable.tenantId, tenantId))) : [];
+  const serviceDate = invoiceServiceDate(pricedJob, service?.fieldRequirements, tenant?.timezone ?? "America/New_York");
+  const sourceItems = (pricedJob.lineItems as Array<Record<string, unknown>>) ?? [];
+  const lineItems = (sourceItems.length ? sourceItems : [{ description: pricedJob.title, quantity: 1, unitPrice: pricedJob.totalAmount, total: pricedJob.totalAmount }])
+    .map(item => ({ ...item, description: `${item.description || pricedJob.title}${serviceDate ? ` — ${serviceDate}` : ""}` }));
+  const subtotal = pricedJob.totalAmount;
   const tax = subtotal * 0.085;
   const total = subtotal + tax;
 

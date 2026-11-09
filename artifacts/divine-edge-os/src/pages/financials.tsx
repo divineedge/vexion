@@ -209,7 +209,10 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
     }
     setSelectedJobIds(ids => [...ids, jobId]);
     const price = Number(job.totalAmount ?? 0);
-    const line: LineItemRow = { description: job.title, quantity: 1, unitPrice: price, total: price, jobId, propertyId: job.propertyId ?? null };
+    const hourly = (Array.isArray((job as { lineItems?: unknown }).lineItems) ? (job as { lineItems: Array<Record<string, unknown>> }).lineItems : []).find(item => item.billingType === 'hourly');
+    const line: LineItemRow = hourly
+      ? { description: String(hourly.description ?? job.title), quantity: Number(hourly.quantity ?? 1), unitPrice: Number(hourly.unitPrice ?? 0), total: Number(hourly.total ?? price), jobId, propertyId: job.propertyId ?? null }
+      : { description: job.title, quantity: 1, unitPrice: price, total: price, jobId, propertyId: job.propertyId ?? null };
     setLineItems(prev => {
       if (prev.some(li => li.jobId === jobId)) return prev.map(li => (li.jobId === jobId ? line : li));
       return [...prev.filter(li => !isBlankRow(li)), line];

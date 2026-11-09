@@ -61,6 +61,11 @@ export type EstimateDepositSettings = {
   rules: DepositRule[];
   scheduling_deposit_type?: "fixed" | "percent";
   scheduling_deposit_value?: number | null;
+  /** Card on file and prepayment are one pair: both true or both false. */
+  requireCardOnAcceptance: boolean;
+  requirePrepaymentOnAcceptance: boolean;
+  require_card_on_acceptance: boolean;
+  require_prepayment_on_acceptance: boolean;
 };
 
 export const defaultEstimateDepositSettings: EstimateDepositSettings = {
@@ -75,8 +80,41 @@ export const defaultEstimateDepositSettings: EstimateDepositSettings = {
   scheduling_deposit_type: "percent",
   scheduling_deposit_value: null,
   allowEstimateOverrides: false,
+  requireCardOnAcceptance: false,
+  requirePrepaymentOnAcceptance: false,
+  require_card_on_acceptance: false,
+  require_prepayment_on_acceptance: false,
   rules: [],
 };
+
+/** One flag cannot be on without the other. Either true turns both on. */
+export function linkAcceptancePayment(card: unknown, prepay: unknown): boolean {
+  return card === true || prepay === true;
+}
+
+export function acceptancePaymentRequired(
+  settings: { requireCardOnAcceptance?: boolean; requirePrepaymentOnAcceptance?: boolean; require_card_on_acceptance?: boolean; require_prepayment_on_acceptance?: boolean },
+  columns?: { requireCardOnAcceptance?: boolean | null; requirePrepaymentOnAcceptance?: boolean | null } | null,
+): boolean {
+  return linkAcceptancePayment(
+    settings.requireCardOnAcceptance === true || settings.require_card_on_acceptance === true || columns?.requireCardOnAcceptance === true,
+    settings.requirePrepaymentOnAcceptance === true || settings.require_prepayment_on_acceptance === true || columns?.requirePrepaymentOnAcceptance === true,
+  );
+}
+
+export function withAcceptanceColumns(
+  settings: EstimateDepositSettings,
+  columns?: { requireCardOnAcceptance?: boolean | null; requirePrepaymentOnAcceptance?: boolean | null } | null,
+): EstimateDepositSettings {
+  const linked = acceptancePaymentRequired(settings, columns);
+  return {
+    ...settings,
+    requireCardOnAcceptance: linked,
+    requirePrepaymentOnAcceptance: linked,
+    require_card_on_acceptance: linked,
+    require_prepayment_on_acceptance: linked,
+  };
+}
 
 export function hasStoredEstimateDepositSettings(policy: unknown): boolean {
   if (!policy || typeof policy !== "object" || Array.isArray(policy)) return false;
@@ -124,12 +162,20 @@ export function normalizeEstimateDepositSettings(value: unknown): EstimateDeposi
   const defaultType = raw.defaultType === "fixed" ? "fixed" : "percent";
   const defaultAmount = depositAmount(raw.defaultAmount, defaultType);
   const scheduling = schedulingFields(raw, defaultType, defaultAmount);
+  const acceptance = linkAcceptancePayment(
+    raw.require_card_on_acceptance ?? raw.requireCardOnAcceptance,
+    raw.require_prepayment_on_acceptance ?? raw.requirePrepaymentOnAcceptance,
+  );
   return {
     ...defaultEstimateDepositSettings,
     enabled: raw.enabled === true,
     defaultType,
     defaultAmount,
     requireBeforeScheduling: raw.requireBeforeScheduling === true,
+    requireCardOnAcceptance: acceptance,
+    requirePrepaymentOnAcceptance: acceptance,
+    require_card_on_acceptance: acceptance,
+    require_prepayment_on_acceptance: acceptance,
     ...scheduling,
     scheduling_deposit_type: scheduling.schedulingDepositType,
     scheduling_deposit_value: scheduling.schedulingDepositValue,
@@ -152,6 +198,10 @@ export function coerceEstimateDepositSettings(value: unknown): EstimateDepositSe
     schedulingDepositFixed: typeof settings.schedulingDepositFixed === "number" && Number.isFinite(settings.schedulingDepositFixed) ? settings.schedulingDepositFixed : null,
     scheduling_deposit_type: settings.schedulingDepositType === "fixed" ? "fixed" : "percent",
     scheduling_deposit_value: typeof settings.schedulingDepositValue === "number" && Number.isFinite(settings.schedulingDepositValue) ? settings.schedulingDepositValue : null,
+    requireCardOnAcceptance: settings.requireCardOnAcceptance === true || settings.requirePrepaymentOnAcceptance === true,
+    requirePrepaymentOnAcceptance: settings.requireCardOnAcceptance === true || settings.requirePrepaymentOnAcceptance === true,
+    require_card_on_acceptance: settings.require_card_on_acceptance === true || settings.require_prepayment_on_acceptance === true,
+    require_prepayment_on_acceptance: settings.require_card_on_acceptance === true || settings.require_prepayment_on_acceptance === true,
     rules: Array.isArray(settings.rules) ? settings.rules : [],
   };
 }
@@ -194,6 +244,10 @@ function legacyEstimateDepositSettings(policy: unknown): EstimateDepositSettings
     scheduling_deposit_type: schedulingDepositType,
     scheduling_deposit_value: schedulingDepositValue,
     allowEstimateOverrides: rules.length > 0,
+    requireCardOnAcceptance: false,
+    requirePrepaymentOnAcceptance: false,
+    require_card_on_acceptance: false,
+    require_prepayment_on_acceptance: false,
     rules,
   };
 }
@@ -257,6 +311,14 @@ export function mergeEstimateDepositSettings(policy: unknown, patch: unknown): E
     scheduling_deposit_percent: "scheduling_deposit_percent" in raw ? raw.scheduling_deposit_percent : "schedulingDepositPercent" in raw ? raw.schedulingDepositPercent : current.schedulingDepositPercent,
     scheduling_deposit_fixed: "scheduling_deposit_fixed" in raw ? raw.scheduling_deposit_fixed : "schedulingDepositFixed" in raw ? raw.schedulingDepositFixed : current.schedulingDepositFixed,
     allowEstimateOverrides: typeof raw.allowEstimateOverrides === "boolean" ? raw.allowEstimateOverrides : current.allowEstimateOverrides,
+    require_card_on_acceptance: linkAcceptancePayment(
+      "require_card_on_acceptance" in raw ? raw.require_card_on_acceptance : "requireCardOnAcceptance" in raw ? raw.requireCardOnAcceptance : current.requireCardOnAcceptance,
+      "require_prepayment_on_acceptance" in raw ? raw.require_prepayment_on_acceptance : "requirePrepaymentOnAcceptance" in raw ? raw.requirePrepaymentOnAcceptance : current.requirePrepaymentOnAcceptance,
+    ),
+    require_prepayment_on_acceptance: linkAcceptancePayment(
+      "require_card_on_acceptance" in raw ? raw.require_card_on_acceptance : "requireCardOnAcceptance" in raw ? raw.requireCardOnAcceptance : current.requireCardOnAcceptance,
+      "require_prepayment_on_acceptance" in raw ? raw.require_prepayment_on_acceptance : "requirePrepaymentOnAcceptance" in raw ? raw.requirePrepaymentOnAcceptance : current.requirePrepaymentOnAcceptance,
+    ),
     rules: "rules" in raw ? raw.rules : current.rules,
   });
 }

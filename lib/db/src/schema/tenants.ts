@@ -206,6 +206,10 @@ export const tenantsTable = pgTable("tenants", {
   // ── Estimate & Invoice Defaults ───────────────────────────────────────────
   /** Days until an estimate expires (0 = no expiry). Used to auto-populate expiresAt on new estimates. */
   estimateExpiryDays: integer("estimate_expiry_days").notNull().default(30),
+  /** Customer must save a card before an estimate can be accepted. Always stored with the prepayment flag. */
+  requireCardOnAcceptance: boolean("require_card_on_acceptance").notNull().default(false),
+  /** Customer must pay the deposit or the full estimate before it can be accepted. Always stored with the card flag. */
+  requirePrepaymentOnAcceptance: boolean("require_prepayment_on_acceptance").notNull().default(false),
   renewalWarningDays: integer("renewal_warning_days").notNull().default(30),
   /** Invoice net terms in days. 0 = due on receipt. */
   invoiceDueDays: integer("invoice_due_days").notNull().default(30),

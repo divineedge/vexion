@@ -26,8 +26,8 @@ CREATE TABLE "billing_email_queue" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "customers" ADD COLUMN "auto_invoice_on_completion" boolean DEFAULT false NOT NULL;--> statement-breakpoint
-ALTER TABLE "invoices" ADD COLUMN "generated_from_template_id" integer;--> statement-breakpoint
+ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "auto_invoice_on_completion" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "generated_from_template_id" integer;--> statement-breakpoint
 ALTER TABLE "recurring_invoice_templates" ADD CONSTRAINT "recurring_invoice_templates_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "recurring_invoice_templates" ADD CONSTRAINT "recurring_invoice_templates_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "billing_email_queue" ADD CONSTRAINT "billing_email_queue_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

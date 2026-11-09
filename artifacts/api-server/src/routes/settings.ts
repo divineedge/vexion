@@ -15,7 +15,7 @@ import { logoContentType, logoUpload, publicLogoUrl, requestOrigin, uploadLogoTo
 import { buildGoogleAuthorizeUrl, exchangeGoogleCode } from "../lib/gmailProvider";
 import { normalizeChemicalRecordRequirements, parseChemicalRecordRequirements } from "../lib/chemicalRequirements";
 import { normalizeExcludedReminderServiceIds, normalizeServiceReminderMode } from "../lib/serviceReminderPolicy";
-import { readEstimateDepositSettings } from "../lib/companyDepositRules";
+import { readEstimateDepositSettings, withAcceptanceColumns } from "../lib/companyDepositRules";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -180,8 +180,8 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     quickShortcuts: (tenant.quickShortcuts as string[] | null) ?? ["new-job", "new-customer", "new-invoice"],
     // Notification Templates
     notificationTemplates: (tenant.notificationTemplates as Record<string, string> | null) ?? {},
-    estimateDepositSettings: readEstimateDepositSettings(tenant.paymentPolicy),
-    estimate_deposits: readEstimateDepositSettings(tenant.paymentPolicy),
+    estimateDepositSettings: withAcceptanceColumns(readEstimateDepositSettings(tenant.paymentPolicy), tenant),
+    estimate_deposits: withAcceptanceColumns(readEstimateDepositSettings(tenant.paymentPolicy), tenant),
     serviceRemindersMode: normalizeServiceReminderMode(tenant.serviceRemindersMode),
     excludedReminderServiceIds: tenant.excludedReminderServiceIds ?? [],
     // Portal slug

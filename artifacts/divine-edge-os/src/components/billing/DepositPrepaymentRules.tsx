@@ -27,6 +27,10 @@ type EstimateDepositSettings = {
   rules?: unknown[];
   scheduling_deposit_type?: DefaultType;
   scheduling_deposit_value?: number | null;
+  requireCardOnAcceptance?: boolean;
+  requirePrepaymentOnAcceptance?: boolean;
+  require_card_on_acceptance?: boolean;
+  require_prepayment_on_acceptance?: boolean;
 };
 
 const EMPTY: EstimateDepositSettings = {
@@ -70,6 +74,8 @@ function coerceDepositSettings(value: unknown): EstimateDepositSettings {
     schedulingDepositPercent: schedulingDepositPercent ?? (schedulingDepositType === 'percent' ? schedulingDepositValue : null),
     schedulingDepositFixed: schedulingDepositFixed ?? (schedulingDepositType === 'fixed' ? schedulingDepositValue : null),
     allowEstimateOverrides: raw.allowEstimateOverrides === true,
+    requireCardOnAcceptance: raw.requireCardOnAcceptance === true || raw.requirePrepaymentOnAcceptance === true || raw.require_card_on_acceptance === true || raw.require_prepayment_on_acceptance === true,
+    requirePrepaymentOnAcceptance: raw.requireCardOnAcceptance === true || raw.requirePrepaymentOnAcceptance === true || raw.require_card_on_acceptance === true || raw.require_prepayment_on_acceptance === true,
   };
 }
 
@@ -123,6 +129,7 @@ function DepositPrepaymentRulesForm({ canEdit }: { canEdit: boolean }) {
   const [schedulePercent, setSchedulePercent] = useState('');
   const [scheduleFixed, setScheduleFixed] = useState('');
   const [allowEstimateOverrides, setAllowEstimateOverrides] = useState(false);
+  const [requirePaymentOnAcceptance, setRequirePaymentOnAcceptance] = useState(false);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -135,6 +142,7 @@ function DepositPrepaymentRulesForm({ canEdit }: { canEdit: boolean }) {
     setSchedulePercent(loaded.schedulingDepositPercent != null ? String(loaded.schedulingDepositPercent) : '');
     setScheduleFixed(loaded.schedulingDepositFixed != null ? String(loaded.schedulingDepositFixed) : '');
     setAllowEstimateOverrides(loaded.allowEstimateOverrides === true);
+    setRequirePaymentOnAcceptance(loaded.requireCardOnAcceptance === true || loaded.requirePrepaymentOnAcceptance === true);
     setReady(true);
   }, [tenantQuery.data, ready, loaded]);
 
@@ -167,6 +175,10 @@ function DepositPrepaymentRulesForm({ canEdit }: { canEdit: boolean }) {
     scheduling_deposit_percent: schedulePercentValue,
     scheduling_deposit_fixed: scheduleFixedValue,
     allowEstimateOverrides,
+    requireCardOnAcceptance: requirePaymentOnAcceptance,
+    requirePrepaymentOnAcceptance: requirePaymentOnAcceptance,
+    require_card_on_acceptance: requirePaymentOnAcceptance,
+    require_prepayment_on_acceptance: requirePaymentOnAcceptance,
   };
   const saveRef = useRef(save.mutateAsync);
   saveRef.current = save.mutateAsync;
@@ -196,6 +208,26 @@ function DepositPrepaymentRulesForm({ canEdit }: { canEdit: boolean }) {
                 <p className="text-xs text-muted-foreground">Off leaves new estimates without a company deposit and does not block scheduling for one.</p>
               </div>
               <Switch checked={enabled === true} onCheckedChange={setEnabled} data-testid="switch-required-deposits" />
+            </div>
+            <div className="space-y-3 rounded-lg border p-3">
+              <div>
+                <p className="text-sm font-medium">Require Payment Upon Acceptance</p>
+                <p className="text-xs text-muted-foreground">These two rules stay together. Turning either one on requires both a saved card and payment before the customer can accept the estimate.</p>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">Require Credit Card on File Upon Acceptance</p>
+                  <p className="text-xs text-muted-foreground">The customer saves a card when they accept.</p>
+                </div>
+                <Switch checked={requirePaymentOnAcceptance} onCheckedChange={setRequirePaymentOnAcceptance} data-testid="switch-require-card-on-acceptance" />
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">Require Prepayment Upon Acceptance</p>
+                  <p className="text-xs text-muted-foreground">The customer pays the deposit, or the full estimate when no deposit is set, when they accept.</p>
+                </div>
+                <Switch checked={requirePaymentOnAcceptance} onCheckedChange={setRequirePaymentOnAcceptance} data-testid="switch-require-prepayment-on-acceptance" />
+              </div>
             </div>
             {enabled && (
               <div className="space-y-4">

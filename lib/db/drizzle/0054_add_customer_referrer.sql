@@ -1,5 +1,5 @@
 ALTER TABLE "customers"
-ADD COLUMN "referring_customer_id" integer;
+ADD COLUMN IF NOT EXISTS "referring_customer_id" integer;
 
 ALTER TABLE "customers"
 ADD CONSTRAINT "customers_referring_customer_id_customers_id_fk"

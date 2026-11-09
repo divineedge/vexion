@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, customersTable, servicesTable, tenantsTable, estimatesTable, jobsTable } from "@workspace/db";
 import { and, eq, sql, desc, inArray } from "drizzle-orm";
-import { estimateDepositSettingsDocument, mergeEstimateDepositSettings, normalizeScheduleDeposit, readEstimateDepositSettings, validateDepositRules, validateEstimateDepositSettings, validateScheduleDeposit, type DepositRule, type EstimateDepositSettings } from "../lib/companyDepositRules";
+import { estimateDepositSettingsDocument, mergeEstimateDepositSettings, normalizeScheduleDeposit, readEstimateDepositSettings, validateDepositRules, validateEstimateDepositSettings, validateScheduleDeposit, withAcceptanceColumns, type DepositRule, type EstimateDepositSettings } from "../lib/companyDepositRules";
 import { customerInvoiceGrouping } from "../lib/invoicePropertyGrouping";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
@@ -59,16 +59,22 @@ router.patch("/billing/customer-invoice-grouping/:id", async (req, res) => {
   res.json({ mode });
 });
 async function loadCompanyPolicy(tenantId: number) {
-  const [row] = await db.select({ paymentPolicy: tenantsTable.paymentPolicy }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
-  return row?.paymentPolicy;
+  const [row] = await db.select({
+    paymentPolicy: tenantsTable.paymentPolicy,
+    requireCardOnAcceptance: tenantsTable.requireCardOnAcceptance,
+    requirePrepaymentOnAcceptance: tenantsTable.requirePrepaymentOnAcceptance,
+  }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  return row;
 }
 async function saveEstimateDepositSettings(tenantId: number, settings: EstimateDepositSettings) {
-  await db.execute(sql`UPDATE tenants SET payment_policy=coalesce(payment_policy,'{}'::jsonb) || ${JSON.stringify(estimateDepositSettingsDocument(settings))}::jsonb WHERE id=${tenantId}`);
+  const linked = settings.requireCardOnAcceptance === true || settings.requirePrepaymentOnAcceptance === true;
+  await db.execute(sql`UPDATE tenants SET require_card_on_acceptance=${linked}, require_prepayment_on_acceptance=${linked}, payment_policy=coalesce(payment_policy,'{}'::jsonb) || ${JSON.stringify(estimateDepositSettingsDocument(settings))}::jsonb WHERE id=${tenantId}`);
 }
 router.get("/billing/estimate-deposit-settings", async (req, res) => {
   const tenantId = getTenantId(req);
   if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
-  res.json({ settings: readEstimateDepositSettings(await loadCompanyPolicy(tenantId)) });
+  const company = await loadCompanyPolicy(tenantId);
+  res.json({ settings: withAcceptanceColumns(readEstimateDepositSettings(company?.paymentPolicy), company) });
 });
 router.patch("/billing/estimate-deposit-settings", async (req, res) => {
   const tenantId = getTenantId(req);
@@ -83,14 +89,16 @@ router.patch("/billing/estimate-deposit-settings", async (req, res) => {
       if (owned.length !== ids.length) { res.status(400).json({ error: "All services must belong to your company" }); return; }
     }
   }
-  const settings = mergeEstimateDepositSettings(await loadCompanyPolicy(tenantId), patch);
+  const company = await loadCompanyPolicy(tenantId);
+  const settings = withAcceptanceColumns(mergeEstimateDepositSettings(company?.paymentPolicy, patch), company);
   await saveEstimateDepositSettings(tenantId, settings);
   res.json({ settings });
 });
 router.get("/billing/schedule-deposit", async (req, res) => {
   const tenantId = getTenantId(req);
   if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
-  const settings = readEstimateDepositSettings(await loadCompanyPolicy(tenantId));
+  const company = await loadCompanyPolicy(tenantId);
+  const settings = withAcceptanceColumns(readEstimateDepositSettings(company?.paymentPolicy), company);
   res.json({ rule: normalizeScheduleDeposit({ enabled: settings.enabled && settings.requireBeforeScheduling, mode: settings.defaultType, value: settings.defaultAmount }) });
 });
 router.patch("/billing/schedule-deposit", async (req, res) => {
@@ -99,19 +107,21 @@ router.patch("/billing/schedule-deposit", async (req, res) => {
   const error = validateScheduleDeposit(req.body?.rule);
   if (error) { res.status(400).json({ error }); return; }
   const rule = normalizeScheduleDeposit(req.body.rule);
-  const settings = mergeEstimateDepositSettings(await loadCompanyPolicy(tenantId), {
+  const company = await loadCompanyPolicy(tenantId);
+  const settings = withAcceptanceColumns(mergeEstimateDepositSettings(company?.paymentPolicy, {
     enabled: rule.enabled ? true : undefined,
     requireBeforeScheduling: rule.enabled,
     defaultType: rule.mode,
     defaultAmount: rule.value,
-  });
+  }), company);
   await saveEstimateDepositSettings(tenantId, settings);
   res.json({ rule: { enabled: settings.enabled && settings.requireBeforeScheduling, mode: settings.defaultType, value: settings.defaultAmount } });
 });
 router.get("/billing/deposit-rules", async (req, res) => {
   const tenantId = getTenantId(req);
   if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
-  const rules = readEstimateDepositSettings(await loadCompanyPolicy(tenantId)).rules;
+  const company = await loadCompanyPolicy(tenantId);
+  const rules = withAcceptanceColumns(readEstimateDepositSettings(company?.paymentPolicy), company).rules;
   const error = validateDepositRules(rules);
   if (error) { res.status(422).json({ error }); return; }
   res.json({ rules });
@@ -126,7 +136,8 @@ router.patch("/billing/deposit-rules", async (req, res) => {
     const owned = await db.select({ id: servicesTable.id }).from(servicesTable).where(and(eq(servicesTable.tenantId, tenantId), inArray(servicesTable.id, ids)));
     if (owned.length !== ids.length) { res.status(400).json({ error: "All services must belong to your company" }); return; }
   }
-  const settings = mergeEstimateDepositSettings(await loadCompanyPolicy(tenantId), { rules });
+  const company = await loadCompanyPolicy(tenantId);
+  const settings = withAcceptanceColumns(mergeEstimateDepositSettings(company?.paymentPolicy, { rules }), company);
   await saveEstimateDepositSettings(tenantId, settings);
   res.json({ rules: settings.rules });
 });
@@ -148,14 +159,16 @@ router.patch("/billing/payment-policy/:scope/:id", async (req, res) => {
       ["fixed","percent"].includes(body.depositType) && !(body.depositValue > 0) ||
       body.depositType === "percent" && body.depositValue > 100) { res.status(400).json({ error: "Invalid payment policy" }); return; }
   const policy = normalizePaymentPolicy(body);
+  const company = req.params.scope === "company" ? await loadCompanyPolicy(tenantId) : null;
+  const acceptance = company ? withAcceptanceColumns(mergeEstimateDepositSettings(company.paymentPolicy, {
+    enabled: policy.depositType === "fixed" || policy.depositType === "percent" || policy.depositType === "full",
+    ...(policy.depositType === "fixed" || policy.depositType === "percent" ? { defaultType: policy.depositType, defaultAmount: policy.depositValue } : {}),
+    ...(policy.depositType === "full" ? { defaultType: "percent", defaultAmount: 100 } : {}),
+    ...(policy.requirePrepay ? { requireBeforeScheduling: true } : {}),
+  }), company) : null;
   const result = req.params.scope === "company"
-    ? await db.execute(sql`UPDATE tenants SET payment_policy=coalesce(payment_policy,'{}'::jsonb) || ${JSON.stringify({
-        ...estimateDepositSettingsDocument(mergeEstimateDepositSettings(await loadCompanyPolicy(tenantId), {
-          enabled: policy.depositType === "fixed" || policy.depositType === "percent" || policy.depositType === "full",
-          ...(policy.depositType === "fixed" || policy.depositType === "percent" ? { defaultType: policy.depositType, defaultAmount: policy.depositValue } : {}),
-          ...(policy.depositType === "full" ? { defaultType: "percent", defaultAmount: 100 } : {}),
-          ...(policy.requirePrepay ? { requireBeforeScheduling: true } : {}),
-        })),
+    ? await db.execute(sql`UPDATE tenants SET require_card_on_acceptance=${acceptance?.requireCardOnAcceptance === true}, require_prepayment_on_acceptance=${acceptance?.requirePrepaymentOnAcceptance === true}, payment_policy=coalesce(payment_policy,'{}'::jsonb) || ${JSON.stringify({
+        ...estimateDepositSettingsDocument(acceptance!),
         requirePrepay: policy.requirePrepay,
         requireCard: policy.requireCard,
       })}::jsonb WHERE id=${tenantId} RETURNING id`)

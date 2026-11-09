@@ -572,7 +572,7 @@ export default function EstimatePublicPage() {
                     />
                   </Elements>
                 ) : (
-                  {requirePaymentOnAcceptance ? (
+                  requirePaymentOnAcceptance ? (
                     <p className="text-sm text-destructive" role="alert">Acceptance is blocked until card payment is available. Contact the company to finish accepting this estimate.</p>
                   ) : (
                   <Button
@@ -583,7 +583,7 @@ export default function EstimatePublicPage() {
                     <CheckCircle2 className="w-5 h-5 mr-2" />
                     {respond.isPending ? 'Submitting...' : 'Approve Estimate'}
                   </Button>
-                  )}
+                  )
                 )}
                 <Button variant="outline" className="w-full h-10" onClick={() => setShowDeclineForm(true)}>
                   Decline

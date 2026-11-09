@@ -31,7 +31,7 @@ interface BlueprintZone {
   label: string;
   areaSqft: number | null;
   lengthFt: number | null;
-  mode: 'area' | 'linear' | null;
+  mode: 'area' | 'linear' | 'both' | null;
   color: string | null;
 }
 
@@ -43,20 +43,20 @@ interface BlueprintZones {
 interface QuoteZoneMeasurement {
   areaSqft: number | null;
   lengthFt?: number | null;
-  mode?: 'area' | 'linear' | null;
+  mode?: 'area' | 'linear' | 'both' | null;
 }
 
 function formatZoneMeasurement(zone: QuoteZoneMeasurement): string | null {
-  const isLinearZone = zone.mode === 'linear' || (zone.areaSqft === 0 && (zone.lengthFt ?? 0) > 0);
-  if (isLinearZone) {
-    return zone.lengthFt != null
-      ? `${zone.lengthFt.toLocaleString(undefined, { maximumFractionDigits: 0 })} ft`
-      : null;
+  const area = zone.areaSqft ?? 0;
+  const perimeter = zone.lengthFt ?? 0;
+  if (zone.mode === 'linear') {
+    return perimeter > 0 ? `${Math.round(perimeter).toLocaleString()} linear ft` : null;
   }
-
-  return zone.areaSqft != null
-    ? `${zone.areaSqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft`
-    : null;
+  const parts: string[] = [];
+  if (area > 0) parts.push(`${Math.round(area).toLocaleString()} sq ft`);
+  if (perimeter > 0) parts.push(`${Math.round(perimeter).toLocaleString()} linear ft`);
+  if (parts.length > 0) return parts.join(' · ');
+  return zone.areaSqft != null ? `${Math.round(area).toLocaleString()} sq ft` : null;
 }
 
 interface PublicQuote {
@@ -67,8 +67,9 @@ interface PublicQuote {
   serviceDescription: string | null;
   selectedZoneLabels: string[];
   totalAreaSqft: number | null;
+  perimeterLinearFeet?: number | null;
   calculatedPrice: number;
-  priceType: 'flat' | 'per_sqft' | 'per_linear_ft' | 'matrix';
+  priceType: 'flat' | 'per_sqft' | 'per_linear_ft' | 'area_and_linear' | 'matrix';
   status: 'pending' | 'approved' | 'declined';
   expiresAt: string | null;
   expired: boolean;
@@ -85,7 +86,7 @@ interface PublicQuote {
       label: string;
       areaSqft: number;
       lengthFt?: number | null;
-      mode?: 'area' | 'linear';
+      mode?: 'area' | 'linear' | 'both';
       enabled: boolean;
       color: string;
     }>;
@@ -314,6 +315,16 @@ export default function QuotePublicPage() {
                 ${(quote.calculatedPrice / quote.totalAreaSqft).toFixed(4)}/sqft × {quote.totalAreaSqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft
               </p>
             )}
+            {quote.priceType === 'area_and_linear' && (
+              <p className="text-sm text-muted-foreground mt-2">
+                {Math.round(quote.totalAreaSqft ?? 0).toLocaleString()} sq ft + {Math.round(quote.perimeterLinearFeet ?? 0).toLocaleString()} linear ft
+              </p>
+            )}
+            {quote.priceType === 'per_linear_ft' && quote.perimeterLinearFeet ? (
+              <p className="text-sm text-muted-foreground mt-2">
+                {Math.round(quote.perimeterLinearFeet).toLocaleString()} linear ft
+              </p>
+            ) : null}
           </CardContent>
         </Card>
 

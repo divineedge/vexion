@@ -162,7 +162,10 @@ export default function PropertyDetailPage() {
 
   const preferredAreaUnit = (tenantSettings?.preferredAreaUnit as 'sqft' | 'acres') ?? 'sqft';
   const ZONE_COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#84CC16','#F97316','#EC4899','#6366F1'];
-  const rawZoneTypes = (tenantSettings as any)?.measurementZoneTypes as Array<{ id: string; name: string; color: string; mode?: 'area' | 'linear' }> | undefined;
+  const rawZoneTypes = (tenantSettings as any)?.measurementZoneTypes as Array<{ id: string; name: string; color: string; mode?: 'area' | 'linear' | 'both' }> | undefined;
+  const satelliteMeasurementMode = ((tenantSettings as any)?.satelliteMeasurementMode === 'area' || (tenantSettings as any)?.satelliteMeasurementMode === 'linear')
+    ? (tenantSettings as any).satelliteMeasurementMode as 'area' | 'linear'
+    : 'both';
   const zoneTypes = rawZoneTypes && rawZoneTypes.length > 0
     ? rawZoneTypes.map(zt => ({ ...zt, mode: zt.mode ?? 'area' as const }))
     // Legacy labels carry no mode info, so derived zone types always default to 'area'.
@@ -402,15 +405,16 @@ export default function PropertyDetailPage() {
     );
   };
 
-  const handleMeasurementsChange = (zones: MeasurementZone[], totalSqft: number) => {
+  const handleMeasurementsChange = (zones: MeasurementZone[], totalSqft: number, totalPerimeterFt = 0) => {
     setSavingMeasurements(true);
     updateMeasurements.mutate(
       {
         id,
         data: {
-          measurementPolygons: zones,
+          measurementPolygons: zones as unknown as NonNullable<Parameters<typeof updateMeasurements.mutate>[0]['data']['measurementPolygons']>,
           serviceableAreaSqft: totalSqft || undefined,
-        },
+          perimeterLinearFeet: totalPerimeterFt || undefined,
+        } as Parameters<typeof updateMeasurements.mutate>[0]['data'],
       },
       {
         onSuccess: () => {
@@ -652,6 +656,7 @@ export default function PropertyDetailPage() {
                   geofenceLng={property.geofenceLng}
                   geofenceUnit={defaultGeofenceUnit}
                   preferredAreaUnit={preferredAreaUnit}
+                  defaultMeasurementMode={satelliteMeasurementMode}
                   zoneTypes={zoneTypes}
                   onPinChange={handlePinChange}
                   onMeasurementsChange={handleMeasurementsChange}

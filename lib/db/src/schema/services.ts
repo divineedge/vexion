@@ -10,8 +10,10 @@ export const servicesTable = pgTable("services", {
   name: text("name").notNull(),
   description: text("description"),
   category: text("category"),
-  /** Standard base price charged to customer */
+  /** Standard base price charged to customer. Also the per-sqft rate for area_and_linear. */
   basePrice: real("base_price").notNull().default(0),
+  /** Per-linear-foot rate used when pricingMode is area_and_linear. */
+  linearRate: real("linear_rate").notNull().default(0),
   /** Estimated job duration in minutes */
   estimatedDuration: integer("estimated_duration"),
   /** Service-level P4P payout %. null = use tenant p4pMasterPercentage. */

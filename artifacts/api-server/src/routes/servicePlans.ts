@@ -18,6 +18,7 @@ import {
 import { enqueueInvoiceEmail } from "../lib/billingScheduler";
 import { sendEmail } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
+import { resolveServicePrice, type PricingTier } from "../lib/pricingMatrix";
 import { generateRangeVisits, validateVisitRange, VisitRangeError, type VisitRange } from "../lib/planVisitRange";
 import { isInOffSeason } from "../lib/offSeasonUtils";
 import { buildPlanProgram,type ProgramJob } from "../lib/planProgram";
@@ -291,7 +292,9 @@ export interface MeasurementPolygon {
   zoneTypeId?: string | null;
   areaSqft?: number | null;
   lengthFt?: number | null;
-  mode?: "area" | "linear";
+  area_sqft?: number | null;
+  perimeter_linear_feet?: number | null;
+  mode?: "area" | "linear" | "both";
   enabled?: boolean;
 }
 
@@ -328,23 +331,16 @@ export function resolveServiceMatrixPrice(
   basePrice: number,
   pricingMatrix: unknown,
   measurements: ZoneMeasurements,
+  linearRate = 0,
 ): number {
-  if (pricingMode === "per_sqft") return basePrice * measurements.areaSqft;
-  if (pricingMode === "per_linear_ft") return basePrice * measurements.lengthFt;
-  if (pricingMode !== "matrix" || !Array.isArray(pricingMatrix) || pricingMatrix.length === 0) {
-    return basePrice;
-  }
-  const quantity = measurements.mode === "linear" ? measurements.lengthFt : measurements.areaSqft;
-  const sorted = [...(pricingMatrix as PlanPricingTier[])].sort((a, b) => a.minSqft - b.minSqft);
-  for (const tier of sorted) {
-    if (quantity >= tier.minSqft && (tier.maxSqft === null || quantity <= tier.maxSqft)) {
-      if (tier.maxSqft === null && (tier as any).perSqftRate != null && (tier as any).perSqftRate > 0) {
-        return (tier as any).perSqftRate * quantity;
-      }
-      return tier.price;
-    }
-  }
-  return basePrice;
+  return resolveServicePrice(
+    pricingMode,
+    basePrice,
+    Array.isArray(pricingMatrix) ? pricingMatrix as PricingTier[] : null,
+    measurements.areaSqft,
+    measurements.lengthFt,
+    linearRate,
+  );
 }
 
 export function buildZoneMeasurementMap(
@@ -364,11 +360,10 @@ export function buildZoneMeasurementMap(
     const mode = polygon.mode ?? configuredMode;
     const current = measurements.get(zoneTypeId) ?? { areaSqft: 0, lengthFt: 0, mode };
     current.mode = mode;
-    if (mode === "linear") {
-      current.lengthFt += polygon.lengthFt ?? 0;
-    } else {
-      current.areaSqft += polygon.areaSqft ?? 0;
-    }
+    const area = Number(polygon.area_sqft ?? polygon.areaSqft ?? 0);
+    const perimeter = Number(polygon.perimeter_linear_feet ?? polygon.lengthFt ?? 0);
+    if (Number.isFinite(area)) current.areaSqft += area;
+    if (Number.isFinite(perimeter)) current.lengthFt += perimeter;
     measurements.set(zoneTypeId, current);
   }
 
@@ -423,6 +418,7 @@ router.post("/plan-templates/resolve-price", async (req, res): Promise<void> => 
       basePrice: servicesTable.basePrice,
       pricingMode: servicesTable.pricingMode,
       pricingMatrix: servicesTable.pricingMatrix,
+      linearRate: servicesTable.linearRate,
       linkedZoneTypeId: servicesTable.linkedZoneTypeId,
     }).from(servicesTable)
       .where(and(inArray(servicesTable.id, serviceIds), eq(servicesTable.tenantId, tenantId)));
@@ -443,7 +439,7 @@ router.post("/plan-templates/resolve-price", async (req, res): Promise<void> => 
       const measurements = svc.linkedZoneTypeId
         ? (zoneMeasurementMap.get(svc.linkedZoneTypeId) ?? { areaSqft: totalAreaSqft, lengthFt: 0, mode: "area" as const })
         : { areaSqft: totalAreaSqft, lengthFt: totalLengthFt, mode: svc.pricingMode === "per_linear_ft" ? "linear" as const : "area" as const };
-      const price = resolveServiceMatrixPrice(svc.pricingMode, svc.basePrice, svc.pricingMatrix, measurements);
+      const price = resolveServiceMatrixPrice(svc.pricingMode, svc.basePrice, svc.pricingMatrix, measurements, svc.linearRate ?? 0);
       total += price;
       breakdown.push({
         serviceId: svc.id,
@@ -1033,6 +1029,7 @@ export async function resolvePlanCurrentPrice(
       basePrice: servicesTable.basePrice,
       pricingMode: servicesTable.pricingMode,
       pricingMatrix: servicesTable.pricingMatrix,
+      linearRate: servicesTable.linearRate,
       linkedZoneTypeId: servicesTable.linkedZoneTypeId,
     }).from(servicesTable)
       .where(and(inArray(servicesTable.id, serviceIds), eq(servicesTable.tenantId, tenantId)));
@@ -1051,7 +1048,7 @@ export async function resolvePlanCurrentPrice(
       const measurements = svc.linkedZoneTypeId
         ? (zoneMeasurementMap.get(svc.linkedZoneTypeId) ?? { areaSqft: totalAreaSqft, lengthFt: 0, mode: "area" as const })
         : { areaSqft: totalAreaSqft, lengthFt: totalLengthFt, mode: svc.pricingMode === "per_linear_ft" ? "linear" as const : "area" as const };
-      total += resolveServiceMatrixPrice(svc.pricingMode, svc.basePrice, svc.pricingMatrix, measurements);
+      total += resolveServiceMatrixPrice(svc.pricingMode, svc.basePrice, svc.pricingMatrix, measurements, svc.linearRate ?? 0);
     }
 
     const measurementParts = [

@@ -15,4 +15,5 @@ export type MeasurementZoneMode = typeof MeasurementZoneMode[keyof typeof Measur
 export const MeasurementZoneMode = {
   area: 'area',
   linear: 'linear',
+  both: 'both',
 } as const;

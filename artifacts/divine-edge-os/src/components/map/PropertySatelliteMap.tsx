@@ -6,18 +6,24 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import { geofenceRadiusForDisplay, geofenceRadiusToMeters } from '@/lib/geofenceUnits';
+import { formatArea, formatLinearFeet, measureSection, type MeasurementCapture } from '@/lib/satelliteMeasurements';
 
 export interface MeasurementZone {
   id: string;
   label: string;
+  zoneTypeId?: string;
   /** Array of [lat, lng] pairs. Open polyline path when mode is 'linear', closed polygon ring otherwise. */
   vertices: [number, number][];
   /** Polygon area in sqft. 0 for linear zones. */
   areaSqft: number;
-  /** Polyline length in feet. Only set when mode is 'linear'. */
+  /** Perimeter or path length in feet. */
   lengthFt?: number | null;
-  /** Measurement mode this zone was drawn in. Absent/undefined means 'area' (pre-existing zones). */
-  mode?: 'area' | 'linear';
+  /** Same area, stored under the measurement record name. */
+  area_sqft?: number;
+  /** Same perimeter, stored under the measurement record name. */
+  perimeter_linear_feet?: number;
+  /** What this section was captured for. Absent means 'area' on older zones. */
+  mode?: MeasurementCapture;
   enabled: boolean;
   color: string;
 }
@@ -27,7 +33,7 @@ export interface ZoneType {
   name: string;
   color: string;
   /** Default measurement mode when drawing a zone of this type. Defaults to 'area' when absent. */
-  mode?: 'area' | 'linear';
+  mode?: MeasurementCapture;
 }
 
 interface PropertySatelliteMapProps {
@@ -46,7 +52,9 @@ interface PropertySatelliteMapProps {
   /** @deprecated use zoneTypes instead */
   defaultZoneLabels?: string[];
   onPinChange?: (lat: number, lng: number) => void;
-  onMeasurementsChange?: (zones: MeasurementZone[], totalSqft: number) => void;
+  /** Company default for a new section: area, linear perimeter, or both. */
+  defaultMeasurementMode?: MeasurementCapture;
+  onMeasurementsChange?: (zones: MeasurementZone[], totalSqft: number, totalPerimeterFt?: number) => void;
   onGeofenceChange?: (lat: number, lng: number, radius: number) => void;
   readonly?: boolean;
 }
@@ -56,61 +64,21 @@ const ZONE_COLORS = [
   '#06B6D4', '#84CC16', '#F97316', '#EC4899', '#6366F1',
 ];
 
-/** Shoelace formula for polygon area in sqft given [lat, lng] vertices */
-function polygonAreaSqft(vertices: [number, number][]): number {
-  if (vertices.length < 3) return 0;
-  // Convert lat/lng to approximate meters using equirectangular projection
-  const R = 6371000; // Earth radius in meters
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const centerLat = vertices.reduce((s, v) => s + v[0], 0) / vertices.length;
-  const cosLat = Math.cos(toRad(centerLat));
-
-  let area = 0;
-  for (let i = 0; i < vertices.length; i++) {
-    const j = (i + 1) % vertices.length;
-    const xi = vertices[i][1] * cosLat * R * (Math.PI / 180);
-    const yi = vertices[i][0] * R * (Math.PI / 180);
-    const xj = vertices[j][1] * cosLat * R * (Math.PI / 180);
-    const yj = vertices[j][0] * R * (Math.PI / 180);
-    area += xi * yj - xj * yi;
-  }
-  const areaSqm = Math.abs(area) / 2;
-  return areaSqm * 10.7639; // m² to sqft
-}
-
-/** Sum of haversine distances between consecutive [lat, lng] points, in feet. Open path (not closed). */
-function lineLengthFt(vertices: [number, number][]): number {
-  if (vertices.length < 2) return 0;
-  const R = 6371000; // Earth radius in meters
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  let totalM = 0;
-  for (let i = 0; i < vertices.length - 1; i++) {
-    const [lat1, lng1] = vertices[i];
-    const [lat2, lng2] = vertices[i + 1];
-    const dLat = toRad(lat2 - lat1);
-    const dLng = toRad(lng2 - lng1);
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    totalM += R * c;
-  }
-  return totalM * 3.28084; // meters to feet
-}
-
-function formatArea(sqft: number, unit: 'sqft' | 'acres'): string {
-  if (unit === 'acres') {
-    return `${(sqft / 43560).toFixed(3)} ac`;
-  }
-  return `${sqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft`;
-}
-
-function formatLength(ft: number): string {
-  return `${ft.toLocaleString(undefined, { maximumFractionDigits: 0 })} ft`;
-}
-
-/** Displays a zone's measurement using the right unit for its mode: length in feet for linear zones, area otherwise. */
 function formatZoneMeasurement(zone: MeasurementZone, areaUnit: 'sqft' | 'acres'): string {
-  if (zone.mode === 'linear') return formatLength(zone.lengthFt ?? 0);
-  return formatArea(zone.areaSqft, areaUnit);
+  const area = zone.area_sqft ?? zone.areaSqft ?? 0;
+  const perimeter = zone.perimeter_linear_feet ?? zone.lengthFt ?? 0;
+  if (zone.mode === 'both' || (area > 0 && perimeter > 0)) {
+    return `${formatArea(area, areaUnit)} · ${formatLinearFeet(perimeter)}`;
+  }
+  if (zone.mode === 'linear') return formatLinearFeet(perimeter);
+  return formatArea(area, areaUnit);
+}
+
+function sectionTotals(zones: MeasurementZone[]) {
+  return zones.filter(zone => zone.enabled).reduce((totals, zone) => ({
+    area: totals.area + (zone.area_sqft ?? zone.areaSqft ?? 0),
+    perimeter: totals.perimeter + (zone.perimeter_linear_feet ?? zone.lengthFt ?? 0),
+  }), { area: 0, perimeter: 0 });
 }
 
 function generateId(): string {
@@ -136,6 +104,7 @@ export default function PropertySatelliteMap({
   geofenceLng,
   geofenceUnit = 'm',
   preferredAreaUnit = 'sqft',
+  defaultMeasurementMode = 'both',
   zoneTypes,
   defaultZoneLabels,
   onPinChange,
@@ -173,6 +142,7 @@ export default function PropertySatelliteMap({
   const [drawingPoints, setDrawingPoints] = useState<[number, number][]>([]);
   const drawingPointsRef = useRef<[number, number][]>([]);
   const [selectedZoneTypeId, setSelectedZoneTypeId] = useState<string>('');
+  const [captureMode, setCaptureMode] = useState<MeasurementCapture>(defaultMeasurementMode);
   const [editingGeofence, setEditingGeofence] = useState(false);
   const [currentLat, setCurrentLat] = useState(lat ?? 25.7617);
   const [currentLng, setCurrentLng] = useState(lng ?? -80.1918);
@@ -236,6 +206,14 @@ export default function PropertySatelliteMap({
       });
     }
   }, [effectiveZoneTypes]);
+
+  useEffect(() => {
+    const selected = effectiveZoneTypes.find(zone => zone.id === selectedZoneTypeId);
+    if (!selected) return;
+    setCaptureMode(selected.mode ?? defaultMeasurementMode);
+    // Only follow the zone type when the user picks a different section type.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedZoneTypeId]);
 
   // Initialize map
   useEffect(() => {
@@ -410,9 +388,7 @@ export default function PropertySatelliteMap({
   // decides whether the next drawing session produces a closed polygon (area) or an open
   // polyline (linear) — it's locked in once drawing starts, since the zone-type picker is
   // hidden while drawingMode is true.
-  const drawMode: 'area' | 'linear' = effectiveZoneTypes.find(z => z.id === selectedZoneTypeId)?.mode ?? 'area';
-  // Kept in sync so handleMapClick (stable identity below) always sees the current mode
-  // without needing it as a dependency.
+  const drawMode: MeasurementCapture = captureMode;
   const drawModeRef = useRef(drawMode);
   useEffect(() => {
     drawModeRef.current = drawMode;
@@ -423,7 +399,7 @@ export default function PropertySatelliteMap({
     const points = drawingPointsRef.current;
     // Save outside a state updater: React may replay updaters, but a closing click
     // must persist exactly one zone.
-    if (drawModeRef.current === 'area' && points.length >= 3 && pixelDistance(points[0], e.latlng) <= FIRST_POINT_HIT_RADIUS_PX) {
+    if (drawModeRef.current !== 'linear' && points.length >= 3 && pixelDistance(points[0], e.latlng) <= FIRST_POINT_HIT_RADIUS_PX) {
       finishZoneRef.current(points);
       return;
     }
@@ -490,12 +466,13 @@ export default function PropertySatelliteMap({
     if (mode === 'linear' ? points.length < 2 : points.length < 3) return;
     // Resolve the selected zone type (fall back to index-based color if not found)
     const selectedType = effectiveZoneTypes.find(z => z.id === selectedZoneTypeId) ?? effectiveZoneTypes[zones.length % effectiveZoneTypes.length];
+    const measured = measureSection(points, mode);
     const newZone: MeasurementZone = {
       id: generateId(),
       label: selectedType?.name ?? 'Zone',
+      zoneTypeId: selectedType?.id,
       vertices: points,
-      areaSqft: mode === 'linear' ? 0 : polygonAreaSqft(points),
-      lengthFt: mode === 'linear' ? lineLengthFt(points) : undefined,
+      ...measured,
       mode,
       enabled: true,
       color: selectedType?.color ?? ZONE_COLORS[zones.length % ZONE_COLORS.length],
@@ -505,8 +482,8 @@ export default function PropertySatelliteMap({
     setDrawingMode(false);
     drawingPointsRef.current = [];
     setDrawingPoints([]);
-    const total = next.filter(z => z.enabled).reduce((s, z) => s + z.areaSqft, 0);
-    onMeasurementsChange?.(next, total);
+    const totals = sectionTotals(next);
+    onMeasurementsChange?.(next, totals.area, totals.perimeter);
   };
 
   // Kept in sync so handleMapClick (defined earlier, with a stable identity) can always call
@@ -525,7 +502,9 @@ export default function PropertySatelliteMap({
   const startDrawing = (typeId = selectedZoneTypeId) => {
     if (readonly || !mapReady) return;
     setSelectedZoneTypeId(typeId);
-    drawModeRef.current = effectiveZoneTypes.find(type => type.id === typeId)?.mode ?? 'area';
+    const nextMode = effectiveZoneTypes.find(type => type.id === typeId)?.mode ?? defaultMeasurementMode;
+    drawModeRef.current = nextMode;
+    setCaptureMode(nextMode);
     setEditingGeofence(false);
     drawingPointsRef.current = [];
     setDrawingPoints([]);
@@ -535,28 +514,28 @@ export default function PropertySatelliteMap({
   const removeZone = (id: string) => {
     const next = zones.filter(z => z.id !== id);
     setZones(next);
-    const total = next.filter(z => z.enabled).reduce((s, z) => s + z.areaSqft, 0);
-    onMeasurementsChange?.(next, total);
+    const totals = sectionTotals(next);
+    onMeasurementsChange?.(next, totals.area, totals.perimeter);
   };
 
   const toggleZone = (id: string) => {
     const next = zones.map(z => z.id === id ? { ...z, enabled: !z.enabled } : z);
     setZones(next);
-    const total = next.filter(z => z.enabled).reduce((s, z) => s + z.areaSqft, 0);
-    onMeasurementsChange?.(next, total);
+    const totals = sectionTotals(next);
+    onMeasurementsChange?.(next, totals.area, totals.perimeter);
   };
 
   const renameZone = (id: string, label: string) => {
     if (!label.trim()) return;
     const next = zones.map(z => z.id === id ? { ...z, label: label.trim() } : z);
     setZones(next);
-    const total = next.filter(z => z.enabled).reduce((s, z) => s + z.areaSqft, 0);
-    onMeasurementsChange?.(next, total);
+    const totals = sectionTotals(next);
+    onMeasurementsChange?.(next, totals.area, totals.perimeter);
   };
 
   const clearAll = () => {
     setZones([]);
-    onMeasurementsChange?.([], 0);
+    onMeasurementsChange?.([], 0, 0);
   };
 
   const startOver = () => {
@@ -579,8 +558,10 @@ export default function PropertySatelliteMap({
     setEditingGeofence(false);
   };
 
-  const totalEnabledSqft = zones.filter(z => z.enabled && z.mode !== 'linear').reduce((s, z) => s + z.areaSqft, 0);
-  const totalEnabledLengthFt = zones.filter(z => z.enabled && z.mode === 'linear').reduce((s, z) => s + (z.lengthFt ?? 0), 0);
+  const enabledTotals = sectionTotals(zones);
+  const totalEnabledSqft = enabledTotals.area;
+  const totalEnabledLengthFt = enabledTotals.perimeter;
+  const liveMeasurement = drawingPoints.length > 0 ? measureSection(drawingPoints, drawMode) : null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -604,7 +585,7 @@ export default function PropertySatelliteMap({
                 Finish Line
               </button>
             )}
-            {drawMode === 'area' && drawingPoints.length >= 3 && (
+            {drawMode !== 'linear' && drawingPoints.length >= 3 && (
               <button
                 className="bg-white text-amber-700 px-3 py-0.5 rounded-full font-semibold hover:bg-amber-50 transition"
                 onClick={() => finishZone()}
@@ -651,9 +632,21 @@ export default function PropertySatelliteMap({
                     }}
                   >
                     {effectiveZoneTypes.map(zt => (
-                      <option key={zt.id} value={zt.id}>{zt.name}{zt.mode === 'linear' ? ' (linear)' : ''}</option>
+                      <option key={zt.id} value={zt.id}>{zt.name}{zt.mode === 'linear' ? ' (linear)' : zt.mode === 'both' ? ' (both)' : ''}</option>
                     ))}
                   </select>
+                </div>
+                <div className="flex items-center rounded-md border overflow-hidden" title="Capture area, linear perimeter, or both for this section">
+                  {(['area', 'linear', 'both'] as const).map(mode => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={`px-2 py-1.5 text-xs font-medium ${drawMode === mode ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                      onClick={() => setCaptureMode(mode)}
+                    >
+                      {mode === 'area' ? 'Area' : mode === 'linear' ? 'Linear' : 'Both'}
+                    </button>
+                  ))}
                 </div>
                 <button
                   type="button"
@@ -685,7 +678,7 @@ export default function PropertySatelliteMap({
             <p className="text-sm text-muted-foreground">
               {drawMode === 'linear'
                 ? 'Click on the map to place points along the line, then finish it.'
-                : 'Click on the map to place vertices, then close the polygon.'}
+                : 'Click on the map to place vertices, then close the polygon. Area and perimeter update together.'}
             </p>
           )}
         </div>
@@ -715,6 +708,16 @@ export default function PropertySatelliteMap({
         </div>
       )}
 
+      {(liveMeasurement || zones.length > 0) && (
+        <div className="rounded-lg border bg-muted/30 p-3" data-testid="measurement-summary">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Measurement summary</p>
+          <div className="mt-1 flex flex-wrap gap-x-6 gap-y-1 text-sm">
+            <span>Area: <span className="font-semibold">{formatArea(liveMeasurement?.areaSqft ?? totalEnabledSqft, preferredAreaUnit)}</span></span>
+            <span>Linear footage: <span className="font-semibold">{formatLinearFeet(liveMeasurement?.perimeter_linear_feet ?? totalEnabledLengthFt)}</span></span>
+          </div>
+        </div>
+      )}
+
       {/* Zone list */}
       {zones.length > 0 && (
         <div className="space-y-2">
@@ -723,7 +726,7 @@ export default function PropertySatelliteMap({
             <p className="text-sm text-muted-foreground">
               Total: <span className="font-semibold text-foreground">{formatArea(totalEnabledSqft, preferredAreaUnit)}</span>
               {totalEnabledLengthFt > 0 && (
-                <> · <span className="font-semibold text-foreground">{formatLength(totalEnabledLengthFt)}</span> linear</>
+                <> · <span className="font-semibold text-foreground">{formatLinearFeet(totalEnabledLengthFt)}</span></>
               )}
             </p>
           </div>

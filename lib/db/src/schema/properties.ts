@@ -26,6 +26,8 @@ export const propertiesTable = pgTable("properties", {
   measurementPolygons: jsonb("measurement_polygons").default("[]"),
   /** Total serviceable area in sqft (sum of all active measurement zones) */
   serviceableAreaSqft: real("serviceable_area_sqft"),
+  /** Total perimeter in feet (sum of active section perimeters) */
+  perimeterLinearFeet: real("perimeter_linear_feet"),
   /** Cover photo URL (stored objectPath) */
   profilePhotoUrl: text("profile_photo_url"),
   /** Tags applied to this property — names drawn from the tenant's businessTagsTable library */

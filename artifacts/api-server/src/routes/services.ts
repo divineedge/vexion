@@ -79,7 +79,7 @@ router.post("/services", async (req, res): Promise<void> => {
     return;
   }
 
-  const resolvedMode = ["flat", "per_sqft", "per_linear_ft", "matrix"].includes(pricingMode)
+  const resolvedMode = ["flat", "per_sqft", "per_linear_ft", "area_and_linear", "matrix"].includes(pricingMode)
     ? pricingMode
     : "flat";
 
@@ -108,6 +108,7 @@ router.post("/services", async (req, res): Promise<void> => {
       description: description || null,
       category: category || null,
       basePrice: parseFloat(basePrice) || 0,
+      linearRate: parseFloat(req.body.linearRate) || 0,
       estimatedDuration: estimatedDuration ? parseInt(estimatedDuration, 10) : null,
       p4pPercentage: parsedP4p,
       isActive: isActive !== false,
@@ -137,11 +138,12 @@ router.patch("/services/:id", async (req, res): Promise<void> => {
   if (description !== undefined) updates.description = description || null;
   if (category !== undefined) updates.category = category || null;
   if (basePrice !== undefined) updates.basePrice = parseFloat(basePrice) || 0;
+  if (req.body.linearRate !== undefined) updates.linearRate = parseFloat(req.body.linearRate) || 0;
   if (estimatedDuration !== undefined) updates.estimatedDuration = estimatedDuration ? parseInt(estimatedDuration, 10) : null;
   if (p4pPercentage !== undefined) updates.p4pPercentage = p4pPercentage !== "" && p4pPercentage != null ? parseFloat(p4pPercentage) : null;
   if (isActive !== undefined) updates.isActive = Boolean(isActive);
   if (pricingMode !== undefined) {
-    updates.pricingMode = ["flat", "per_sqft", "per_linear_ft", "matrix"].includes(pricingMode)
+    updates.pricingMode = ["flat", "per_sqft", "per_linear_ft", "area_and_linear", "matrix"].includes(pricingMode)
       ? pricingMode
       : "flat";
     updates.pricingMatrix = pricingMode === "matrix" && Array.isArray(pricingMatrix) ? pricingMatrix : null;

@@ -32,10 +32,10 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
   const DEFAULT_ZONE_COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#84CC16','#F97316','#EC4899','#6366F1'];
   // If measurementZoneTypes is populated, use it; otherwise derive from legacy labels.
   // Legacy labels carry no measurement-mode info, so derived types always default to 'area'.
-  const rawZoneTypes = tenant.measurementZoneTypes as Array<{ id: string; name: string; color: string; mode?: 'area' | 'linear' }> | null;
-  const measurementZoneTypes: Array<{ id: string; name: string; color: string; mode: 'area' | 'linear' }> =
+  const rawZoneTypes = tenant.measurementZoneTypes as Array<{ id: string; name: string; color: string; mode?: 'area' | 'linear' | 'both' }> | null;
+  const measurementZoneTypes: Array<{ id: string; name: string; color: string; mode: 'area' | 'linear' | 'both' }> =
     rawZoneTypes && rawZoneTypes.length > 0
-      ? rawZoneTypes.map(zt => ({ ...zt, mode: zt.mode ?? 'area' }))
+      ? rawZoneTypes.map(zt => ({ ...zt, mode: zt.mode === 'linear' || zt.mode === 'both' ? zt.mode : 'area' }))
       : defaultZoneLabels.map((name, i) => ({ id: String(i + 1), name, color: DEFAULT_ZONE_COLORS[i % DEFAULT_ZONE_COLORS.length], mode: 'area' as const }));
   const phonePlatformConfig = (tenant.phonePlatformConfig as Record<string, string>) ?? {};
   const emailProviderConfig = (tenant.emailProviderConfig as Record<string, string>) ?? {};
@@ -85,6 +85,7 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     measurementZoneLabels: defaultZoneLabels,
     measurementZoneTypes,
     preferredAreaUnit: (tenant.preferredAreaUnit ?? "sqft") as "sqft" | "acres",
+    satelliteMeasurementMode: (tenant.satelliteMeasurementMode === "area" || tenant.satelliteMeasurementMode === "linear" ? tenant.satelliteMeasurementMode : "both"),
     // Communications
     mainPhoneNumber: tenant.mainPhoneNumber ?? null,
     marketingPhoneNumber: tenant.marketingPhoneNumber ?? null,
@@ -219,7 +220,7 @@ router.patch("/settings", async (req, res): Promise<void> => {
     rolePermissions, customerFields, chemicalRecordRequirements,
     equipmentRepairThresholdPct, equipmentResaleThresholdPct,
     defaultGeofenceRadius, defaultGeofenceUnit, autoCreateGeofence, defaultOffSeasonStart, defaultOffSeasonEnd,
-    measurementZoneLabels, measurementZoneTypes, preferredAreaUnit,
+    measurementZoneLabels, measurementZoneTypes, preferredAreaUnit, satelliteMeasurementMode,
     // Communications
     mainPhoneNumber, marketingPhoneNumber,
     phonePlatform, phonePlatformConfig,
@@ -350,6 +351,9 @@ router.patch("/settings", async (req, res): Promise<void> => {
     updates.measurementZoneLabels = null as unknown as string[];
   }
   if (preferredAreaUnit !== undefined) updates.preferredAreaUnit = preferredAreaUnit;
+  if (satelliteMeasurementMode === "area" || satelliteMeasurementMode === "linear" || satelliteMeasurementMode === "both") {
+    updates.satelliteMeasurementMode = satelliteMeasurementMode;
+  }
   // Communications
   if (mainPhoneNumber !== undefined) updates.mainPhoneNumber = mainPhoneNumber || null;
   if (marketingPhoneNumber !== undefined) updates.marketingPhoneNumber = marketingPhoneNumber || null;

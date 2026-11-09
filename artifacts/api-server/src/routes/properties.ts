@@ -491,6 +491,7 @@ function formatProperty(p: typeof propertiesTable.$inferSelect, customerName?: s
     ...p,
     measurementPolygons: withoutAutomaticSuggestedBoundary(p.measurementPolygons),
     serviceableAreaSqft: p.serviceableAreaSqft ?? null,
+    perimeterLinearFeet: p.perimeterLinearFeet ?? null,
     customerName: customerName ?? null,
     isArchived: p.isArchived || p.archivedAt != null,
     archivedAt: p.archivedAt?.toISOString() ?? null,
@@ -764,11 +765,12 @@ router.patch("/properties/:id/measurements", async (req, res): Promise<void> => 
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { measurementPolygons, serviceableAreaSqft } = req.body;
+  const { measurementPolygons, serviceableAreaSqft, perimeterLinearFeet } = req.body;
   const [updated] = await db.update(propertiesTable)
     .set({
       ...(measurementPolygons !== undefined && { measurementPolygons }),
       ...(serviceableAreaSqft !== undefined && { serviceableAreaSqft }),
+      ...(perimeterLinearFeet !== undefined && { perimeterLinearFeet }),
     })
     .where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)))
     .returning();

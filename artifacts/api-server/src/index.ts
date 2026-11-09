@@ -15,6 +15,7 @@ import {installCustomerMergeSchema} from './lib/customerMerge';
 import {installInventoryCostSchema} from './lib/inventoryCosting';
 import { installP4pDamageSchema } from "./lib/p4pDamage";
 import { installJobEconomicsSchema } from "./lib/jobEconomicsSchema";
+import { installAdditiveSettingsSchema, runStartupSchemaStep } from "./lib/schemaSafety";
 
 // drizzle push handles tables but not rate-capture/immutability triggers.
 // Install the idempotent migration before this build begins serving requests.
@@ -22,19 +23,22 @@ const payrollMigration = await readFile(new URL("./payroll-schema.sql", import.m
 const migrationClient = await pool.connect();
 try {
   await migrationClient.query(payrollMigration);
+} catch (error) {
+  logger.error({ err: error }, "Payroll schema step failed. Existing tenant rows were not rewritten by a later step in this startup.");
 } finally {
   migrationClient.release();
 }
 
 const PORT = process.env.PORT || 4000;
-await installDocumentReminderSchema();
-await installKpiSchema();
-await installWebsiteIntakeSchema();
-await installVendorCategoriesSchema();
-await installInventoryCostSchema();
-await installCustomerMergeSchema();
-await installP4pDamageSchema();
-await installJobEconomicsSchema();
+await installAdditiveSettingsSchema();
+await runStartupSchemaStep("document reminders", installDocumentReminderSchema);
+await runStartupSchemaStep("kpi", installKpiSchema);
+await runStartupSchemaStep("website intake", installWebsiteIntakeSchema);
+await runStartupSchemaStep("vendor categories", installVendorCategoriesSchema);
+await runStartupSchemaStep("inventory cost", installInventoryCostSchema);
+await runStartupSchemaStep("customer merge", installCustomerMergeSchema);
+await runStartupSchemaStep("p4p damage", installP4pDamageSchema);
+await runStartupSchemaStep("job economics", installJobEconomicsSchema);
 startEstimateReminderScheduler();
 
 const port = Number(PORT);

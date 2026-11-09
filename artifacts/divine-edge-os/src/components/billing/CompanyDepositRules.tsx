@@ -176,13 +176,14 @@ function CompanyDepositRulesInner({ embedded }: { embedded: boolean }) {
       <CardContent className="space-y-4">
         {query.isLoading ? (
           <div className="space-y-3"><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>
-        ) : query.isError ? (
-          <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
-            <span className="flex items-center gap-2 text-destructive"><AlertTriangle className="w-4 h-4" />Could not load deposit rules.</span>
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => query.refetch()} data-testid="button-retry-deposit-rules"><RefreshCw className="w-3.5 h-3.5" />Retry</Button>
-          </div>
         ) : (
           <>
+            {query.isError && (
+              <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                <span className="flex items-center gap-2 text-destructive"><AlertTriangle className="w-4 h-4" />Could not load deposit rules. Nothing is saved until they load.</span>
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => query.refetch()} data-testid="button-retry-deposit-rules"><RefreshCw className="w-3.5 h-3.5" />Retry</Button>
+              </div>
+            )}
             {drafts.length === 0 ? (
               <div className="rounded-md border border-dashed p-6 text-center" data-testid="empty-deposit-rules">
                 <p className="text-sm font-medium">No deposit rules yet</p>

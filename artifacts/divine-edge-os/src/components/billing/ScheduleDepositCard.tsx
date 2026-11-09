@@ -61,7 +61,7 @@ export function ScheduleDepositCard({ canEdit }: { canEdit: boolean }) {
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2"><CalendarClock className="w-4 h-4 text-primary" />Require Deposit to Schedule</CardTitle>
         <CardDescription>
-          Collect this deposit before a job can be marked Scheduled on the calendar. Customer requests stay pending until the deposit is received. A paid invoice or a collected estimate deposit counts toward it.
+          Part of Estimate Settings. Collect this deposit before a job can be marked Scheduled. Customer requests stay pending until it is received. A paid invoice or a collected estimate deposit counts toward it.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

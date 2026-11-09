@@ -63,6 +63,7 @@ export class SchedulingPaymentError extends Error { status = 422; }
 export async function schedulingPaymentCheck(tx: Tx, input: typeof jobsTable.$inferInsert) {
   const { policy, customer, company } = await effectivePaymentPolicy(tx, input.tenantId, input.customerId, input.serviceId, { subtotal: input.totalAmount ?? 0 });
   const confirmingSchedule = !input.status || input.status === "scheduled" || input.status === "in_progress";
+  // Require Deposit to Schedule is Estimate Settings: tenants.payment_policy.scheduleDeposit.
   const scheduleDeposit = readScheduleDeposit(company?.paymentPolicy);
   const scheduleDepositApplies = confirmingSchedule && scheduleDeposit.enabled;
   if (!policy.requirePrepay && !policy.requireCard && policy.depositType === "none" && !input.estimateId && !scheduleDepositApplies) return { reserveCredit: false, total: 0 };

@@ -29,7 +29,14 @@ export function validateDepositRules(value: unknown): string | null {
   return null;
 }
 
-/** Stored at tenants.payment_policy.scheduleDeposit. Invoice/scheduling settings, not estimate defaults. */
+/** All company deposit settings live in tenants.payment_policy and are edited under Estimate Settings. */
+export const estimateSettingsDepositKeys = {
+  companyDefault: ["depositType", "depositValue", "requirePrepay", "requireCard"],
+  rules: "depositRules",
+  scheduleDeposit: "scheduleDeposit",
+} as const;
+
+/** Stored at tenants.payment_policy.scheduleDeposit. */
 export type ScheduleDepositSetting = {
   enabled: boolean;
   mode: "fixed" | "percent";
@@ -40,7 +47,7 @@ export const scheduleDepositOff: ScheduleDepositSetting = { enabled: false, mode
 
 export function readScheduleDeposit(policy: unknown): ScheduleDepositSetting {
   const nested = policy && typeof policy === "object" && !Array.isArray(policy)
-    ? (policy as { scheduleDeposit?: unknown }).scheduleDeposit
+    ? (policy as Record<string, unknown>)[estimateSettingsDepositKeys.scheduleDeposit]
     : undefined;
   return normalizeScheduleDeposit(nested);
 }

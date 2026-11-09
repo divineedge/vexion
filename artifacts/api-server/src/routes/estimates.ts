@@ -1080,6 +1080,7 @@ router.post("/estimates/:id/convert", requireVerifiedStaff, async (req, res): Pr
     ? new Date(scheduledAt)
     : (estimate.scheduledAt ?? new Date(Date.now() + 24 * 60 * 60 * 1000));
 
+  // Scheduling reads Require Deposit to Schedule from Estimate Settings (payment_policy.scheduleDeposit).
   const [job] = await paymentGuardedJobInsert(db).values({
     tenantId,
     title: title?.trim() || `Job from Estimate #${estimate.id}`,

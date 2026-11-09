@@ -104,18 +104,21 @@ export default function BudgetPage() {
     setActiveTab(newDiv.id);
     setDivisionSaving(true);
     try {
-      await customFetch('/api/settings/budget', {
-        method: 'PATCH',
+      const saved = await customFetch<{ division: DivisionBudget }>('/api/settings/budget/divisions', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ budgetData: nextYears }),
+        body: JSON.stringify({ year: currentYear, division: newDiv }),
       });
-      setRenamingId(newDiv.id);
-    } catch {
+      setYears(prev => prev.map(y => y.year === currentYear
+        ? { ...y, divisions: y.divisions.map(d => d.id === newDiv.id ? saved.division : d) }
+        : y));
+      setRenamingId(saved.division.id);
+    } catch (error) {
       setYears(prev => prev.map(y => y.year === currentYear
         ? { ...y, divisions: y.divisions.filter(d => d.id !== newDiv.id) }
         : y));
       setActiveTab(COMPANY_TAB);
-      toast.error('Failed to add division');
+      toast.error(error instanceof Error ? error.message : 'Failed to add division');
     } finally {
       setDivisionSaving(false);
     }

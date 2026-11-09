@@ -1,3 +1,4 @@
+import { Link } from 'wouter';
 import VendorExpenseLedger from '@/components/financials/VendorExpenseLedger';
 import { useAuth } from '@/contexts/AuthContext';
 import VendorExpenseDefaults from '@/components/financials/VendorExpenseDefaults';
@@ -10,6 +11,7 @@ export default function VendorsPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Vendors</h1>
           <p className="text-muted-foreground mt-1">Suppliers you buy from and the expenses you pay them. Kept separate from customer invoices.</p>
+          <Link href="/vendors/documents/process" className="text-sm text-primary underline">Review an uploaded invoice</Link>
         </div>
       </div>
       {user?.role !== 'technician' && <VendorExpenseDefaults />}

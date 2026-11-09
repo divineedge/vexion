@@ -36,6 +36,7 @@ import { PublicQuoteForm, PublicCareersForm } from '@/pages/public-site-form';
 import WebsiteFormsPage from '@/pages/website-forms';
 import EstimatesPage from '@/pages/estimates';
 import VendorsPage from '@/pages/vendors';
+import VendorDocumentsPage from '@/pages/vendor-documents';
 import FormsPage from '@/pages/forms';
 import VisitsPage from '@/pages/visits';
 import EstimatePublicPage from '@/pages/estimate-public';
@@ -117,6 +118,7 @@ function ProtectedRoutes() {
         <Route path="/chemicals" component={ChemicalsPage} />
         <Route path="/equipment" component={EquipmentPage} />
         <Route path="/estimates" component={EstimatesPage} />
+        <Route path="/vendors/documents/process" component={VendorDocumentsPage} />
         <Route path="/vendors" component={VendorsPage} />
         <Route path="/forms" component={FormsPage} />
         <Route path="/visits" component={VisitsPage} />

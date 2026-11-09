@@ -33,6 +33,7 @@ import {
 } from '@workspace/api-client-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
+import { JobInventoryReconcile } from '@/components/JobInventoryReconcile';
 import { useOffline } from '@/contexts/OfflineContext';
 import { messagePollInterval } from '@/utils/messages';
 import { MediaAttachments } from '@/components/MediaAttachments';
@@ -731,6 +732,7 @@ export default function JobDetailScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {(displayJob as { status?: string }).status === 'completed' && <JobInventoryReconcile jobId={jobId} />}
       {/* Offline banner */}
       {showOfflineBanner && (
         <View style={[styles.offlineBanner, { backgroundColor: '#92400e' }]}>
@@ -961,7 +963,11 @@ export default function JobDetailScreen() {
                                 const doComplete = () => completeJob.mutate(
                                   { id: jobId },
                                   {
-                                    onSuccess: () => refetchJob(),
+                                    onSuccess: (completed) => {
+                                      refetchJob();
+                                      const reserved = (completed as { inventoryReconciliation?: unknown[] }).inventoryReconciliation;
+                                      if (reserved?.length) Alert.alert('Reserved materials', 'Record what this job used. Leftover stock returns to general inventory.');
+                                    },
                                     onError: (error: any) => {
                                       const missing: string[] | undefined = error?.data?.missing;
                                       Alert.alert(

@@ -822,10 +822,63 @@ router.patch("/settings/budget", async (req, res): Promise<void> => {
       res.status(400).json({ error: 'Every budget service must belong to your company' }); return;
     }
   }
-  await db.execute(sql`
-    UPDATE tenants SET budget_data = ${JSON.stringify(budgetData)}::jsonb WHERE id = ${tenantId}
-  `);
+  try {
+    await db.execute(sql`
+      UPDATE tenants SET budget_data = ${JSON.stringify(budgetData)}::jsonb WHERE id = ${tenantId}
+    `);
+  } catch (error) {
+    if (isMissingColumnError(error)) {
+      res.status(503).json({ error: "Budget storage is not ready yet. Reload and try again." });
+      return;
+    }
+    throw error;
+  }
   res.json({ ok: true });
+});
+
+router.post("/settings/budget/divisions", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) {
+    res.status(403).json({ error: "Restricted to owner and manager roles" });
+    return;
+  }
+  const division = req.body?.division;
+  const year = Number(req.body?.year);
+  if (!division || typeof division !== "object" || typeof division.id !== "string" || typeof division.name !== "string" || !division.name.trim()) {
+    res.status(400).json({ error: "A division name is required" });
+    return;
+  }
+  if (!Number.isInteger(year)) {
+    res.status(400).json({ error: "A budget year is required" });
+    return;
+  }
+  const nextDivision = { ...division, name: division.name.trim(), serviceIds: Array.isArray(division.serviceIds) ? division.serviceIds : [] };
+  try {
+    budgetServiceLinks([{ year, divisions: [nextDivision] }]);
+    const saved = await db.transaction(async tx => {
+      const result = await tx.execute(sql`SELECT budget_data FROM tenants WHERE id = ${tenantId} FOR UPDATE`);
+      const raw = result.rows[0]?.budget_data;
+      const years = Array.isArray(raw) ? [...raw] : raw && typeof raw === "object" ? [raw] : [];
+      let target = years.find(entry => entry && typeof entry === "object" && Number((entry as { year?: unknown }).year) === year) as { year: number; divisions?: unknown[] } | undefined;
+      if (!target) {
+        target = { year, divisions: [] };
+        years.push(target);
+      }
+      if (!Array.isArray(target.divisions)) target.divisions = [];
+      if (!target.divisions.some(entry => entry && typeof entry === "object" && (entry as { id?: unknown }).id === nextDivision.id)) target.divisions.push(nextDivision);
+      budgetServiceLinks(years);
+      await tx.execute(sql`UPDATE tenants SET budget_data = ${JSON.stringify(years)}::jsonb WHERE id = ${tenantId}`);
+      return { division: nextDivision, year: target };
+    });
+    res.status(201).json(saved);
+  } catch (error) {
+    if (isMissingColumnError(error)) {
+      res.status(503).json({ error: "Budget storage is not ready yet. Reload and try again." });
+      return;
+    }
+    res.status(400).json({ error: error instanceof Error ? error.message : "Failed to add division" });
+  }
 });
 
 router.patch("/settings/budget/divisions/:divisionId/name", async (req, res): Promise<void> => {

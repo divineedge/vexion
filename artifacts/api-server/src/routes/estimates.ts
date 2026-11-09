@@ -4,7 +4,7 @@ import { companyDocumentLink } from "../lib/documentLinks";
 import { validCardChoice, authorizeSavedCard, CARD_AUTHORIZATION_VERSION } from "../lib/cardAuthorization";
 import { payEstimateDeposit } from "./portal";
 import { paymentGuardedJobInsert, effectivePaymentPolicy, estimatePaymentTerms } from "../lib/paymentPolicy";
-import { acceptancePaymentRequired, readEstimateDepositSettings } from "../lib/companyDepositRules";
+import { acceptanceFlags, readEstimateDepositSettings } from "../lib/companyDepositRules";
 import { creditedInvoiceInsert } from "../lib/customerCredit";
 import { Router, type IRouter } from "express";
 import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesTable, usersTable, tenantsTable, blueprintsTable, communicationsLogTable, estimateTemplatesTable, invoicesTable } from "@workspace/db";
@@ -1223,6 +1223,8 @@ router.get("/public/estimates/:token", async (req, res): Promise<void> => {
     stripePublishableKey: stripeEnabled ? (getStripePublishableKey() ?? null) : null,
     depositAmount,
     requirePaymentOnAcceptance: acceptancePaymentRequired(readEstimateDepositSettings(tenant?.paymentPolicy), tenant),
+    requireCardOnAcceptance: acceptanceFlags(readEstimateDepositSettings(tenant?.paymentPolicy), tenant).card,
+    requirePrepaymentOnAcceptance: acceptanceFlags(readEstimateDepositSettings(tenant?.paymentPolicy), tenant).prepay,
     businessProfile: {
       companyName: tenant?.name ?? null,
       logoUrl: tenant?.logoUrl ?? null,
@@ -1252,7 +1254,7 @@ router.post("/public/estimates/:token/setup-intent", async (req, res): Promise<v
   }
 
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, estimate.tenantId));
-  if (acceptancePaymentRequired(readEstimateDepositSettings(tenant?.paymentPolicy), tenant) && req.body.saveCard !== true) {
+  if (acceptanceFlags(readEstimateDepositSettings(tenant?.paymentPolicy), tenant).card && req.body.saveCard !== true) {
     res.status(400).json({ error: "Save a card on file to accept this estimate." });
     return;
   }
@@ -1308,12 +1310,12 @@ router.post("/public/estimates/:token/pay-deposit", async (req,res):Promise<void
   const ids=req.body.acceptedOptionalItemIds??[];
   if(!Array.isArray(ids)||ids.some((id:unknown)=>typeof id!=="string")){res.status(400).json({error:"Invalid optional selections"});return;}
   const [payTenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, estimate.tenantId));
-  const acceptanceRequired = acceptancePaymentRequired(readEstimateDepositSettings(payTenant?.paymentPolicy), payTenant);
-  if (acceptanceRequired && req.body.saveCard !== true) {
+  const acceptance = acceptanceFlags(readEstimateDepositSettings(payTenant?.paymentPolicy), payTenant);
+  if (acceptance.card && req.body.saveCard !== true) {
     res.status(400).json({ error: "Save a card on file to accept this estimate." });
     return;
   }
-  if (acceptanceRequired && (estimate.paymentRequirement ?? "none") === "none") {
+  if (acceptance.prepay && (estimate.paymentRequirement ?? "none") === "none") {
     await db.update(estimatesTable).set({ paymentRequirement: "full" }).where(and(
       eq(estimatesTable.id, estimate.id), eq(estimatesTable.tenantId, estimate.tenantId), eq(estimatesTable.status, "sent"),
     ));
@@ -1377,17 +1379,17 @@ router.post("/public/estimates/:token/respond", async (req, res): Promise<void> 
     const selectedTotal = calcTotals(selectedItems).total;
     estimate = await estimatePaymentTerms(db, estimate, { total: selectedTotal, lineItems: selectedItems });
     const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, estimate.tenantId));
-    const acceptanceRequired = acceptancePaymentRequired(readEstimateDepositSettings(tenant?.paymentPolicy), tenant);
-    if (acceptanceRequired) {
+    const acceptance = acceptanceFlags(readEstimateDepositSettings(tenant?.paymentPolicy), tenant);
+    if (acceptance.card || acceptance.prepay) {
       if (!tenant?.stripeEnabled || !getStripeClient()) {
-        res.status(503).json({ error: "This estimate requires a card and prepayment before acceptance, but payment processing is not configured. Contact your service provider." });
+        res.status(503).json({ error: "This estimate requires payment setup before acceptance, but payment processing is not configured. Contact your service provider." });
         return;
       }
-      if (!estimate.depositPaidAt) {
-        res.status(402).json({ error: "A card on file and prepayment are required before this estimate can be accepted." });
+      if (acceptance.prepay && !estimate.depositPaidAt) {
+        res.status(402).json({ error: "Prepayment is required before this estimate can be accepted." });
         return;
       }
-      if (req.body.saveCard !== true || !paymentMethodId) {
+      if (acceptance.card && (req.body.saveCard !== true || !paymentMethodId)) {
         res.status(402).json({ error: "Save a card on file before this estimate can be accepted." });
         return;
       }

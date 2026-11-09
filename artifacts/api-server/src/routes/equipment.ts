@@ -23,6 +23,7 @@ import { hasEquipmentVisibility } from "../lib/equipmentVisibility";
 import { bulkFuelLossExceedsThreshold, dollarsToCents, dispenseBulkFuel, formatFuelLog, formatTank, formatTransaction, gallonsToThousandths, isDateKey, MAX_INVENTORY_INT, meterToThousandths, validateMeterInput, normalizeFuelDate, parseBulkFuelLossAlertSettings, tenantDateKey, type BulkFuelLossAlertSettings } from "../lib/bulkFuel";
 import { invalidateTenantReportCache } from "../lib/reportsCache";
 import { AdjustmentError, reconcileBulkFuel } from "../lib/bulkFuelAdjustment";
+import { maintenanceDue, thresholdFor, type CategoryThreshold } from "../lib/equipmentMaintenance";
 
 const router: IRouter = Router();
 // Equipment contains tenant-private operational and inspection data. A verified
@@ -1399,6 +1400,21 @@ router.post("/equipment/:id/reading-logs", async (req, res): Promise<void> => {
   res.status(201).json({ ...row, createdAt: row.createdAt.toISOString() });
 });
 
+router.get("/equipment/maintenance-alerts", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  try {
+    const [settings] = await db.select({ thresholds: tenantsTable.equipmentCategoryThresholds }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+    const rules = (Array.isArray(settings?.thresholds) ? settings.thresholds : []) as CategoryThreshold[];
+    const assets = await db.select({ id: equipmentTable.id, name: equipmentTable.name, type: equipmentTable.type, currentHours: equipmentTable.currentHours }).from(equipmentTable).where(and(eq(equipmentTable.tenantId, tenantId), isNull(equipmentTable.archivedAt)));
+    const alerts = assets.flatMap(asset => maintenanceDue(asset.currentHours, thresholdFor(asset.type, rules)).map(item => ({
+      equipmentId: asset.id, equipmentName: asset.name, category: asset.type, hours: asset.currentHours, label: item.label,
+    })));
+    res.json({ alerts });
+  } catch {
+    res.json({ alerts: [] });
+  }
+});
+
 // One atomic pre-trip submission. The equipment record stores the idempotency key:
 // it is created last within the same transaction, so a duplicate key proves every
 // associated fuel and reading write committed as one unit.
@@ -1432,18 +1448,22 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
   const accessibleEquipment = await requireEquipmentOwnership(equipmentId, tenantId, userId, res);
   if (!accessibleEquipment) return;
   const [[tenant], [equipment]] = await Promise.all([
-    db.select({ preTripChecklist: tenantsTable.preTripChecklist, preTripChecklistName: tenantsTable.preTripChecklistName, endOfDayChecklist: tenantsTable.endOfDayChecklist, timezone: tenantsTable.timezone }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
+    db.select({ preTripChecklist: tenantsTable.preTripChecklist, preTripChecklistName: tenantsTable.preTripChecklistName, endOfDayChecklist: tenantsTable.endOfDayChecklist, timezone: tenantsTable.timezone, preTripEnabled: tenantsTable.preTripEnabled, postTripEnabled: tenantsTable.postTripEnabled, promptEquipmentHours: tenantsTable.promptEquipmentHours, promptFuelFillUp: tenantsTable.promptFuelFillUp }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
     db.select({ type: equipmentTable.type, archivedAt: equipmentTable.archivedAt }).from(equipmentTable).where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId))).limit(1),
   ]);
   if (!equipment) { res.status(404).json({ error: "Equipment not found" }); return; }
   if (equipment.archivedAt) { res.status(400).json({ error: "Cannot inspect archived equipment" }); return; }
   const configuredChecklist = ((inspectionType === "end_of_day" ? tenant?.endOfDayChecklist : tenant?.preTripChecklist) as Array<{ id: string; label: string; required: boolean; equipmentTypes?: string[] }> | null) ?? [];
-  if (inspectionType === "end_of_day" && configuredChecklist.length === 0) { res.status(400).json({ error: "End-of-day checklist is not enabled" }); return; }
-  const applicableChecklist = configuredChecklist.filter(item =>
-    !Array.isArray(item.equipmentTypes) ||
-    item.equipmentTypes.length === 0 ||
-    item.equipmentTypes.includes(equipment.type),
-  );
+  if (inspectionType !== "end_of_day" && tenant?.preTripEnabled === false) { res.status(400).json({ error: "Pre-trip checklist is turned off" }); return; }
+  if (inspectionType === "end_of_day" && (tenant?.postTripEnabled === false || configuredChecklist.length === 0)) { res.status(400).json({ error: "End-of-day checklist is not enabled" }); return; }
+  if (tenant?.promptEquipmentHours === true && !(readingType === "hours" && reading != null)) { res.status(400).json({ error: "Enter the current equipment hours" }); return; }
+  const applicableChecklist = configuredChecklist.filter(item => {
+    const types = (item as { equipmentTypes?: string[] }).equipmentTypes;
+    const ids = (item as { equipmentIds?: number[] }).equipmentIds;
+    const typeOk = !Array.isArray(types) || types.length === 0 || types.includes(equipment.type);
+    const idOk = !Array.isArray(ids) || ids.length === 0 || ids.includes(equipmentId);
+    return typeOk && idOk;
+  });
   const submitted = new Map((Array.isArray(checklistResponses) ? checklistResponses : []).filter(item => item && typeof item.id === "string").map(item => [item.id, item.checked === true]));
   const checklist = applicableChecklist.map(item => ({ id: item.id, label: item.label, checked: submitted.get(item.id) === true }));
   const missingRequired = applicableChecklist.filter(item => item.required && submitted.get(item.id) !== true);
@@ -1509,6 +1529,34 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
       return { taskId: `inspection-${inspection.id}`, ...(fuelLogId != null ? { fuelLogId } : {}), ...(readingLogId != null ? { readingLogId } : {}), ...(recordedFuel ? { fuelCost: recordedFuel.cost, fuelCostPerGallon: recordedFuel.costPerGallon, fuelSource: recordedFuel.fuelSource, bulkFuelTankName: recordedFuel.bulkFuelTankName } : {}), duplicate: false };
     });
     invalidateTenantReportCache(tenantId);
+    if (readingType === "hours" && reading != null) {
+      try {
+        const [[settings], [asset]] = await Promise.all([
+          db.select({ thresholds: tenantsTable.equipmentCategoryThresholds }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
+          db.select({ name: equipmentTable.name, type: equipmentTable.type }).from(equipmentTable).where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId))).limit(1),
+        ]);
+        const rules = (Array.isArray(settings?.thresholds) ? settings.thresholds : []) as CategoryThreshold[];
+        const due = maintenanceDue(reading, thresholdFor(asset?.type ?? "", rules));
+        for (const item of due) {
+          const marker = `maintenance:${equipmentId}:${item.bucket}`;
+          const [open] = await db.select({ id: internalTasksTable.id }).from(internalTasksTable).where(and(
+            eq(internalTasksTable.tenantId, tenantId),
+            eq(internalTasksTable.contextType, "equipment"),
+            eq(internalTasksTable.contextId, equipmentId),
+            eq(internalTasksTable.description, marker),
+          )).limit(1);
+          if (!open) {
+            await db.insert(internalTasksTable).values({
+              tenantId, title: `Maintenance due: ${item.label} — ${asset?.name ?? "Equipment"}`, description: marker,
+              taskType: "equipment_repair", createdById: userId, assignedToRole: "manager", priority: "high",
+              contextType: "equipment", contextId: equipmentId,
+            });
+          }
+        }
+      } catch {
+        // The inspection is already saved. A missing settings column should not fail the checklist.
+      }
+    }
     res.status(201).json(result);
   } catch (error: any) {
     // A concurrent retry may have won after our initial lookup.

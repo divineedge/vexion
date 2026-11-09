@@ -79,6 +79,7 @@ export default function EmployeesPage() {
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input className="pl-9" placeholder="Search name, email, title" value={q} onChange={e => setQ(e.target.value)} data-testid="input-employee-search" />
             </div>
+            <p className="text-sm text-muted-foreground">{rows.length} shown{list.data?.employees ? ` of ${list.data.employees.length}` : ''}</p>
             {(['current', 'former', 'all'] as const).map(s => (
               <Button key={s} size="sm" variant={status === s ? 'secondary' : 'ghost'} onClick={() => setStatus(s)} className="capitalize">{s}</Button>
             ))}
@@ -92,7 +93,7 @@ export default function EmployeesPage() {
               <div className="divide-y">
                 {rows.map(e => (
                   <Link key={e.id} href={`/employees/${e.id}`} className="flex items-center gap-4 px-5 py-3.5 hover:bg-muted/40 transition-colors" data-testid={`employee-row-${e.id}`}>
-                    <div className="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-semibold shrink-0">{e.name.slice(0, 2).toUpperCase()}</div>
+                    <div className="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-semibold shrink-0">{(e.name || '??').slice(0, 2).toUpperCase()}</div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium truncate">{e.name}</span>

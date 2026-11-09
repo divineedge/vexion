@@ -53,7 +53,8 @@ interface PaymentFormProps {
   acceptedOptionalItemIds: string[];
   grandTotal: number;
   requiredPayment: number;
-  requirePaymentOnAcceptance?: boolean;
+  requireCardOnAcceptance?: boolean;
+  requirePrepaymentOnAcceptance?: boolean;
   onApproved: (charged: number) => void;
 }
 
@@ -61,7 +62,7 @@ function errMsg(e: any, fallback: string): string {
   return e?.data?.error ?? e?.data?.message ?? e?.message ?? fallback;
 }
 
-function PaymentForm({ token, acceptedOptionalItemIds, grandTotal, requiredPayment, requirePaymentOnAcceptance, onApproved }: PaymentFormProps) {
+function PaymentForm({ token, acceptedOptionalItemIds, grandTotal, requiredPayment, requireCardOnAcceptance, requirePrepaymentOnAcceptance, onApproved }: PaymentFormProps) {
   const stripe = useStripe();
   const elements = useElements();
   const respond = useRespondToEstimate();
@@ -69,7 +70,7 @@ function PaymentForm({ token, acceptedOptionalItemIds, grandTotal, requiredPayme
 
   const [cardComplete, setCardComplete] = useState(false);
   const [saveCardChoice, setSaveCardChoice] = useState(true);
-  const saveCard = requirePaymentOnAcceptance ? true : saveCardChoice;
+  const saveCard = requireCardOnAcceptance ? true : saveCardChoice;
   const [submitting, setSubmitting] = useState(false);
   const needsCard = requiredPayment > 0 || saveCard;
 
@@ -173,8 +174,16 @@ function PaymentForm({ token, acceptedOptionalItemIds, grandTotal, requiredPayme
           ) : (
             <p className="text-xs text-muted-foreground">No card needed. Check the box below if you want to save a card for future invoices.</p>
           )}
-          <SaveCardConsent checked={saveCard} onChange={setSaveCardChoice} disabled={busy || requirePaymentOnAcceptance === true} id="estimate-save-card" />
-          {requirePaymentOnAcceptance && <p className="text-xs text-muted-foreground">A card on file and payment are both required before this estimate can be accepted.</p>}
+          <SaveCardConsent checked={saveCard} onChange={setSaveCardChoice} disabled={busy || requireCardOnAcceptance === true} id="estimate-save-card" />
+          {(requireCardOnAcceptance || requirePrepaymentOnAcceptance) && (
+            <p className="text-xs text-muted-foreground">
+              {requireCardOnAcceptance && requirePrepaymentOnAcceptance
+                ? 'A card on file and payment are both required before this estimate can be accepted.'
+                : requireCardOnAcceptance
+                  ? 'A card on file is required before this estimate can be accepted.'
+                  : 'Payment is required before this estimate can be accepted.'}
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -270,13 +279,14 @@ export default function EstimatePublicPage() {
   const grandTotal = requiredTotal + optionalTotal;
 
   const est = estimate as any;
-  const requirePaymentOnAcceptance = est.requirePaymentOnAcceptance === true;
+  const requireCardOnAcceptance = est.requireCardOnAcceptance === true;
+  const requirePrepaymentOnAcceptance = est.requirePrepaymentOnAcceptance === true;
   const requiredPayment = est.depositPaidAt ? 0 : (() => {
     const req = est.paymentRequirement;
     if (req === 'full') return Math.round(grandTotal * 100) / 100;
     if (req === 'deposit_pct') return Math.round((est.depositValue ?? 0) / 100 * grandTotal * 100) / 100;
     if (req === 'deposit_fixed') return Math.min(est.depositValue ?? 0, grandTotal);
-    if (requirePaymentOnAcceptance) return Math.round(grandTotal * 100) / 100;
+    if (requirePrepaymentOnAcceptance) return Math.round(grandTotal * 100) / 100;
     return 0;
   })();
   const stripeEnabled = !!(estimate as any).stripeEnabled; // stripeEnabled is in the generated schema but estimate type is allOf — access via any until stricter type is applied
@@ -567,12 +577,13 @@ export default function EstimatePublicPage() {
                       acceptedOptionalItemIds={Array.from(accepted)}
                       grandTotal={grandTotal}
                       requiredPayment={requiredPayment}
-                      requirePaymentOnAcceptance={requirePaymentOnAcceptance}
+                      requireCardOnAcceptance={requireCardOnAcceptance}
+                      requirePrepaymentOnAcceptance={requirePrepaymentOnAcceptance}
                       onApproved={charged => { setChargedToday(charged); setResponded('approved'); }}
                     />
                   </Elements>
                 ) : (
-                  requirePaymentOnAcceptance ? (
+                  (requireCardOnAcceptance || requirePrepaymentOnAcceptance) ? (
                     <p className="text-sm text-destructive" role="alert">Acceptance is blocked until card payment is available. Contact the company to finish accepting this estimate.</p>
                   ) : (
                   <Button

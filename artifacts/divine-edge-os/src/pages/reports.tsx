@@ -50,6 +50,38 @@ interface RphData {
   byEmployee: RphRow[];
 }
 
+function ServiceCategoryReport() {
+  const [range, setRange] = useState(defaultRange());
+  const [rows, setRows] = useState<{ category: string; jobs: number; revenue: number; cost: number; profit: number }[]>([]);
+  useEffect(() => {
+    customFetch<{ categories: typeof rows }>(`/api/reports/service-categories?start=${range.start}&end=${range.end}`)
+      .then(data => setRows(data.categories ?? []))
+      .catch(() => { setRows([]); toast.error('Could not load the service category report'); });
+  }, [range.start, range.end]);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Service categories</CardTitle>
+        <CardDescription>Completed-job revenue, volume, and profit after recorded material cost.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex gap-2">
+          <Input type="date" value={range.start} onChange={event => setRange(current => ({ ...current, start: event.target.value }))} />
+          <Input type="date" value={range.end} onChange={event => setRange(current => ({ ...current, end: event.target.value }))} />
+        </div>
+        <Table>
+          <TableHeader><TableRow><TableHead>Category</TableHead><TableHead className="text-right">Jobs</TableHead><TableHead className="text-right">Revenue</TableHead><TableHead className="text-right">Profit</TableHead></TableRow></TableHeader>
+          <TableBody>
+            {rows.length === 0 ? <TableRow><TableCell colSpan={4}>No category results for this date range.</TableCell></TableRow> : rows.map(row => (
+              <TableRow key={row.category}><TableCell>{row.category}</TableCell><TableCell className="text-right">{row.jobs}</TableCell><TableCell className="text-right">{money(row.revenue)}</TableCell><TableCell className="text-right">{money(row.profit)}</TableCell></TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
 function HourlyProductivityReport() {
   const [range, setRange] = useState(defaultRange());
   const [data, setData] = useState<RphData | null>(null);
@@ -168,6 +200,7 @@ const REPORTS = [
   { id: 'reorder-list', label: 'Reorder List', icon: ShoppingCart, description: 'Low-stock items grouped by supplier, ready to export as a purchase order.' },
   { id: 'hourly-productivity', label: 'Revenue / Hour', icon: Gauge, description: 'Revenue per billable hour by service, crew, and employee — compare to your budget target.' },
   { id: 'estimate-declines', label: 'Estimate Declines', icon: ThumbsDown, description: 'Why customers decline estimates, counted by reason with comments.' },
+  { id: 'service-categories', label: 'Service Categories', icon: Briefcase, description: 'Revenue, job volume, and profit grouped by service category.' },
 ] as const;
 
 export default function ReportsPage() {
@@ -224,6 +257,7 @@ export default function ReportsPage() {
         <TabsContent value="reorder-list"><ReorderListReportPanel /></TabsContent>
         <TabsContent value="hourly-productivity"><HourlyProductivityReport /></TabsContent>
         <TabsContent value="estimate-declines"><EstimateDeclinesReport /></TabsContent>
+        <TabsContent value="service-categories"><ServiceCategoryReport /></TabsContent>
       </Tabs>
     </div>
   );

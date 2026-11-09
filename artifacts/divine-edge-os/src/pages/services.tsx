@@ -375,6 +375,17 @@ export default function ServicesPage() {
   const [form, setForm] = useState<ServiceForm>(EMPTY_FORM);
 
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
+  const categoriesQuery = useQuery({ queryKey: ['service-categories'], queryFn: () => customFetch<{ categories: { id: number; name: string }[] }>('/api/settings/service-categories') });
+  const [categoryName, setCategoryName] = useState('');
+  const saveCategory = useMutation({
+    mutationFn: (body: { id?: number; name: string; remove?: boolean }) => body.remove
+      ? customFetch(`/api/settings/service-categories/${body.id}`, { method: 'DELETE' })
+      : body.id
+        ? customFetch(`/api/settings/service-categories/${body.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: body.name }) })
+        : customFetch('/api/settings/service-categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: body.name }) }),
+    onSuccess: () => { setCategoryName(''); qc.invalidateQueries({ queryKey: ['service-categories'] }); toast.success('Service categories updated'); },
+    onError: () => toast.error('Could not update that category'),
+  });
   const globalP4pRate = (settings as any)?.p4pMasterPercentage ?? 0;
 
   // P4P inline edit
@@ -570,6 +581,29 @@ export default function ServicesPage() {
           </Button>
         )}
       </div>
+
+      {canManageOffice && (
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <div>
+              <p className="font-medium">Service categories</p>
+              <p className="text-sm text-muted-foreground">Create the master categories used on services and in the category report. Examples: Mowing, Chemical Treatment, Irrigation, Landscaping.</p>
+            </div>
+            <div className="flex gap-2">
+              <Input value={categoryName} placeholder="New category" onChange={event => setCategoryName(event.target.value)} />
+              <Button onClick={() => categoryName.trim() && saveCategory.mutate({ name: categoryName.trim() })}>Add</Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(categoriesQuery.data?.categories ?? []).map(category => (
+                <div key={category.id} className="flex items-center gap-1 rounded-full border px-2 py-1 text-sm">
+                  <span>{category.name}</span>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => saveCategory.mutate({ id: category.id, name: category.name, remove: true })}><Trash2 className="w-3 h-3" /></Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -784,12 +818,18 @@ export default function ServicesPage() {
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Category</label>
-              <Input
-                title="Optional grouping category for filtering and reporting"
-                placeholder="e.g. Landscaping, Irrigation"
-                value={form.category}
-                onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-              />
+              <Select value={form.category || 'none'} onValueChange={value => setForm(f => ({ ...f, category: value === 'none' ? '' : value }))}>
+                <SelectTrigger><SelectValue placeholder="Choose a category" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No category</SelectItem>
+                  {(categoriesQuery.data?.categories ?? []).map(category => (
+                    <SelectItem key={category.id} value={category.name}>{category.name}</SelectItem>
+                  ))}
+                  {form.category && !(categoriesQuery.data?.categories ?? []).some(category => category.name === form.category) && (
+                    <SelectItem value={form.category}>{form.category}</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-1.5">

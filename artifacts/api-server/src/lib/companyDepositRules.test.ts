@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coerceEstimateDepositSettings, defaultEstimateDepositSettings, depositInvoiceSatisfied, estimateDepositSettingsDocument, firstMatchingDepositRule, linkAcceptancePayment, mergeEstimateDepositSettings, readEstimateDepositSettings, readScheduleDeposit, schedulingDepositTarget, unpaidScheduleDepositMessage, validateDepositRules, validateScheduleDeposit, type DepositRule } from "./companyDepositRules";
+import { acceptanceFlags, coerceEstimateDepositSettings, defaultEstimateDepositSettings, depositInvoiceSatisfied, estimateDepositSettingsDocument, firstMatchingDepositRule, mergeEstimateDepositSettings, readEstimateDepositSettings, readScheduleDeposit, schedulingDepositTarget, unpaidScheduleDepositMessage, validateDepositRules, validateScheduleDeposit, type DepositRule } from "./companyDepositRules";
 import { propertyInvoiceGroups } from "./invoicePropertyGrouping";
 
 const rule: DepositRule = { id: "fixture", name: "Matching rule", enabled: true, minTotal: 500, maxTotal: 1000,
@@ -62,14 +62,18 @@ describe("configurable deposit matching and property grouping", () => {
     expect(withSchedule.schedulingDepositPercent).toBe(15);
     expect(readScheduleDeposit({ estimate_deposit_settings: withSchedule })).toMatchObject({ enabled: true, mode: "fixed", value: 100 });
   });
-  it("keeps card-on-file and prepayment together", () => {
-    expect(linkAcceptancePayment(false, false)).toBe(false);
-    expect(linkAcceptancePayment(true, false)).toBe(true);
+  it("keeps card-on-file and prepayment independent", () => {
+    expect(acceptanceFlags({ require_card_on_acceptance: false, require_prepayment_on_acceptance: false })).toEqual({ card: false, prepay: false });
+    expect(acceptanceFlags({ require_card_on_acceptance: true, require_prepayment_on_acceptance: false })).toEqual({ card: true, prepay: false });
     expect(coerceEstimateDepositSettings(undefined).require_card_on_acceptance).toBe(false);
-    const turnedOn = mergeEstimateDepositSettings({}, { require_card_on_acceptance: true, require_prepayment_on_acceptance: false });
-    expect(turnedOn.requireCardOnAcceptance).toBe(true);
-    expect(turnedOn.require_prepayment_on_acceptance).toBe(true);
-    const kept = mergeEstimateDepositSettings({ estimate_deposit_settings: turnedOn }, { enabled: true });
+    const cardOnly = mergeEstimateDepositSettings({}, { require_card_on_acceptance: true, require_prepayment_on_acceptance: false });
+    expect(cardOnly.requireCardOnAcceptance).toBe(true);
+    expect(cardOnly.require_prepayment_on_acceptance).toBe(false);
+    const both = mergeEstimateDepositSettings({ estimate_deposit_settings: cardOnly }, { require_prepayment_on_acceptance: true });
+    expect(both.requireCardOnAcceptance).toBe(true);
+    expect(both.requirePrepaymentOnAcceptance).toBe(true);
+    const kept = mergeEstimateDepositSettings({ estimate_deposit_settings: both }, { enabled: true });
+    expect(kept.requireCardOnAcceptance).toBe(true);
     expect(kept.requirePrepaymentOnAcceptance).toBe(true);
   });
   it("combines by default and splits by property without losing unassigned charges", () => {

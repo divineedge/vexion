@@ -14,7 +14,8 @@ import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, GripVertical } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 
-type ChecklistItem = { id: string; label: string; required: boolean; equipmentTypes?: string[] };
+type ChecklistItem = { id: string; label: string; required: boolean; equipmentTypes?: string[]; equipmentIds?: number[]; logHours?: boolean; fuelFillUp?: boolean };
+type CategoryRule = { category: string; warnHours: string; retireHours: string; repairPct: string; resalePct: string; intervals: { label: string; everyHours: string }[] };
 
 type ChecklistEditorProps = {
   items: ChecklistItem[];
@@ -92,6 +93,22 @@ function ChecklistEditor({ items, equipmentTypes, onChange }: ChecklistEditorPro
                 })}
               </div>
             )}
+            <label className="block text-xs space-y-1">
+              Specific equipment IDs
+              <Input
+                value={(item.equipmentIds ?? []).join(', ')}
+                placeholder="Leave blank for every unit of the selected types"
+                onChange={event => updateItem(index, { equipmentIds: event.target.value.split(/[^0-9]+/).filter(Boolean).map(Number) })}
+              />
+            </label>
+            <label className="flex items-center gap-2 text-xs">
+              <Checkbox checked={item.logHours === true} onCheckedChange={checked => updateItem(index, { logHours: checked === true })} />
+              Ask for operating hours on this question
+            </label>
+            <label className="flex items-center gap-2 text-xs">
+              <Checkbox checked={item.fuelFillUp === true} onCheckedChange={checked => updateItem(index, { fuelFillUp: checked === true })} />
+              Offer a fuel fill-up on this question
+            </label>
           </div>
         </div>
       ))}
@@ -110,6 +127,11 @@ export function EquipmentSettingsPanel() {
   const [checklistName, setChecklistName] = useState('Pre-trip');
   const savedChecklistName = settings?.preTripChecklistName?.trim() || 'Pre-trip';
   const [endOfDayChecklist, setEndOfDayChecklist] = useState<ChecklistItem[]>([]);
+  const [preTripEnabled, setPreTripEnabled] = useState(true);
+  const [postTripEnabled, setPostTripEnabled] = useState(false);
+  const [promptHours, setPromptHours] = useState(false);
+  const [promptFuel, setPromptFuel] = useState(false);
+  const [categoryRules, setCategoryRules] = useState<CategoryRule[]>([]);
 
   useEffect(() => {
     if (!settings) return;
@@ -118,6 +140,18 @@ export function EquipmentSettingsPanel() {
     setChecklistName(settings.preTripChecklistName?.trim() || 'Pre-trip');
     setChecklist(((settings as any).preTripChecklist ?? []) as ChecklistItem[]);
     setEndOfDayChecklist(((settings as any).endOfDayChecklist ?? []) as ChecklistItem[]);
+    setPreTripEnabled((settings as any).preTripEnabled !== false);
+    setPostTripEnabled((settings as any).postTripEnabled === true);
+    setPromptHours((settings as any).promptEquipmentHours === true);
+    setPromptFuel((settings as any).promptFuelFillUp === true);
+    setCategoryRules((((settings as any).equipmentCategoryThresholds ?? []) as any[]).map(rule => ({
+      category: String(rule.category ?? ''),
+      warnHours: rule.warnHours == null ? '' : String(rule.warnHours),
+      retireHours: rule.retireHours == null ? '' : String(rule.retireHours),
+      repairPct: rule.repairPct == null ? '' : String(rule.repairPct),
+      resalePct: rule.resalePct == null ? '' : String(rule.resalePct),
+      intervals: Array.isArray(rule.intervals) ? rule.intervals.map((interval: any) => ({ label: String(interval.label ?? ''), everyHours: String(interval.everyHours ?? '') })) : [],
+    })));
   }, [settings]);
 
   const saveThresholds = () => {
@@ -228,6 +262,58 @@ export function EquipmentSettingsPanel() {
           <Button onClick={saveThresholds} disabled={updateSettings.isPending} variant="outline">
             Save Thresholds
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Category hour thresholds</CardTitle>
+          <CardDescription>Set operating-hour warnings, retirement points, and maintenance intervals for an equipment category. A logged hour reading at or past an interval notifies managers.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {categoryRules.map((rule, index) => (
+            <div key={index} className="rounded-lg border p-3 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <Input placeholder="Category, such as Mower" value={rule.category} onChange={event => setCategoryRules(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, category: event.target.value } : item))} />
+                <Input placeholder="Warning hours" value={rule.warnHours} onChange={event => setCategoryRules(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, warnHours: event.target.value } : item))} />
+                <Input placeholder="Retirement hours" value={rule.retireHours} onChange={event => setCategoryRules(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, retireHours: event.target.value } : item))} />
+                <Input placeholder="Repair % of purchase" value={rule.repairPct} onChange={event => setCategoryRules(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, repairPct: event.target.value } : item))} />
+                <Input placeholder="Resale % of purchase" value={rule.resalePct} onChange={event => setCategoryRules(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, resalePct: event.target.value } : item))} />
+              </div>
+              {rule.intervals.map((interval, intervalIndex) => (
+                <div key={intervalIndex} className="flex gap-2">
+                  <Input placeholder="Oil change" value={interval.label} onChange={event => setCategoryRules(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, intervals: item.intervals.map((entry, entryIndex) => entryIndex === intervalIndex ? { ...entry, label: event.target.value } : entry) } : item))} />
+                  <Input placeholder="Every hours" value={interval.everyHours} onChange={event => setCategoryRules(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, intervals: item.intervals.map((entry, entryIndex) => entryIndex === intervalIndex ? { ...entry, everyHours: event.target.value } : entry) } : item))} />
+                </div>
+              ))}
+              <Button variant="outline" size="sm" onClick={() => setCategoryRules(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, intervals: [...item.intervals, { label: '', everyHours: '' }] } : item))}>Add interval</Button>
+            </div>
+          ))}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setCategoryRules(current => [...current, { category: '', warnHours: '', retireHours: '', repairPct: '', resalePct: '', intervals: [] }])}>Add category</Button>
+            <Button onClick={() => updateSettings.mutate({ data: { equipmentCategoryThresholds: categoryRules.filter(rule => rule.category.trim()).map(rule => ({
+              category: rule.category.trim(),
+              warnHours: rule.warnHours ? Number(rule.warnHours) : null,
+              retireHours: rule.retireHours ? Number(rule.retireHours) : null,
+              repairPct: rule.repairPct ? Number(rule.repairPct) : null,
+              resalePct: rule.resalePct ? Number(rule.resalePct) : null,
+              intervals: rule.intervals.filter(interval => interval.label.trim() && Number(interval.everyHours) > 0).map(interval => ({ label: interval.label.trim(), everyHours: Number(interval.everyHours) })),
+            })) } as any }, { onSuccess: () => toast.success('Category thresholds saved'), onError: () => toast.error('Failed to save category thresholds') })}>Save category thresholds</Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Checklist requirements</CardTitle>
+          <CardDescription>Turn pre-trip and post-trip checks on for field crews. Hour and fuel prompts apply when that check is on.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <label className="flex items-center justify-between gap-3 text-sm"><span>Pre-trip checklist</span><Checkbox checked={preTripEnabled} onCheckedChange={checked => setPreTripEnabled(checked === true)} /></label>
+          <label className="flex items-center justify-between gap-3 text-sm"><span>Post-trip checklist</span><Checkbox checked={postTripEnabled} onCheckedChange={checked => setPostTripEnabled(checked === true)} /></label>
+          <label className="flex items-center justify-between gap-3 text-sm"><span>Require operating hours</span><Checkbox checked={promptHours} onCheckedChange={checked => setPromptHours(checked === true)} /></label>
+          <label className="flex items-center justify-between gap-3 text-sm"><span>Offer fuel fill-up</span><Checkbox checked={promptFuel} onCheckedChange={checked => setPromptFuel(checked === true)} /></label>
+          <Button onClick={() => updateSettings.mutate({ data: { preTripEnabled, postTripEnabled, promptEquipmentHours: promptHours, promptFuelFillUp: promptFuel } as any }, { onSuccess: () => toast.success('Checklist requirements saved'), onError: () => toast.error('Failed to save checklist requirements') })}>Save checklist requirements</Button>
         </CardContent>
       </Card>
 

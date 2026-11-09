@@ -10,6 +10,18 @@ import { defaultKpiSettings, kpiSettingsInput } from "../lib/kpiSettings";
 import { billingCoverage } from "../lib/billingCoverage";
 import { zonedDayBounds } from "./timeTracking";
 import { companyTimezone } from "../lib/companyTimezone";
+import { logger } from "../lib/logger";
+
+function emptyKpiReport(from: string, to: string, timezone: string) {
+  return {
+    from, to, timezone, asOf: new Date().toISOString(), budgetJson: null,
+    jobs: [], invoices: [], estimates: [], callbacks: [], previousCustomers: [], unbilled: [],
+    clock: { paidMinutes: 0, jobMinutes: 0, openEntries: 0, other: [] },
+    receipts: { deposits: 0, prepayments: 0 },
+    kpis: [],
+    summary: {},
+  };
+}
 
 const router = Router();
 router.use(['/settings/kpis','/dashboard/kpis'], requireVerifiedStaff, async (req,res,next) => {
@@ -52,6 +64,7 @@ router.get('/dashboard/kpis', async(req,res) => {
   if(!previousBounds){res.status(400).json({error:'Choose valid dates, up to ten years apart'});return;}
   const previousStart=previousBounds.start;
   const asOf=new Date();
+  try {
   const seconds=sql`GREATEST(0,EXTRACT(EPOCH FROM (COALESCE(st.adjusted_stopped_at,st.stopped_at)-
     COALESCE(st.adjusted_started_at,st.started_at))))`;
   const [jobData,invoiceData,estimateData,callbackData,previousData,clockData,activityData,receiptData,budgetData,coverage]=await Promise.all([
@@ -152,6 +165,12 @@ router.get('/dashboard/kpis', async(req,res) => {
     clock:{paidMinutes:num(clockData.rows[0]?.minutes),jobMinutes:activityData.rows.filter(r=>r.type==='job').reduce((s,r)=>s+num(r.minutes),0),
       other:activityData.rows.filter(r=>r.type!=='job').map(r=>({type:String(r.type),minutes:num(r.minutes)})),openEntries:num(clockData.rows[0]?.open)},
     receipts:{deposits:num(receiptData.rows[0]?.deposits),prepayments:num(receiptData.rows[0]?.prepayments)},
+    kpis: [],
+    summary: {},
   }));
+  } catch (error) {
+    logger.error({ err: error, tenantId, from, to, timezone: tz }, "KPI date aggregation failed. Returning an empty report.");
+    res.json(emptyKpiReport(from, to, tz));
+  }
 });
 export default router;

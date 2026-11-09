@@ -757,7 +757,7 @@ export default function JobsScreen() {
           </View>
           <Ionicons name="chevron-up" size={17} color={colors.primary} />
         </TouchableOpacity>
-        <TouchableOpacity
+        {((tenantSettings as { preTripEnabled?: boolean; postTripEnabled?: boolean } | undefined)?.preTripEnabled !== false || (tenantSettings as { postTripEnabled?: boolean } | undefined)?.postTripEnabled === true) && <TouchableOpacity
           style={[styles.preTripButton, { borderColor: colors.primary + '45', backgroundColor: colors.primary + '10' }]}
           onPress={handlePreTripPress}
           activeOpacity={0.8}
@@ -769,7 +769,7 @@ export default function JobsScreen() {
             <Text style={[styles.preTripSubtitle, { color: colors.mutedForeground }]}>Condition, fuel, meter readings, and concerns</Text>
           </View>
           <Ionicons name="chevron-forward" size={17} color={colors.primary} />
-        </TouchableOpacity>
+        </TouchableOpacity>}
         <View style={[styles.segmentedControl, { backgroundColor: colors.muted }]}>
           {(['day', 'week'] as const).map(mode => (
             <TouchableOpacity

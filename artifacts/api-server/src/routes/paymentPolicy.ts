@@ -66,10 +66,11 @@ async function loadCompanyPolicy(tenantId: number) {
   return row ? { paymentPolicy: row.paymentPolicy, requireCardOnAcceptance: row.requireCardOnAcceptance, requirePrepaymentOnAcceptance: row.requirePrepaymentOnAcceptance } : undefined;
 }
 async function saveEstimateDepositSettings(tenantId: number, settings: EstimateDepositSettings) {
-  const linked = settings.requireCardOnAcceptance === true || settings.requirePrepaymentOnAcceptance === true;
+  const card = settings.requireCardOnAcceptance === true;
+  const prepay = settings.requirePrepaymentOnAcceptance === true;
   const document = JSON.stringify(estimateDepositSettingsDocument(settings));
   try {
-    await db.execute(sql`UPDATE tenants SET require_card_on_acceptance=${linked}, require_prepayment_on_acceptance=${linked}, payment_policy=coalesce(payment_policy,'{}'::jsonb) || ${document}::jsonb WHERE id=${tenantId}`);
+    await db.execute(sql`UPDATE tenants SET require_card_on_acceptance=${card}, require_prepayment_on_acceptance=${prepay}, payment_policy=coalesce(payment_policy,'{}'::jsonb) || ${document}::jsonb WHERE id=${tenantId}`);
   } catch (error) {
     if (!isMissingColumnError(error)) throw error;
     logger.error({ err: error, tenantId }, "Acceptance columns are not in the database yet. Deposit settings were merged into the existing payment policy.");

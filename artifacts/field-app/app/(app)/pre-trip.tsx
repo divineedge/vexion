@@ -38,7 +38,7 @@ import { FuelSourceFields, type FuelSource, useBulkMeterEntry, isMeterActive, is
 
 type Equipment = { id: number; name: string; type: string; currentHours: number; currentMiles?: number | null; isActive: boolean };
 type Condition = 'good' | 'needs_attention' | 'unsafe';
-type ChecklistItem = { id: string; label: string; required: boolean; equipmentTypes?: string[] };
+type ChecklistItem = { id: string; label: string; required: boolean; equipmentTypes?: string[]; equipmentIds?: number[]; logHours?: boolean; fuelFillUp?: boolean };
 
 export default function PreTripScreen() {
   const colors = useColors();
@@ -73,9 +73,16 @@ export default function PreTripScreen() {
   const equipment = ((data as Equipment[] | undefined) ?? []).filter(item => item.isActive);
   const bulkTanks = bulkTanksQuery.data ?? [];
   const selected = equipment.find(item => item.id === selectedId) ?? null;
+  const workflow = settings as { preTripEnabled?: boolean; postTripEnabled?: boolean; promptEquipmentHours?: boolean; promptFuelFillUp?: boolean } | undefined;
   const checklist = selected
-    ? configuredChecklist.filter(item => !item.equipmentTypes?.length || item.equipmentTypes.includes(selected.type))
+    ? configuredChecklist.filter(item => {
+        const typeOk = !item.equipmentTypes?.length || item.equipmentTypes.includes(selected.type);
+        const idOk = !item.equipmentIds?.length || item.equipmentIds.includes(selected.id);
+        return typeOk && idOk;
+      })
     : [];
+  const hoursRequired = workflow?.promptEquipmentHours === true || checklist.some(item => item.logHours);
+  const fuelOffered = workflow?.promptFuelFillUp === true || checklist.some(item => item.fuelFillUp);
   useEffect(() => {
     setAnswers({});
     setSavedTaskId(null);
@@ -151,6 +158,10 @@ export default function PreTripScreen() {
     }
     if (fuelCost && !gallons) {
       Alert.alert('Fuel amount required', 'Enter gallons before adding a fuel cost.');
+      return;
+    }
+    if (hoursRequired && (!reading || Number.isNaN(Number(reading)) || Number(reading) < 0 || readingType !== 'hours')) {
+      Alert.alert('Equipment hours required', 'Enter the current operating hours for this equipment.');
       return;
     }
     const hasFuel = !!gallons;
@@ -232,7 +243,7 @@ export default function PreTripScreen() {
       void bulkTanksQuery.refetch();
       Alert.alert(`Could not confirm ${checklistName.toLowerCase()} save`, 'Your entry is kept. Check your connection, then retry without changing it. If it already saved, the retry will not record the fuel twice. If the tank meter changed, confirm the new previous reading first.');
     }
-  }, [selected, gallons, fuelCost, fuelSource, bulkFuelTankId, bulkTanks, meter, meterReading, resetForTank, bulkTanksQuery, checklistName, reading, readingType, condition, concerns, checklist, answers, inspectionType, createPreTrip, queryClient]);
+  }, [selected, gallons, fuelCost, fuelSource, bulkFuelTankId, bulkTanks, meter, meterReading, resetForTank, bulkTanksQuery, checklistName, reading, readingType, condition, concerns, checklist, answers, inspectionType, createPreTrip, queryClient, hoursRequired]);
 
   if (isLoading) {
     return <View style={[styles.centered, { backgroundColor: colors.background }]}><ActivityIndicator color={colors.primary} size="large" /></View>;
@@ -243,10 +254,10 @@ export default function PreTripScreen() {
       <Stack.Screen options={{ title: `${checklistName} Check` }} />
       <KeyboardAwareScrollViewCompat contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 92 }} keyboardShouldPersistTaps="handled" bottomOffset={70}>
         <Text style={[styles.intro, { color: colors.mutedForeground }]}>Complete one check for each piece of equipment. Fuel and meter entries use the existing equipment history.</Text>
-        {endOfDayChecklist.length > 0 && (
+        {(workflow?.preTripEnabled !== false || workflow?.postTripEnabled === true || endOfDayChecklist.length > 0) && (
           <View style={styles.choices}>
-            <TouchableOpacity onPress={() => setInspectionType('pre_trip')} style={[styles.choice, { backgroundColor: inspectionType === 'pre_trip' ? colors.primary : colors.muted }]}><Text style={[styles.choiceText, { color: inspectionType === 'pre_trip' ? '#fff' : colors.mutedForeground }]}>{checklistName}</Text></TouchableOpacity>
-            <TouchableOpacity onPress={() => setInspectionType('end_of_day')} style={[styles.choice, { backgroundColor: inspectionType === 'end_of_day' ? colors.primary : colors.muted }]}><Text style={[styles.choiceText, { color: inspectionType === 'end_of_day' ? '#fff' : colors.mutedForeground }]}>End of day</Text></TouchableOpacity>
+            {workflow?.preTripEnabled !== false && <TouchableOpacity onPress={() => setInspectionType('pre_trip')} style={[styles.choice, { backgroundColor: inspectionType === 'pre_trip' ? colors.primary : colors.muted }]}><Text style={[styles.choiceText, { color: inspectionType === 'pre_trip' ? '#fff' : colors.mutedForeground }]}>{checklistName}</Text></TouchableOpacity>}
+            {(workflow?.postTripEnabled === true || endOfDayChecklist.length > 0) && <TouchableOpacity onPress={() => setInspectionType('end_of_day')} style={[styles.choice, { backgroundColor: inspectionType === 'end_of_day' ? colors.primary : colors.muted }]}><Text style={[styles.choiceText, { color: inspectionType === 'end_of_day' ? '#fff' : colors.mutedForeground }]}>End of day</Text></TouchableOpacity>}
           </View>
         )}
         <Text style={[styles.label, { color: colors.foreground }]}>Equipment</Text>
@@ -276,7 +287,7 @@ export default function PreTripScreen() {
           </View>
         </>}
         <Text style={[styles.small, { color: colors.mutedForeground, marginTop: 8 }]}>Office staff can change these questions in Settings → Equipment → {inspectionType === 'end_of_day' ? 'Optional End-of-Day Checklist' : `${checklistName} Checklist`}.</Text>
-         <Text style={[styles.label, { color: colors.foreground }]}>Fuel added (optional)</Text>
+         {fuelOffered && <><Text style={[styles.label, { color: colors.foreground }]}>Fuel fill-up (optional)</Text>
          <FuelSourceFields
            source={fuelSource}
            onSourceChange={handleFuelSourceChange}
@@ -293,7 +304,8 @@ export default function PreTripScreen() {
            tanksError={!!bulkTanksQuery.error}
            colors={colors}
          />
-        <Text style={[styles.label, { color: colors.foreground }]}>Meter reading (optional)</Text>
+         </>}
+        <Text style={[styles.label, { color: colors.foreground }]}>{hoursRequired ? 'Operating hours' : 'Meter reading (optional)'}</Text>
         <View style={styles.choices}><TouchableOpacity onPress={() => setReadingType('hours')} style={[styles.choice, { backgroundColor: readingType === 'hours' ? colors.primary : colors.muted }]}><Text style={[styles.choiceText, { color: readingType === 'hours' ? '#fff' : colors.mutedForeground }]}>Hours</Text></TouchableOpacity><TouchableOpacity onPress={() => setReadingType('mileage')} style={[styles.choice, { backgroundColor: readingType === 'mileage' ? colors.primary : colors.muted }]}><Text style={[styles.choiceText, { color: readingType === 'mileage' ? '#fff' : colors.mutedForeground }]}>Mileage</Text></TouchableOpacity></View>
         <TextInput value={reading} onChangeText={setReading} placeholder={readingType === 'hours' ? 'Current hour meter' : 'Current odometer'} keyboardType="decimal-pad" placeholderTextColor={colors.mutedForeground} style={[styles.fullInput, { color: colors.foreground, backgroundColor: colors.muted, borderColor: colors.border }]} />
         <Text style={[styles.label, { color: colors.foreground }]}>Concerns / follow-up</Text>

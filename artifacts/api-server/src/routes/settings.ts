@@ -18,6 +18,8 @@ import { normalizeExcludedReminderServiceIds, normalizeServiceReminderMode } fro
 import { defaultEstimateDepositSettings, readEstimateDepositSettings, withAcceptanceColumns } from "../lib/companyDepositRules";
 import { logger } from "../lib/logger";
 import { selectTenantById } from "../lib/schemaSafety";
+import { isMissingColumnError } from "../lib/settingsFallback";
+import { coerceChemicalRecordConfig, legacyRequirementsFromConfig } from "../lib/chemicalRecordConfig";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -79,6 +81,7 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     planTier: tenant.planTier as "starter" | "professional" | "enterprise",
     customerFields: (cfJson?.customerFields as unknown[]) ?? [],
     chemicalRecordRequirements: normalizeChemicalRecordRequirements(tenant.chemicalRecordRequirements),
+    chemicalRecordConfig: coerceChemicalRecordConfig((tenant as { chemicalRecordConfig?: unknown }).chemicalRecordConfig, tenant.chemicalRecordRequirements),
     equipmentRepairThresholdPct: tenant.equipmentRepairThresholdPct ?? 50,
     equipmentResaleThresholdPct: tenant.equipmentResaleThresholdPct ?? 20,
     // Geofence & measurement defaults
@@ -778,11 +781,18 @@ router.get("/settings/budget", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Restricted to owner and manager roles" });
     return;
   }
-  const result = await db.execute(sql`
-    SELECT budget_data FROM tenants WHERE id = ${tenantId}
-  `);
-  const row = result.rows[0] as Record<string, unknown> | undefined;
-  res.json({ budgetData: row?.budget_data ?? null });
+  try {
+    const result = await db.execute(sql`
+      SELECT budget_data FROM tenants WHERE id = ${tenantId}
+    `);
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    const budgetData = row?.budget_data ?? null;
+    res.json({ budgetData, categories: [], totalBudget: 0 });
+  } catch (error) {
+    if (!isMissingColumnError(error)) throw error;
+    logger.error({ err: error, tenantId }, "Budget column is missing. Returning an empty budget.");
+    res.json({ budgetData: null, categories: [], totalBudget: 0 });
+  }
 });
 
 router.patch("/settings/budget", async (req, res): Promise<void> => {
@@ -999,6 +1009,23 @@ router.delete("/settings/users/:id", async (req, res): Promise<void> => {
   const id = parseInt(rawId, 10);
   await db.delete(usersTable).where(and(eq(usersTable.id, id), eq(usersTable.tenantId, tenantId)));
   res.sendStatus(204);
+});
+
+router.get("/settings/chemical-record-config", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
+  const tenant = await selectTenantById(tenantId);
+  res.json(coerceChemicalRecordConfig(tenant?.chemicalRecordConfig, tenant?.chemicalRecordRequirements));
+});
+
+router.patch("/settings/chemical-record-config", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
+  const tenant = await selectTenantById(tenantId);
+  const config = coerceChemicalRecordConfig({ ...(tenant?.chemicalRecordConfig as object ?? {}), ...(req.body ?? {}) }, tenant?.chemicalRecordRequirements);
+  const legacy = legacyRequirementsFromConfig(config);
+  await db.execute(sql`UPDATE tenants SET chemical_record_config = coalesce(chemical_record_config,'{}'::jsonb) || ${JSON.stringify(config)}::jsonb, chemical_record_requirements = ${JSON.stringify(legacy)}::jsonb WHERE id = ${tenantId}`);
+  res.json(config);
 });
 
 export default router;

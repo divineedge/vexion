@@ -196,6 +196,8 @@ export default function PricingReviewPage() {
           <p className="text-sm">Pricing review could not be loaded.</p>
           <Button size="sm" variant="outline" onClick={() => refetch()}>Retry</Button>
         </CardContent></Card>
+      ) : data && (data.jobs ?? []).length === 0 ? (
+        <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">No pricing data available for this date range.</CardContent></Card>
       ) : data && (
         <>
           {!budgetValid && (

@@ -9,6 +9,7 @@ import { requireVerifiedStaff } from "../lib/verifiedStaff";
 import { defaultKpiSettings, kpiSettingsInput } from "../lib/kpiSettings";
 import { billingCoverage } from "../lib/billingCoverage";
 import { zonedDayBounds } from "./timeTracking";
+import { companyTimezone } from "../lib/companyTimezone";
 
 const router = Router();
 router.use(['/settings/kpis','/dashboard/kpis'], requireVerifiedStaff, async (req,res,next) => {
@@ -34,18 +35,22 @@ router.patch('/settings/kpis', async(req,res) => {
 router.get('/dashboard/kpis', async(req,res) => {
   const tenantId=getTenantId(req);
   const [tenant]=await db.select({timezone:tenantsTable.timezone}).from(tenantsTable).where(eq(tenantsTable.id,tenantId));
-  if(!tenant){res.status(404).json({error:'Company not found'});return;}
-  const tz=tenant.timezone;
+  const tz=companyTimezone(tenant?.timezone);
   const from=String(req.query.from??''),to=String(req.query.to??'');
   const valid=(s:string)=>/^\d{4}-\d{2}-\d{2}$/.test(s)&&Number.isFinite(Date.parse(`${s}T00:00:00Z`))&&new Date(`${s}T00:00:00Z`).toISOString().slice(0,10)===s;
   if(!valid(from)||!valid(to)||from>to||Date.parse(to)-Date.parse(from)>3660*86400000){
     res.status(400).json({error:'Choose valid dates, up to ten years apart'});return;
   }
-  const start=zonedDayBounds(from,tz)!.start;
-  const end=new Date(zonedDayBounds(to,tz)!.end.getTime()+1);
+  const startBounds=zonedDayBounds(from,tz);
+  const endBounds=zonedDayBounds(to,tz);
+  if(!startBounds||!endBounds){res.status(400).json({error:'Choose valid dates, up to ten years apart'});return;}
+  const start=startBounds.start;
+  const end=new Date(endBounds.end.getTime()+1);
   const days=Math.round((Date.parse(to)-Date.parse(from))/86400000)+1;
   const previousFrom=new Date(Date.parse(from)-days*86400000).toISOString().slice(0,10);
-  const previousStart=zonedDayBounds(previousFrom,tz)!.start;
+  const previousBounds=zonedDayBounds(previousFrom,tz);
+  if(!previousBounds){res.status(400).json({error:'Choose valid dates, up to ten years apart'});return;}
+  const previousStart=previousBounds.start;
   const asOf=new Date();
   const seconds=sql`GREATEST(0,EXTRACT(EPOCH FROM (COALESCE(st.adjusted_stopped_at,st.stopped_at)-
     COALESCE(st.adjusted_started_at,st.started_at))))`;

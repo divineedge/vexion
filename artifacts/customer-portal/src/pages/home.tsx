@@ -142,13 +142,13 @@ export default function Home() {
                       {hasRainfast && (
                         <div className="flex items-center gap-2 text-xs text-foreground/80">
                           <CloudRain className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                          <span>Rainfast until <strong>{formatDateTime(timer.rainfastUntil!)}</strong></span>
+                          <span>Rainfast window: watering and rain are safest after <strong>{formatDateTime(timer.rainfastUntil!)}</strong></span>
                         </div>
                       )}
                       {hasReentry && (
                         <div className="flex items-center gap-2 text-xs text-foreground/80">
                           <ShieldAlert className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                          <span>Re-entry restricted until <strong>{formatDateTime(timer.reentryUntil!)}</strong></span>
+                          <span>Chemical application active: keep children and pets off the turf until <strong>{formatDateTime(timer.reentryUntil!)}</strong></span>
                         </div>
                       )}
                     </div>

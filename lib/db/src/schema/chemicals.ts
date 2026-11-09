@@ -17,6 +17,7 @@ export const chemicalProductsTable = pgTable("chemical_products", {
   rei: integer("rei"), // restricted entry interval in hours (re-entry hours)
   phi: integer("phi"), // pre-harvest interval in days
   rainfastHours: real("rainfast_hours"), // hours product needs to dry before rain is okay
+  safetyNotes: text("safety_notes"),
   labelSdsUrl: text("label_sds_url"),
   unit: text("unit").notNull().default("oz"), // oz, fl oz, lb, gal, etc.
   isActive: boolean("is_active").notNull().default(true),
@@ -96,6 +97,13 @@ export const chemicalApplicationsTable = pgTable("chemical_applications", {
   windSpeed: real("wind_speed"), // mph
   windDirection: text("wind_direction"),
   temperature: real("temperature"), // °F
+  humidity: real("humidity"),
+  precipitationChance: real("precipitation_chance"),
+  rainStatus: text("rain_status"),
+  dilutionRate: text("dilution_rate"),
+  customFieldValues: jsonb("custom_field_values").default("{}"),
+  clockInAt: timestamp("clock_in_at", { withTimezone: true }),
+  clockOutAt: timestamp("clock_out_at", { withTimezone: true }),
 
   appliedAt: timestamp("applied_at", { withTimezone: true }).notNull(),
 

@@ -596,6 +596,24 @@ function JobDetailModal({ jobId, onClose }: { jobId: number | null; onClose: () 
                       );
                     })}
                   </div>
+                  <Button variant="outline" size="sm" className="mt-3" onClick={() => {
+                    const lines = job.chemicalApplications.map(app => [
+                      `Product: ${app.productName ?? app.mixtureName ?? "Application"}`,
+                      `Applied: ${formatDateTime(app.appliedAt)}`,
+                      `Amount: ${app.volumeApplied} ${app.volumeUnit}`,
+                      app.treatedArea != null ? `Treated area: ${app.treatedArea} ${app.areaUnit ?? "sqft"}` : "",
+                      app.treatedZoneName ? `Zone: ${app.treatedZoneName}` : "",
+                      app.reentryUntil ? `Re-entry until: ${formatDateTime(app.reentryUntil)}` : "",
+                      app.rainfastUntil ? `Rainfast until: ${formatDateTime(app.rainfastUntil)}` : "",
+                    ].filter(Boolean).join("\n")).join("\n\n");
+                    const file = new Blob([lines], { type: "text/plain" });
+                    const url = URL.createObjectURL(file);
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = `chemical-application-${job.id}.txt`;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                  }}>Download application record</Button>
                 </section>
               )}
             </div>

@@ -35,6 +35,7 @@ export default function BudgetPage() {
   const [loading, setLoading] = useState(true);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [loadWarning, setLoadWarning] = useState(false);
   const { data: serviceData, isLoading: servicesLoading, isError: servicesError, refetch: reloadServices } = useListServices(
     undefined, { query: { queryKey: getListServicesQueryKey(), enabled: canManageOffice } },
   );
@@ -56,7 +57,10 @@ export default function BudgetPage() {
         }
       })
       .catch(() => {
-        setLoadError(true);
+        const fresh = defaultBudgetYear();
+        setYears([fresh]);
+        setCurrentYear(fresh.year);
+        setLoadWarning(true);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -220,7 +224,8 @@ export default function BudgetPage() {
   const previousDivision = previousYear?.divisions.find(d => d.name === activeDivision?.name) ?? null;
 
   return (
-    <div className="budget-print-area min-w-0 max-w-full space-y-6 animate-in fade-in duration-500">
+      <div className="budget-print-area min-w-0 max-w-full space-y-6 animate-in fade-in duration-500">
+      {loadWarning && <Card><CardContent className="p-4 text-sm">The saved budget could not be read. The calculator is showing an empty budget and will not replace the saved one until you choose Save.</CardContent></Card>}
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
         <div>

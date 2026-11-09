@@ -13,7 +13,7 @@ import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { DollarSign, Copy, ExternalLink, CheckCircle2, Calculator, Ruler, Grid3X3, Package, Layers } from 'lucide-react';
 import { toast } from 'sonner';
-import { resolveServicePrice, type PricingTier } from '@/lib/pricingMatrix';
+import { measurementChargeLines, resolveServicePrice, type PricingTier } from '@/lib/pricingMatrix';
 
 export interface MeasurementZone {
   id: string;
@@ -21,8 +21,10 @@ export interface MeasurementZone {
   areaSqft: number;
   /** Length in feet — only set for linear (open polyline) zones like fence lines, edging, hedges. */
   lengthFt?: number | null;
+  area_sqft?: number;
+  perimeter_linear_feet?: number;
   /** Measurement mode. Absent/undefined means 'area' (pre-existing zones). */
-  mode?: 'area' | 'linear';
+  mode?: 'area' | 'linear' | 'both';
   enabled: boolean;
   color: string;
 }
@@ -32,7 +34,7 @@ interface ZoneType {
   name: string;
   color: string;
   /** Default measurement mode for this zone type. Defaults to 'area' when absent. */
-  mode?: 'area' | 'linear';
+  mode?: 'area' | 'linear' | 'both';
 }
 
 interface Service {
@@ -44,6 +46,7 @@ interface Service {
   pricingMode?: string;
   pricingMatrix?: PricingTier[] | null;
   linkedZoneTypeId?: string | null;
+  linearRate?: number | null;
 }
 
 interface PlanTemplate {
@@ -166,11 +169,11 @@ export default function QuickQuotePanel({
   const pricedZoneList = linkedZoneType
     ? selectedZoneList.filter(zone => zone.label === linkedZoneType.name)
     : selectedZoneList;
-  const totalAreaSqft = pricedZoneList.reduce((s, z) => s + z.areaSqft, 0);
-  const totalLengthFt = pricedZoneList.filter(z => z.mode === 'linear').reduce((s, z) => s + (z.lengthFt ?? 0), 0);
+  const totalAreaSqft = pricedZoneList.reduce((s, z) => s + (z.area_sqft ?? z.areaSqft ?? 0), 0);
+  const totalLengthFt = pricedZoneList.reduce((s, z) => s + (z.perimeter_linear_feet ?? z.lengthFt ?? 0), 0);
   const linkedZoneTypeName = linkedZoneType?.name ?? null;
   const isMatrixService = selectedService?.pricingMode === 'matrix';
-  const configuredPriceType = selectedService?.pricingMode === 'per_sqft' || selectedService?.pricingMode === 'per_linear_ft'
+  const configuredPriceType = selectedService?.pricingMode === 'per_sqft' || selectedService?.pricingMode === 'per_linear_ft' || selectedService?.pricingMode === 'area_and_linear'
     ? selectedService.pricingMode
     : null;
   const effectivePriceType = configuredPriceType ?? priceType;
@@ -181,8 +184,7 @@ export default function QuickQuotePanel({
     if (!selectedService) return 0;
     let price1 = 0;
     if (isMatrixService && selectedService.pricingMatrix) {
-      const matrixQuantity = linkedZoneType?.mode === 'linear' ? totalLengthFt : totalAreaSqft;
-      price1 = resolveServicePrice('matrix', selectedService.basePrice, selectedService.pricingMatrix, matrixQuantity || null);
+      price1 = resolveServicePrice('matrix', selectedService.basePrice, selectedService.pricingMatrix, totalAreaSqft, totalLengthFt, selectedService.linearRate ?? 0);
     } else {
       price1 = resolveServicePrice(
         effectivePriceType,
@@ -190,6 +192,7 @@ export default function QuickQuotePanel({
         null,
         totalAreaSqft,
         totalLengthFt,
+        selectedService.linearRate ?? 0,
       );
     }
     // Add secondary service flat price (bundled services always use flat base price)
@@ -290,10 +293,17 @@ export default function QuickQuotePanel({
         const desc = secondaryService
           ? `${selectedService?.name ?? 'Service'} + ${secondaryService.name}`
           : (selectedService?.name ?? 'Custom Quote');
-        lineItems = [{
-          description: desc,
-          qty: 1,
-          unitPrice: serviceCalculatedPrice,
+        const priced = !overridePrice && selectedService
+          ? measurementChargeLines(desc, effectivePriceType, selectedService.basePrice, selectedService.linearRate ?? 0, selectedService.pricingMatrix, totalAreaSqft, totalLengthFt)
+          : [];
+        const rows = priced.length > 0 ? [...priced] : [{ description: desc, qty: 1, unitPrice: serviceCalculatedPrice, total: serviceCalculatedPrice }];
+        if (secondaryService && priced.length > 0) {
+          rows.push({ description: secondaryService.name, qty: 1, unitPrice: secondaryService.basePrice, total: secondaryService.basePrice });
+        }
+        lineItems = rows.map(row => ({
+          description: row.description,
+          qty: row.qty,
+          unitPrice: row.unitPrice,
           markup: 0,
           discount: 0,
           isOptional: false,
@@ -301,7 +311,7 @@ export default function QuickQuotePanel({
           acceptedByCustomer: true,
           ...(selectedServiceId ? { serviceId: parseInt(selectedServiceId, 10), serviceName: selectedService?.name } : {}),
           ...(secondaryServiceId ? { secondaryServiceId: parseInt(secondaryServiceId, 10), secondaryServiceName: secondaryService?.name } : {}),
-        }];
+        }));
       }
 
       const r = await customFetch<{ id: number }>('/api/estimates', {
@@ -459,7 +469,11 @@ export default function QuickQuotePanel({
             {selectedService && configuredPriceType && (
               <div className="flex items-center gap-1.5 text-xs text-violet-600 bg-violet-50 border border-violet-200 rounded px-2.5 py-1.5">
                 <Ruler className="w-3 h-3 shrink-0" />
-                {configuredPriceType === 'per_linear_ft' ? 'Per-linear-foot pricing' : 'Per-square-foot pricing'}
+                {configuredPriceType === 'per_linear_ft'
+                  ? 'Per-linear-foot pricing'
+                  : configuredPriceType === 'area_and_linear'
+                    ? 'Area and linear-foot pricing'
+                    : 'Per-square-foot pricing'}
                 {linkedZoneTypeName && <> — auto-using <strong>{linkedZoneTypeName}</strong></>}
               </div>
             )}
@@ -600,6 +614,11 @@ export default function QuickQuotePanel({
             {mode === 'service' && !isMatrixService && effectivePriceType === 'per_linear_ft' && selectedService && totalLengthFt > 0 && !secondaryService && (
               <p className="text-xs text-muted-foreground">
                 ${selectedService.basePrice}/linear ft × {formatLength(totalLengthFt)}
+              </p>
+            )}
+            {mode === 'service' && effectivePriceType === 'area_and_linear' && selectedService && (
+              <p className="text-xs text-muted-foreground">
+                ${selectedService.basePrice}/sq ft × {formatArea(totalAreaSqft, preferredAreaUnit)} + ${selectedService.linearRate ?? 0}/linear ft × {formatLength(totalLengthFt)}
               </p>
             )}
             {mode === 'plan' && selectedPlan && (

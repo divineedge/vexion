@@ -26,7 +26,7 @@ interface ZoneType {
   id: string;
   name: string;
   color: string;
-  mode?: 'area' | 'linear';
+  mode?: 'area' | 'linear' | 'both';
 }
 
 interface Service {
@@ -42,6 +42,7 @@ interface Service {
   pricingMode: string;
   pricingMatrix: PricingTier[] | null;
   linkedZoneTypeId: string | null;
+  linearRate?: number | null;
   offSeasonStart: string | null;
   offSeasonEnd: string | null;
   fieldRequirements?: { requiresChemicalApplication?: boolean; showMaterialsOrParts?: boolean; invoiceDateBasis?: "completed" | "scheduled" } | null;
@@ -57,7 +58,9 @@ type ServiceForm = {
   estimatedDuration: string;
   p4pPercentage: string;
   isActive: boolean;
-  pricingMode: 'flat' | 'per_sqft' | 'per_linear_ft' | 'matrix';
+  pricingMode: 'flat' | 'per_sqft' | 'per_linear_ft' | 'area_and_linear' | 'matrix';
+  linearRate: string;
+  matrixBasis: 'area' | 'linear' | 'both';
   pricingMatrix: TierWithKey[];
   linkedZoneTypeId: string;
   offSeasonEnabled: boolean;
@@ -79,6 +82,8 @@ const EMPTY_FORM: ServiceForm = {
   p4pPercentage: '',
   isActive: true,
   pricingMode: 'flat',
+  linearRate: '',
+  matrixBasis: 'area',
   pricingMatrix: [],
   linkedZoneTypeId: '',
   offSeasonEnabled: false,
@@ -97,12 +102,14 @@ function TierRow({
   tier,
   index,
   isLast,
+  basis,
   onChange,
   onRemove,
 }: {
   tier: TierWithKey;
   index: number;
   isLast: boolean;
+  basis: 'area' | 'linear' | 'both';
   onChange: (t: TierWithKey) => void;
   onRemove: () => void;
 }) {
@@ -114,6 +121,7 @@ function TierRow({
   const [maxStr, setMaxStr] = React.useState(tier.maxSqft != null ? String(tier.maxSqft) : '');
   const [priceStr, setPriceStr] = React.useState(tier.price ? String(tier.price) : '');
   const [perSqftStr, setPerSqftStr] = React.useState(tier.perSqftRate != null ? String(tier.perSqftRate) : '');
+  const [perLinearStr, setPerLinearStr] = React.useState(tier.perLinearFtRate != null ? String(tier.perLinearFtRate) : '');
   const [minsStr, setMinsStr] = React.useState(tier.estimatedMinutes != null ? String(tier.estimatedMinutes) : '');
 
   // Flush a numeric field to parent state — called onBlur or when value is clearly complete
@@ -125,8 +133,8 @@ function TierRow({
       <Input
         type="text"
         inputMode="decimal"
-        title="Minimum property area (sq ft) for this pricing tier"
-        placeholder="From sqft"
+        title={basis === 'linear' ? 'Minimum perimeter in feet for this pricing tier' : 'Minimum property area (sq ft) for this pricing tier'}
+        placeholder={basis === 'linear' ? 'From ft' : 'From sqft'}
         value={minStr}
         onChange={e => {
           setMinStr(e.target.value);
@@ -142,8 +150,8 @@ function TierRow({
         className="w-28 text-sm"
       />
       <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
-      {isOpenEnded ? (
-        <span className="w-28 text-xs text-muted-foreground px-2">any area above</span>
+        {isOpenEnded ? (
+        <span className="w-28 text-xs text-muted-foreground px-2">{basis === 'linear' ? 'any length above' : 'any area above'}</span>
       ) : (
         <Input
           type="text"
@@ -189,7 +197,7 @@ function TierRow({
             }}
             className="flex-1 text-sm"
           />
-          <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">per sq ft</span>
+          <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">{basis === 'linear' ? 'per ft' : 'per sq ft'}</span>
         </div>
       ) : (
         <div className="flex items-center gap-1 flex-1">
@@ -212,6 +220,32 @@ function TierRow({
             }}
             className="flex-1 text-sm"
           />
+        </div>
+      )}
+      {basis === 'both' && (
+        <div className="flex items-center gap-1 w-28">
+          <span className="text-xs text-muted-foreground shrink-0">$</span>
+          <Input
+            type="text"
+            inputMode="decimal"
+            title="Amount charged for each linear foot in this tier"
+            placeholder="/ft"
+            value={perLinearStr}
+            onChange={e => {
+              setPerLinearStr(e.target.value);
+              if (e.target.value === '') { commit({ perLinearFtRate: undefined }); return; }
+              const n = parseFloat(e.target.value);
+              if (!isNaN(n)) commit({ perLinearFtRate: n });
+            }}
+            onBlur={() => {
+              if (perLinearStr === '') { commit({ perLinearFtRate: undefined }); return; }
+              const n = parseFloat(perLinearStr);
+              if (isNaN(n)) { setPerLinearStr(''); commit({ perLinearFtRate: undefined }); }
+              else { setPerLinearStr(String(n)); commit({ perLinearFtRate: n }); }
+            }}
+            className="text-sm"
+          />
+          <span className="text-xs text-muted-foreground shrink-0">/ft</span>
         </div>
       )}
       <div className="flex items-center gap-1">
@@ -404,9 +438,11 @@ export default function ServicesPage() {
       estimatedDuration: s.estimatedDuration != null ? String(s.estimatedDuration) : '',
       p4pPercentage: s.p4pPercentage != null ? String(s.p4pPercentage) : '',
       isActive: s.isActive,
-      pricingMode: ['flat', 'per_sqft', 'per_linear_ft', 'matrix'].includes(s.pricingMode)
+      pricingMode: ['flat', 'per_sqft', 'per_linear_ft', 'area_and_linear', 'matrix'].includes(s.pricingMode)
         ? s.pricingMode as ServiceForm['pricingMode']
         : 'flat',
+      linearRate: s.linearRate != null ? String(s.linearRate) : '',
+      matrixBasis: (Array.isArray(s.pricingMatrix) && (s.pricingMatrix as PricingTier[])[0]?.basis) || 'area',
       pricingMatrix: Array.isArray(s.pricingMatrix) ? (s.pricingMatrix as PricingTier[]).map(t => ({ ...t, _key: mkKey() })) : [],
       linkedZoneTypeId: s.linkedZoneTypeId ?? '',
       offSeasonEnabled: hasOffSeason,
@@ -445,7 +481,10 @@ export default function ServicesPage() {
       p4pPercentage: form.p4pPercentage,
       isActive: form.isActive,
       pricingMode: form.pricingMode,
-      pricingMatrix: form.pricingMode === 'matrix' ? form.pricingMatrix.map(({ _key, ...t }) => t) : null,
+      linearRate: form.linearRate,
+      pricingMatrix: form.pricingMode === 'matrix'
+        ? form.pricingMatrix.map(({ _key, ...t }) => ({ ...t, basis: form.matrixBasis }))
+        : null,
       linkedZoneTypeId: form.linkedZoneTypeId || null,
       offSeasonStart,
       offSeasonEnd,
@@ -635,6 +674,11 @@ export default function ServicesPage() {
                             <Ruler className="w-2.5 h-2.5" /> linear ft
                           </Badge>
                         )}
+                        {s.pricingMode === 'area_and_linear' && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1 text-emerald-700 border-emerald-300 bg-emerald-50">
+                            <Ruler className="w-2.5 h-2.5" /> area + linear
+                          </Badge>
+                        )}
                       </div>
                       {s.description && <div className="text-xs text-muted-foreground truncate max-w-xs mt-0.5" title={s.description}>{s.description}</div>}
                     </TableCell>
@@ -648,6 +692,8 @@ export default function ServicesPage() {
                         </span>
                       ) : s.pricingMode === 'per_linear_ft' ? (
                         <span title={`Rate: $${s.basePrice.toFixed(2)} per linear foot`}>${s.basePrice.toFixed(2)}/ft</span>
+                      ) : s.pricingMode === 'area_and_linear' ? (
+                        <span title={`$${s.basePrice.toFixed(2)} per square foot plus $${(s.linearRate ?? 0).toFixed(2)} per linear foot`}>${s.basePrice.toFixed(2)}/sqft + ${(s.linearRate ?? 0).toFixed(2)}/ft</span>
                       ) : s.pricingMode === 'per_sqft' ? (
                         <span title={`Rate: $${s.basePrice.toFixed(2)} per square foot`}>${s.basePrice.toFixed(2)}/sqft</span>
                       ) : (
@@ -783,11 +829,11 @@ export default function ServicesPage() {
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium">Pricing</p>
                 <div className="flex border rounded-lg overflow-hidden text-xs">
-                  {(['flat', 'per_sqft', 'per_linear_ft', 'matrix'] as const).map(m => (
+                  {(['flat', 'per_sqft', 'per_linear_ft', 'area_and_linear', 'matrix'] as const).map(m => (
                     <button
                       key={m}
                       type="button"
-                      className={`px-3 py-1.5 transition capitalize ${form.pricingMode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                      className={`px-3 py-1.5 transition ${form.pricingMode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
                       onClick={() => setForm(f => ({ ...f, pricingMode: m }))}
                     >
                       {m === 'flat'
@@ -796,7 +842,9 @@ export default function ServicesPage() {
                           ? 'Per sqft'
                           : m === 'per_linear_ft'
                             ? 'Per linear ft'
-                            : 'Measurement matrix'}
+                            : m === 'area_and_linear'
+                              ? 'Area + linear'
+                              : 'Measurement matrix'}
                     </button>
                   ))}
                 </div>
@@ -809,9 +857,9 @@ export default function ServicesPage() {
                     <label className="text-sm font-medium">
                       {form.pricingMode === 'flat'
                         ? 'Base Price ($)'
-                        : form.pricingMode === 'per_sqft'
-                          ? 'Rate per sqft ($)'
-                          : 'Rate per linear ft ($)'}
+                        : form.pricingMode === 'per_linear_ft'
+                          ? 'Rate per linear ft ($)'
+                          : 'Rate per sqft ($)'}
                     </label>
                     <Input
                       type="number"
@@ -837,7 +885,20 @@ export default function ServicesPage() {
                       onChange={e => setForm(f => ({ ...f, estimatedDuration: e.target.value }))}
                     />
                   </div>
-                </div>
+                  </div>
+                  {form.pricingMode === 'area_and_linear' && (
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Rate per linear ft ($)</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        title="Amount charged for each linear foot, added to the square-foot charge"
+                        placeholder="0.00"
+                        value={form.linearRate}
+                        onChange={e => setForm(f => ({ ...f, linearRate: e.target.value }))}
+                      />
+                    </div>
+                  )}
                   {form.pricingMode !== 'flat' && (
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium">Zone type</label>
@@ -851,7 +912,11 @@ export default function ServicesPage() {
                         <SelectContent>
                           <SelectItem value="__none__">Any selected measurement zones</SelectItem>
                           {zoneTypes
-                            .filter(zt => form.pricingMode === 'per_linear_ft' ? zt.mode === 'linear' : zt.mode !== 'linear')
+                            .filter(zt => form.pricingMode === 'per_linear_ft'
+                              ? zt.mode === 'linear' || zt.mode === 'both'
+                              : form.pricingMode === 'area_and_linear'
+                                ? true
+                                : zt.mode !== 'linear')
                             .map(zt => (
                               <SelectItem key={zt.id} value={zt.id}>
                                 <div className="flex items-center gap-2">
@@ -864,14 +929,27 @@ export default function ServicesPage() {
                       </Select>
                       <p className="text-xs text-muted-foreground">
                         {form.pricingMode === 'per_linear_ft'
-                          ? 'The rate is multiplied by the saved length of this linear zone type.'
-                          : 'The rate is multiplied by the saved area of this zone type.'}
+                          ? 'The rate is multiplied by the saved perimeter of this zone type.'
+                          : form.pricingMode === 'area_and_linear'
+                            ? 'Square feet and linear feet from this zone are priced separately and added together.'
+                            : 'The rate is multiplied by the saved area of this zone type.'}
                       </p>
                     </div>
                   )}
                 </div>
               ) : (
                 <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Matrix measures</label>
+                    <Select value={form.matrixBasis} onValueChange={value => setForm(f => ({ ...f, matrixBasis: value as ServiceForm['matrixBasis'] }))}>
+                      <SelectTrigger title="Choose whether matrix tiers use area, linear footage, or both"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="area">Area (sq ft)</SelectItem>
+                        <SelectItem value="linear">Linear footage</SelectItem>
+                        <SelectItem value="both">Area and linear footage</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   {/* Matrix tiers */}
                   <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                     <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium pb-1 border-b">
@@ -890,6 +968,7 @@ export default function ServicesPage() {
                         tier={tier}
                         index={i}
                         isLast={i === form.pricingMatrix.length - 1}
+                        basis={form.matrixBasis}
                         onChange={t => updateTier(i, t)}
                         onRemove={() => removeTier(i)}
                       />

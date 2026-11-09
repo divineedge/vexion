@@ -183,7 +183,8 @@ export default function SettingsPage() {
   const [defaultGeofenceUnit, setDefaultGeofenceUnit] = useState<'m' | 'ft'>('m');
   const [autoCreateGeofence, setAutoCreateGeofence] = useState(false);
   const [preferredAreaUnit, setPreferredAreaUnit] = useState<'sqft' | 'acres'>('sqft');
-  const [zoneTypes, setZoneTypes] = useState<Array<{ id: string; name: string; color: string; mode?: 'area' | 'linear' }>>([
+  const [satelliteMeasurementMode, setSatelliteMeasurementMode] = useState<'area' | 'linear' | 'both'>('both');
+  const [zoneTypes, setZoneTypes] = useState<Array<{ id: string; name: string; color: string; mode?: 'area' | 'linear' | 'both' }>>([
     { id: '1', name: 'Front Lawn', color: '#3B82F6', mode: 'area' },
     { id: '2', name: 'Back Yard', color: '#10B981', mode: 'area' },
     { id: '3', name: 'Bed Areas', color: '#F59E0B', mode: 'area' },
@@ -331,7 +332,8 @@ export default function SettingsPage() {
       setDefaultGeofenceUnit(((settings as any).defaultGeofenceUnit as 'm' | 'ft') ?? 'm');
       setAutoCreateGeofence((settings as any).autoCreateGeofence ?? false);
       setPreferredAreaUnit(((settings as any).preferredAreaUnit as 'sqft' | 'acres') ?? 'sqft');
-      const rawZoneTypes = (settings as any).measurementZoneTypes as Array<{ id: string; name: string; color: string; mode?: 'area' | 'linear' }> | undefined;
+      setSatelliteMeasurementMode((settings as any).satelliteMeasurementMode === 'area' || (settings as any).satelliteMeasurementMode === 'linear' ? (settings as any).satelliteMeasurementMode : 'both');
+      const rawZoneTypes = (settings as any).measurementZoneTypes as Array<{ id: string; name: string; color: string; mode?: 'area' | 'linear' | 'both' }> | undefined;
       if (rawZoneTypes && rawZoneTypes.length > 0) {
         setZoneTypes(rawZoneTypes.map(zt => ({ ...zt, mode: zt.mode ?? 'area' })));
       } else {
@@ -557,7 +559,7 @@ export default function SettingsPage() {
     dailyTaskHourlyRate: numOrSkip(dailyTaskHourlyRate), defaultOffSeasonStart: defaultOffSeasonStart || null, defaultOffSeasonEnd: defaultOffSeasonEnd || null,
     // Maps
     defaultGeofenceRadius: numOrSkip(defaultGeofenceRadius, true), defaultGeofenceUnit, autoCreateGeofence,
-    preferredAreaUnit, measurementZoneTypes: zoneTypes.every(z => z.name.trim())
+    preferredAreaUnit, satelliteMeasurementMode, measurementZoneTypes: zoneTypes.every(z => z.name.trim())
       ? zoneTypes.map(z => ({ ...z, mode: z.mode ?? 'area' as const })) : undefined,
     // Customer fields
     customerFields,
@@ -1078,6 +1080,30 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
+          <Card data-testid="card-satellite-measurements">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Ruler className="w-5 h-5 text-primary" /> Satellite Measurements
+              </CardTitle>
+              <CardDescription>
+                Choose the default capture for new property sections drawn on the satellite map. Staff can still switch a section to area, linear perimeter, or both.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Default measurement</label>
+                <Select value={satelliteMeasurementMode} onValueChange={value => setSatelliteMeasurementMode(value as 'area' | 'linear' | 'both')}>
+                  <SelectTrigger className="max-w-[280px]" data-testid="select-satellite-measurement-mode"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="area">Area only</SelectItem>
+                    <SelectItem value="linear">Linear perimeter only</SelectItem>
+                    <SelectItem value="both">Both</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -1164,6 +1190,13 @@ export default function SettingsPage() {
                           onClick={() => setZoneTypes(z => z.map(z2 => z2.id === zt.id ? { ...z2, mode: 'linear' as const } : z2))}
                         >
                           Linear
+                        </button>
+                        <button
+                          type="button"
+                          className={`px-2 py-1 text-xs font-medium transition ${zt.mode === 'both' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+                          onClick={() => setZoneTypes(z => z.map(z2 => z2.id === zt.id ? { ...z2, mode: 'both' as const } : z2))}
+                        >
+                          Both
                         </button>
                       </div>
                       {/* Move up */}

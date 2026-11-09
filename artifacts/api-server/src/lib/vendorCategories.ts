@@ -24,6 +24,10 @@ export async function installVendorCategoriesSchema(){
  await db.execute(sql`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS contact_phone text`);
  await db.execute(sql`ALTER TABLE expense_entries ADD COLUMN IF NOT EXISTS shipping_amount real NOT NULL DEFAULT 0,ADD COLUMN IF NOT EXISTS capitalize_shipping boolean NOT NULL DEFAULT false`);
  await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS portal_show_measurements boolean NOT NULL DEFAULT true`);
+ await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS satellite_measurement_mode text NOT NULL DEFAULT 'both'`);
+ await db.execute(sql`ALTER TABLE properties ADD COLUMN IF NOT EXISTS perimeter_linear_feet real`);
+ await db.execute(sql`ALTER TABLE services ADD COLUMN IF NOT EXISTS linear_rate real NOT NULL DEFAULT 0`);
+ await db.execute(sql`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS perimeter_linear_feet real`);
  await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS document_link_destination text NOT NULL DEFAULT 'document'`);
  await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS automatic_invoice_payment_mode text NOT NULL DEFAULT 'manual'`);
  await db.execute(sql`ALTER TABLE customers ADD COLUMN IF NOT EXISTS automatic_payment_authorized_at timestamptz, ADD COLUMN IF NOT EXISTS payment_authorization_method_id text`);

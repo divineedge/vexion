@@ -4,13 +4,14 @@ import { publicAppUrl } from "../lib/publicSite";
 import { Router, type IRouter } from "express";
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
-import { db, tenantsTable, usersTable, servicesTable, staffSessionsTable } from "@workspace/db";
+import { db, tenantsTable, tenantLogosTable, usersTable, servicesTable, staffSessionsTable } from "@workspace/db";
 import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { budgetServiceLinks } from "../lib/budgetServiceLinks";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { logoContentType, logoUpload, publicLogoUrl, requestOrigin, uploadLogoToSupabase } from "../lib/companyLogo";
 import { buildGoogleAuthorizeUrl, exchangeGoogleCode } from "../lib/gmailProvider";
 import { normalizeChemicalRecordRequirements, parseChemicalRecordRequirements } from "../lib/chemicalRequirements";
 
@@ -210,6 +211,45 @@ router.get("/settings", async (req, res): Promise<void> => {
   res.json(formatTenant(tenant));
 });
 
+router.post("/settings/logo", (req, res, next) => {
+  logoUpload.single("file")(req, res, (error) => {
+    if (error) {
+      res.status(400).json({ error: "Upload one PNG, JPEG, WebP, GIF, or SVG image of at most 10 MB" });
+      return;
+    }
+    next();
+  });
+}, async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  if (!(await isAdminRole(tenantId, getUserId(req)))) {
+    res.status(403).json({ error: "Restricted to owner/admin roles" });
+    return;
+  }
+  const file = req.file;
+  if (!file) {
+    res.status(400).json({ error: "Choose an image file" });
+    return;
+  }
+  const contentType = logoContentType(file.buffer);
+  if (!contentType) {
+    res.status(400).json({ error: "Upload a PNG, JPEG, WebP, GIF, or SVG image of at most 10 MB" });
+    return;
+  }
+  let logoUrl = publicLogoUrl(requestOrigin(req), tenantId);
+  try {
+    const published = await uploadLogoToSupabase(tenantId, file.buffer, contentType);
+    if (published) logoUrl = published;
+  } catch {
+    // The company record still stores the image and serves it from the public logo URL.
+  }
+  await db.transaction(async (tx) => {
+    await tx.delete(tenantLogosTable).where(eq(tenantLogosTable.tenantId, tenantId));
+    await tx.insert(tenantLogosTable).values({ tenantId, contentType, bytes: file.buffer });
+    await tx.update(tenantsTable).set({ logoUrl }).where(eq(tenantsTable.id, tenantId));
+  });
+  res.json({ logoUrl });
+});
+
 router.patch("/settings", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const {
@@ -374,7 +414,9 @@ router.patch("/settings", async (req, res): Promise<void> => {
   // Business Profile
   if (logoUrl !== undefined) {
     const nextLogoUrl: string | null = logoUrl || null;
-    if (nextLogoUrl) {
+    if (!nextLogoUrl) {
+      updates.logoUrl = null;
+    } else if (nextLogoUrl) {
       // Security: logos are served publicly and unauthenticated (branding on
       // customer-facing pages), so we must not just trust whatever object
       // path a tenant sends here — a guessed/enumerated path could otherwise
@@ -581,6 +623,9 @@ router.patch("/settings", async (req, res): Promise<void> => {
     return;
   }
 
+  if (logoUrl !== undefined && !logoUrl) {
+    await db.delete(tenantLogosTable).where(eq(tenantLogosTable.tenantId, tenantId));
+  }
   const [updated] = await db.update(tenantsTable).set(updates).where(eq(tenantsTable.id, tenantId)).returning();
   if (!updated) { res.status(404).json({ error: "Tenant not found" }); return; }
   res.json(formatTenant(updated));

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coerceEstimateDepositSettings, defaultEstimateDepositSettings, depositInvoiceSatisfied, estimateDepositSettingsDocument, firstMatchingDepositRule, mergeEstimateDepositSettings, readEstimateDepositSettings, readScheduleDeposit, unpaidScheduleDepositMessage, validateDepositRules, validateScheduleDeposit, type DepositRule } from "./companyDepositRules";
+import { coerceEstimateDepositSettings, defaultEstimateDepositSettings, depositInvoiceSatisfied, estimateDepositSettingsDocument, firstMatchingDepositRule, mergeEstimateDepositSettings, readEstimateDepositSettings, readScheduleDeposit, schedulingDepositTarget, unpaidScheduleDepositMessage, validateDepositRules, validateScheduleDeposit, type DepositRule } from "./companyDepositRules";
 import { propertyInvoiceGroups } from "./invoicePropertyGrouping";
 
 const rule: DepositRule = { id: "fixture", name: "Matching rule", enabled: true, minTotal: 500, maxTotal: 1000,
@@ -53,6 +53,14 @@ describe("configurable deposit matching and property grouping", () => {
     expect(depositInvoiceSatisfied({ status: "paid", total: 40 })).toBe(true);
     expect(depositInvoiceSatisfied({ status: "draft", total: 40, creditApplied: 40 })).toBe(true);
     expect(depositInvoiceSatisfied({ status: "sent", total: 40 })).toBe(false);
+    expect(schedulingDepositTarget("percent", 25, 200).amount).toBe(50);
+    expect(schedulingDepositTarget("fixed", 100, 80).amount).toBe(80);
+    expect(schedulingDepositTarget("fixed", 100, 0).amount).toBe(100);
+    const withSchedule = readEstimateDepositSettings({ estimate_deposit_settings: { enabled: true, defaultType: "percent", defaultAmount: 10, requireBeforeScheduling: true, allowEstimateOverrides: false, rules: [], scheduling_deposit_type: "fixed", scheduling_deposit_value: 100, scheduling_deposit_fixed: 100, scheduling_deposit_percent: 15 } });
+    expect(withSchedule.scheduling_deposit_type).toBe("fixed");
+    expect(withSchedule.schedulingDepositValue).toBe(100);
+    expect(withSchedule.schedulingDepositPercent).toBe(15);
+    expect(readScheduleDeposit({ estimate_deposit_settings: withSchedule })).toMatchObject({ enabled: true, mode: "fixed", value: 100 });
   });
   it("combines by default and splits by property without losing unassigned charges", () => {
     const lines = [{propertyId:1,total:100},{propertyId:2,total:200},{propertyId:1,total:50},{propertyId:null,total:10}];

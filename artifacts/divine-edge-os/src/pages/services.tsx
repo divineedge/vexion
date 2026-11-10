@@ -377,6 +377,8 @@ export default function ServicesPage() {
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
   const categoriesQuery = useQuery({ queryKey: ['service-categories'], queryFn: () => customFetch<{ categories: { id: number; name: string }[] }>('/api/settings/service-categories') });
   const [categoryName, setCategoryName] = useState('');
+  const [showNewCategory, setShowNewCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
   const saveCategory = useMutation({
     mutationFn: (body: { id?: number; name: string; remove?: boolean }) => body.remove
       ? customFetch(`/api/settings/service-categories/${body.id}`, { method: 'DELETE' })
@@ -385,6 +387,25 @@ export default function ServicesPage() {
         : customFetch('/api/settings/service-categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: body.name }) }),
     onSuccess: () => { setCategoryName(''); qc.invalidateQueries({ queryKey: ['service-categories'] }); toast.success('Service categories updated'); },
     onError: () => toast.error('Could not update that category'),
+  });
+  const createCategory = useMutation({
+    mutationFn: (name: string) => customFetch<{ id: number; name: string }>('/api/service-categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }),
+    onSuccess: created => {
+      qc.setQueryData(['service-categories'], (current: { categories?: { id: number; name: string }[] } | undefined) => {
+        const categories = [...(current?.categories ?? []).filter(category => category.id !== Number(created.id) && category.name !== created.name), { id: Number(created.id), name: created.name }];
+        categories.sort((a, b) => a.name.localeCompare(b.name));
+        return { categories };
+      });
+      setForm(current => ({ ...current, category: created.name }));
+      setNewCategoryName('');
+      setShowNewCategory(false);
+      toast.success('Category added');
+    },
+    onError: (error: unknown) => toast.error(error instanceof Error ? error.message : 'Could not add that category'),
   });
   const globalP4pRate = (settings as any)?.p4pMasterPercentage ?? 0;
 
@@ -830,6 +851,20 @@ export default function ServicesPage() {
                   )}
                 </SelectContent>
               </Select>
+              {showNewCategory ? (
+                <div className="flex gap-2">
+                  <Input
+                    autoFocus
+                    placeholder="New category"
+                    value={newCategoryName}
+                    onChange={event => setNewCategoryName(event.target.value)}
+                    onKeyDown={event => { if (event.key === 'Enter' && newCategoryName.trim()) createCategory.mutate(newCategoryName.trim()); }}
+                  />
+                  <Button type="button" disabled={createCategory.isPending || !newCategoryName.trim()} onClick={() => createCategory.mutate(newCategoryName.trim())}>Save</Button>
+                </div>
+              ) : (
+                <Button type="button" variant="outline" onClick={() => setShowNewCategory(true)}>Add New Category</Button>
+              )}
             </div>
 
             <div className="space-y-1.5">

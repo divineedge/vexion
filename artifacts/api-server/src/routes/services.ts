@@ -4,6 +4,7 @@ import { eq, and, ilike, desc, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { normalizeFieldRequirements } from "../lib/serviceFieldRequirements";
+import { isMissingColumnError } from "../lib/settingsFallback";
 import { syncServiceMatrix } from "../lib/matrixPricingStore";
 import { readPricingTiers, type PriceRounding, type PricingTier } from "../lib/pricingMatrix";
 
@@ -244,16 +245,32 @@ router.get("/settings/service-categories", async (req, res): Promise<void> => {
   res.json({ categories: rows.rows });
 });
 
-router.post("/settings/service-categories", async (req, res): Promise<void> => {
+async function createServiceCategory(req: import("express").Request, res: import("express").Response): Promise<void> {
   const tenantId = getTenantId(req);
   if (!await requireOfficeRole(req, res, tenantId)) return;
   const name = String(req.body?.name ?? "").trim();
   if (!name || name.length > 80) { res.status(400).json({ error: "Enter a category name up to 80 characters" }); return; }
-  const existing = await db.execute(sql`SELECT id FROM service_categories WHERE tenant_id=${tenantId} AND lower(name)=lower(${name}) LIMIT 1`);
-  if (existing.rows.length) { res.status(409).json({ error: "That category already exists" }); return; }
-  const inserted = await db.execute(sql`INSERT INTO service_categories (tenant_id, name) VALUES (${tenantId}, ${name}) RETURNING id, name`);
-  res.status(201).json(inserted.rows[0]);
-});
+  try {
+    const existing = await db.execute(sql`SELECT id, name FROM service_categories WHERE tenant_id=${tenantId} AND lower(name)=lower(${name}) LIMIT 1`);
+    if (existing.rows.length) { res.status(200).json(existing.rows[0]); return; }
+    const inserted = await db.execute(sql`INSERT INTO service_categories (tenant_id, name) VALUES (${tenantId}, ${name}) RETURNING id, name`);
+    res.status(201).json(inserted.rows[0]);
+  } catch (error) {
+    const code = (error as { code?: string })?.code;
+    if (isMissingColumnError(error) || code === "42P01") {
+      res.status(503).json({ error: "Service categories are not ready yet. Reload and try again." });
+      return;
+    }
+    if (code === "23505") {
+      const existing = await db.execute(sql`SELECT id, name FROM service_categories WHERE tenant_id=${tenantId} AND lower(name)=lower(${name}) LIMIT 1`);
+      if (existing.rows.length) { res.status(200).json(existing.rows[0]); return; }
+    }
+    throw error;
+  }
+}
+
+router.post("/settings/service-categories", createServiceCategory);
+router.post("/service-categories", createServiceCategory);
 
 router.patch("/settings/service-categories/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);

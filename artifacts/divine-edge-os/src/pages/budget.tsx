@@ -104,14 +104,13 @@ export default function BudgetPage() {
     setActiveTab(newDiv.id);
     setDivisionSaving(true);
     try {
-      const saved = await customFetch<{ division: DivisionBudget }>('/api/settings/budget/divisions', {
+      const saved = await customFetch<{ division: DivisionBudget; budgetData: unknown }>('/api/settings/budget/divisions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year: currentYear, division: newDiv }),
+        body: JSON.stringify({ year: currentYear, division: newDiv, budgetData: nextYears }),
       });
-      setYears(prev => prev.map(y => y.year === currentYear
-        ? { ...y, divisions: y.divisions.map(d => d.id === newDiv.id ? saved.division : d) }
-        : y));
+      const migrated = migrateBudgetPayload(saved.budgetData);
+      if (migrated.length) setYears(migrated);
       setRenamingId(saved.division.id);
     } catch (error) {
       setYears(prev => prev.map(y => y.year === currentYear

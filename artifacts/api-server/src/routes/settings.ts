@@ -8,6 +8,7 @@ import { db, tenantsTable, tenantLogosTable, usersTable, servicesTable, staffSes
 import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { budgetServiceLinks } from "../lib/budgetServiceLinks";
+import { appendBudgetDivision, BudgetDocumentError } from "../lib/budgetDocument";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -853,31 +854,38 @@ router.post("/settings/budget/divisions", async (req, res): Promise<void> => {
     res.status(400).json({ error: "A budget year is required" });
     return;
   }
-  const nextDivision = { ...division, name: division.name.trim(), serviceIds: Array.isArray(division.serviceIds) ? division.serviceIds : [] };
   try {
-    budgetServiceLinks([{ year, divisions: [nextDivision] }]);
     const saved = await db.transaction(async tx => {
-      const result = await tx.execute(sql`SELECT budget_data FROM tenants WHERE id = ${tenantId} FOR UPDATE`);
-      const raw = result.rows[0]?.budget_data;
-      const years = Array.isArray(raw) ? [...raw] : raw && typeof raw === "object" ? [raw] : [];
-      let target = years.find(entry => entry && typeof entry === "object" && Number((entry as { year?: unknown }).year) === year) as { year: number; divisions?: unknown[] } | undefined;
-      if (!target) {
-        target = { year, divisions: [] };
-        years.push(target);
+      const result = await tx.execute(sql`SELECT id, budget_data FROM tenants WHERE id = ${tenantId} FOR UPDATE`);
+      if (!result.rows.length) throw new BudgetDocumentError("Company budget row was not found");
+      const stored = result.rows[0]?.budget_data;
+      const source = req.body?.budgetData == null ? stored ?? null : req.body.budgetData;
+      const prepared = appendBudgetDivision(source, year, division);
+      const serviceIds = budgetServiceLinks(prepared.years);
+      if (serviceIds.length) {
+        const owned = await db.select({ id: servicesTable.id }).from(servicesTable)
+          .where(and(eq(servicesTable.tenantId, tenantId), inArray(servicesTable.id, serviceIds)));
+        if (owned.length !== serviceIds.length) throw new BudgetDocumentError("Every budget service must belong to your company");
       }
-      if (!Array.isArray(target.divisions)) target.divisions = [];
-      if (!target.divisions.some(entry => entry && typeof entry === "object" && (entry as { id?: unknown }).id === nextDivision.id)) target.divisions.push(nextDivision);
-      budgetServiceLinks(years);
-      await tx.execute(sql`UPDATE tenants SET budget_data = ${JSON.stringify(years)}::jsonb WHERE id = ${tenantId}`);
-      return { division: nextDivision, year: target };
+      await tx.execute(sql`UPDATE tenants SET budget_data = ${JSON.stringify(prepared.years)}::jsonb WHERE id = ${tenantId}`);
+      return { division: prepared.division, budgetData: prepared.years };
     });
     res.status(201).json(saved);
   } catch (error) {
-    if (isMissingColumnError(error)) {
+    if (error instanceof BudgetDocumentError) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    const code = (error as { code?: string })?.code;
+    if (isMissingColumnError(error) || code === "42P01") {
       res.status(503).json({ error: "Budget storage is not ready yet. Reload and try again." });
       return;
     }
-    res.status(400).json({ error: error instanceof Error ? error.message : "Failed to add division" });
+    if (code === "22P02") {
+      res.status(400).json({ error: "The budget could not be stored. Reload the page and add the division again." });
+      return;
+    }
+    throw error;
   }
 });
 

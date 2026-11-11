@@ -126,7 +126,9 @@ router.post("/services", async (req, res): Promise<void> => {
     return;
   }
 
-  const [service] = await db
+  let service;
+  try {
+  const [inserted] = await db
     .insert(servicesTable)
     .values({
       tenantId,
@@ -137,7 +139,7 @@ router.post("/services", async (req, res): Promise<void> => {
       hourlyRate: resolvedMode === "hourly" ? hourlyRate : null,
       minimumBillableMinutes: resolvedMode === "hourly" && minimumHours != null && minimumHours > 0 ? Math.round(minimumHours * 60) : null,
       linearRate: parseFloat(req.body.linearRate) || 0,
-      estimatedDuration: estimatedDuration ? parseInt(estimatedDuration, 10) : null,
+      estimatedDuration: Number.isInteger(parseInt(estimatedDuration, 10)) ? parseInt(estimatedDuration, 10) : null,
       p4pPercentage: parsedP4p,
       isActive: isActive !== false,
       pricingMode: resolvedMode,
@@ -148,8 +150,23 @@ router.post("/services", async (req, res): Promise<void> => {
       fieldRequirements: normalizeFieldRequirements(fieldRequirements),
     })
     .returning();
+  service = inserted;
+  } catch (error) {
+    const code = (error as { code?: string })?.code;
+    if (isMissingColumnError(error) || code === "42P01") {
+      res.status(503).json({ error: "Service storage is not ready yet. Reload and try again." });
+      return;
+    }
+    if (code === "22P02" || code === "23502") {
+      res.status(400).json({ error: "Check the price, P4P rate, pricing tiers, and off-season dates, then save again." });
+      return;
+    }
+    throw error;
+  }
+  if (!service) { res.status(500).json({ error: "The service could not be saved." }); return; }
 
-  await syncServiceMatrix(tenantId, service.id, service.pricingMode, service.pricingMatrix);
+  try { await syncServiceMatrix(tenantId, service.id, service.pricingMode, service.pricingMatrix); }
+  catch (error) { req.log?.error?.({ err: error }, "Service saved; matrix tiers were not copied"); }
   res.status(201).json({ ...service, fieldRequirements: normalizeFieldRequirements(service.fieldRequirements), createdAt: service.createdAt.toISOString(), updatedAt: service.updatedAt.toISOString() });
 });
 
@@ -168,7 +185,10 @@ router.patch("/services/:id", async (req, res): Promise<void> => {
   if (category !== undefined) updates.category = category || null;
   if (basePrice !== undefined) updates.basePrice = parseFloat(basePrice) || 0;
   if (req.body.linearRate !== undefined) updates.linearRate = parseFloat(req.body.linearRate) || 0;
-  if (estimatedDuration !== undefined) updates.estimatedDuration = estimatedDuration ? parseInt(estimatedDuration, 10) : null;
+  if (estimatedDuration !== undefined) {
+    const minutes = parseInt(estimatedDuration, 10);
+    updates.estimatedDuration = Number.isInteger(minutes) ? minutes : null;
+  }
   if (p4pPercentage !== undefined) updates.p4pPercentage = p4pPercentage !== "" && p4pPercentage != null ? parseFloat(p4pPercentage) : null;
   if (isActive !== undefined) updates.isActive = Boolean(isActive);
   if (pricingMode !== undefined) {
@@ -216,15 +236,30 @@ router.patch("/services/:id", async (req, res): Promise<void> => {
     updates.offSeasonEnd = parsedEnd;
   }
 
-  const [updated] = await db
-    .update(servicesTable)
-    .set(updates)
-    .where(and(eq(servicesTable.id, id), eq(servicesTable.tenantId, tenantId)))
-    .returning();
+  let updated;
+  try {
+    [updated] = await db
+      .update(servicesTable)
+      .set(updates)
+      .where(and(eq(servicesTable.id, id), eq(servicesTable.tenantId, tenantId)))
+      .returning();
+  } catch (error) {
+    const code = (error as { code?: string })?.code;
+    if (isMissingColumnError(error) || code === "42P01") {
+      res.status(503).json({ error: "Service storage is not ready yet. Reload and try again." });
+      return;
+    }
+    if (code === "22P02" || code === "23502") {
+      res.status(400).json({ error: "Check the price, P4P rate, pricing tiers, and off-season dates, then save again." });
+      return;
+    }
+    throw error;
+  }
 
   if (!updated) { res.status(404).json({ error: "Service not found" }); return; }
   if (updates.pricingMode !== undefined || updates.pricingMatrix !== undefined) {
-    await syncServiceMatrix(tenantId, updated.id, updated.pricingMode, updated.pricingMatrix);
+    try { await syncServiceMatrix(tenantId, updated.id, updated.pricingMode, updated.pricingMatrix); }
+    catch (error) { req.log?.error?.({ err: error }, "Service saved; matrix tiers were not copied"); }
   }
   res.json({ ...updated, fieldRequirements: normalizeFieldRequirements(updated.fieldRequirements), createdAt: updated.createdAt.toISOString(), updatedAt: updated.updatedAt.toISOString() });
 });

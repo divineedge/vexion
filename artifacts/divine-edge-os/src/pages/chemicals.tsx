@@ -8,6 +8,7 @@ import {
   useGetTenantSettings, getGetTenantSettingsQueryKey, useUpdateTenantSettings,
   useListChemicalDocuments, getListChemicalDocumentsQueryKey,
   useUploadChemicalDocument, useDeleteChemicalDocument, useGetChemicalDocumentReadUrl,
+  customFetch,
 } from '@workspace/api-client-react';
 import type { ChemicalProduct, ChemicalMixture, ChemicalMixtureItem, ChemicalDocument } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -35,6 +36,24 @@ import {
 
 const MAX_SAFETY_SHEET_BYTES = 20 * 1024 * 1024;
 
+async function openProductLabel(productId: number) {
+  const documents = await customFetch<Array<{ id: number; documentType: string }>>(`/api/chemical-products/${productId}/documents`);
+  const label = documents.find(document => document.documentType === 'label');
+  if (!label) { toast.error('Upload a product label PDF from Safety Sheets first.'); return; }
+  const tab = window.open('', '_blank');
+  if (!tab) { toast.error('Allow pop-ups to open the product label.'); return; }
+  try {
+    const result = await customFetch<{ url: string }>(`/api/chemical-products/${productId}/documents/${label.id}/read-url`, { method: 'POST' });
+    const safeUrl = safeHttpUrl(result.url, true);
+    if (!safeUrl) throw new Error('invalid');
+    tab.opener = null;
+    tab.location.href = safeUrl;
+  } catch {
+    tab.close();
+    toast.error('Could not open the product label.');
+  }
+}
+
 function safeHttpUrl(value: string, allowRelative = false): string | null {
   try {
     if (allowRelative && value.startsWith('/') && !value.startsWith('//')) {
@@ -50,7 +69,7 @@ function safeHttpUrl(value: string, allowRelative = false): string | null {
 function ChemicalSafetySheets({ product, canManage, onClose }: { product: ChemicalProduct; canManage: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const fileInput = useRef<HTMLInputElement>(null);
-  const [documentType, setDocumentType] = useState<'sds' | 'msds'>('sds');
+  const [documentType, setDocumentType] = useState<'sds' | 'msds' | 'label'>('label');
   const [file, setFile] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState('');
   const [openingId, setOpeningId] = useState<number | null>(null);
@@ -149,9 +168,9 @@ function ChemicalSafetySheets({ product, canManage, onClose }: { product: Chemic
               <p className="text-sm font-medium">Upload a safety sheet</p>
               <div className="flex items-center gap-2">
                 <label htmlFor="chemical-document-type" className="text-sm">Type</label>
-                <Select value={documentType} onValueChange={value => setDocumentType(value as 'sds' | 'msds')} disabled={upload.isPending}>
-                  <SelectTrigger id="chemical-document-type" className="w-28"><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="sds">SDS</SelectItem><SelectItem value="msds">MSDS</SelectItem></SelectContent>
+                <Select value={documentType} onValueChange={value => setDocumentType(value as 'sds' | 'msds' | 'label')} disabled={upload.isPending}>
+                  <SelectTrigger id="chemical-document-type" className="w-40"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="label">Product label</SelectItem><SelectItem value="sds">SDS</SelectItem><SelectItem value="msds">MSDS</SelectItem></SelectContent>
                 </Select>
               </div>
               <Input ref={fileInput} type="file" accept=".pdf,application/pdf" aria-label="Choose safety sheet PDF" disabled={upload.isPending} onChange={e => selectFile(e.target.files?.[0] ?? null)} />
@@ -327,30 +346,48 @@ export default function ChemicalsPage() {
   const [mixFormOpen, setMixFormOpen] = useState(false);
   const [editingMix, setEditingMix] = useState<ChemicalMixture | null>(null);
   const [mixForm, setMixForm] = useState({ name: '', description: '' });
-  const [mixItems, setMixItems] = useState<Array<{ productId: string; ratioAmount: string; ratioUnit: string }>>([]);
+  const [mixItems, setMixItems] = useState<Array<{ productId: string; ratioAmount: string; ratioUnit: string; rateBasis: 'per_gallon' | 'per_1000_sqft' }>>([]);
+  const [tankCapacityGallons, setTankCapacityGallons] = useState('');
+  const [coverageSqft, setCoverageSqft] = useState('');
 
   const openAddMix = () => {
     setEditingMix(null);
     setMixForm({ name: '', description: '' });
+    setTankCapacityGallons('');
+    setCoverageSqft('');
     setMixItems([]);
     setMixFormOpen(true);
   };
   const openEditMix = (m: ChemicalMixture) => {
+    const mix = m as ChemicalMixture & { tankCapacityGallons?: number | null; coverageSqft?: number | null };
     setEditingMix(m);
     setMixForm({ name: m.name, description: m.description ?? '' });
-    setMixItems(m.items.map((i: ChemicalMixtureItem) => ({ productId: String(i.productId), ratioAmount: String(i.ratioAmount), ratioUnit: i.ratioUnit })));
+    setTankCapacityGallons(mix.tankCapacityGallons ? String(mix.tankCapacityGallons) : '');
+    setCoverageSqft(mix.coverageSqft ? String(mix.coverageSqft) : '');
+    setMixItems(m.items.map((i: ChemicalMixtureItem & { rateBasis?: string; ratePer1000?: number | null }) => ({
+      productId: String(i.productId),
+      ratioAmount: String(i.rateBasis === 'per_1000_sqft' ? (i.ratePer1000 ?? i.ratioAmount) : i.ratioAmount),
+      ratioUnit: i.ratioUnit,
+      rateBasis: i.rateBasis === 'per_1000_sqft' ? 'per_1000_sqft' : 'per_gallon',
+    })));
     setMixFormOpen(true);
   };
   const saveMix = () => {
     if (!mixForm.name) { toast.error('Name is required'); return; }
+    const items = mixItems.filter(i => i.productId && i.ratioAmount !== '').map(i => ({
+      productId: parseInt(i.productId, 10),
+      ratioAmount: parseFloat(i.ratioAmount),
+      rateAmount: parseFloat(i.ratioAmount),
+      ratioUnit: i.ratioUnit,
+      rateBasis: i.rateBasis,
+    })).filter(i => Number.isInteger(i.productId) && Number.isFinite(i.ratioAmount));
+    if (!items.length) { toast.error('Add a product and its rate before saving'); return; }
     const data = {
       name: mixForm.name,
       description: mixForm.description || undefined,
-      items: mixItems.filter(i => i.productId && i.ratioAmount).map(i => ({
-        productId: parseInt(i.productId, 10),
-        ratioAmount: parseFloat(i.ratioAmount),
-        ratioUnit: i.ratioUnit,
-      })),
+      tankCapacityGallons: tankCapacityGallons ? parseFloat(tankCapacityGallons) : null,
+      coverageSqft: coverageSqft ? parseFloat(coverageSqft) : null,
+      items,
     };
     if (editingMix) {
       updateChemMixture.mutate({ id: editingMix.id, data }, {
@@ -621,6 +658,9 @@ export default function ChemicalsPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
+                        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => void openProductLabel(p.id)}>
+                          <FileText className="w-3.5 h-3.5" /> View Product Label (PDF)
+                        </Button>
                         <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setSafetyProd(p)}>
                           <FileText className="w-3.5 h-3.5" /> Safety Sheets
                         </Button>
@@ -770,7 +810,7 @@ export default function ChemicalsPage() {
                             <div className="mt-1.5 space-y-0.5">
                               {m.items.map((item: ChemicalMixtureItem) => (
                                 <p key={item.id} className="text-xs text-muted-foreground">
-                                  {item.productName ?? `Product #${item.productId}`}: {item.ratioAmount} {item.ratioUnit} per gal
+                                  {item.productName ?? `Product #${item.productId}`}: {item.ratioAmount} {item.ratioUnit} {(item as { rateBasis?: string }).rateBasis === 'per_1000_sqft' ? 'per 1,000 sq ft' : 'per gal'}
                                 </p>
                               ))}
                             </div>
@@ -813,10 +853,20 @@ export default function ChemicalsPage() {
                   <label className="text-sm font-medium">Description</label>
                   <Input placeholder="What is this mixture used for?" value={mixForm.description} onChange={e => setMixForm(f => ({ ...f, description: e.target.value }))} />
                 </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Tank capacity (gallons)</label>
+                    <Input type="number" min={0} step={0.1} placeholder="50" value={tankCapacityGallons} onChange={e => setTankCapacityGallons(e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Area this tank covers (sq ft)</label>
+                    <Input type="number" min={0} step={1} placeholder="40000" value={coverageSqft} onChange={e => setCoverageSqft(e.target.value)} />
+                  </div>
+                </div>
                 <Separator />
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium">Products in this mixture</p>
-                  <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setMixItems(items => [...items, { productId: '', ratioAmount: '', ratioUnit: 'oz' }])}>
+                  <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setMixItems(items => [...items, { productId: '', ratioAmount: '', ratioUnit: 'oz', rateBasis: 'per_gallon' }])}>
                     <Plus className="w-3 h-3" /> Add Product
                   </Button>
                 </div>
@@ -826,7 +876,7 @@ export default function ChemicalsPage() {
                     <div key={i} className="flex gap-2 items-end">
                       <div className="flex-1 space-y-1">
                         <label className="text-xs text-muted-foreground">Product</label>
-                        <Select value={item.productId} onValueChange={v => setMixItems(items => items.map((x, j) => j === i ? { ...x, productId: v } : x))}>
+                        <Select value={item.productId || undefined} onValueChange={v => setMixItems(items => items.map((x, j) => j === i ? { ...x, productId: v } : x))}>
                           <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select…" /></SelectTrigger>
                           <SelectContent>
                             {(chemProducts ?? []).filter(p => p.isActive).map(p => (
@@ -840,7 +890,17 @@ export default function ChemicalsPage() {
                         <Input className="h-8 text-sm" type="number" min={0} step={0.1} placeholder="2" value={item.ratioAmount} onChange={e => setMixItems(items => items.map((x, j) => j === i ? { ...x, ratioAmount: e.target.value } : x))} />
                       </div>
                       <div className="w-24 space-y-1">
-                        <label className="text-xs text-muted-foreground">Unit/gal</label>
+                        <label className="text-xs text-muted-foreground">Rate</label>
+                        <Select value={item.rateBasis} onValueChange={v => setMixItems(items => items.map((x, j) => j === i ? { ...x, rateBasis: v === 'per_1000_sqft' ? 'per_1000_sqft' : 'per_gallon' } : x))}>
+                          <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="per_gallon">per gallon</SelectItem>
+                            <SelectItem value="per_1000_sqft">per 1,000 sq ft</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="w-24 space-y-1">
+                        <label className="text-xs text-muted-foreground">Unit</label>
                         <Select value={item.ratioUnit} onValueChange={v => setMixItems(items => items.map((x, j) => j === i ? { ...x, ratioUnit: v } : x))}>
                           <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                           <SelectContent>

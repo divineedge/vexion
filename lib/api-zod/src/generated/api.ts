@@ -7898,7 +7898,7 @@ export const ListChemicalDocumentsParams = zod.object({
 
 export const ListChemicalDocumentsResponseItem = zod.object({
   "id": zod.int(),
-  "documentType": zod.enum(['sds', 'msds']),
+  "documentType": zod.enum(['sds', 'msds', 'label']),
   "fileName": zod.string(),
   "sizeBytes": zod.int(),
   "createdAt": zod.coerce.date()
@@ -7912,12 +7912,12 @@ export const UploadChemicalDocumentParams = zod.object({
 
 export const UploadChemicalDocumentBody = zod.object({
   "file": zod.instanceof(Blob),
-  "documentType": zod.enum(['sds', 'msds'])
+  "documentType": zod.enum(['sds', 'msds', 'label'])
 })
 
 export const UploadChemicalDocumentResponse = zod.object({
   "id": zod.int(),
-  "documentType": zod.enum(['sds', 'msds']),
+  "documentType": zod.enum(['sds', 'msds', 'label']),
   "fileName": zod.string(),
   "sizeBytes": zod.int(),
   "createdAt": zod.coerce.date()

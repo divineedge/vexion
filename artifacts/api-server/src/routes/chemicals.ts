@@ -1,12 +1,40 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db, chemicalProductsTable, chemicalMixturesTable, chemicalMixtureItemsTable, chemicalApplicationsTable, jobsTable, propertiesTable, tenantsTable, usersTable, mediaAttachmentsTable,servicesTable } from "@workspace/db";
 import { ObjectStorageService } from "../lib/objectStorage";
-import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, desc, inArray, sql } from "drizzle-orm";
+import { productConsumed } from "../lib/tankMix";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { normalizeChemicalRecordRequirements, parseStrictChemicalAppliedAt, validateChemicalRecordRequirements, validateSuppliedChemicalApplicationFields } from "../lib/chemicalRequirements";
 import { coerceChemicalRecordConfig, validateConfiguredChemicalRecord } from "../lib/chemicalRecordConfig";
 
 const router: IRouter = Router();
+
+function mixItemsFromBody(items: unknown) {
+  if (!Array.isArray(items)) return [];
+  const rows: { productId: number; ratioAmount: number; ratioUnit: string; rateBasis: "per_gallon" | "per_1000_sqft"; ratePer1000: number | null }[] = [];
+  for (const raw of items) {
+    if (!raw || typeof raw !== "object") continue;
+    const item = raw as Record<string, unknown>;
+    const productId = Number(item.productId);
+    const rateBasis = item.rateBasis === "per_1000_sqft" ? "per_1000_sqft" : "per_gallon";
+    const rate = Number(item.rateAmount ?? item.ratioAmount);
+    if (!Number.isInteger(productId) || productId <= 0 || !Number.isFinite(rate) || rate < 0) continue;
+    rows.push({
+      productId,
+      ratioAmount: rateBasis === "per_gallon" ? rate : (Number.isFinite(Number(item.ratioAmount)) ? Number(item.ratioAmount) : rate),
+      ratioUnit: typeof item.ratioUnit === "string" && item.ratioUnit.trim() ? item.ratioUnit.trim() : "oz",
+      rateBasis,
+      ratePer1000: rateBasis === "per_1000_sqft" ? rate : null,
+    });
+  }
+  return rows;
+}
+
+function positiveOrNull(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
 import { parseCurrentChemicalWeather } from "../lib/chemicalWeather";
 
 router.get("/jobs/:id/chemical-weather", async (req, res): Promise<void> => {
@@ -179,6 +207,8 @@ router.get("/chemical-mixtures", async (req, res): Promise<void> => {
       activeIngredients: r.activeIngredients ?? null,
       ratioAmount: r.item.ratioAmount,
       ratioUnit: r.item.ratioUnit,
+      rateBasis: r.item.rateBasis,
+      ratePer1000: r.item.ratePer1000,
     })),
   })));
 });
@@ -187,10 +217,9 @@ router.post("/chemical-mixtures", requireOfficeRole, async (req, res): Promise<v
   const tenantId = getTenantId(req);
   const { name, description, items } = req.body;
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
-
-  // Validate every productId belongs to this tenant before creating the mixture
-  if (Array.isArray(items) && items.length > 0) {
-    const requestedProductIds = items.map((i: { productId: number }) => i.productId);
+  const mixItems = mixItemsFromBody(items);
+  const requestedProductIds = [...new Set(mixItems.map(item => item.productId))];
+  if (requestedProductIds.length) {
     const ownedProducts = await db
       .select({ id: chemicalProductsTable.id })
       .from(chemicalProductsTable)
@@ -201,18 +230,19 @@ router.post("/chemical-mixtures", requireOfficeRole, async (req, res): Promise<v
     }
   }
 
-  const [mixture] = await db.insert(chemicalMixturesTable).values({ tenantId, name, description: description ?? null }).returning();
-
-  if (Array.isArray(items) && items.length > 0) {
-    await db.insert(chemicalMixtureItemsTable).values(
-      items.map((item: { productId: number; ratioAmount: number; ratioUnit?: string }) => ({
-        mixtureId: mixture.id,
-        productId: item.productId,
-        ratioAmount: item.ratioAmount,
-        ratioUnit: item.ratioUnit ?? "oz",
-      }))
-    );
-  }
+  const [mixture] = await db.transaction(async tx => {
+    const [created] = await tx.insert(chemicalMixturesTable).values({
+      tenantId,
+      name,
+      description: description ?? null,
+      tankCapacityGallons: positiveOrNull(req.body?.tankCapacityGallons),
+      coverageSqft: positiveOrNull(req.body?.coverageSqft),
+    }).returning();
+    if (mixItems.length) {
+      await tx.insert(chemicalMixtureItemsTable).values(mixItems.map(item => ({ mixtureId: created.id, ...item })));
+    }
+    return [created];
+  });
 
   // Return with items (join scoped to tenant's products)
   const savedItems = await db
@@ -236,6 +266,8 @@ router.post("/chemical-mixtures", requireOfficeRole, async (req, res): Promise<v
       activeIngredients: r.activeIngredients ?? null,
       ratioAmount: r.item.ratioAmount,
       ratioUnit: r.item.ratioUnit,
+      rateBasis: r.item.rateBasis,
+      ratePer1000: r.item.ratePer1000,
     })),
   });
 });
@@ -245,39 +277,34 @@ router.patch("/chemical-mixtures/:id", requireOfficeRole, async (req, res): Prom
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const { name, description, isActive, items } = req.body;
 
-  const [mixture] = await db.update(chemicalMixturesTable).set({
-    ...(name && { name }),
-    ...(description !== undefined && { description }),
-    ...(isActive !== undefined && { isActive }),
-  }).where(and(eq(chemicalMixturesTable.id, id), eq(chemicalMixturesTable.tenantId, tenantId))).returning();
-  if (!mixture) { res.status(404).json({ error: "Not found" }); return; }
-
-  if (Array.isArray(items)) {
-    // Validate every productId belongs to this tenant before replacing items
-    if (items.length > 0) {
-      const requestedProductIds = items.map((i: { productId: number }) => i.productId);
-      const ownedProducts = await db
-        .select({ id: chemicalProductsTable.id })
-        .from(chemicalProductsTable)
-        .where(and(inArray(chemicalProductsTable.id, requestedProductIds), eq(chemicalProductsTable.tenantId, tenantId)));
-      if (ownedProducts.length !== requestedProductIds.length) {
-        res.status(403).json({ error: "One or more products do not belong to your account" });
-        return;
-      }
-    }
-    // Replace all items
-    await db.delete(chemicalMixtureItemsTable).where(eq(chemicalMixtureItemsTable.mixtureId, id));
-    if (items.length > 0) {
-      await db.insert(chemicalMixtureItemsTable).values(
-        items.map((item: { productId: number; ratioAmount: number; ratioUnit?: string }) => ({
-          mixtureId: id,
-          productId: item.productId,
-          ratioAmount: item.ratioAmount,
-          ratioUnit: item.ratioUnit ?? "oz",
-        }))
-      );
+  const mixItems = Array.isArray(items) ? mixItemsFromBody(items) : null;
+  if (mixItems?.length) {
+    const requestedProductIds = [...new Set(mixItems.map(item => item.productId))];
+    const ownedProducts = await db
+      .select({ id: chemicalProductsTable.id })
+      .from(chemicalProductsTable)
+      .where(and(inArray(chemicalProductsTable.id, requestedProductIds), eq(chemicalProductsTable.tenantId, tenantId)));
+    if (ownedProducts.length !== requestedProductIds.length) {
+      res.status(403).json({ error: "One or more products do not belong to your account" });
+      return;
     }
   }
+  const [mixture] = await db.transaction(async tx => {
+    const [updated] = await tx.update(chemicalMixturesTable).set({
+      ...(name && { name }),
+      ...(description !== undefined && { description }),
+      ...(isActive !== undefined && { isActive }),
+      ...(req.body?.tankCapacityGallons !== undefined && { tankCapacityGallons: positiveOrNull(req.body.tankCapacityGallons) }),
+      ...(req.body?.coverageSqft !== undefined && { coverageSqft: positiveOrNull(req.body.coverageSqft) }),
+    }).where(and(eq(chemicalMixturesTable.id, id), eq(chemicalMixturesTable.tenantId, tenantId))).returning();
+    if (!updated) return [];
+    if (mixItems) {
+      await tx.delete(chemicalMixtureItemsTable).where(eq(chemicalMixtureItemsTable.mixtureId, id));
+      if (mixItems.length) await tx.insert(chemicalMixtureItemsTable).values(mixItems.map(item => ({ mixtureId: id, ...item })));
+    }
+    return [updated];
+  });
+  if (!mixture) { res.status(404).json({ error: "Not found" }); return; }
 
   // Return with items (join scoped to tenant's products)
   const savedItems = await db
@@ -301,6 +328,8 @@ router.patch("/chemical-mixtures/:id", requireOfficeRole, async (req, res): Prom
       activeIngredients: r.activeIngredients ?? null,
       ratioAmount: r.item.ratioAmount,
       ratioUnit: r.item.ratioUnit,
+      rateBasis: r.item.rateBasis,
+      ratePer1000: r.item.ratePer1000,
     })),
   });
 });
@@ -498,7 +527,17 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
       .where(eq(chemicalMixtureItemsTable.mixtureId, parsedMixtureId));
 
     breakdown = items.map(({ item, product }) => {
-      const amountApplied = item.ratioAmount * parsedVolume; // ratio per unit × total units
+      const amountApplied = productConsumed({
+        productId: item.productId,
+        rateBasis: item.rateBasis === "per_1000_sqft" ? "per_1000_sqft" : "per_gallon",
+        rate: item.rateBasis === "per_1000_sqft" ? Number(item.ratePer1000 ?? item.ratioAmount) : item.ratioAmount,
+        ratioUnit: item.ratioUnit,
+      }, {
+        gallonsSprayed: parsedVolume,
+        areaSqft: propertySizeSqft,
+        tankCapacityGallons: mixture.tankCapacityGallons,
+        coverageSqft: mixture.coverageSqft,
+      });
       const rates = computeRates(amountApplied, propertySizeSqft);
       return {
         productId: item.productId,
@@ -563,6 +602,15 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
     breakdown,
     notes: typeof notes === "string" ? notes.trim() : null,
   }).returning();
+
+  for (const line of breakdown as { productId?: number; amountApplied?: number }[]) {
+    if (!line.productId || !(Number(line.amountApplied) > 0)) continue;
+    try {
+      await db.execute(sql`UPDATE chemical_products SET quantity_on_hand = GREATEST(0, COALESCE(quantity_on_hand, 0) - ${Number(line.amountApplied)}) WHERE id = ${line.productId} AND tenant_id = ${tenantId}`);
+    } catch (error) {
+      req.log?.error?.({ err: error, productId: line.productId }, "Chemical stock was not reduced");
+    }
+  }
 
   res.status(201).json({
     ...app,

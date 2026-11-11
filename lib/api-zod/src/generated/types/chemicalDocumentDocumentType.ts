@@ -12,4 +12,5 @@ export type ChemicalDocumentDocumentType = typeof ChemicalDocumentDocumentType[k
 export const ChemicalDocumentDocumentType = {
   sds: 'sds',
   msds: 'msds',
+  label: 'label',
 } as const;

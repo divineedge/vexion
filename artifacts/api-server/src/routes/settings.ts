@@ -856,7 +856,7 @@ router.post("/settings/budget/divisions", async (req, res): Promise<void> => {
   }
   try {
     const saved = await db.transaction(async tx => {
-      const result = await tx.execute(sql`SELECT id, budget_data FROM tenants WHERE id = ${tenantId} FOR UPDATE`);
+      const result = await tx.execute(sql`SELECT id, budget_data FROM tenants WHERE id = ${tenantId}`);
       if (!result.rows.length) throw new BudgetDocumentError("Company budget row was not found");
       const stored = result.rows[0]?.budget_data;
       const source = req.body?.budgetData == null ? stored ?? null : req.body.budgetData;
@@ -906,7 +906,7 @@ router.patch("/settings/budget/divisions/:divisionId/name", async (req, res): Pr
 
   const renamed = await db.transaction(async tx => {
     const result = await tx.execute(sql`
-      SELECT budget_data FROM tenants WHERE id = ${tenantId} FOR UPDATE
+      SELECT budget_data FROM tenants WHERE id = ${tenantId}
     `);
     const row = result.rows[0] as { budget_data?: unknown } | undefined;
     const storedBudgetData = row?.budget_data;

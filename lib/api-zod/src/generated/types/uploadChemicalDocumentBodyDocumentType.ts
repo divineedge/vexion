@@ -12,4 +12,5 @@ export type UploadChemicalDocumentBodyDocumentType = typeof UploadChemicalDocume
 export const UploadChemicalDocumentBodyDocumentType = {
   sds: 'sds',
   msds: 'msds',
+  label: 'label',
 } as const;

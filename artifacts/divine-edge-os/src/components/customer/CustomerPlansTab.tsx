@@ -10,6 +10,7 @@ import {
 } from '@workspace/api-client-react';
 import type { PlanVisitSchedule } from '@workspace/api-client-react';
 import { PlanVisitScheduleFields, spacingSummary, formatDateKey, addMonthsToKey, weekdayOfKey } from './PlanVisitScheduleFields';
+import { distributedWindowDates, intervalDates } from '@/lib/planFrequency';
 import { PlanProgramFields, DEFAULT_PROGRAM, programToSchedule, programProblems, type ProgramConfig } from './PlanProgramFields';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
@@ -46,6 +47,25 @@ interface PriceResolution {
   resolvedPrice: number;
   pricingMode: string;
   breakdown?: Array<{ serviceId: number; serviceName: string; areaSqft: number; price: number }>;
+}
+
+function TemplateSchedulePreview({ template }: { template?: { services?: Array<{ serviceName?: string; sequence?: number }>; scheduleRule?: { mode?: string; intervalWeeks?: number; visitCount?: number; windowStart?: string; windowEnd?: string } } }) {
+  const rule = template?.scheduleRule;
+  if (!rule || (rule.mode !== 'interval' && rule.mode !== 'fixed_count') || !rule.windowStart || !rule.windowEnd) {
+    return <p className="text-xs text-muted-foreground">Visits follow each service's saved weekly, monthly, or custom recurrence, in the template's service order.</p>;
+  }
+  const dates = rule.mode === 'fixed_count'
+    ? distributedWindowDates(rule.windowStart, rule.windowEnd, Math.max(2, rule.visitCount || 2))
+    : intervalDates(rule.windowStart, rule.windowEnd, Math.max(1, rule.intervalWeeks || 1));
+  const services = [...(template.services ?? [])].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+  return (
+    <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground space-y-1">
+      <p>{rule.mode === 'fixed_count' ? `${dates.length} visits locked to the window, spaced evenly.` : `Every ${rule.intervalWeeks} weeks.`}</p>
+      {dates.map((date, index) => (
+        <p key={date}>{date} — {services[index % Math.max(services.length, 1)]?.serviceName ?? 'Service'}</p>
+      ))}
+    </div>
+  );
 }
 
 export default function CustomerPlansTab({ customerId, properties }: { customerId: number; properties: Property[] }) {
@@ -151,6 +171,11 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
   // Seed count and default last date from the template when it changes
   useEffect(() => {
     if (!selectedTemplate) return;
+    const rule = (selectedTemplate as { scheduleRule?: { mode?: string; windowStart?: string; visitCount?: number; intervalWeeks?: number; windowEnd?: string } }).scheduleRule;
+    if (rule?.mode === 'interval' || rule?.mode === 'fixed_count') {
+      setMode('interval');
+      if (rule.windowStart) setStartDate(rule.windowStart);
+    }
     const customDays = selectedTemplate.billingCycle === 'custom' ? selectedTemplate.customCycleDays : null;
     const lastServiceDate = customDays && customDays > 0
       ? addDaysToKey(startDate, customDays)
@@ -343,7 +368,7 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
               </>
             )}
             {mode === 'interval' && (
-              <p className="text-xs text-muted-foreground">Crew, route, per-round services and reminders are set with the date-range option.</p>
+              <TemplateSchedulePreview template={selectedTemplate} />
             )}
 
             {/* Warning: area-based template selected but property has no satellite measurements */}

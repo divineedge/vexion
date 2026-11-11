@@ -61,6 +61,7 @@ const ADDITIVE_SETTINGS_SQL = [
   `ALTER TABLE chemical_mixtures ADD COLUMN IF NOT EXISTS coverage_sqft real`,
   `ALTER TABLE chemical_mixture_items ADD COLUMN IF NOT EXISTS rate_basis text NOT NULL DEFAULT 'per_gallon'`,
   `ALTER TABLE chemical_mixture_items ADD COLUMN IF NOT EXISTS rate_per_1000 real`,
+  `ALTER TABLE plan_templates ADD COLUMN IF NOT EXISTS schedule_rule jsonb`,
 ];
 
 export async function installAdditiveSettingsSchema(): Promise<void> {

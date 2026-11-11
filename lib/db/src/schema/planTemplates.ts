@@ -45,6 +45,14 @@ export const planTemplatesTable = pgTable("plan_templates", {
    */
   offSeasonStart: text("off_season_start"),
   offSeasonEnd: text("off_season_end"),
+  /**
+   * Plan-level frequency. Null keeps the existing per-service recurrence.
+   * { mode: 'interval', intervalWeeks, windowStart?, windowEnd? }
+   * { mode: 'fixed_count', visitCount, windowStart, windowEnd }
+   * { mode: 'weekly' | 'monthly' | 'custom' }
+   * Service order is the `sequence` field on each services[] entry.
+   */
+  scheduleRule: jsonb("schedule_rule"),
   /** Default for whether plans sold from this template auto-renew (can be overridden per plan). */
   autoRenewDefault: boolean("auto_renew_default").notNull().default(true),
   isActive: boolean("is_active").notNull().default(true),

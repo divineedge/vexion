@@ -10,11 +10,15 @@
  * stays easily testable and framework-agnostic.
  */
 
+import { orderPlanServices, projectScheduleDates, serviceForVisit, type PlanScheduleRule } from "./planFrequency";
+
 export interface PlanServiceRule {
   serviceId: number;
   serviceName: string;
   /** Days between visits of this service, e.g. 7 = weekly, 42 = every 6 weeks. */
   frequencyDays: number;
+  /** 1-based order used when a plan-level schedule assigns one service per visit. */
+  sequence?: number;
 }
 
 export interface ClusterCandidate {
@@ -131,10 +135,12 @@ export async function generatePlanPreview(params: {
   /** Max distance (meters) to consider two jobs "nearby". Default ~1.5 miles. */
   clusterRadiusMeters?: number;
   lookupClusterCandidates: ClusterLookup;
+  /** Plan-level interval or fixed-count window. Weekly, monthly, and custom keep per-service recurrence. */
+  scheduleRule?: PlanScheduleRule | null;
 }): Promise<PlanVisitCandidate[]> {
   const {
     services, startDate, billingCycle, customCycleDays, visitCount,
-    propertyLat, propertyLng, lookupClusterCandidates,
+    propertyLat, propertyLng, lookupClusterCandidates, scheduleRule,
   } = params;
   const clusterWindowDays = params.clusterWindowDays ?? 3;
   const clusterRadiusMeters = params.clusterRadiusMeters ?? 2414; // ~1.5 miles
@@ -143,6 +149,33 @@ export async function generatePlanPreview(params: {
   const periodEnd = addDays(startDate, periodDays);
 
   const all: PlanVisitCandidate[] = [];
+  const ordered = orderPlanServices(services);
+  const plannedDates = scheduleRule && (scheduleRule.mode === "interval" || scheduleRule.mode === "fixed_count")
+    ? projectScheduleDates(
+      scheduleRule,
+      startDate.toISOString().slice(0, 10),
+      periodEnd.toISOString().slice(0, 10),
+    )
+    : null;
+  if (plannedDates) {
+    for (let i = 0; i < plannedDates.length; i++) {
+      const service = serviceForVisit(ordered, i);
+      const idealDate = new Date(`${plannedDates[i]}T12:00:00Z`);
+      const candidates = await lookupClusterCandidates(service.serviceId);
+      const snapped = await snapToCluster(candidates, idealDate, clusterWindowDays, clusterRadiusMeters, propertyLat, propertyLng);
+      all.push({
+        serviceId: service.serviceId,
+        serviceName: service.serviceName,
+        date: snapped.date,
+        idealDate,
+        assigneeId: snapped.assigneeId,
+        assigneeName: snapped.assigneeName,
+        clustered: snapped.clustered,
+      });
+    }
+    all.sort((a, b) => a.date.getTime() - b.date.getTime());
+    return all;
+  }
 
   for (const service of services) {
     if (service.frequencyDays <= 0) continue;

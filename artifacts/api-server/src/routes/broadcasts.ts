@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import {
-  db, customersTable, campaignCustomersTable, jobsTable, tenantsTable,
+  db, customersTable, campaignCustomersTable, jobsTable, tenantsTable, propertiesTable, servicesTable,
   broadcastsTable, broadcastRecipientsTable, communicationsLogTable, campaignResponsesTable,
 } from "@workspace/db";
 import { eq, and, or, ilike, inArray, sql, desc, isNull } from "drizzle-orm";
@@ -11,6 +11,7 @@ import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
 import { notifyBroadcastFailed } from "../lib/broadcastScheduler";
 import { campaignEmail, marketingEmailAllowed, validateCampaignDestination } from "../lib/campaignPreferences";
+import { renderMergeTags } from "../lib/messageTemplates";
 
 const router: IRouter = Router();
 
@@ -23,6 +24,12 @@ export interface BroadcastFilter {
   lastServiceAfter?: string;
   campaignId?: number;
   allCustomers?: boolean;
+  customerIds?: number[];
+  serviceId?: number;
+  crewId?: number;
+  routeId?: number;
+  scheduledFrom?: string;
+  scheduledTo?: string;
 }
 
 /** Resolves a segment filter into the matching customer rows for this tenant, excluding customers who have opted out of the requested channel. */
@@ -51,6 +58,22 @@ export async function resolveRecipients(tenantId: number, channel: "sms" | "emai
       ));
       ids.push(...followUps.map(r => r.customerId));
       conditions.push(ids.length > 0 ? inArray(customersTable.id, ids) : sql`false`);
+    }
+
+    if (filter.customerIds) {
+      conditions.push(filter.customerIds.length ? inArray(customersTable.id, filter.customerIds) : sql`false`);
+    }
+    const scheduleLimited = filter.serviceId || filter.crewId || filter.routeId || filter.scheduledFrom || filter.scheduledTo;
+    if (scheduleLimited) {
+      const jobConditions = [eq(jobsTable.tenantId, tenantId), isNull(jobsTable.archivedAt)];
+      if (filter.serviceId) jobConditions.push(eq(jobsTable.serviceId, filter.serviceId));
+      if (filter.crewId) jobConditions.push(eq(jobsTable.crewId, filter.crewId));
+      if (filter.routeId) jobConditions.push(eq(jobsTable.routeTemplateId, filter.routeId));
+      if (filter.scheduledFrom) jobConditions.push(sql`${jobsTable.scheduledAt} >= ${filter.scheduledFrom}::date`);
+      if (filter.scheduledTo) jobConditions.push(sql`${jobsTable.scheduledAt} < (${filter.scheduledTo}::date + interval '1 day')`);
+      const matching = await db.selectDistinct({ customerId: jobsTable.customerId }).from(jobsTable).where(and(...jobConditions));
+      const ids = matching.map(row => row.customerId).filter((id): id is number => id != null);
+      conditions.push(ids.length ? inArray(customersTable.id, ids) : sql`false`);
     }
 
     if (filter.lastServiceBefore || filter.lastServiceAfter) {
@@ -175,8 +198,25 @@ async function dispatchBroadcast(
   let optedOut = 0;
   let failed = 0;
 
+  const recipientIds = recipients.map(customer => customer.id);
+  const properties = recipientIds.length
+    ? await db.select({ customerId: propertiesTable.customerId, address: propertiesTable.address }).from(propertiesTable).where(and(eq(propertiesTable.tenantId, tenantId), inArray(propertiesTable.customerId, recipientIds)))
+    : [];
+  const addressByCustomer = new Map(properties.map(property => [property.customerId, property.address]));
+  let serviceName = "";
+  const storedFilter = (await db.select({ recipientFilter: broadcastsTable.recipientFilter }).from(broadcastsTable).where(eq(broadcastsTable.id, broadcastId)))[0]?.recipientFilter as BroadcastFilter | undefined;
+  if (storedFilter?.serviceId) {
+    const [service] = await db.select({ name: servicesTable.name }).from(servicesTable).where(and(eq(servicesTable.id, storedFilter.serviceId), eq(servicesTable.tenantId, tenantId)));
+    serviceName = service?.name ?? "";
+  }
+
   for (const customer of recipients) {
-    const personalized = body.replace(/\{\{\s*name\s*\}\}/gi, customer.name.split(" ")[0] ?? customer.name);
+    const personalized = renderMergeTags(body, {
+      customer_first_name: customer.name.split(" ")[0] ?? customer.name,
+      property_address: addressByCustomer.get(customer.id) ?? customer.physicalAddress ?? customer.billingAddress ?? "",
+      service_name: serviceName,
+      company_name: tenant?.name ?? "",
+    });
     try {
       if (channel === "sms") {
         const smsConfig: SmsProviderConfig = {
@@ -205,7 +245,12 @@ async function dispatchBroadcast(
           continue;
         }
         const email = await campaignEmail(tenantId, broadcastId, customer.id, personalized);
-        const result = await sendEmail(emailConfig, customer.email, subject ?? "", email.text, email.html);
+        const result = await sendEmail(emailConfig, customer.email, renderMergeTags(subject ?? "", {
+          customer_first_name: customer.name.split(" ")[0] ?? customer.name,
+          property_address: addressByCustomer.get(customer.id) ?? customer.physicalAddress ?? customer.billingAddress ?? "",
+          service_name: serviceName,
+          company_name: tenant?.name ?? "",
+        }), email.text, email.html);
         await db.insert(communicationsLogTable).values({
           tenantId, customerId: customer.id, direction: "outbound", channel: "email",
           toAddress: customer.email, subject: subject ?? "", body: personalized,

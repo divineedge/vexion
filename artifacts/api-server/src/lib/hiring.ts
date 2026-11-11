@@ -14,7 +14,7 @@ export function hiringFields(value:unknown){
  return validateFields(value);
 }
 const stable=(value:unknown):unknown=>Array.isArray(value)?value.map(stable):value&&typeof value==="object"?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,v])=>[key,stable(v)])):value;
-export async function intakeApplication(tenantId:number,actorId:number|null,input:Record<string,unknown>,source:"staff"|"website",resume?:Express.Multer.File,handle:HrDb=db,websiteFlow?:FlowDefinition){
+export async function intakeApplication(tenantId:number,actorId:number|null,input:Record<string,unknown>,source:"staff"|"website",resume?:Express.Multer.File,handle:HrDb=db,websiteFlow?:FlowDefinition,publishedForm=false){
  const requestId=typeof input.requestId==="string"?input.requestId:randomUUID();
  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId))throw new HrError("A valid application reference is required");
  const {requestId:_,...payload}=input;
@@ -25,7 +25,8 @@ export async function intakeApplication(tenantId:number,actorId:number|null,inpu
   const [existing]=await tx.select().from(hrApplicationsTable).where(and(eq(hrApplicationsTable.tenantId,tenantId),eq(hrApplicationsTable.requestId,requestId)));
   if(existing){if(existing.payloadHash!==payloadHash)throw new HrError("Application details changed. Use a new submission reference.",409);return existing;}
   const settings=await hiringSettings(tenantId,tx);
-  if(source==="website"&&(!settings.publicHiringEnabled||input.consent!==true))throw new HrError(settings.publicHiringEnabled?"Consent to application storage and hiring contact is required":"This business is not accepting online applications",403);
+  if(source==="website"&&input.consent!==true)throw new HrError("Consent to application storage and hiring contact is required",403);
+  if(source==="website"&&!settings.publicHiringEnabled&&!publishedForm)throw new HrError("This business is not accepting online applications",403);
   const postingId=input.postingId==null||input.postingId===""?null:Number(input.postingId);
   if(postingId!==null&&(!Number.isSafeInteger(postingId)||postingId<1))throw new HrError("Choose a valid position");
   const [posting]=postingId?await tx.select().from(hrPostingsTable).where(and(eq(hrPostingsTable.tenantId,tenantId),eq(hrPostingsTable.id,postingId))):[];

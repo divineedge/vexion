@@ -39,6 +39,7 @@ export * from "./recurringInvoiceTemplates";
 export * from "./billingEmailQueue";
 export * from "./vendors";
 export * from "./broadcasts";
+export * from "./messageTemplates";
 export * from "./integrationSyncLogs";
 export * from "./bankTransactions";
 export * from "./reviewRequests";

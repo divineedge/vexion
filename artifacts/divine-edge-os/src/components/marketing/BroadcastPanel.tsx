@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   usePreviewBroadcast, useSendBroadcast, useCancelBroadcast, useUpdateBroadcast,
   useListBroadcasts, getListBroadcastsQueryKey,
   useGetBroadcast, getGetBroadcastQueryKey,
+  customFetch,
 } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -82,6 +83,11 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
   const [editScheduledFor, setEditScheduledFor] = useState('');
   const [notInterestedId, setNotInterestedId] = useState('');
   const [editNotInterestedId, setEditNotInterestedId] = useState('');
+  const [templates, setTemplates] = useState<Array<{ id: number; name: string; channel: 'sms' | 'email'; subject: string | null; body: string }>>([]);
+  const [templateName, setTemplateName] = useState('');
+  const [loadedTemplateId, setLoadedTemplateId] = useState('');
+  const loadTemplates = () => customFetch<typeof templates>('/api/broadcast-templates').then(setTemplates).catch(() => {});
+  useEffect(() => { loadTemplates(); }, []);
 
   const filter = {
     ...(allCustomers ? { allCustomers: true } : {
@@ -225,12 +231,40 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
                 sourceCampaignId={!allCustomers && campaignId ? parseInt(campaignId, 10) : null}
               />
             )}
+            <div className="space-y-2 rounded-md border p-3">
+              <label className="text-sm font-medium">Broadcast templates</label>
+              <Select value={loadedTemplateId || undefined} onValueChange={id => {
+                const template = templates.find(item => String(item.id) === id);
+                if (!template) return;
+                setLoadedTemplateId(id);
+                setChannel(template.channel);
+                setSubject(template.subject ?? '');
+                setBody(template.body);
+              }}>
+                <SelectTrigger><SelectValue placeholder="Load a saved template" /></SelectTrigger>
+                <SelectContent>
+                  {templates.filter(template => template.channel === channel).map(template => <SelectItem key={template.id} value={String(template.id)}>{template.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <div className="flex gap-2">
+                <Input placeholder="Save as, e.g. Spring Aeration Promo" value={templateName} onChange={e => setTemplateName(e.target.value)} />
+                <Button type="button" variant="outline" onClick={async () => {
+                  if (!templateName.trim() || !body.trim()) { toast.error('Name and message are required'); return; }
+                  try {
+                    await customFetch('/api/broadcast-templates', { method: 'POST', body: JSON.stringify({ name: templateName, channel, subject, body }) });
+                    setTemplateName('');
+                    toast.success('Broadcast template saved');
+                    loadTemplates();
+                  } catch { toast.error('Could not save the template'); }
+                }}>Save</Button>
+              </div>
+            </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Message</label>
               <Textarea
                 rows={5}
                 title={`Broadcast message body — use {{name}} to personalize with the customer's first name`}
-                placeholder={`Write your ${channel === 'sms' ? 'text message' : 'email'}... Use {{name}} to personalize with the customer's first name.`}
+                placeholder="Use {{customer_first_name}}, {{property_address}}, {{service_name}}, and {{company_name}}."
                 value={body}
                 onChange={e => setBody(e.target.value)}
               />

@@ -33,6 +33,7 @@ import ChemicalsPage from '@/pages/chemicals';
 import EquipmentPage from '@/pages/equipment';
 import QuotePublicPage from '@/pages/quote-public';
 import { PublicQuoteForm, PublicCareersForm } from '@/pages/public-site-form';
+import PublicFormTemplatePage from '@/pages/public-form-template';
 import WebsiteFormsPage from '@/pages/website-forms';
 import EstimatesPage from '@/pages/estimates';
 import VendorsPage from '@/pages/vendors';
@@ -159,6 +160,7 @@ function Router() {
       <Route path="/invoice/:token" component={InvoicePublicPage} />
       <Route path="/review/:token" component={ReviewPublicPage} />
       <Route path="/careers/:slug" component={PublicCareersForm} />
+      <Route path="/f/:token">{(params: { token: string }) => <PublicFormTemplatePage token={params.token} />}</Route>
       <Route path="/login" component={LoginPage} />
       <Route path="/signup" component={SignupPage} />
       <Route path="/forgot-password" component={ForgotPasswordPage} />

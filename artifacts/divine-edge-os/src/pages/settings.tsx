@@ -20,6 +20,7 @@ import type { PaymentReminderRule } from '@workspace/api-client-react';
 import { Repeat as RepeatIcon, ClipboardList, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import PlanTemplatesSettings from '@/components/settings/PlanTemplatesSettings';
+import { CommunicationTemplateManager } from '@/components/communications/TemplateMessaging';
 import RolePermissionsSettings from '@/components/settings/RolePermissionsSettings';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
@@ -2791,6 +2792,7 @@ export default function SettingsPage() {
 
         {/* ── Notification Templates ── */}
         <TabsContent value="notification-templates" className="space-y-6 focus-visible:outline-none">
+          <CommunicationTemplateManager />
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><MessageSquare className="w-5 h-5" /> Notification Templates</CardTitle>

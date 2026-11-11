@@ -17,6 +17,7 @@ import FlowRenderer from '@/components/website-intake/FlowRenderer';
 import SubmissionInbox from '@/components/website-intake/SubmissionInbox';
 import { loadWebsiteForm, saveWebsiteForm, loadPublicWebsiteForm, restoreWebsiteForm, type WebsiteFormVersion, type FlowDefinition } from '@/lib/websiteIntake';
 import PublishedHistory from '@/components/website-intake/PublishedHistory';
+import FormTemplateLibrary from '@/components/website/FormTemplateLibrary';
 
 type Kind = 'quote' | 'hiring';
 const statusOf = (e: unknown) => (e as { status?: number } | null)?.status;
@@ -121,6 +122,8 @@ function Workspace({ kind }: { kind: Kind }) {
   if (q.isError || !draft) return <div className="flex items-center gap-3 text-sm text-destructive py-6"><AlertTriangle className="w-4 h-4" />{errMsg(q.error, 'Could not load this form.')}<Button size="sm" variant="outline" onClick={() => q.refetch()}>Retry</Button></div>;
 
   return (
+    <div className="space-y-6">
+    <FormTemplateLibrary />
     <Tabs value={tab} onValueChange={setTab}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <TabsList>
@@ -180,6 +183,7 @@ function Workspace({ kind }: { kind: Kind }) {
       <TabsContent value="inbox" className="mt-4"><SubmissionInbox kind={kind} /></TabsContent>
       <TabsContent value="history" className="mt-4"><PublishedHistory kind={kind} busy={!!saving} onRestore={restore} /></TabsContent>
     </Tabs>
+    </div>
   );
 }
 

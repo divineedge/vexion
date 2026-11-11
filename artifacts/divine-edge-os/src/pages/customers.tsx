@@ -28,6 +28,7 @@ import { useLocation, useSearch } from 'wouter';
 import { useDebounce } from '@/hooks/use-debounce';
 import PropertyTransferDialog from '@/components/property/PropertyTransferDialog';
 import { toast } from 'sonner';
+import { TemplateSendButton } from '@/components/communications/TemplateMessaging';
 import { useAuth } from '@/contexts/AuthContext';
 import { getActiveCustomerFields, isCustomerFieldVisible } from '@/lib/fieldConfig';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
@@ -752,6 +753,7 @@ export default function CustomersPage() {
                 <span className="font-semibold">{selectedCustomerIds.size}</span> customer{selectedCustomerIds.size === 1 ? '' : 's'} selected
               </div>
               <div className="flex items-center gap-2">
+                {canManageOffice && <TemplateSendButton label="Send template" audience={{ customerIds: [...selectedCustomerIds], tag: tagFilter !== '__all__' ? tagFilter : undefined }} />}
                 <Button
                   variant="ghost"
                   size="sm"

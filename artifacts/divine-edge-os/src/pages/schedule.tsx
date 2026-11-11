@@ -65,6 +65,7 @@ import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '
 import { useAuth } from '@/contexts/AuthContext';
 import { ScheduleWeather } from '@/components/schedule/ScheduleWeather';
 import { RainRiskBanner } from '@/components/schedule/RainRiskBanner';
+import { TemplateSendButton } from '@/components/communications/TemplateMessaging';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -1171,6 +1172,17 @@ export default function SchedulePage() {
             >
               <MessageSquare className="w-3.5 h-3.5" /> Staff Messages
             </Button>
+          )}
+          {canManageOffice && (
+            <TemplateSendButton
+              label="Message customers"
+              audience={{
+                scheduledFrom: format(currentDate, 'yyyy-MM-dd'),
+                scheduledTo: format(currentDate, 'yyyy-MM-dd'),
+                crewId: crewFilter === 'all' ? undefined : (crews as Array<{ id: number; name: string }>).find(crew => crew.name === crewFilter)?.id,
+                routeId: routeFilter !== 'all' && Number(routeFilter) > 0 ? Number(routeFilter) : undefined,
+              }}
+            />
           )}
           {/* Job title / customer search */}
           <div className="relative">

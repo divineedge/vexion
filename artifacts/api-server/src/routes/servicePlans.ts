@@ -20,6 +20,7 @@ import { sendEmail } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
 import { resolveServicePrice, type PricingTier } from "../lib/pricingMatrix";
 import { generateRangeVisits, validateVisitRange, VisitRangeError, type VisitRange } from "../lib/planVisitRange";
+import { normalizePlanSchedule, sequenceServices, PlanScheduleError, type PlanScheduleRule } from "../lib/planFrequency";
 import { isInOffSeason } from "../lib/offSeasonUtils";
 import { buildPlanProgram,type ProgramJob } from "../lib/planProgram";
 import { enforceCrewCapacity,CrewCapacityError,capacityCheckedJobUpdate,capacityDate } from "../lib/crewCapacity";
@@ -32,9 +33,30 @@ function fmtTemplate(t: typeof planTemplatesTable.$inferSelect) {
   return {
     ...t,
     services: (t.services as unknown[]) ?? [],
+    scheduleRule: (t.scheduleRule as PlanScheduleRule | null) ?? null,
     createdAt: t.createdAt.toISOString(),
     updatedAt: t.updatedAt.toISOString(),
   };
+}
+
+function templateSchedule(input: unknown, res: import("express").Response): PlanScheduleRule | null | false {
+  try {
+    return normalizePlanSchedule(input);
+  } catch (error) {
+    if (!(error instanceof PlanScheduleError)) throw error;
+    res.status(400).json({ error: error.message });
+    return false;
+  }
+}
+
+function templateServices(input: unknown, res: import("express").Response) {
+  try {
+    return sequenceServices(input);
+  } catch (error) {
+    if (!(error instanceof PlanScheduleError)) throw error;
+    res.status(400).json({ error: error.message });
+    return false;
+  }
 }
 
 function fmtPlan(
@@ -191,11 +213,15 @@ router.get("/plan-templates", async (req, res): Promise<void> => {
 router.post("/plan-templates", async (req, res): Promise<void> => {
   if (!(await requireAdmin(req, res))) return;
   const tenantId = getTenantId(req);
-  const { name, description, services, visitCount, billingCycle, customCycleDays, price, autoRenewDefault, isActive, pricingMode, pricingMatrix, offSeasonStart, offSeasonEnd } = req.body;
+  const { name, description, services, visitCount, billingCycle, customCycleDays, price, autoRenewDefault, isActive, pricingMode, pricingMatrix, offSeasonStart, offSeasonEnd, scheduleRule } = req.body;
   if (!name || !Array.isArray(services) || services.length === 0) {
     res.status(400).json({ error: "name and at least one service are required" });
     return;
   }
+  const orderedServices = templateServices(services, res);
+  if (orderedServices === false) return;
+  const savedRule = templateSchedule(scheduleRule, res);
+  if (savedRule === false) return;
   const resolvedMode = ["flat", "matrix", "sum_services"].includes(pricingMode) ? pricingMode : "flat";
   if (resolvedMode === "matrix") {
     const matrixErr = validatePlanMatrix(Array.isArray(pricingMatrix) ? pricingMatrix : []);
@@ -205,8 +231,8 @@ router.post("/plan-templates", async (req, res): Promise<void> => {
     tenantId,
     name,
     description: description ?? null,
-    services,
-    visitCount: visitCount ?? services.length,
+    services: orderedServices,
+    visitCount: savedRule?.mode === "fixed_count" ? savedRule.visitCount : (visitCount ?? orderedServices.length),
     billingCycle: billingCycle ?? "monthly",
     customCycleDays: customCycleDays ?? null,
     price: price ?? 0,
@@ -216,6 +242,7 @@ router.post("/plan-templates", async (req, res): Promise<void> => {
     pricingMatrix: resolvedMode === "matrix" && Array.isArray(pricingMatrix) ? pricingMatrix : null,
     offSeasonStart: offSeasonStart ?? null,
     offSeasonEnd: offSeasonEnd ?? null,
+    scheduleRule: savedRule,
   }).returning();
   res.status(201).json(fmtTemplate(t));
 });
@@ -232,11 +259,21 @@ router.patch("/plan-templates/:id", async (req, res): Promise<void> => {
   if (!(await requireAdmin(req, res))) return;
   const tenantId = getTenantId(req);
   const id = parseInt(req.params.id, 10);
-  const { name, description, services, visitCount, billingCycle, customCycleDays, price, autoRenewDefault, isActive, pricingMode, pricingMatrix, offSeasonStart, offSeasonEnd } = req.body;
+  const { name, description, services, visitCount, billingCycle, customCycleDays, price, autoRenewDefault, isActive, pricingMode, pricingMatrix, offSeasonStart, offSeasonEnd, scheduleRule } = req.body;
   const update: Partial<typeof planTemplatesTable.$inferInsert> = {};
   if (name !== undefined) update.name = name;
   if (description !== undefined) update.description = description;
-  if (services !== undefined) update.services = services;
+  if (services !== undefined) {
+    const orderedServices = templateServices(services, res);
+    if (orderedServices === false) return;
+    update.services = orderedServices;
+  }
+  if (scheduleRule !== undefined) {
+    const savedRule = templateSchedule(scheduleRule, res);
+    if (savedRule === false) return;
+    update.scheduleRule = savedRule;
+    if (savedRule?.mode === "fixed_count" && savedRule.visitCount) update.visitCount = savedRule.visitCount;
+  }
   if (visitCount !== undefined) update.visitCount = visitCount;
   if (billingCycle !== undefined) update.billingCycle = billingCycle;
   if (customCycleDays !== undefined) update.customCycleDays = customCycleDays;
@@ -485,6 +522,7 @@ router.post("/customer-plans/preview", async (req, res): Promise<void> => {
     propertyLat: property.lat,
     propertyLng: property.lng,
     lookupClusterCandidates: makeClusterLookup(tenantId),
+    scheduleRule: (template.scheduleRule as PlanScheduleRule | null) ?? null,
   });
 
   res.json({
@@ -519,9 +557,9 @@ router.post("/customer-plans", async (req, res): Promise<void> => {
 
   const range=await requestedRange(tenantId,template,req.body.visitSchedule,startDate,res,getUserId(req));
   if(range===false)return;
-  const start = range?.visits[0].date??new Date(startDate);
+  let start = range?.visits[0].date??new Date(startDate);
   const periodDays = billingCycleDays(template.billingCycle, template.customCycleDays);
-  const endDate = new Date(start.getTime() + periodDays * 24 * 60 * 60 * 1000);
+  let endDate = new Date(start.getTime() + periodDays * 24 * 60 * 60 * 1000);
   const services = ((template.services as unknown[]) ?? []) as PlanServiceRule[];
 
   // Use the office-confirmed visit list if provided (they may have shifted dates/techs in the
@@ -556,11 +594,20 @@ router.post("/customer-plans", async (req, res): Promise<void> => {
       propertyLat: property.lat,
       propertyLng: property.lng,
       lookupClusterCandidates: makeClusterLookup(tenantId),
+      scheduleRule: (template.scheduleRule as PlanScheduleRule | null) ?? null,
     });
   }
 
   // Seed each service's scheduling cursor with the latest visit date generated for it,
   // so the background worker continues the cadence from where this first period left off.
+  if (!range && finalVisits.length) {
+    start = finalVisits.reduce((earliest, visit) => visit.date < earliest ? visit.date : earliest, finalVisits[0].date);
+  }
+  if (finalVisits.length) {
+    const lastVisit = finalVisits.reduce((latest, visit) => visit.date > latest ? visit.date : latest, finalVisits[0].date);
+    if (lastVisit > endDate) endDate = lastVisit;
+  }
+
   const lastByService = new Map<number, Date>();
   for (const v of finalVisits) {
     const cur = lastByService.get(v.serviceId);
@@ -570,6 +617,7 @@ router.post("/customer-plans", async (req, res): Promise<void> => {
     serviceId: s.serviceId,
     serviceName: s.serviceName,
     frequencyDays: s.frequencyDays,
+    sequence: s.sequence,
     lastScheduledAt: (lastByService.get(s.serviceId) ?? start).toISOString(),
   }));
 

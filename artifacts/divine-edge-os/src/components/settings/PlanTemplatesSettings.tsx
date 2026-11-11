@@ -16,7 +16,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Plus, Trash2, Repeat, Grid3X3, X, ChevronRight, Snowflake } from 'lucide-react';
+import { Plus, Trash2, Repeat, Grid3X3, X, ChevronRight, ChevronUp, ChevronDown, GripVertical, Snowflake } from 'lucide-react';
+import { distributedWindowDates, intervalDates, ordinal } from '@/lib/planFrequency';
 import type { PricingTier } from '@/lib/pricingMatrix';
 
 interface ServiceRuleForm { serviceId: string; serviceName: string; frequencyDays: string; frequencyUnit: 'days' | 'weeks'; }
@@ -36,6 +37,8 @@ const mkKey = () => Math.random().toString(36).slice(2, 10);
 
 const EMPTY = {
   name: '', description: '', visitCount: '4', billingCycle: 'monthly', customCycleDays: '',
+  scheduleMode: 'weekly' as 'interval' | 'fixed_count' | 'weekly' | 'monthly' | 'custom',
+  intervalWeeks: '7', windowStart: '', windowEnd: '',
   price: '', autoRenewDefault: true, isActive: true,
   pricingMode: 'flat' as PricingMode,
   pricingMatrix: [] as PlanTierWithKey[],
@@ -152,6 +155,7 @@ export default function PlanTemplatesSettings() {
   const [templateSearch, setTemplateSearch] = useState('');
   const [form, setForm] = useState(EMPTY);
   const [rules, setRules] = useState<ServiceRuleForm[]>([{ serviceId: '', serviceName: '', frequencyDays: '1', frequencyUnit: 'weeks' }]);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   const { data: templates, isLoading } = useListPlanTemplates({ query: { queryKey: getListPlanTemplatesQueryKey() } });
   const { data: services } = useQuery<Array<{ id: number; name: string }>>({
@@ -177,16 +181,24 @@ export default function PlanTemplatesSettings() {
     const hasOffSeason = !!(t as any).offSeasonStart && !!(t as any).offSeasonEnd;
     const [osStartMonth = '11', osStartDay = '15'] = ((t as any).offSeasonStart ?? '11-15').split('-');
     const [osEndMonth = '03', osEndDay = '14'] = ((t as any).offSeasonEnd ?? '03-14').split('-');
+    const schedule = (t as any).scheduleRule ?? {};
     setForm({
-      name: t.name, description: t.description ?? '', visitCount: String(t.visitCount),
+      name: t.name, description: t.description ?? '', visitCount: String(schedule.visitCount ?? t.visitCount),
       billingCycle: t.billingCycle, customCycleDays: t.customCycleDays ? String(t.customCycleDays) : '',
+      scheduleMode: schedule.mode ?? 'weekly',
+      intervalWeeks: schedule.intervalWeeks ? String(schedule.intervalWeeks) : '7',
+      windowStart: schedule.windowStart ?? '',
+      windowEnd: schedule.windowEnd ?? '',
       price: String(t.price), autoRenewDefault: t.autoRenewDefault, isActive: t.isActive,
       pricingMode: pm, pricingMatrix: matrix.map((t: PlanPricingTier) => ({ ...t, _key: mkKey() })),
       offSeasonEnabled: hasOffSeason,
       offSeasonStartMonth: osStartMonth, offSeasonStartDay: osStartDay,
       offSeasonEndMonth: osEndMonth, offSeasonEndDay: osEndDay,
     });
-    setRules((t.services as any[]).map(s => {
+    const orderedServices = (t.services as any[]).map((service, index) => ({ service, index }))
+      .sort((a, b) => (Number(a.service.sequence) || a.index + 1) - (Number(b.service.sequence) || b.index + 1))
+      .map(entry => entry.service);
+    setRules(orderedServices.map(s => {
       const fd = Number(s.frequencyDays) || 7;
       const isWeeks = fd % 7 === 0;
       return { serviceId: String(s.serviceId), serviceName: s.serviceName, frequencyDays: isWeeks ? String(fd / 7) : String(fd), frequencyUnit: isWeeks ? 'weeks' as const : 'days' as const };
@@ -244,15 +256,39 @@ export default function PlanTemplatesSettings() {
   const handleSave = () => {
     const validRules = rules.filter(r => r.serviceId && r.frequencyDays);
     if (!form.name || validRules.length === 0) { toast.error('Name and at least one service rule are required'); return; }
+    if (form.scheduleMode === 'fixed_count' && (!form.windowStart || !form.windowEnd || form.windowEnd < form.windowStart)) {
+      toast.error('A fixed-count window needs a start date and a later end date');
+      return;
+    }
+    if (form.scheduleMode === 'interval' && (!form.windowStart || !form.windowEnd || form.windowEnd < form.windowStart)) {
+      toast.error('An interval schedule needs a start date and an end date');
+      return;
+    }
     if (form.pricingMode === 'matrix' && form.pricingMatrix.length === 0) {
       toast.error('Add at least one pricing tier, or switch pricing mode');
       return;
     }
 
+    const sequenced = form.scheduleMode === 'interval' || form.scheduleMode === 'fixed_count';
+    const intervalDays = Math.max(1, Number(form.intervalWeeks) || 1) * 7;
     const payload = {
       name: form.name,
       description: form.description || undefined,
-      services: validRules.map(r => ({ serviceId: Number(r.serviceId), serviceName: r.serviceName, frequencyDays: r.frequencyUnit === 'weeks' ? Number(r.frequencyDays) * 7 : Number(r.frequencyDays) })),
+      services: validRules.map((r, index) => ({
+        serviceId: Number(r.serviceId),
+        serviceName: r.serviceName,
+        sequence: index + 1,
+        frequencyDays: form.scheduleMode === 'interval'
+          ? intervalDays
+          : (r.frequencyUnit === 'weeks' ? Number(r.frequencyDays) * 7 : Number(r.frequencyDays)),
+      })),
+      scheduleRule: {
+        mode: form.scheduleMode,
+        intervalWeeks: form.scheduleMode === 'interval' ? Math.max(1, Number(form.intervalWeeks) || 1) : undefined,
+        visitCount: form.scheduleMode === 'fixed_count' ? Math.max(2, Number(form.visitCount) || validRules.length) : undefined,
+        windowStart: sequenced ? form.windowStart || undefined : undefined,
+        windowEnd: sequenced ? form.windowEnd || undefined : undefined,
+      },
       visitCount: Number(form.visitCount) || validRules.length,
       billingCycle: form.billingCycle as 'monthly' | 'quarterly' | 'annual' | 'custom',
       customCycleDays: form.billingCycle === 'custom' ? Number(form.customCycleDays) || 30 : undefined,
@@ -377,9 +413,74 @@ export default function PlanTemplatesSettings() {
             </div>
 
             <Separator />
-            <label className="text-sm font-medium">Included Services</label>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Schedule</label>
+              <Select value={form.scheduleMode} onValueChange={v => setForm(f => ({ ...f, scheduleMode: v as typeof f.scheduleMode }))}>
+                <SelectTrigger title="How visits are dated when this plan is sold"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="interval">Every X weeks</SelectItem>
+                  <SelectItem value="fixed_count">Fixed count across a date window</SelectItem>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                  <SelectItem value="custom">Custom per service</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {form.scheduleMode === 'interval' && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Every how many weeks</label>
+                <Input type="number" min={1} max={52} title="Interval in weeks, for example 7" value={form.intervalWeeks} onChange={e => setForm(f => ({ ...f, intervalWeeks: e.target.value }))} />
+              </div>
+            )}
+            {(form.scheduleMode === 'interval' || form.scheduleMode === 'fixed_count') && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Start date</label>
+                  <Input type="date" value={form.windowStart} onChange={e => setForm(f => ({ ...f, windowStart: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">End date</label>
+                  <Input type="date" value={form.windowEnd} onChange={e => setForm(f => ({ ...f, windowEnd: e.target.value }))} />
+                </div>
+              </div>
+            )}
+            {form.scheduleMode === 'fixed_count' && form.windowStart && form.windowEnd && (
+              <p className="text-xs text-muted-foreground">
+                First visit {form.windowStart}, last visit {form.windowEnd}
+                {distributedWindowDates(form.windowStart, form.windowEnd, Math.max(2, Number(form.visitCount) || 2)).length > 2
+                  ? `, with the others on ${distributedWindowDates(form.windowStart, form.windowEnd, Math.max(2, Number(form.visitCount) || 2)).slice(1, -1).join(', ')}.`
+                  : '.'}
+              </p>
+            )}
+            {form.scheduleMode === 'interval' && form.windowStart && form.windowEnd && (
+              <p className="text-xs text-muted-foreground">
+                Visits: {intervalDates(form.windowStart, form.windowEnd, Math.max(1, Number(form.intervalWeeks) || 1)).join(', ') || 'none in this window'}.
+              </p>
+            )}
+
+            <Separator />
+            <label className="text-sm font-medium">Service sequence</label>
+            <p className="text-xs text-muted-foreground">Drag a row or use the arrows. Visit 1 uses the 1st service, visit 2 the 2nd, and the order repeats.</p>
             {rules.map((r, idx) => (
-              <div key={idx} className="flex gap-2 items-center">
+              <div
+                key={idx}
+                draggable
+                onDragStart={() => setDragIndex(idx)}
+                onDragOver={e => e.preventDefault()}
+                onDrop={() => {
+                  if (dragIndex == null || dragIndex === idx) return;
+                  setRules(rs => {
+                    const next = [...rs];
+                    const [moved] = next.splice(dragIndex, 1);
+                    next.splice(idx, 0, moved);
+                    return next;
+                  });
+                  setDragIndex(null);
+                }}
+                className="flex gap-2 items-center"
+              >
+                <GripVertical className="w-4 h-4 text-muted-foreground shrink-0" />
+                <span className="w-10 text-xs font-medium text-muted-foreground">{ordinal(idx)}</span>
                 <div className="flex-1 space-y-1">
                   <Select value={r.serviceId} onValueChange={v => setRuleServiceId(idx, v)}>
                     <SelectTrigger title="Select the service included in this plan rule"><SelectValue placeholder="Service" /></SelectTrigger>
@@ -388,23 +489,41 @@ export default function PlanTemplatesSettings() {
                     </SelectContent>
                   </Select>
                 </div>
-                <span className="text-xs text-muted-foreground shrink-0">every</span>
-                <Input type="number" min={1} title="How often this service recurs (number of days or weeks)" className="w-16 text-sm" value={r.frequencyDays}
-                  onChange={e => setRules(rs => rs.map((rr, i) => i === idx ? { ...rr, frequencyDays: e.target.value } : rr))} />
-                <Select value={r.frequencyUnit} onValueChange={v => setRules(rs => rs.map((rr, i) => i === idx ? { ...rr, frequencyUnit: v as 'days' | 'weeks' } : rr))}>
-                  <SelectTrigger className="w-24" title="Unit for the service frequency (days or weeks)"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="days">days</SelectItem>
-                    <SelectItem value="weeks">weeks</SelectItem>
-                  </SelectContent>
-                </Select>
+                {form.scheduleMode !== 'interval' && form.scheduleMode !== 'fixed_count' && (
+                  <>
+                    <span className="text-xs text-muted-foreground shrink-0">every</span>
+                    <Input type="number" min={1} title="How often this service recurs (number of days or weeks)" className="w-16 text-sm" value={r.frequencyDays}
+                      onChange={e => setRules(rs => rs.map((rr, i) => i === idx ? { ...rr, frequencyDays: e.target.value } : rr))} />
+                    <Select value={r.frequencyUnit} onValueChange={v => setRules(rs => rs.map((rr, i) => i === idx ? { ...rr, frequencyUnit: v as 'days' | 'weeks' } : rr))}>
+                      <SelectTrigger className="w-24" title="Unit for the service frequency (days or weeks)"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="days">days</SelectItem>
+                        <SelectItem value="weeks">weeks</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </>
+                )}
+                <Button variant="ghost" size="icon" title="Move this service earlier" disabled={idx === 0} onClick={() => setRules(rs => {
+                  const next = [...rs];
+                  [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                  return next;
+                })}>
+                  <ChevronUp className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="icon" title="Move this service later" disabled={idx === rules.length - 1} onClick={() => setRules(rs => {
+                  const next = [...rs];
+                  [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]];
+                  return next;
+                })}>
+                  <ChevronDown className="w-4 h-4" />
+                </Button>
                 <Button variant="ghost" size="icon" title="Remove this service rule from the plan" onClick={() => setRules(rs => rs.filter((_, i) => i !== idx))} disabled={rules.length === 1}>
                   <Trash2 className="w-4 h-4" />
                 </Button>
               </div>
             ))}
             <Button variant="outline" size="sm" className="gap-1" onClick={() => setRules(rs => [...rs, { serviceId: '', serviceName: '', frequencyDays: '1', frequencyUnit: 'weeks' as const }])}>
-              <Plus className="w-3.5 h-3.5" /> Add Service Rule
+              <Plus className="w-3.5 h-3.5" /> Add Service
             </Button>
 
             <Separator />

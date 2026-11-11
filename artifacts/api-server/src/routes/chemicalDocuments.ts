@@ -8,7 +8,7 @@ import { ObjectStorageService } from "../lib/objectStorage";
 
 const router: IRouter = Router();
 const storage = new ObjectStorageService();
-export const CHEMICAL_DOCUMENT_TYPES = ["chemical_sds", "chemical_msds"];
+export const CHEMICAL_DOCUMENT_TYPES = ["chemical_sds", "chemical_msds", "chemical_label"];
 export const MAX_CHEMICAL_PDF_BYTES = 20 * 1024 * 1024;
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -22,7 +22,7 @@ export function sanitizeChemicalDocumentName(name: string): string {
 
 function documentJson(row: typeof mediaAttachmentsTable.$inferSelect) {
   return {
-    id: row.id, documentType: row.entityType === "chemical_sds" ? "sds" : "msds",
+    id: row.id, documentType: row.entityType === "chemical_sds" ? "sds" : row.entityType === "chemical_label" ? "label" : "msds",
     fileName: row.caption ?? "document.pdf", sizeBytes: row.sizeBytes, createdAt: row.createdAt.toISOString(),
   };
 }
@@ -85,7 +85,7 @@ router.get(base, requireVerifiedStaff, requireProduct, async (_req, res) => {
 
 router.post(base, requireVerifiedStaff, requireDocumentManager, requireProduct, parseUpload, async (req, res) => {
   const type = req.body?.documentType;
-  if (type !== "sds" && type !== "msds") { res.status(400).json({ error: "documentType must be sds or msds" }); return; }
+  if (type !== "sds" && type !== "msds" && type !== "label") { res.status(400).json({ error: "documentType must be sds, msds, or label" }); return; }
   if (!req.file || req.file.buffer.length < 5 || !req.file.buffer.subarray(0, 5).equals(Buffer.from("%PDF-"))) {
     res.status(400).json({ error: "A valid, non-empty PDF file is required" }); return;
   }
@@ -104,6 +104,9 @@ router.post(base, requireVerifiedStaff, requireDocumentManager, requireProduct, 
         fileUrl: `/api/storage${fileKey}`, mimeType: "application/pdf", sizeBytes: req.file!.buffer.length,
         caption: sanitizeChemicalDocumentName(req.file!.originalname), createdBy: userId, source: "staff", isCover: false,
       }).returning();
+      if (type === "label") {
+        await tx.update(chemicalProductsTable).set({ labelPdfUrl: `/api/storage${fileKey}` }).where(and(eq(chemicalProductsTable.id, parent.id), eq(chemicalProductsTable.tenantId, tenantId)));
+      }
       return saved;
     });
     res.status(201).json(documentJson(row));

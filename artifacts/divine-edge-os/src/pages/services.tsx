@@ -343,7 +343,7 @@ function MonthDayPicker({
           <SelectTrigger className="flex-1">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-80">
             {MONTHS.map(m => (
               <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
             ))}
@@ -353,7 +353,7 @@ function MonthDayPicker({
           <SelectTrigger className="w-20">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-80">
             {days.map(d => (
               <SelectItem key={d} value={d}>{parseInt(d, 10)}</SelectItem>
             ))}

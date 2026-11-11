@@ -19,6 +19,8 @@ export const chemicalProductsTable = pgTable("chemical_products", {
   rainfastHours: real("rainfast_hours"), // hours product needs to dry before rain is okay
   safetyNotes: text("safety_notes"),
   labelSdsUrl: text("label_sds_url"),
+  labelPdfUrl: text("label_pdf_url"),
+  quantityOnHand: real("quantity_on_hand").notNull().default(0),
   unit: text("unit").notNull().default("oz"), // oz, fl oz, lb, gal, etc.
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -36,6 +38,8 @@ export const chemicalMixturesTable = pgTable("chemical_mixtures", {
   tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   name: text("name").notNull(),
   description: text("description"),
+  tankCapacityGallons: real("tank_capacity_gallons"),
+  coverageSqft: real("coverage_sqft"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
@@ -54,6 +58,9 @@ export const chemicalMixtureItemsTable = pgTable("chemical_mixture_items", {
   /** Amount of this product per unit volume of mixture (e.g. 2 oz per gallon) */
   ratioAmount: real("ratio_amount").notNull(),
   ratioUnit: text("ratio_unit").notNull().default("oz"), // oz per gallon of total mix
+  /** per_gallon uses ratio_amount. per_1000_sqft uses rate_per_1000. */
+  rateBasis: text("rate_basis").notNull().default("per_gallon"),
+  ratePer1000: real("rate_per_1000"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

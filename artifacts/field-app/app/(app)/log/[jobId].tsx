@@ -284,6 +284,9 @@ function ChemicalSafetySheets({ product }: { product: ChemProduct }) {
       {!isLoading && !isError && documents?.length === 0 && (
         <Text style={[safetyStyles.message, { color: colors.mutedForeground }]}>No uploaded safety sheets available.</Text>
       )}
+      {documents?.some(document => document.documentType === 'label') && (
+        <Text style={[safetyStyles.productName, { color: colors.foreground }]}>View Product Label (PDF)</Text>
+      )}
       {documents?.map(document => (
         <TouchableOpacity
           key={document.id}
@@ -296,7 +299,7 @@ function ChemicalSafetySheets({ product }: { product: ChemProduct }) {
             ? <ActivityIndicator size="small" color={colors.primary} />
             : <Ionicons name="document-text-outline" size={16} color={colors.primary} />}
           <Text style={[safetyStyles.linkText, { color: colors.primary }]} numberOfLines={2}>
-            {document.documentType.toUpperCase()} · {document.fileName}
+            {document.documentType === 'label' ? 'View Product Label (PDF)' : `${document.documentType.toUpperCase()} · ${document.fileName}`}
           </Text>
           <Ionicons name="open-outline" size={15} color={colors.primary} />
         </TouchableOpacity>

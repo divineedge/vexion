@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { AlertTriangle, Download, Info } from 'lucide-react';
 import {
-  JobPricingFloorInputs, calculateJobPricingFloor, defaultJobPricingFloor,
+  JobPricingFloorInputs, calculateJobPricingFloor, defaultJobPricingFloor, resolveOnSiteTimeInput,
 } from '@/lib/jobPricingFloor';
 
 export type JobPricingFloorDraft = Record<keyof JobPricingFloorInputs, string>;
@@ -28,12 +29,29 @@ export const FIELDS: { key: keyof JobPricingFloorInputs; label: string; unit: st
 
 export const money = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+/** Keep on-site time blank while it is being edited, and store a number on blur. */
+export function useOnSiteTimeField(committedText: string, onCommit: (minutes: number) => void) {
+  const [raw, setRaw] = useState<string | null>(null);
+  return {
+    value: raw ?? committedText,
+    onChange: (next: string) => setRaw(resolveOnSiteTimeInput(committedText, next, 'edit').text),
+    onBlur: () => {
+      const edit = resolveOnSiteTimeInput(committedText, raw ?? committedText, 'blur');
+      setRaw(null);
+      if (edit.minutes !== undefined && edit.minutes !== Number(committedText)) onCommit(edit.minutes);
+    },
+  };
+}
+
 export function JobPricingFloorPanel({ draft, onChange, isDefault }: {
   draft: JobPricingFloorDraft;
   onChange: (next: JobPricingFloorDraft) => void;
   isDefault: boolean;
 }) {
   const { errors, result } = calculateJobPricingFloor(parseDraft(draft));
+  const onSiteField = useOnSiteTimeField(draft.onSiteMinutes, minutes => {
+    onChange({ ...draft, onSiteMinutes: String(minutes) });
+  });
   const downloadHref = `${import.meta.env.BASE_URL}job-pricing-floor.html`;
 
   return (
@@ -65,21 +83,26 @@ export function JobPricingFloorPanel({ draft, onChange, isDefault }: {
             <CardDescription>Inputs for one typical stop in this cost scope.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
-            {FIELDS.map(f => (
-              <div key={f.key} className={`space-y-1 ${f.key === 'monthlyBillableHours' ? 'sm:col-span-2' : ''}`}>
-                <label htmlFor={`jpf-${f.key}`} className="text-xs font-medium text-foreground/80 flex justify-between gap-2">
-                  <span>{f.label}</span><span className="text-muted-foreground font-normal">{f.unit}</span>
-                </label>
-                <div className="relative">
-                  {f.prefix && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">$</span>}
-                  <Input id={`jpf-${f.key}`} data-testid={`input-jpf-${f.key}`} type="number" inputMode="decimal"
-                    min={f.key === 'crewMembers' ? 1 : 0} step={f.step ?? 'any'}
-                    value={draft[f.key]} onChange={e => onChange({ ...draft, [f.key]: e.target.value })}
-                    className={`tabular-nums focus-visible:ring-emerald-800 ${f.prefix ? 'pl-7' : ''}`} />
+            {FIELDS.map(f => {
+              const onSite = f.key === 'onSiteMinutes';
+              return (
+                <div key={f.key} className={`space-y-1 ${f.key === 'monthlyBillableHours' ? 'sm:col-span-2' : ''}`}>
+                  <label htmlFor={`jpf-${f.key}`} className="text-xs font-medium text-foreground/80 flex justify-between gap-2">
+                    <span>{f.label}</span><span className="text-muted-foreground font-normal">{f.unit}</span>
+                  </label>
+                  <div className="relative">
+                    {f.prefix && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">$</span>}
+                    <Input id={`jpf-${f.key}`} data-testid={`input-jpf-${f.key}`} type="number" inputMode="decimal"
+                      min={f.key === 'crewMembers' ? 1 : 0} step={f.step ?? 'any'}
+                      value={onSite ? onSiteField.value : draft[f.key]}
+                      onChange={e => onSite ? onSiteField.onChange(e.target.value) : onChange({ ...draft, [f.key]: e.target.value })}
+                      onBlur={onSite ? onSiteField.onBlur : undefined}
+                      className={`tabular-nums focus-visible:ring-emerald-800 ${f.prefix ? 'pl-7' : ''}`} />
+                  </div>
+                  <p className="text-[11px] leading-snug text-muted-foreground">{f.hint}</p>
                 </div>
-                <p className="text-[11px] leading-snug text-muted-foreground">{f.hint}</p>
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
 

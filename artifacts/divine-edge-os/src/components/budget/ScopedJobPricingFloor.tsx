@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
 import { JobPricingFloorInputs, calculateJobPricingFloor } from '@/lib/jobPricingFloor';
 import { BUDGET_LINKED_FLOOR_KEYS, SCENARIO_SEED_KEYS, presentFloorInputs } from '@/lib/jobPricingFloorBaseline';
-import { FIELDS, JobPricingFloorDraft, draftFromInputs, parseDraft, money } from './JobPricingFloorPanel';
+import { FIELDS, JobPricingFloorDraft, draftFromInputs, parseDraft, money, useOnSiteTimeField } from './JobPricingFloorPanel';
 
 /**
  * Compact stop-floor calculator bound to one budget scope (a division or the
@@ -36,6 +36,9 @@ export function ScopedJobPricingFloor({ scopeId, scopeLabel, saved, baseline, on
     if (calculateJobPricingFloor(merged).result) onChange(merged);
   };
   const reset = () => { setSession({}); onChange(undefined); };
+  const onSiteField = useOnSiteTimeField(shown.onSiteMinutes, minutes => {
+    edit('onSiteMinutes', { ...shown, onSiteMinutes: String(minutes) });
+  });
   const breakEven = result ? money(Math.ceil(result.breakEvenFloor * 100 - 1e-8) / 100) : '';
 
   return (
@@ -56,6 +59,7 @@ export function ScopedJobPricingFloor({ scopeId, scopeLabel, saved, baseline, on
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
         {FIELDS.map(f => {
           const differs = shown[f.key] !== baseDraft[f.key];
+          const onSite = f.key === 'onSiteMinutes';
           return (
             <div key={f.key} className="space-y-1">
               <label htmlFor={`jpf-${scopeId}-${f.key}`} className="text-xs font-medium text-foreground/80 flex justify-between gap-2">
@@ -65,7 +69,9 @@ export function ScopedJobPricingFloor({ scopeId, scopeLabel, saved, baseline, on
                 {f.prefix && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">$</span>}
                 <Input id={`jpf-${scopeId}-${f.key}`} data-testid={`input-jpf-${scopeId}-${f.key}`} type="number" inputMode="decimal"
                   min={f.key === 'crewMembers' ? 1 : 0} step={f.step ?? 'any'} title={f.hint}
-                  value={shown[f.key]} onChange={e => edit(f.key, { ...shown, [f.key]: e.target.value })}
+                  value={onSite ? onSiteField.value : shown[f.key]}
+                  onChange={e => onSite ? onSiteField.onChange(e.target.value) : edit(f.key, { ...shown, [f.key]: e.target.value })}
+                  onBlur={onSite ? onSiteField.onBlur : undefined}
                   className={`h-9 tabular-nums focus-visible:ring-emerald-800 ${f.prefix ? 'pl-7' : ''}`} />
               </div>
               <p className="text-[11px] text-muted-foreground tabular-nums">

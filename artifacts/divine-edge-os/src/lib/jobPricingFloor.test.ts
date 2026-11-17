@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { calculateJobPricingFloor, defaultJobPricingFloor, restoreJobPricingFloor } from './jobPricingFloor';
+import { calculateJobPricingFloor, defaultJobPricingFloor, resolveOnSiteTimeInput, restoreJobPricingFloor } from './jobPricingFloor';
+import { presentFloorInputs } from './jobPricingFloorBaseline';
 import { migrateBudgetPayload } from './budgetCalc';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -67,6 +68,30 @@ describe('stop pricing floor', () => {
     expect(reloaded[0].divisions).toEqual(original[0].divisions);
     expect(original[0].jobPricingFloor).toBeUndefined();
     expect(restoreJobPricingFloor({ ...defaultJobPricingFloor(), crewMembers: 0 })).toBeUndefined();
+  });
+  it('lets on-site time stay blank while the digit 4 is deleted, then commits on blur', () => {
+    const committed = '45';
+    expect(resolveOnSiteTimeInput(committed, '4', 'edit')).toEqual({ text: '4' });
+    const cleared = resolveOnSiteTimeInput('4', '', 'edit');
+    expect(cleared).toEqual({ text: '' });
+    expect(cleared.minutes).toBeUndefined();
+    expect(resolveOnSiteTimeInput('4', '', 'blur')).toEqual({ text: '4' });
+    expect(resolveOnSiteTimeInput(committed, '   ', 'blur')).toEqual({ text: committed });
+    expect(resolveOnSiteTimeInput(committed, 'nope', 'blur')).toEqual({ text: committed });
+
+    const saved = { ...defaultJobPricingFloor(), onSiteMinutes: 30 };
+    expect(presentFloorInputs(defaultJobPricingFloor(), saved, {}).onSiteMinutes).toBe(30);
+    const next = resolveOnSiteTimeInput('30', '60', 'blur');
+    expect(next).toEqual({ text: '60', minutes: 60 });
+    const live = presentFloorInputs(defaultJobPricingFloor(), saved, { onSiteMinutes: next.minutes });
+    expect(live.onSiteMinutes).toBe(60);
+    expect(live.hourlyWage).toBe(defaultJobPricingFloor().hourlyWage);
+    expect(live.monthlyOverhead).toBe(defaultJobPricingFloor().monthlyOverhead);
+    expect(live.monthlyBillableHours).toBe(defaultJobPricingFloor().monthlyBillableHours);
+    const floor = calculateJobPricingFloor(live).result!;
+    const previous = calculateJobPricingFloor(saved).result!;
+    expect(floor.totalClockMinutes).toBe(75);
+    expect(floor.recommendedMinimum).not.toBe(previous.recommendedMinimum);
   });
   it('keeps the self-contained calculator consistent with the app', () => {
     const html = readFileSync(new URL('../../public/job-pricing-floor.html', import.meta.url), 'utf8');

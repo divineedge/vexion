@@ -93,6 +93,24 @@ export function calculateJobPricingFloor(input: JobPricingFloorInputs): {
   return { errors: [], result };
 }
 
+/**
+ * On-site time stays whatever the user typed while they are editing, including "".
+ * A finite number is produced only on blur, so deleting the last digit (often a
+ * leftover 4) is not immediately replaced by the previous committed value.
+ */
+export function resolveOnSiteTimeInput(
+  committedText: string,
+  raw: string,
+  phase: 'edit' | 'blur',
+): { text: string; minutes?: number } {
+  if (phase === 'edit') return { text: raw };
+  const trimmed = raw.trim();
+  if (trimmed === '') return { text: committedText };
+  const minutes = Number(trimmed);
+  if (!Number.isFinite(minutes)) return { text: committedText };
+  return { text: String(minutes), minutes };
+}
+
 /** Preserve only valid, complete saved scenarios; old budget records remain valid. */
 export function restoreJobPricingFloor(raw: unknown): JobPricingFloorInputs | undefined {
   if (!raw || typeof raw !== 'object') return undefined;

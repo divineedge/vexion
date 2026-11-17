@@ -73,6 +73,50 @@ export interface CustomOverheadLine {
   frequency?: ExpenseFrequency;
 }
 
+export type OverheadPayType = 'annual_salary' | 'hourly';
+/** division: this division's overhead. company_proportional: split by productive hours. company_total: company overhead only. */
+export type OverheadLaborAllocation = 'division' | 'company_proportional' | 'company_total';
+
+/** Non-billable office, shop, and sales labor recovered through overhead. */
+export interface OverheadLaborRole {
+  id: string;
+  /** Role or employee name. */
+  name: string;
+  payType: OverheadPayType;
+  /** Annual salary when pay type is annual_salary. */
+  annualAmount: number;
+  /** Hourly rate when pay type is hourly. */
+  hourlyRate: number;
+  /** Hours per week when pay type is hourly. */
+  hoursPerWeek: number;
+  /** Use the division payroll burden % when true. */
+  inheritBurden: boolean;
+  /** Used when inheritBurden is false. */
+  payrollBurdenPct: number;
+  allocation: OverheadLaborAllocation;
+}
+
+export const OVERHEAD_LABOR_PRESETS: { id: string; name: string }[] = [
+  { id: 'owner_admin', name: 'Owner/Admin Salary' },
+  { id: 'office_manager', name: 'Office Manager' },
+  { id: 'shop_mechanic', name: 'Shop Mechanic' },
+  { id: 'sales_estimating', name: 'Sales/Estimating' },
+];
+
+export function newOverheadLaborRole(name = ''): OverheadLaborRole {
+  return {
+    id: crypto.randomUUID(),
+    name,
+    payType: 'annual_salary',
+    annualAmount: 0,
+    hourlyRate: 0,
+    hoursPerWeek: 40,
+    inheritBurden: true,
+    payrollBurdenPct: 0,
+    allocation: 'division',
+  };
+}
+
 export type TechnicianSchedule = 'year_round' | 'seasonal';
 
 const zeroOverhead = (): OverheadLineItems => ({
@@ -124,6 +168,8 @@ export interface DivisionBudget extends OverheadLineItems {
   /** Seasonal crews paid through the off-season. Those wages are overhead, not productive labor. */
   yearRoundPay?: boolean;
   customOverhead?: CustomOverheadLine[];
+  /** Non-billable salaried and hourly overhead roles. Missing on older budgets. */
+  overheadLabor?: OverheadLaborRole[];
   /** Manual division job floor. Null follows the calculated cost baseline. */
   floorPriceOverride?: number | null;
   productionEfficiencyPct: number;
@@ -159,6 +205,7 @@ export function defaultDivision(name = 'Main'): DivisionBudget {
     weeksWorkedPerYear: 32,
     yearRoundPay: false,
     customOverhead: [],
+    overheadLabor: [],
     overheadFrequency: {},
     floorPriceOverride: null,
     productionEfficiencyPct: 80,
@@ -240,6 +287,99 @@ export function categoryAnnualAmount(d: DivisionBudget, key: keyof OverheadLineI
   return annualizedExpense(Number(d[key]) || 0, expenseFrequency(d.overheadFrequency?.[key]));
 }
 
+function nonNegative(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+export function normalizeOverheadLaborRole(raw: any): OverheadLaborRole | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+  if (!name) return null;
+  const payType: OverheadPayType = raw.payType === 'hourly' ? 'hourly' : 'annual_salary';
+  const allocation: OverheadLaborAllocation = raw.allocation === 'company_proportional' || raw.allocation === 'company_total'
+    ? raw.allocation
+    : 'division';
+  return {
+    id: typeof raw.id === 'string' && raw.id ? raw.id : crypto.randomUUID(),
+    name,
+    payType,
+    annualAmount: nonNegative(raw.annualAmount),
+    hourlyRate: nonNegative(raw.hourlyRate),
+    hoursPerWeek: nonNegative(raw.hoursPerWeek),
+    inheritBurden: raw.inheritBurden !== false,
+    payrollBurdenPct: nonNegative(raw.payrollBurdenPct),
+    allocation,
+  };
+}
+
+/** Working weeks for hourly overhead. Company working weeks win over a seasonal crew's production weeks. */
+export function overheadLaborWorkingWeeks(division: DivisionBudget, annualWorkingWeeks?: number): number {
+  if (typeof annualWorkingWeeks === 'number' && Number.isFinite(annualWorkingWeeks) && annualWorkingWeeks > 0) return annualWorkingWeeks;
+  return nonNegative(division.workWeeksPerYear);
+}
+
+export function overheadLaborBurdenPct(role: OverheadLaborRole, inheritedPct: number): number {
+  if (role.inheritBurden !== false) return nonNegative(inheritedPct);
+  return nonNegative(role.payrollBurdenPct);
+}
+
+/** Annual pay before payroll tax. Hourly is rate × hours/week × working weeks. */
+export function overheadLaborBasePay(role: OverheadLaborRole, workingWeeks: number): number {
+  if (role.payType === 'hourly') return nonNegative(role.hourlyRate) * nonNegative(role.hoursPerWeek) * nonNegative(workingWeeks);
+  return nonNegative(role.annualAmount);
+}
+
+export function overheadLaborAnnualCost(role: OverheadLaborRole, workingWeeks: number, inheritedBurdenPct: number): number {
+  const base = overheadLaborBasePay(role, workingWeeks);
+  return base * (1 + overheadLaborBurdenPct(role, inheritedBurdenPct) / 100);
+}
+
+export interface OverheadLaborLine {
+  id: string;
+  divisionId: string;
+  divisionName: string;
+  name: string;
+  payType: OverheadPayType;
+  allocation: OverheadLaborAllocation;
+  annualCost: number;
+  monthlyCost: number;
+}
+
+export function listOverheadLabor(year: BudgetYear, annualWorkingWeeks?: number): OverheadLaborLine[] {
+  const weeksArg = typeof annualWorkingWeeks === 'number' && annualWorkingWeeks > 0 ? annualWorkingWeeks : year.annualWorkingWeeks;
+  const lines: OverheadLaborLine[] = [];
+  for (const division of year.divisions) {
+    const weeks = overheadLaborWorkingWeeks(division, weeksArg);
+    for (const role of division.overheadLabor ?? []) {
+      const annualCost = overheadLaborAnnualCost(role, weeks, division.payrollBurdenPct);
+      lines.push({
+        id: role.id,
+        divisionId: division.id,
+        divisionName: division.name,
+        name: role.name,
+        payType: role.payType,
+        allocation: role.allocation ?? 'division',
+        annualCost,
+        monthlyCost: annualCost / 12,
+      });
+    }
+  }
+  return lines;
+}
+
+export function summarizeOverheadLabor(year: BudgetYear, annualWorkingWeeks?: number) {
+  let divisionAllocated = 0;
+  let proportional = 0;
+  let companyOnly = 0;
+  for (const line of listOverheadLabor(year, annualWorkingWeeks)) {
+    if (line.allocation === 'company_proportional') proportional += line.annualCost;
+    else if (line.allocation === 'company_total') companyOnly += line.annualCost;
+    else divisionAllocated += line.annualCost;
+  }
+  return { divisionAllocated, proportional, companyOnly, total: divisionAllocated + proportional + companyOnly };
+}
+
 // Migrates a single legacy "flat" budget object (pre-divisions) into a division.
 function migrateFlatToDivision(raw: any, name = 'Main'): DivisionBudget {
   const base = defaultDivision(name);
@@ -262,6 +402,12 @@ function migrateFlatToDivision(raw: any, name = 'Main'): DivisionBudget {
   merged.yearRoundPay = raw.yearRoundPay === true;
   merged.customOverhead = Array.isArray(raw.customOverhead)
     ? raw.customOverhead.flatMap((line: any) => normalizeCustomOverheadLine(line))
+    : [];
+  merged.overheadLabor = Array.isArray(raw.overheadLabor)
+    ? raw.overheadLabor.flatMap((line: any) => {
+      const role = normalizeOverheadLaborRole(line);
+      return role ? [role] : [];
+    })
     : [];
   merged.overheadFrequency = normalizeFrequencyMap(raw.overheadFrequency);
   merged.floorPriceOverride = typeof raw.floorPriceOverride === 'number' && Number.isFinite(raw.floorPriceOverride) && raw.floorPriceOverride >= 0
@@ -378,7 +524,15 @@ export function effectiveJobFloor(calculated: number, override: number | null | 
 }
 
 // ── Division-level computed results ─────────────────────────────────────────
-export function computeDivision(d: DivisionBudget, annualWorkingWeeks?: number) {
+export function divisionAllocatedLaborAnnual(d: DivisionBudget, annualWorkingWeeks?: number): number {
+  const weeks = overheadLaborWorkingWeeks(d, annualWorkingWeeks);
+  return (d.overheadLabor ?? []).reduce((sum, role) => {
+    if (role.allocation === 'company_proportional' || role.allocation === 'company_total') return sum;
+    return sum + overheadLaborAnnualCost(role, weeks, d.payrollBurdenPct);
+  }, 0);
+}
+
+export function computeDivision(d: DivisionBudget, annualWorkingWeeks?: number, extraAnnualOverhead = 0) {
   // Man-hours, not crew-hours: every productive person contributes capacity.
   // The owner/manager remains a productive worker when staff are added unless
   // the user explicitly marks them as office-only.
@@ -401,8 +555,10 @@ export function computeDivision(d: DivisionBudget, annualWorkingWeeks?: number) 
 
   const standardAnnual = OVERHEAD_CATEGORIES.reduce((s, { key }) => s + categoryAnnualAmount(d, key), 0);
   const customAnnual = customOverheadAnnual(d);
-  const monthlyOverhead = (standardAnnual + customAnnual) / 12;
-  const annualOverhead = standardAnnual + customAnnual + offSeasonPayrollOverhead;
+  const overheadLaborAnnual = divisionAllocatedLaborAnnual(d, annualWorkingWeeks);
+  const allocatedCompanyLabor = Number.isFinite(extraAnnualOverhead) && extraAnnualOverhead > 0 ? extraAnnualOverhead : 0;
+  const monthlyOverhead = (standardAnnual + customAnnual + overheadLaborAnnual + allocatedCompanyLabor) / 12;
+  const annualOverhead = standardAnnual + customAnnual + offSeasonPayrollOverhead + overheadLaborAnnual + allocatedCompanyLabor;
   const totalAnnualCosts = totalLaborCost + annualOverhead;
 
   const requiredRevenue = d.targetNetMarginPct >= 100 ? 0 :
@@ -466,6 +622,8 @@ export function computeDivision(d: DivisionBudget, annualWorkingWeeks?: number) 
     totalLaborCost,
     monthlyOverhead,
     customOverheadAnnual: customAnnual,
+    overheadLaborAnnual,
+    allocatedCompanyLabor,
     offSeasonPayrollOverhead,
     annualOverhead,
     totalAnnualCosts,
@@ -493,10 +651,31 @@ export function computeDivision(d: DivisionBudget, annualWorkingWeeks?: number) 
 
 export type DivisionResults = ReturnType<typeof computeDivision>;
 
+/** Company-wide hourly/salary labor split across divisions by productive man-hours. */
+export function proportionalOverheadLaborShares(year: BudgetYear, annualWorkingWeeks?: number): Map<string, number> {
+  const weeks = typeof annualWorkingWeeks === 'number' && annualWorkingWeeks > 0 ? annualWorkingWeeks : year.annualWorkingWeeks;
+  const { proportional } = summarizeOverheadLabor(year, weeks);
+  const hours = year.divisions.map(division => ({
+    id: division.id,
+    hours: Math.max(0, computeDivision(division, weeks).manHoursYear),
+  }));
+  const totalHours = hours.reduce((sum, row) => sum + row.hours, 0);
+  const shares = new Map<string, number>();
+  for (const row of hours) {
+    shares.set(row.id, proportional > 0 && totalHours > 0 ? proportional * (row.hours / totalHours) : 0);
+  }
+  return shares;
+}
+
 // ── Company-wide rollup across every division ───────────────────────────────
 export function computeCompanyTotal(year: BudgetYear) {
   const annualWorkingWeeks = typeof year.annualWorkingWeeks === 'number' && year.annualWorkingWeeks > 0 ? year.annualWorkingWeeks : undefined;
-  const rows = year.divisions.map(division => ({ division, results: computeDivision(division, annualWorkingWeeks) }));
+  const shares = proportionalOverheadLaborShares(year, annualWorkingWeeks);
+  const labor = summarizeOverheadLabor(year, annualWorkingWeeks);
+  const rows = year.divisions.map(division => ({
+    division,
+    results: computeDivision(division, annualWorkingWeeks, shares.get(division.id) ?? 0),
+  }));
 
   const combinedManHours = rows.reduce((s, r) => s + r.results.manHoursYear, 0);
   const combinedTotalEmployees = rows.reduce((s, r) => s + r.results.totalEmployees, 0);
@@ -506,11 +685,20 @@ export function computeCompanyTotal(year: BudgetYear) {
 
   const customAnnual = rows.reduce((s, r) => s + r.results.customOverheadAnnual, 0);
   const offSeasonAnnual = rows.reduce((s, r) => s + r.results.offSeasonPayrollOverhead, 0);
-  const overheadByCategory = OVERHEAD_CATEGORIES.map(({ key, label }) => {
-    const auto = year.divisions.reduce((s, d) => s + categoryAnnualAmount(d, key), 0)
-      + (key === 'miscOverhead' ? customAnnual + offSeasonAnnual : 0);
-    return { key, label, auto, override: undefined as number | undefined, effective: auto };
-  });
+  const overheadByCategory = [
+    ...OVERHEAD_CATEGORIES.map(({ key, label }) => {
+      const auto = year.divisions.reduce((s, d) => s + categoryAnnualAmount(d, key), 0)
+        + (key === 'miscOverhead' ? customAnnual + offSeasonAnnual : 0);
+      return { key: key as string, label, auto, override: undefined as number | undefined, effective: auto };
+    }),
+    {
+      key: 'overheadLabor',
+      label: 'Overhead & Salaried Labor',
+      auto: labor.total,
+      override: undefined as number | undefined,
+      effective: labor.total,
+    },
+  ];
   const combinedAnnualOverhead = overheadByCategory.reduce((s, o) => s + o.effective, 0);
   const combinedTotalAnnualCosts = combinedLaborCost + combinedAnnualOverhead;
 
@@ -556,6 +744,9 @@ export function computeCompanyTotal(year: BudgetYear) {
     monthlyOverheadExpense,
     companyJobFloorCalculated,
     companyJobFloorPrice,
+    overheadLaborAnnual: labor.total,
+    overheadLaborMonthly: labor.total / 12,
+    overheadLaborLines: listOverheadLabor(year, annualWorkingWeeks),
   };
 }
 

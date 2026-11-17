@@ -9,8 +9,12 @@ import {
   monthlyExpense,
   clampAnnualWorkingWeeks,
   migrateBudgetPayload,
+  overheadLaborAnnualCost,
+  newOverheadLaborRole,
   type DivisionBudget,
+  type OverheadLaborRole,
 } from "../src/lib/budgetCalc";
+import { companyFloorBaseline, divisionFloorBaseline } from "../src/lib/jobPricingFloorBaseline";
 
 function budgetWithWorkers(employeeCount: number, payrollBurdenPct = 0): DivisionBudget {
   const division = defaultDivision("Man-hour test");
@@ -175,9 +179,109 @@ describe("expense frequency", () => {
     expect(year.divisions[0].fuelMaintenance).toBe(10);
     expect(year.divisions[0].customOverhead[0].frequency).toBe("monthly");
     expect(year.divisions[0].customOverhead[0].monthlyAmount).toBe(25);
+    expect(year.divisions[0].overheadLabor).toEqual([]);
     expect(clampAnnualWorkingWeeks("", 40)).toBe(40);
     expect(clampAnnualWorkingWeeks("40", 48)).toBe(40);
     expect(clampAnnualWorkingWeeks("0", 48)).toBe(1);
     expect(clampAnnualWorkingWeeks("99", 48)).toBe(52);
+  });
+});
+
+function salaried(over: Partial<OverheadLaborRole> = {}): OverheadLaborRole {
+  return { ...newOverheadLaborRole("Office Manager"), annualAmount: 60_000, ...over, id: over.id ?? "office" };
+}
+
+describe("overhead and salaried labor", () => {
+  it("adds a burdened annual salary to division overhead, break-even, and the job floor", () => {
+    const division = budgetWithWorkers(0);
+    division.overheadLabor = [salaried({ annualAmount: 12_000, inheritBurden: true })];
+    const result = computeDivision(division);
+    expect(overheadLaborAnnualCost(division.overheadLabor[0], 50, 0)).toBe(12_000);
+    expect(result.overheadLaborAnnual).toBe(12_000);
+    expect(result.annualOverhead).toBe(12_000);
+    expect(result.monthlyOverhead).toBe(1_000);
+    expect(result.totalAnnualCosts).toBe(112_000);
+    expect(result.breakEvenRate).toBe(56);
+    expect(result.requiredHourlyRate).toBe(56);
+    expect(result.jobFloorCalculated).toBe(56);
+    expect(divisionFloorBaseline(division).monthlyOverhead).toBeCloseTo(result.monthlyOverhead + 100_000 / 12, 2);
+  });
+
+  it("annualizes hourly overhead as rate × hours/week × working weeks and can use its own burden", () => {
+    const division = budgetWithWorkers(0);
+    division.payrollBurdenPct = 22;
+    division.overheadLabor = [salaried({
+      payType: "hourly", hourlyRate: 20, hoursPerWeek: 10, annualAmount: 0,
+      inheritBurden: false, payrollBurdenPct: 10,
+    })];
+    const result = computeDivision(division, 48);
+    expect(result.overheadLaborAnnual).toBe(20 * 10 * 48 * 1.1);
+    expect(result.monthlyOverhead).toBeCloseTo(result.overheadLaborAnnual / 12, 5);
+    expect(result.breakEvenRate).toBeCloseTo(result.totalAnnualCosts / result.manHoursYear, 5);
+  });
+
+  it("inherits the division payroll burden when the role does not set its own", () => {
+    const division = budgetWithWorkers(0, 25);
+    division.overheadLabor = [salaried({ annualAmount: 40_000, inheritBurden: true, payrollBurdenPct: 0 })];
+    expect(computeDivision(division).overheadLaborAnnual).toBe(50_000);
+  });
+
+  it("keeps company-total labor out of the division rate and inside the company overhead and floor", () => {
+    const division = budgetWithWorkers(0);
+    division.overheadLabor = [salaried({ annualAmount: 12_000, allocation: "company_total" })];
+    const alone = computeDivision(division, 50);
+    expect(alone.overheadLaborAnnual).toBe(0);
+    expect(alone.annualOverhead).toBe(0);
+    expect(alone.breakEvenRate).toBe(50);
+    const year = { ...defaultBudgetYear(2026), annualWorkingWeeks: 50, divisions: [division] };
+    const totals = computeCompanyTotal(year);
+    expect(totals.overheadLaborAnnual).toBe(12_000);
+    expect(totals.overheadLaborMonthly).toBe(1_000);
+    expect(totals.combinedAnnualOverhead).toBe(12_000);
+    expect(totals.monthlyOverheadExpense).toBe(1_000);
+    expect(totals.combinedBreakEvenRate).toBe(112_000 / 2_000);
+    expect(totals.companyJobFloorCalculated).toBeCloseTo(112_000 / 2_000, 5);
+    const without = companyFloorBaseline({ ...year, divisions: [{ ...division, overheadLabor: [] }] });
+    expect(companyFloorBaseline(year).monthlyOverhead - without.monthlyOverhead).toBeCloseTo(1_000, 2);
+  });
+
+  it("splits company-wide labor across divisions in proportion to productive hours", () => {
+    const lawn = budgetWithWorkers(0);
+    lawn.id = "lawn";
+    lawn.overheadLabor = [salaried({ annualAmount: 10_000, allocation: "company_proportional" })];
+    const snow = budgetWithWorkers(1);
+    snow.id = "snow";
+    snow.ownerSalaryAnnual = 0;
+    const year = { ...defaultBudgetYear(2026), annualWorkingWeeks: 50, divisions: [lawn, snow] };
+    const totals = computeCompanyTotal(year);
+    const lawnHours = totals.rows[0].results.manHoursYear;
+    const snowHours = totals.rows[1].results.manHoursYear;
+    expect(lawnHours).toBe(2_000);
+    expect(snowHours).toBe(4_000);
+    expect(totals.rows[0].results.allocatedCompanyLabor).toBeCloseTo(10_000 * 2_000 / 6_000, 5);
+    expect(totals.rows[1].results.allocatedCompanyLabor).toBeCloseTo(10_000 * 4_000 / 6_000, 5);
+    expect(totals.rows[0].results.overheadLaborAnnual).toBe(0);
+    expect(totals.overheadLaborAnnual).toBe(10_000);
+    expect(totals.combinedAnnualOverhead).toBe(10_000);
+    expect(totals.monthlyOverheadExpense).toBeCloseTo(10_000 / 12, 5);
+    expect(totals.combinedTotalAnnualCosts).toBe(100_000 + 50_000 + 10_000);
+    const floor = divisionFloorBaseline(lawn, 50, totals.rows[0].results.allocatedCompanyLabor);
+    expect(floor.monthlyOverhead).toBeCloseTo(totals.rows[0].results.monthlyOverhead + 100_000 / 12, 2);
+  });
+
+  it("drops unnamed roles on reload and keeps a saved salary", () => {
+    const [year] = migrateBudgetPayload({
+      year: 2026,
+      divisions: [{
+        name: "Main",
+        overheadLabor: [
+          { id: "ok", name: "Shop Mechanic", payType: "annual_salary", annualAmount: 30_000, inheritBurden: false, payrollBurdenPct: 10, allocation: "division" },
+          { name: "   " },
+        ],
+      }],
+    });
+    expect(year.divisions[0].overheadLabor).toHaveLength(1);
+    expect(year.divisions[0].overheadLabor?.[0].name).toBe("Shop Mechanic");
+    expect(computeDivision(year.divisions[0], 48).overheadLaborAnnual).toBe(33_000);
   });
 });

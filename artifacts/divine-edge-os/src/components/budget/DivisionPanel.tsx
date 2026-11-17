@@ -7,9 +7,10 @@ import {
   Users, Building2, Target, TrendingUp, Clock, Package, Timer, AlertTriangle, Calculator,
 } from 'lucide-react';
 import {
-  DivisionBudget, computeDivision, OVERHEAD_CATEGORIES, resolvedWeeklyBillableHours,
+  DivisionBudget, BudgetYear, computeDivision, OVERHEAD_CATEGORIES, resolvedWeeklyBillableHours,
   categoryAnnualAmount, expenseFrequency, customLineAmount, customLineFrequency, customLineWithAmount, customLineWithFrequency,
-  type CustomOverheadLine,
+  overheadLaborAnnualCost, overheadLaborBasePay, newOverheadLaborRole, OVERHEAD_LABOR_PRESETS, proportionalOverheadLaborShares,
+  type CustomOverheadLine, type OverheadLaborRole, type OverheadPayType, type OverheadLaborAllocation,
 } from '@/lib/budgetCalc';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -21,9 +22,10 @@ import { ScopedJobPricingFloor } from './ScopedJobPricingFloor';
 import { divisionFloorBaseline } from '@/lib/jobPricingFloorBaseline';
 
 export function DivisionPanel({
-  division, annualWorkingWeeks, onChange, previousResults, previousYear,
+  division, year, annualWorkingWeeks, onChange, previousResults, previousYear,
 }: {
   division: DivisionBudget;
+  year: BudgetYear;
   annualWorkingWeeks: number;
   onChange: (d: DivisionBudget) => void;
   previousResults?: ReturnType<typeof computeDivision> | null;
@@ -32,16 +34,26 @@ export function DivisionPanel({
   const set = <K extends keyof DivisionBudget>(key: K, val: DivisionBudget[K]) =>
     onChange({ ...division, [key]: val });
 
-  const results = useMemo(() => computeDivision(division, annualWorkingWeeks), [division, annualWorkingWeeks]);
+  const companyLaborShare = useMemo(
+    () => proportionalOverheadLaborShares(year, annualWorkingWeeks).get(division.id) ?? 0,
+    [year, annualWorkingWeeks, division.id],
+  );
+  const results = useMemo(
+    () => computeDivision(division, annualWorkingWeeks, companyLaborShare),
+    [division, annualWorkingWeeks, companyLaborShare],
+  );
 
-  const jpfBaseline = useMemo(() => divisionFloorBaseline(division, annualWorkingWeeks), [division, annualWorkingWeeks]);
+  const jpfBaseline = useMemo(
+    () => divisionFloorBaseline(division, annualWorkingWeeks, companyLaborShare),
+    [division, annualWorkingWeeks, companyLaborShare],
+  );
 
   const budgetedForCheckup = useMemo(() => ({
     revenue: results.requiredRevenue,
     laborCost: results.totalLaborCost,
     materialCost: division.estimatedAnnualMaterialCost,
     overheadByCategory: OVERHEAD_CATEGORIES.map(({ key, label }) => ({
-      key, label, annual: categoryAnnualAmount(division, key) + (key === 'miscOverhead' ? results.customOverheadAnnual + results.offSeasonPayrollOverhead : 0),
+      key, label, annual: categoryAnnualAmount(division, key) + (key === 'miscOverhead' ? results.customOverheadAnnual + results.offSeasonPayrollOverhead + results.overheadLaborAnnual + results.allocatedCompanyLabor : 0),
     })),
   }), [division, results]);
 
@@ -155,6 +167,7 @@ export function DivisionPanel({
             ))}
             <Button type="button" variant="outline" size="sm" className="gap-1" onClick={() => set('customOverhead', [...(division.customOverhead ?? []), { id: crypto.randomUUID(), name: '', monthlyAmount: 0, amount: 0, frequency: 'monthly' } satisfies CustomOverheadLine])}><Plus className="w-3.5 h-3.5" /> Add overhead category</Button>
           </div>
+          <OverheadLaborEditor division={division} annualWorkingWeeks={annualWorkingWeeks} companyLaborShare={companyLaborShare} onChange={roles => set('overheadLabor', roles)} />
           <div className="mt-4 p-3 rounded-lg bg-muted/40 text-sm flex items-center justify-between">
             <span className="text-muted-foreground">Monthly overhead total</span>
             <span className="font-semibold">{$(results.monthlyOverhead)} / mo</span>
@@ -220,7 +233,7 @@ export function DivisionPanel({
             saved={division.jobPricingFloor}
             baseline={jpfBaseline}
             onChange={next => set('jobPricingFloor', next)}
-            baselineNote={`Wage and payroll burden follow this division's field employees. Monthly overhead is annualized expenses (monthly lines × 12, annual lines as entered, including custom categories) ÷ 12, plus owner salary ÷ 12. Monthly crew hours are crews × weekly billable hours × ${results.capacityWeeks} working weeks ÷ 12. Stop times and direct costs are example values.`}
+            baselineNote={`Wage and payroll burden follow this division's field employees. Monthly overhead is annualized expenses (monthly lines × 12, annual lines as entered, including custom categories and overhead/salaried labor) ÷ 12, plus owner salary ÷ 12. Company-wide labor that is split by billable hours is included. Monthly crew hours are crews × weekly billable hours × ${results.capacityWeeks} working weeks ÷ 12. Stop times and direct costs are example values.`}
           />
         </Section>
 
@@ -263,8 +276,13 @@ export function DivisionPanel({
               Rate needed to hit {division.targetNetMarginPct}% net margin across {results.manHoursYear.toLocaleString()} billable man-hours.
             </p>
             {results.breakEvenRate > 0 && (
-              <p className="text-xs text-primary-foreground/60 mt-1">
+              <p className="text-xs text-primary-foreground/60 mt-1" data-testid="division-break-even">
                 Break-even: {$(results.breakEvenRate, 2)}/man-hr
+              </p>
+            )}
+            {(results.overheadLaborAnnual + results.allocatedCompanyLabor) > 0 && (
+              <p className="text-xs text-primary-foreground/70 mt-1" data-testid="division-overhead-labor-rate">
+                Recovers {$(results.overheadLaborAnnual + results.allocatedCompanyLabor)} of non-billable salary across {results.manHoursYear.toLocaleString()} productive hours ({$((results.manHoursYear > 0 ? (results.overheadLaborAnnual + results.allocatedCompanyLabor) / results.manHoursYear : 0), 2)}/man-hr).
               </p>
             )}
           </CardContent>
@@ -320,7 +338,7 @@ export function DivisionPanel({
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">Calculated cost floor</p>
-            <p className="text-3xl font-bold">{results.jobFloorCalculated > 0 ? $(results.jobFloorCalculated, 2) : '—'}</p>
+            <p className="text-3xl font-bold" data-testid="division-job-floor">{results.jobFloorCalculated > 0 ? $(results.jobFloorCalculated, 2) : '—'}</p>
             <p className="text-xs text-muted-foreground mt-1">
               Labor, materials, and overhead for {division.minimumVisitHours} hour{division.minimumVisitHours !== 1 ? 's' : ''}, using {results.capacityWeeks} working weeks.
             </p>
@@ -410,6 +428,123 @@ export function DivisionPanel({
             </CardContent>
           </Card>
         )}
+      </div>
+    </div>
+  );
+}
+
+const ALLOCATION_LABEL: Record<OverheadLaborAllocation, string> = {
+  division: 'This division',
+  company_proportional: 'Company-wide, split by billable hours',
+  company_total: 'Company-wide, company total only',
+};
+
+function OverheadLaborEditor({
+  division, annualWorkingWeeks, companyLaborShare, onChange,
+}: {
+  division: DivisionBudget;
+  annualWorkingWeeks: number;
+  companyLaborShare: number;
+  onChange: (roles: OverheadLaborRole[]) => void;
+}) {
+  const roles = division.overheadLabor ?? [];
+  const patch = (id: string, next: Partial<OverheadLaborRole>) => onChange(roles.map(role => role.id === id ? { ...role, ...next } : role));
+  const divisionAnnual = roles.reduce((sum, role) => role.allocation === 'division' ? sum + overheadLaborAnnualCost(role, annualWorkingWeeks, division.payrollBurdenPct) : sum, 0);
+  return (
+    <div className="mt-6 space-y-3 border-t pt-4" data-testid="overhead-labor-section">
+      <div>
+        <p className="text-sm font-medium">Overhead & Salaried Labor</p>
+        <p className="text-xs text-muted-foreground">
+          Non-billable roles (office, shop, sales, admin). Annual salary, or hourly rate × hours/week × {annualWorkingWeeks} working weeks, plus payroll tax and burden. This is separate from field wages and the owner salary in Labor & Payroll. Division roles are recovered on this division's productive hours. Company-wide roles are split across divisions by productive hours, or kept in the company total only.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {OVERHEAD_LABOR_PRESETS.map(preset => (
+          <Button key={preset.id} type="button" variant="outline" size="sm" data-testid={`overhead-labor-preset-${preset.id}`} onClick={() => onChange([...roles, newOverheadLaborRole(preset.name)])}>
+            {preset.name}
+          </Button>
+        ))}
+        <Button type="button" variant="outline" size="sm" className="gap-1" data-testid="overhead-labor-add" onClick={() => onChange([...roles, newOverheadLaborRole()])}>
+          <Plus className="w-3.5 h-3.5" /> Add role
+        </Button>
+      </div>
+      {roles.map(role => {
+        const burdened = overheadLaborAnnualCost(role, annualWorkingWeeks, division.payrollBurdenPct);
+        const base = overheadLaborBasePay(role, annualWorkingWeeks);
+        return (
+          <div key={role.id} className="rounded-lg border p-3 space-y-3" data-testid="overhead-labor-role">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-[12rem] flex-1 space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Role / employee name</label>
+                <Input aria-label="Role or employee name" data-testid="overhead-labor-name" value={role.name} placeholder="Office Manager" onChange={event => patch(role.id, { name: event.target.value })} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Pay type</label>
+                <select
+                  aria-label="Pay type"
+                  data-testid="overhead-labor-pay-type"
+                  className="h-9 rounded-md border bg-background px-2 text-sm"
+                  value={role.payType}
+                  onChange={event => patch(role.id, { payType: event.target.value as OverheadPayType })}
+                >
+                  <option value="annual_salary">Annual salary</option>
+                  <option value="hourly">Hourly overhead</option>
+                </select>
+              </div>
+              <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${role.name || 'overhead labor'}`} onClick={() => onChange(roles.filter(item => item.id !== role.id))}><Trash2 className="w-4 h-4" /></Button>
+            </div>
+            {role.payType === 'hourly' ? (
+              <div className="grid grid-cols-2 gap-3">
+                <NumField label="Hourly rate" value={role.hourlyRate} onChange={value => patch(role.id, { hourlyRate: value })} hint="Overhead wage, not a field billable rate" />
+                <NumField label="Hours / week" value={role.hoursPerWeek} onChange={value => patch(role.id, { hoursPerWeek: value })} prefix="" hint={`× ${annualWorkingWeeks} working weeks`} />
+              </div>
+            ) : (
+              <NumField label="Annual salary" value={role.annualAmount} onChange={value => patch(role.id, { annualAmount: value })} hint="Paid whether or not this person bills field hours" />
+            )}
+            <div className="flex flex-wrap items-center gap-4">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  data-testid="overhead-labor-inherit-burden"
+                  checked={role.inheritBurden}
+                  onChange={event => patch(role.id, { inheritBurden: event.target.checked })}
+                />
+                Use division payroll burden ({division.payrollBurdenPct}%)
+              </label>
+              {!role.inheritBurden && (
+                <div className="w-40">
+                  <NumField label="Payroll tax & burden %" value={role.payrollBurdenPct} onChange={value => patch(role.id, { payrollBurdenPct: value })} prefix="%" />
+                </div>
+              )}
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Allocation</label>
+              <select
+                aria-label="Allocation"
+                data-testid="overhead-labor-allocation"
+                className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                value={role.allocation}
+                onChange={event => patch(role.id, { allocation: event.target.value as OverheadLaborAllocation })}
+              >
+                {(Object.keys(ALLOCATION_LABEL) as OverheadLaborAllocation[]).map(key => (
+                  <option key={key} value={key}>{ALLOCATION_LABEL[key]}</option>
+                ))}
+              </select>
+            </div>
+            <p className="text-xs text-muted-foreground" data-testid="overhead-labor-role-cost">
+              {role.payType === 'hourly' ? `${$(role.hourlyRate, 2)} × ${role.hoursPerWeek} hrs/wk × ${annualWorkingWeeks} wks = ${$(base)} base. ` : ''}
+              Burdened {$(burdened)} / yr · {$(burdened / 12)} / mo.
+              {role.allocation === 'division' ? ' Counted in this division’s overhead, break-even rate, and job floor.' : role.allocation === 'company_proportional' ? ' Split across divisions by productive hours, then recovered on each division’s billable hours.' : ' Rolled into company total overhead only. This division’s rate does not include it.'}
+            </p>
+          </div>
+        );
+      })}
+      <div className="rounded-lg bg-muted/40 p-3 text-sm" data-testid="overhead-labor-annual-total">
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">Overhead & salaried labor in this division</span>
+          <span className="font-semibold">{$(divisionAnnual + companyLaborShare)} / yr · {$((divisionAnnual + companyLaborShare) / 12)} / mo</span>
+        </div>
+        {companyLaborShare > 0 && <p className="text-[11px] text-muted-foreground mt-1">Includes {$(companyLaborShare)} of company-wide labor spread by productive hours.</p>}
       </div>
     </div>
   );

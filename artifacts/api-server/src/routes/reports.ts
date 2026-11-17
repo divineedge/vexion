@@ -21,6 +21,8 @@ import { sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { getCachedReport } from "../lib/reportsCache";
+import { zonedDayBounds } from "./timeTracking";
+import { aggregateClockedTime, type ClockSlice } from "../lib/clockedTimeReport";
 
 const router: IRouter = Router();
 
@@ -942,6 +944,86 @@ router.get("/reports/service-categories", async (req, res): Promise<void> => {
     res.json({ start, end, categories, summary: { jobs: categories.reduce((sum, row) => sum + row.jobs, 0), revenue: categories.reduce((sum, row) => sum + row.revenue, 0), profit: categories.reduce((sum, row) => sum + row.profit, 0) } });
   } catch {
     res.json({ start, end, categories: [], summary: {} });
+  }
+});
+
+function asDate(value: unknown): Date | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (typeof value === "string" && value) {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+}
+
+// GET /reports/clocked-time?start=YYYY-MM-DD&end=YYYY-MM-DD
+// Job clock-ins and shop-task timers, grouped by service and non-job task.
+router.get("/reports/clocked-time", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  if (!(await requireAdmin(tenantId, getUserId(req), res))) return;
+  const start = String(req.query.start ?? "");
+  const end = String(req.query.end ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || start > end) {
+    res.status(400).json({ error: "Use a valid date range (YYYY-MM-DD)" }); return;
+  }
+  const [tenant] = await db.select({ timezone: tenantsTable.timezone }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+  const timeZone = tenant?.timezone || "UTC";
+  const startBounds = zonedDayBounds(start, timeZone);
+  const endBounds = zonedDayBounds(end, timeZone);
+  if (!startBounds || !endBounds) {
+    res.status(400).json({ error: "Use a valid date range (YYYY-MM-DD)" }); return;
+  }
+  const asOf = new Date();
+  try {
+    const result = await db.execute(sql`
+      SELECT st.user_id, u.name AS user_name, u.hourly_rate,
+        COALESCE(st.adjusted_started_at, st.started_at) AS started_at,
+        COALESCE(st.adjusted_stopped_at, st.stopped_at) AS stopped_at,
+        st.is_active, st.elapsed_seconds, st.type, st.label, st.job_id,
+        s.name AS service_name, j.estimated_duration, j.title AS job_title
+      FROM sub_timers st
+      JOIN users u ON u.id = st.user_id AND u.tenant_id = st.tenant_id
+      LEFT JOIN jobs j ON j.id = st.job_id AND j.tenant_id = st.tenant_id
+      LEFT JOIN services s ON s.id = j.service_id AND s.tenant_id = j.tenant_id
+      WHERE st.tenant_id = ${tenantId}
+        AND COALESCE(st.adjusted_started_at, st.started_at) < ${endBounds.end}
+        AND COALESCE(
+          st.adjusted_stopped_at,
+          st.stopped_at,
+          CASE WHEN st.is_active THEN ${asOf} ELSE st.started_at + (COALESCE(st.elapsed_seconds, 0) * interval '1 second') END
+        ) > ${startBounds.start}
+    `);
+    const slices: ClockSlice[] = [];
+    for (const row of result.rows) {
+      const started = asDate(row.started_at);
+      if (!started) continue;
+      const stopped = asDate(row.stopped_at);
+      const active = row.is_active === true || row.is_active === "t" || row.is_active === "true";
+      const elapsed = Number(row.elapsed_seconds ?? 0);
+      const ended = stopped ?? (active ? null : new Date(started.getTime() + (Number.isFinite(elapsed) ? elapsed : 0) * 1000));
+      const jobId = row.job_id == null || row.job_id === "" ? null : Number(row.job_id);
+      const isJob = jobId != null || String(row.type ?? "") === "job";
+      const estimated = row.estimated_duration == null || row.estimated_duration === "" ? null : Number(row.estimated_duration);
+      const rate = row.hourly_rate == null || row.hourly_rate === "" ? null : Number(row.hourly_rate);
+      slices.push({
+        userId: Number(row.user_id),
+        userName: String(row.user_name ?? ""),
+        hourlyRate: rate != null && Number.isFinite(rate) ? rate : null,
+        startedAt: started.toISOString(),
+        endedAt: ended ? ended.toISOString() : null,
+        isJob,
+        serviceName: isJob ? (row.service_name ? String(row.service_name) : (row.job_title ? String(row.job_title) : null)) : null,
+        taskType: row.type == null ? null : String(row.type),
+        taskLabel: row.label == null ? null : String(row.label),
+        jobId: jobId != null && Number.isInteger(jobId) ? jobId : null,
+        estimatedMinutes: estimated != null && Number.isFinite(estimated) && estimated >= 0 ? estimated : null,
+      });
+    }
+    const report = aggregateClockedTime(slices, { start: startBounds.start, end: endBounds.end, asOf });
+    res.json({ start, end, timeZone, generatedAt: new Date().toISOString(), ...report });
+  } catch {
+    const empty = aggregateClockedTime([], { start: startBounds.start, end: endBounds.end, asOf });
+    res.json({ start, end, timeZone, generatedAt: new Date().toISOString(), ...empty });
   }
 });
 

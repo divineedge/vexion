@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bytesFromDataUrl, detectInvoiceFile, extractInvoiceText, fuelCapacityCheck, invoiceDataUrl, matchVendor, MAX_VENDOR_INVOICE_BYTES, rollingAverageCost, sanitizeUploadName } from "./vendorInvoiceIntake";
+import { bytesFromDataUrl, detectInvoiceFile, extractInvoiceText, fuelCapacityCheck, invoiceDataUrl, matchInventoryItem, matchVendor, MAX_VENDOR_INVOICE_BYTES, rollingAverageCost, sanitizeUploadName } from "./vendorInvoiceIntake";
 
 describe("vendor invoice intake", () => {
   it("auto-selects a close vendor and leaves an unknown name for approval", () => {
@@ -17,6 +17,33 @@ describe("vendor invoice intake", () => {
     expect(invoice.invoiceDate).toBe("2026-04-02");
     expect(invoice.lines[0].destinationType).toBe("bulk_fuel");
     expect(invoice.totalAmount).toBe(362);
+  });
+
+  it("reads parts from a PDF or pasted photo text and can match them to inventory", () => {
+    const invoice = extractInvoiceText([
+      "Acme Supply",
+      "Invoice # INV-9",
+      "Date 04/02/2026",
+      "Mower blade 2 18.00 36.00",
+      "2 Oil filter $9.50 $19.00",
+      "Spark plug",
+      "4",
+      "3.25",
+      "13.00",
+      "Tax $4.00",
+      "Total $72.00",
+    ].join("\n"));
+    expect(invoice.invoiceNumber).toBe("INV-9");
+    expect(invoice.invoiceDate).toBe("2026-04-02");
+    expect(invoice.lines.map(line => [line.description, line.quantity, line.totalPrice, line.destinationType])).toEqual([
+      ["Mower blade", 2, 36, "inventory"],
+      ["Oil filter", 2, 19, "inventory"],
+      ["Spark plug", 4, 13, "inventory"],
+    ]);
+    const stock = [{ id: 9, name: "Mower blade", sku: "BLD-1" }, { id: 10, name: "Unrelated hose", sku: "H-1" }];
+    expect(matchInventoryItem("Mower blade", stock)).toMatchObject({ itemId: 9, confident: true });
+    expect(matchInventoryItem("Blade BLD-1", stock).itemId).toBe(9);
+    expect(matchInventoryItem("Oil filter", stock).confident).toBe(false);
   });
 
   it("drops null bytes that PostgreSQL would reject in the stored invoice", () => {

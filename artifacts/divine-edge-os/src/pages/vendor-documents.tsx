@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { customFetch } from '@workspace/api-client-react';
+import { customFetch, type InventoryItem } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { InventoryItemCombobox } from '@/components/inventory/InventoryItemCombobox';
 import { groupPdfTextItems, MAX_VENDOR_INVOICE_BYTES } from '@/lib/vendorInvoiceFile';
 import { toast } from 'sonner';
 
@@ -16,7 +17,7 @@ type Line = {
   fillDate: string | null;
   bbox?: { x?: number; y?: number; width?: number; height?: number };
 };
-type Choice = { id: number; name: string; isDraft?: boolean; title?: string; status?: string; currentGallons?: number; maxCapacity?: number };
+type Choice = { id: number; name: string; sku?: string | null; quantity?: number; unit?: string | null; unitPrice?: number; isDraft?: boolean; title?: string; status?: string; currentGallons?: number; maxCapacity?: number };
 type Invoice = {
   id: string;
   vendorId: number | null;
@@ -91,7 +92,9 @@ export default function VendorDocumentsPage() {
       setPan({ x: 0, y: 0 });
       await loadReservations();
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : 'Upload failed');
+      const message = cause instanceof Error ? cause.message : 'Upload failed';
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -161,6 +164,7 @@ export default function VendorDocumentsPage() {
           <input ref={fileRef} hidden type="file" accept="application/pdf,image/*" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void upload(file); }} />
         </div>
       </div>
+      {error && !invoice && <div className="rounded-md border border-red-500 bg-red-50 p-3 text-sm text-red-900">{error}</div>}
       {invoice && (
         <div className="grid gap-4 lg:grid-cols-2 min-h-[70vh]">
           <div className="overflow-hidden rounded-lg border bg-muted/30">
@@ -186,10 +190,14 @@ export default function VendorDocumentsPage() {
               <label className="text-sm">Tax<Input type="number" value={invoice.taxAmount ?? 0} onChange={event => setInvoice({ ...invoice, taxAmount: Number(event.target.value) })} /></label>
               <label className="text-sm">Shipping<Input type="number" value={invoice.shippingAmount ?? 0} onChange={event => setInvoice({ ...invoice, shippingAmount: Number(event.target.value) })} /></label>
             </div>
+            <div>
+              <h2 className="text-sm font-semibold">Parts and supplies</h2>
+              <p className="text-xs text-muted-foreground">{(invoice.lines ?? []).length ? 'These lines were read from the file. Match a line to an inventory part, or add it as a new part.' : 'No parts or supplies were read from this file. For a photo, paste the invoice text and upload it again.'}</p>
+            </div>
             <table className="w-full text-sm">
               <thead><tr className="text-left"><th>Item</th><th>Qty</th><th>Send to</th><th>Fill date</th></tr></thead>
               <tbody>
-                {invoice.lines.map(line => (
+                {(invoice.lines ?? []).map(line => (
                   <tr key={line.id} className={activeLine === line.id ? 'bg-amber-50' : ''} onMouseEnter={() => setActiveLine(line.id)}>
                     <td className="py-1 pr-2">{line.description}</td>
                     <td>{line.quantity}</td>
@@ -197,7 +205,18 @@ export default function VendorDocumentsPage() {
                       <select className="rounded border p-1" value={line.destinationType} onChange={event => updateLine(line.id, { destinationType: event.target.value, destinationId: null })}>{destinations.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
                       {line.destinationType === 'bulk_fuel' && <select className="mt-1 block rounded border p-1" value={line.destinationId ?? ''} onChange={event => updateLine(line.id, { destinationId: event.target.value })}><option value="">Tank</option>{invoice.tanks.map(tank => <option key={tank.id} value={tank.id}>{tank.name}</option>)}</select>}
                       {line.destinationType === 'job_direct_expense' && <select className="mt-1 block rounded border p-1" value={line.destinationId ?? ''} onChange={event => updateLine(line.id, { destinationId: event.target.value })}><option value="">Job</option>{invoice.jobs.map(job => <option key={job.id} value={job.id}>{job.title ?? job.name}</option>)}</select>}
-                      {line.destinationType === 'inventory' && <select className="mt-1 block rounded border p-1" value={line.destinationId ?? ''} onChange={event => updateLine(line.id, { destinationId: event.target.value })}><option value="">New or matching item</option>{invoice.items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}
+                      {line.destinationType === 'inventory' && (
+                        <div className="mt-1 space-y-1">
+                          <InventoryItemCombobox
+                            items={(invoice.items ?? []).map(inventoryChoice)}
+                            value={line.destinationId == null || line.destinationId === '' ? null : Number(line.destinationId)}
+                            onSelect={item => updateLine(line.id, { destinationId: String(item.id), destinationType: 'inventory' })}
+                            placeholder="Match an existing part"
+                          />
+                          <Button type="button" variant="outline" size="sm" onClick={() => updateLine(line.id, { destinationId: null, destinationType: 'inventory' })}>Add as new inventory part</Button>
+                          <p className="text-xs text-muted-foreground">{line.destinationId ? 'Matched to an existing inventory part. Posting adds this quantity to that part.' : 'This line will be added as a new inventory part when you post.'}</p>
+                        </div>
+                      )}
                     </td>
                     <td>{line.destinationType === 'bulk_fuel' && <Input type="date" value={line.fillDate || String(invoice.invoiceDate ?? '').slice(0, 10)} onChange={event => updateLine(line.id, { fillDate: event.target.value })} />}</td>
                   </tr>
@@ -226,6 +245,19 @@ export default function VendorDocumentsPage() {
       )}
     </div>
   );
+}
+
+function inventoryChoice(item: Choice): InventoryItem {
+  return {
+    id: Number(item.id),
+    tenantId: 0,
+    name: item.name,
+    sku: item.sku ?? '',
+    unitPrice: Number(item.unitPrice ?? 0),
+    quantity: Number(item.quantity ?? 0),
+    unit: item.unit ?? 'each',
+    createdAt: '',
+  };
 }
 
 function isPdf(file: File): boolean {

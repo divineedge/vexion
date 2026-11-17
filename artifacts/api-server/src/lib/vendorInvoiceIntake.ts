@@ -109,25 +109,93 @@ export function extractInvoiceText(raw: string): ExtractedInvoice {
   const taxAmount = money(text.match(/tax\s*[:$]?\s*\$?\s*([0-9,]+\.\d{2})/i)?.[1] ?? "0");
   const shippingAmount = money(text.match(/shipping\s*[:$]?\s*\$?\s*([0-9,]+\.\d{2})/i)?.[1] ?? "0");
   const totalAmount = money(text.match(/total\s*[:$]?\s*\$?\s*([0-9,]+\.\d{2})/i)?.[1] ?? "0");
+  return { vendorName, invoiceNumber, invoiceDate, totalAmount, taxAmount, shippingAmount, lines: parseItemLines(lines) };
+}
+
+const qtyToken = String.raw`(\d+(?:\.\d+)?)`;
+const moneyToken = String.raw`\$?([0-9,]+\.\d{2,4})`;
+const descriptionFirst = new RegExp(`^(.+?)\\s+${qtyToken}\\s+${moneyToken}\\s+${moneyToken}$`);
+const quantityFirst = new RegExp(`^${qtyToken}\\s+(.+?)\\s+${moneyToken}\\s+${moneyToken}$`);
+const withoutTotal = new RegExp(`^(.+?)\\s+${qtyToken}\\s+${moneyToken}$`);
+
+function isQuantityToken(value: string): boolean {
+  return /^\d+(?:\.\d+)?$/.test(value);
+}
+
+function isMoneyToken(value: string): boolean {
+  return /^\$?[0-9,]+\.\d{2,4}$/.test(value);
+}
+
+function lineFrom(description: string, quantity: number, unitPrice: number, totalPrice: number, index: number): ExtractedLine | null {
+  const cleaned = description.replace(/\s+/g, " ").trim();
+  if (!cleaned || !(quantity > 0) || /^(subtotal|total|tax|shipping|balance|amount due|invoice|description|item|qty|quantity|price|amount)$/i.test(cleaned)) return null;
+  const fuel = /diesel|gasoline|unleaded|fuel/i.test(cleaned);
+  return {
+    description: cleaned,
+    quantity,
+    unitPrice,
+    totalPrice,
+    destinationType: fuel ? "bulk_fuel" : "inventory",
+    bbox: { x: 6, y: Math.min(88, 12 + index * 6), width: 88, height: 5 },
+  };
+}
+
+/** Reads a parts row whether the quantity is before or after the description. */
+export function parseItemLine(line: string, index: number): ExtractedLine | null {
+  const direct = descriptionFirst.exec(line);
+  if (direct) return lineFrom(direct[1], Number(direct[2]), money(direct[3]), money(direct[4]), index);
+  const leadingQuantity = quantityFirst.exec(line);
+  if (leadingQuantity) return lineFrom(leadingQuantity[2], Number(leadingQuantity[1]), money(leadingQuantity[3]), money(leadingQuantity[4]), index);
+  const priceOnly = withoutTotal.exec(line);
+  if (priceOnly) {
+    const quantity = Number(priceOnly[2]);
+    const unitPrice = money(priceOnly[3]);
+    return lineFrom(priceOnly[1], quantity, unitPrice, Math.round(quantity * unitPrice * 100) / 100, index);
+  }
+  return null;
+}
+
+function parseItemLines(lines: string[]): ExtractedLine[] {
   const parsed: ExtractedLine[] = [];
-  lines.forEach((line, index) => {
-    const match = line.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s+\$?([0-9,]+\.\d{2,4})\s+\$?([0-9,]+\.\d{2})$/);
-    if (!match) return;
-    const description = match[1].trim();
-    const quantity = Number(match[2]);
-    const unitPrice = money(match[3]);
-    const totalPrice = money(match[4]);
-    const fuel = /diesel|gasoline|unleaded|fuel/i.test(description);
-    parsed.push({
-      description,
-      quantity,
-      unitPrice,
-      totalPrice,
-      destinationType: fuel ? "bulk_fuel" : "inventory",
-      bbox: { x: 6, y: Math.min(88, 12 + index * 6), width: 88, height: 5 },
-    });
-  });
-  return { vendorName, invoiceNumber, invoiceDate, totalAmount, taxAmount, shippingAmount, lines: parsed };
+  for (let index = 0; index < lines.length; index += 1) {
+    const direct = parseItemLine(lines[index], index);
+    if (direct) {
+      parsed.push(direct);
+      continue;
+    }
+    const description = lines[index];
+    const quantity = lines[index + 1];
+    const unit = lines[index + 2];
+    const total = lines[index + 3];
+    if (!description || !quantity || !unit || !total) continue;
+    if (!isQuantityToken(quantity) || !isMoneyToken(unit) || !isMoneyToken(total) || isQuantityToken(description) || isMoneyToken(description)) continue;
+    const joined = parseItemLine(`${description} ${quantity} ${unit} ${total}`, index);
+    if (!joined) continue;
+    parsed.push(joined);
+    index += 3;
+  }
+  return parsed;
+}
+
+export type InventoryCandidate = { id: number; name: string; sku?: string | null };
+
+/** Suggests an existing inventory part. An unsure guess stays unmatched so the user can add a new part. */
+export function matchInventoryItem(description: string, items: InventoryCandidate[]): { itemId: number | null; itemName: string | null; confidence: number; confident: boolean } {
+  const needle = normalizeVendorName(description);
+  if (!needle) return { itemId: null, itemName: null, confidence: 0, confident: false };
+  let best: { id: number; name: string; confidence: number } | null = null;
+  for (const item of items) {
+    const hay = normalizeVendorName(item.name);
+    const sku = normalizeVendorName(item.sku ?? "");
+    const distance = hay ? levenshtein(needle, hay) : needle.length;
+    const ratio = hay ? 1 - distance / Math.max(needle.length, hay.length) : 0;
+    const contains = hay && (hay.includes(needle) || needle.includes(hay)) ? 0.9 : 0;
+    const skuHit = sku.length >= 3 && (needle.includes(sku) || sku === needle) ? 0.97 : 0;
+    const confidence = Math.max(ratio, contains, skuHit);
+    if (!best || confidence > best.confidence) best = { id: item.id, name: item.name, confidence };
+  }
+  if (!best) return { itemId: null, itemName: null, confidence: 0, confident: false };
+  return { itemId: best.id, itemName: best.name, confidence: Math.round(best.confidence * 1000) / 1000, confident: best.confidence >= 0.84 };
 }
 
 function toIsoDate(value: string): string {

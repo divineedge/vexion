@@ -5,6 +5,10 @@ import {
   computeCompanyTotal,
   defaultBudgetYear,
   defaultDivision,
+  annualizedExpense,
+  monthlyExpense,
+  clampAnnualWorkingWeeks,
+  migrateBudgetPayload,
   type DivisionBudget,
 } from "../src/lib/budgetCalc";
 
@@ -114,5 +118,66 @@ describe("budget man-hour rate", () => {
     const misc = result.overheadByCategory.find(line => line.key === "miscOverhead");
     expect(misc?.effective).toBe(1200);
     expect(result.monthlyOverheadExpense).toBe(100);
+  });
+});
+
+describe("expense frequency", () => {
+  it("annualizes a monthly amount and leaves an annual amount unchanged", () => {
+    expect(annualizedExpense(100, "monthly")).toBe(1_200);
+    expect(monthlyExpense(100, "monthly")).toBe(100);
+    expect(annualizedExpense(1_200, "annual")).toBe(1_200);
+    expect(monthlyExpense(1_200, "annual")).toBe(100);
+  });
+
+  it("treats a division line with no frequency as monthly", () => {
+    const division = budgetWithWorkers(0);
+    division.fuelMaintenance = 100;
+    const result = computeDivision(division);
+    expect(result.annualOverhead).toBe(1_200);
+    expect(result.monthlyOverhead).toBe(100);
+    division.overheadFrequency = { fuelMaintenance: "annual" };
+    const annual = computeDivision(division);
+    expect(annual.annualOverhead).toBe(100);
+    expect(annual.monthlyOverhead).toBeCloseTo(100 / 12, 5);
+    expect(annual.breakEvenRate).toBeCloseTo(annual.totalAnnualCosts / annual.manHoursYear, 5);
+  });
+
+  it("rolls an annual line into the company total without multiplying it by 12", () => {
+    const division = budgetWithWorkers(0);
+    division.generalLiabilityInsurance = 3600;
+    division.overheadFrequency = { generalLiabilityInsurance: "annual" };
+    const totals = computeCompanyTotal({ ...defaultBudgetYear(2026), divisions: [division] });
+    const insurance = totals.overheadByCategory.find(row => row.key === "generalLiabilityInsurance");
+    expect(insurance?.effective).toBe(3600);
+    expect(totals.monthlyOverheadExpense).toBeCloseTo(totals.combinedAnnualOverhead / 12, 5);
+    expect(computeDivision(division).monthlyOverhead).toBeCloseTo(300, 5);
+  });
+
+  it("adds custom lines using each line's frequency", () => {
+    const division = budgetWithWorkers(0);
+    division.customOverhead = [
+      { id: "m", name: "Shop", monthlyAmount: 50, amount: 50, frequency: "monthly" },
+      { id: "a", name: "License", monthlyAmount: 50, amount: 600, frequency: "annual" },
+    ];
+    expect(computeDivision(division).annualOverhead).toBe(1_200);
+    const year = { ...defaultBudgetYear(2026), divisions: [division] };
+    expect(computeCompanyTotal(year).combinedAnnualOverhead).toBe(1_200);
+    expect(computeCompanyTotal(year).monthlyOverheadExpense).toBe(100);
+  });
+
+  it("defaults saved lines and weeks when the frequency key is missing", () => {
+    const [year] = migrateBudgetPayload({
+      year: 2026,
+      divisions: [{ name: "Main", fuelMaintenance: 10, customOverhead: [{ id: "yard", name: "Yard", monthlyAmount: 25 }] }],
+    });
+    expect(year.annualWorkingWeeks).toBe(48);
+    expect(year.divisions[0].overheadFrequency).toEqual({});
+    expect(year.divisions[0].fuelMaintenance).toBe(10);
+    expect(year.divisions[0].customOverhead[0].frequency).toBe("monthly");
+    expect(year.divisions[0].customOverhead[0].monthlyAmount).toBe(25);
+    expect(clampAnnualWorkingWeeks("", 40)).toBe(40);
+    expect(clampAnnualWorkingWeeks("40", 48)).toBe(40);
+    expect(clampAnnualWorkingWeeks("0", 48)).toBe(1);
+    expect(clampAnnualWorkingWeeks("99", 48)).toBe(52);
   });
 });

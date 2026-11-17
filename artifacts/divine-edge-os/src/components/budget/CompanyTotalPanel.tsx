@@ -54,7 +54,7 @@ export function CompanyTotalPanel({
         {/* Overhead rollup with override capability */}
         <Section title="Company overhead (from divisions)" icon={Building2}>
           <p className="text-xs text-muted-foreground pt-1 pb-3">
-            These totals add every division. Custom categories that are not in the standard list are included in Miscellaneous Overhead.
+            These totals add every division. A monthly line is multiplied by 12. An annual line is used as entered. Custom categories that are not in the standard list are included in Miscellaneous Overhead.
           </p>
           <div className="space-y-2">
             {totals.overheadByCategory.map(o => (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractInvoiceText, fuelCapacityCheck, matchVendor, rollingAverageCost } from "./vendorInvoiceIntake";
+import { bytesFromDataUrl, detectInvoiceFile, extractInvoiceText, fuelCapacityCheck, invoiceDataUrl, matchVendor, MAX_VENDOR_INVOICE_BYTES, rollingAverageCost, sanitizeUploadName } from "./vendorInvoiceIntake";
 
 describe("vendor invoice intake", () => {
   it("auto-selects a close vendor and leaves an unknown name for approval", () => {
@@ -17,6 +17,25 @@ describe("vendor invoice intake", () => {
     expect(invoice.invoiceDate).toBe("2026-04-02");
     expect(invoice.lines[0].destinationType).toBe("bulk_fuel");
     expect(invoice.totalAmount).toBe(362);
+  });
+
+  it("drops null bytes that PostgreSQL would reject in the stored invoice", () => {
+    const invoice = extractInvoiceText("Acme Fuel\u0000\nInvoice # A-14\nDate 2026-04-02\nTotal $10.00");
+    expect(invoice.vendorName).toBe("Acme Fuel");
+    expect(JSON.stringify(invoice)).not.toContain("\\u0000");
+  });
+
+  it("recognizes invoice photos and PDFs and round-trips the stored data URL", () => {
+    const pdf = Buffer.from("%PDF-1.4\ntrailer\n%%EOF");
+    expect(detectInvoiceFile(pdf)).toEqual({ kind: "pdf", contentType: "application/pdf" });
+    expect(detectInvoiceFile(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00]))).toEqual({ kind: "image", contentType: "image/jpeg" });
+    const heic = Buffer.concat([Buffer.alloc(4), Buffer.from("ftypheic")]);
+    expect(detectInvoiceFile(heic)?.contentType).toBe("image/heic");
+    expect(detectInvoiceFile(Buffer.from("not an invoice"))).toBeNull();
+    expect(detectInvoiceFile(Buffer.concat([pdf, Buffer.alloc(MAX_VENDOR_INVOICE_BYTES)]))).toBeNull();
+    const stored = invoiceDataUrl("application/pdf", pdf);
+    expect(bytesFromDataUrl(stored)?.bytes.equals(pdf)).toBe(true);
+    expect(sanitizeUploadName("../Invoice\u0000.pdf")).toBe("Invoice.pdf");
   });
 
   it("blocks a delivery that does not fit and rolls the gallon cost", () => {

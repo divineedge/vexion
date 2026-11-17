@@ -1,11 +1,17 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { randomUUID } from "node:crypto";
+import multer from "multer";
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { isMissingColumnError } from "../lib/settingsFallback";
-import { extractInvoiceText, fuelCapacityCheck, matchVendor, pdfText, rollingAverageCost } from "../lib/vendorInvoiceIntake";
+import { bytesFromDataUrl, detectInvoiceFile, extractInvoiceText, fuelCapacityCheck, invoiceDataUrl, matchVendor, MAX_VENDOR_INVOICE_BYTES, pdfText, rollingAverageCost, sanitizeUploadName } from "../lib/vendorInvoiceIntake";
+
+const invoiceUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_VENDOR_INVOICE_BYTES, files: 1, fields: 4, fieldSize: 1_000_000 },
+});
 
 const router: IRouter = Router();
 const destinations = new Set(["inventory", "bulk_fuel", "equipment", "job_direct_expense", "overhead"]);
@@ -27,27 +33,59 @@ async function office(req: import("express").Request, res: import("express").Res
   return tenantId;
 }
 
-function dataBytes(fileUrl: string): string {
-  const payload = fileUrl.split(",")[1] ?? "";
-  return Buffer.from(payload, "base64").toString("latin1");
+const TOO_LARGE = "That file is too large to review here. Use a PDF or image under 12 MB.";
+
+function parseInvoiceUpload(req: Request, res: Response, next: NextFunction): void {
+  const type = String(req.headers["content-type"] ?? "");
+  if (!type.includes("multipart/form-data")) {
+    next();
+    return;
+  }
+  invoiceUpload.single("file")(req, res, (error: unknown) => {
+    if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+      res.status(413).json({ error: TOO_LARGE });
+      return;
+    }
+    if (error) {
+      res.status(400).json({ error: "Upload a PDF or image to review." });
+      return;
+    }
+    next();
+  });
 }
 
-router.post("/vendor-documents", async (req, res): Promise<void> => {
+function invoiceBytes(req: Request): { fileName: string; bytes: Buffer; ocrText: string } | { error: string; status: number } {
+  const ocrText = typeof req.body?.ocrText === "string" ? req.body.ocrText : "";
+  if (req.file) {
+    return { fileName: sanitizeUploadName(req.file.originalname || "invoice"), bytes: req.file.buffer, ocrText };
+  }
+  const fileName = sanitizeUploadName(String(req.body?.fileName ?? ""));
+  const fileUrl = String(req.body?.fileUrl ?? "");
+  if (!String(req.body?.fileName ?? "").trim() || !fileUrl.startsWith("data:")) return { error: "Upload a PDF or image to review.", status: 400 };
+  const decoded = bytesFromDataUrl(fileUrl);
+  if (!decoded) return { error: "Upload a PDF or image to review.", status: 400 };
+  if (decoded.bytes.length > MAX_VENDOR_INVOICE_BYTES) return { error: TOO_LARGE, status: 413 };
+  return { fileName, bytes: decoded.bytes, ocrText };
+}
+
+router.post("/vendor-documents", parseInvoiceUpload, async (req, res): Promise<void> => {
   const companyId = await office(req, res);
   if (companyId == null) return;
-  const fileName = String(req.body?.fileName ?? "").trim();
-  const fileType = req.body?.fileType === "pdf" ? "pdf" : req.body?.fileType === "image" ? "image" : "";
-  const fileUrl = String(req.body?.fileUrl ?? "");
-  if (!fileName || !fileType || !fileUrl.startsWith("data:")) {
+  const uploaded = invoiceBytes(req);
+  if ("error" in uploaded) {
+    res.status(uploaded.status).json({ error: uploaded.error });
+    return;
+  }
+  const detected = detectInvoiceFile(uploaded.bytes);
+  if (!detected) {
     res.status(400).json({ error: "Upload a PDF or image to review." });
     return;
   }
-  if (fileUrl.length > 2_500_000) {
-    res.status(400).json({ error: "That file is too large to review here. Use a file under about 1.5 MB." });
-    return;
-  }
-  const suppliedText = typeof req.body?.ocrText === "string" ? req.body.ocrText : "";
-  const extracted = extractInvoiceText(suppliedText || (fileType === "pdf" ? pdfText(dataBytes(fileUrl).slice(0, 200_000)) : ""));
+  const fileName = uploaded.fileName;
+  const fileType = detected.kind;
+  const fileUrl = invoiceDataUrl(detected.contentType, uploaded.bytes);
+  const suppliedText = uploaded.ocrText.replace(/\u0000/g, "").slice(0, 200_000);
+  const extracted = extractInvoiceText(suppliedText || (fileType === "pdf" ? pdfText(uploaded.bytes.toString("latin1").slice(0, 200_000)) : ""));
   const documentId = randomUUID();
   const invoiceId = randomUUID();
   try {
@@ -69,6 +107,35 @@ router.post("/vendor-documents", async (req, res): Promise<void> => {
         VALUES (${randomUUID()}, ${invoiceId}, ${line.description}, ${line.quantity}, ${line.unitPrice}, ${line.totalPrice}, ${line.destinationType}, ${JSON.stringify(line.bbox)}::jsonb)`);
     }
     res.status(201).json(await loadInvoice(companyId, invoiceId));
+  } catch (error) {
+    const code = (error as { code?: string })?.code;
+    if (isMissingColumnError(error) || code === "42P01") {
+      res.status(503).json({ error: "Vendor document tables are not ready yet. Reload and try the upload again." });
+      return;
+    }
+    throw error;
+  }
+});
+
+router.get("/vendor-documents/:invoiceId/file", async (req, res): Promise<void> => {
+  const companyId = await office(req, res);
+  if (companyId == null) return;
+  const invoiceId = String(req.params.invoiceId);
+  try {
+    const stored = await db.execute(sql`SELECT d.file_url, d.file_name, d.file_type FROM vendor_invoice_records r JOIN document_uploads d ON d.id=r.document_id WHERE r.id=${invoiceId} AND r.company_id=${companyId}`);
+    const row = stored.rows[0];
+    const decoded = row ? bytesFromDataUrl(String(row.file_url ?? "")) : null;
+    const detected = decoded ? detectInvoiceFile(decoded.bytes) : null;
+    if (!row || !decoded || !detected) {
+      res.status(404).json({ error: "Invoice file not found" });
+      return;
+    }
+    const name = sanitizeUploadName(String(row.file_name ?? "invoice")).replace(/["\r\n]/g, "");
+    res.setHeader("Content-Type", detected.contentType);
+    res.setHeader("Content-Disposition", `inline; filename="${name}"`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.send(decoded.bytes);
   } catch (error) {
     const code = (error as { code?: string })?.code;
     if (isMissingColumnError(error) || code === "42P01") {
@@ -244,7 +311,9 @@ async function loadInvoice(companyId: number, invoiceId: string) {
   const items = await db.execute(sql`SELECT id, name FROM inventory_items WHERE tenant_id=${companyId} ORDER BY name LIMIT 200`);
   const row = invoice.rows[0];
   const draftName = row.draftVendorName == null ? null : String(row.draftVendorName);
-  return { ...row, lines: lines.rows, vendors: vendors.rows, tanks: tanks.rows, jobs: jobs.rows, items: items.rows, vendorWarning: draftName ? `New vendor detected: '${draftName}'. Create new profile or merge with existing?` : null };
+  const storedUrl = String(row.fileUrl ?? "");
+  const fileUrl = storedUrl.startsWith("data:") ? `/api/vendor-documents/${row.id}/file` : storedUrl;
+  return { ...row, fileUrl, lines: lines.rows, vendors: vendors.rows, tanks: tanks.rows, jobs: jobs.rows, items: items.rows, vendorWarning: draftName ? `New vendor detected: '${draftName}'. Create new profile or merge with existing?` : null };
 }
 
 export default router;

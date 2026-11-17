@@ -9,6 +9,11 @@ import {
 } from '@/lib/budgetCalc';
 import { NumField, Section, ResultCard, $, pct } from './shared';
 import { CheckupPanel } from './CheckupPanel';
+import {
+  BudgetInfoButton, CompanyAnnualOverheadInfo, CompanyBreakEvenInfo, CompanyDivisionRateInfo,
+  CompanyJobFloorInfo, CompanyMonthlyOverheadInfo, CompanyNetProfitInfo, CompanyOverheadLaborInfo,
+  CompanyRequiredRevenueInfo, CompanyTargetRateInfo, CompanyTotalCostsInfo, CompanyWorkersInfo,
+} from './BudgetNumbersInfo';
 
 export function CompanyTotalPanel({
   year, onCompanyFloorChange, onCompanyCheckupChange, onJobPricingFloorChange,
@@ -48,7 +53,7 @@ export function CompanyTotalPanel({
                 <span>{division.name}</span>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span>{results.manHoursYear.toLocaleString()} man-hrs</span>
-                  <span className="font-semibold text-foreground">{$(results.requiredHourlyRate, 2)}/man-hr</span>
+                  <span className="font-semibold text-foreground inline-flex items-center gap-1">{$(results.requiredHourlyRate, 2)}/man-hr <BudgetInfoButton id={`company-division-rate-${division.id}`} label={`${division.name} man-hour rate`} title={`${division.name} man-hour rate`}><CompanyDivisionRateInfo /></BudgetInfoButton></span>
                 </div>
               </div>
             ))}
@@ -70,17 +75,17 @@ export function CompanyTotalPanel({
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm">
-              <p className="text-amber-800">Combined annual overhead</p>
+              <p className="text-amber-800 inline-flex items-center gap-1">Combined annual overhead <BudgetInfoButton id="company-annual-overhead" label="combined annual overhead" title="Combined annual overhead"><CompanyAnnualOverheadInfo /></BudgetInfoButton></p>
               <p className="font-bold text-amber-900">{$(totals.combinedAnnualOverhead)} / yr</p>
             </div>
             <div className="p-3 rounded-lg border text-sm">
-              <p className="text-muted-foreground">Monthly overhead expense</p>
+              <p className="text-muted-foreground inline-flex items-center gap-1">Monthly overhead expense <BudgetInfoButton id="company-monthly-overhead" label="monthly overhead expense" title="Monthly overhead expense"><CompanyMonthlyOverheadInfo /></BudgetInfoButton></p>
               <p className="font-bold">{$(totals.monthlyOverheadExpense)} / mo</p>
               <p className="text-[11px] text-muted-foreground">Annual overhead ÷ 12, for cash-flow reference. Rates still use {year.annualWorkingWeeks ?? totals.annualWorkingWeeks} working weeks.</p>
             </div>
           </div>
           <div className="mt-4 space-y-2" data-testid="company-overhead-labor">
-            <p className="text-sm font-medium">Overhead & Salaried Labor</p>
+            <p className="text-sm font-medium inline-flex items-center gap-1">Overhead & Salaried Labor <BudgetInfoButton id="company-overhead-labor" label="overhead and salaried labor" title="Overhead and salaried labor"><CompanyOverheadLaborInfo /></BudgetInfoButton></p>
             <p className="text-xs text-muted-foreground">
               Read-only rollup. Annualized and monthly amounts are inside combined annual overhead and monthly overhead expense, and are recovered across productive field hours in the company break-even rate and job floor.
             </p>
@@ -144,7 +149,7 @@ export function CompanyTotalPanel({
       <div className="space-y-4 lg:sticky lg:top-4 lg:self-start">
         <Card className="bg-primary text-primary-foreground">
           <CardHeader className="pb-2 pt-4">
-            <CardTitle className="text-sm text-primary-foreground/70">Combined Man-Hour Rate</CardTitle>
+            <CardTitle className="text-sm text-primary-foreground/70 flex items-center gap-1">Combined Man-Hour Rate <BudgetInfoButton id="company-target-rate" label="combined man-hour rate" title="Combined man-hour rate" tone="inverse"><CompanyTargetRateInfo /></BudgetInfoButton></CardTitle>
             <p className="text-4xl font-extrabold">
               {totals.combinedRequiredHourlyRate > 0 ? $(totals.combinedRequiredHourlyRate, 2) : '—'}
               <span className="text-xl font-normal text-primary-foreground/60"> / man-hr</span>
@@ -155,24 +160,25 @@ export function CompanyTotalPanel({
               Blended across all divisions at a {pct(totals.blendedMarginPct)} weighted margin target, across {totals.combinedManHours.toLocaleString()} combined man-hours.
             </p>
             {totals.combinedBreakEvenRate > 0 && (
-              <p className="text-xs text-primary-foreground/60 mt-1" data-testid="company-break-even">
-                Break-even: {$(totals.combinedBreakEvenRate, 2)}/man-hr
-                {totals.overheadLaborAnnual > 0 ? ` · includes ${$(totals.overheadLaborAnnual)} overhead & salaried labor` : ''}
+              <p className="text-xs text-primary-foreground/60 mt-1 inline-flex items-center gap-1" data-testid="company-break-even">
+                <span>Break-even: {$(totals.combinedBreakEvenRate, 2)}/man-hr
+                {totals.overheadLaborAnnual > 0 ? ` · includes ${$(totals.overheadLaborAnnual)} overhead & salaried labor` : ''}</span>
+                <BudgetInfoButton id="company-break-even" label="company break-even rate" title="Company break-even rate" tone="inverse"><CompanyBreakEvenInfo /></BudgetInfoButton>
               </p>
             )}
           </CardContent>
         </Card>
 
         <div className="grid grid-cols-2 gap-3">
-          <ResultCard label="Required Revenue" value={$(totals.combinedRequiredRevenue)} sub="All divisions" />
-          <ResultCard label="Net Profit" value={$(totals.combinedNetProfit)} sub="Company-wide" />
-          <ResultCard label="Total Costs" value={$(totals.combinedTotalAnnualCosts)} sub="Labor + overhead" />
-          <ResultCard label="Productive Workers" value={String(totals.combinedProductiveWorkers)} sub={`${totals.combinedTotalEmployees} field employees`} />
+          <ResultCard label="Required Revenue" value={$(totals.combinedRequiredRevenue)} sub="All divisions" info={<BudgetInfoButton id="company-required-revenue" label="company required revenue" title="Required revenue"><CompanyRequiredRevenueInfo /></BudgetInfoButton>} />
+          <ResultCard label="Net Profit" value={$(totals.combinedNetProfit)} sub="Company-wide" info={<BudgetInfoButton id="company-net-profit" label="company net profit" title="Net profit"><CompanyNetProfitInfo /></BudgetInfoButton>} />
+          <ResultCard label="Total Costs" value={$(totals.combinedTotalAnnualCosts)} sub="Labor + overhead" info={<BudgetInfoButton id="company-total-costs" label="company total costs" title="Total costs"><CompanyTotalCostsInfo /></BudgetInfoButton>} />
+          <ResultCard label="Productive Workers" value={String(totals.combinedProductiveWorkers)} sub={`${totals.combinedTotalEmployees} field employees`} info={<BudgetInfoButton id="company-workers" label="productive workers" title="Productive workers"><CompanyWorkersInfo /></BudgetInfoButton>} />
         </div>
 
         <Card>
           <CardHeader className="pb-2 pt-4">
-            <CardTitle className="text-sm flex items-center gap-2"><Package className="w-4 h-4 text-muted-foreground" /> Company Job Floor Price</CardTitle>
+            <CardTitle className="text-sm flex items-center gap-2"><Package className="w-4 h-4 text-muted-foreground" /> Company Job Floor Price <BudgetInfoButton id="company-job-floor" label="company job floor price" title="Company job floor price"><CompanyJobFloorInfo /></BudgetInfoButton></CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">Calculated company floor</p>

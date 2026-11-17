@@ -20,6 +20,12 @@ import { NumField, Section, ResultCard, $, pct, ExpenseLineEditor, FrequencySele
 import { CheckupPanel } from './CheckupPanel';
 import { ScopedJobPricingFloor } from './ScopedJobPricingFloor';
 import { divisionFloorBaseline } from '@/lib/jobPricingFloorBaseline';
+import {
+  BudgetInfoButton, DivisionAnnualOverheadInfo, DivisionBreakEvenInfo, DivisionJobFloorInfo,
+  DivisionMonthlyOverheadInfo, DivisionNetProfitInfo, DivisionRequiredRevenueInfo, DivisionTargetRateInfo,
+  DivisionTotalCostsInfo, EmployeeCostPerHourInfo, FieldLaborInfo, FixedCostPerHourInfo, ManHoursInfo,
+  MaterialMarkupInfo, OwnerSalaryCostInfo, P4pCompanyCostInfo, P4pPayInfo, TotalLaborInfo,
+} from './BudgetNumbersInfo';
 
 export function DivisionPanel({
   division, year, annualWorkingWeeks, onChange, previousResults, previousYear,
@@ -83,7 +89,10 @@ export function DivisionPanel({
             />
           </div>
           <div className="mt-4 p-3 rounded-lg bg-muted/40 text-sm">
-            <span className="font-medium">{results.annualBillableHours.toLocaleString()} annual billable hours</span>
+            <span className="inline-flex items-center gap-1">
+              <span className="font-medium">{results.annualBillableHours.toLocaleString()} annual billable hours</span>
+              <BudgetInfoButton id="division-billable-hours" label="annual billable hours" title="Annual billable hours"><ManHoursInfo /></BudgetInfoButton>
+            </span>
             <span className="text-muted-foreground">
               {' '}across {results.productiveWorkers} productive worker{results.productiveWorkers !== 1 ? 's' : ''} on {division.crewCount} crew{division.crewCount !== 1 ? 's' : ''}
               {results.ownerIsProducing ? ' (including the owner/manager)' : ''}
@@ -130,8 +139,8 @@ export function DivisionPanel({
               <span className="font-medium">{results.productiveWorkers}</span> productive workers total
               {' '}({results.totalEmployees} employees{results.ownerIsProducing ? ' + 1 owner/manager' : ''})
             </p>
-            <p>Annual field labor: <span className="font-medium">{$(results.totalLaborCost - division.ownerSalaryAnnual)}</span> (wages + burden)</p>
-            <p>Total labor incl. owner: <span className="font-medium">{$(results.totalLaborCost)}</span></p>
+            <p className="flex items-center justify-between gap-2">Annual field labor: <span className="inline-flex items-center gap-1"><span className="font-medium">{$(results.totalLaborCost - division.ownerSalaryAnnual)}</span> (wages + burden) <BudgetInfoButton id="division-field-labor" label="field labor" title="Field labor"><FieldLaborInfo /></BudgetInfoButton></span></p>
+            <p className="flex items-center justify-between gap-2">Total labor incl. owner: <span className="inline-flex items-center gap-1"><span className="font-medium">{$(results.totalLaborCost)}</span> <BudgetInfoButton id="division-total-labor" label="total labor" title="Total labor"><TotalLaborInfo /></BudgetInfoButton></span></p>
           </div>
         </Section>
 
@@ -169,11 +178,11 @@ export function DivisionPanel({
           </div>
           <OverheadLaborEditor division={division} annualWorkingWeeks={annualWorkingWeeks} companyLaborShare={companyLaborShare} onChange={roles => set('overheadLabor', roles)} />
           <div className="mt-4 p-3 rounded-lg bg-muted/40 text-sm flex items-center justify-between">
-            <span className="text-muted-foreground">Monthly overhead total</span>
+            <span className="text-muted-foreground inline-flex items-center gap-1">Monthly overhead total <BudgetInfoButton id="division-monthly-overhead" label="monthly overhead" title="Monthly overhead"><DivisionMonthlyOverheadInfo /></BudgetInfoButton></span>
             <span className="font-semibold">{$(results.monthlyOverhead)} / mo</span>
           </div>
           <div className="mt-1 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm flex items-center justify-between">
-            <span className="text-amber-800">Annual overhead total</span>
+            <span className="text-amber-800 inline-flex items-center gap-1">Annual overhead total <BudgetInfoButton id="division-annual-overhead" label="annual overhead" title="Annual overhead"><DivisionAnnualOverheadInfo /></BudgetInfoButton></span>
             <span className="font-bold text-amber-900">{$(results.annualOverhead)} / yr</span>
           </div>
         </Section>
@@ -213,11 +222,11 @@ export function DivisionPanel({
                 </div>
                 <Separator />
                 <div className="flex justify-between font-semibold">
-                  <span>Employee earns</span>
+                  <span className="inline-flex items-center gap-1">Employee earns <BudgetInfoButton id="division-p4p-pay" label="employee pay" title="Employee pay"><P4pPayInfo /></BudgetInfoButton></span>
                   <span className="text-emerald-700">{$(results.employeeTotalPayPerHour, 2)}/hr effective</span>
                 </div>
                 <div className="flex justify-between text-muted-foreground text-xs">
-                  <span>Company labor cost/hr (pay + burden)</span>
+                  <span className="inline-flex items-center gap-1">Company labor cost/hr (pay + burden) <BudgetInfoButton id="division-p4p-cost" label="company labor cost per hour" title="Company labor cost per hour"><P4pCompanyCostInfo /></BudgetInfoButton></span>
                   <span>{$(results.companyLaborCostPerHour, 2)}</span>
                 </div>
               </div>
@@ -265,7 +274,7 @@ export function DivisionPanel({
       <div className="space-y-4 lg:sticky lg:top-4 lg:self-start">
         <Card className="bg-primary text-primary-foreground">
           <CardHeader className="pb-2 pt-4">
-            <CardTitle className="text-sm text-primary-foreground/70">Target Man-Hour Rate — {division.name}</CardTitle>
+            <CardTitle className="text-sm text-primary-foreground/70 flex items-center gap-1">Target Man-Hour Rate — {division.name} <BudgetInfoButton id="division-target-rate" label="target man-hour rate" title="Target man-hour rate" tone="inverse"><DivisionTargetRateInfo /></BudgetInfoButton></CardTitle>
             <p className="text-4xl font-extrabold">
               {results.requiredHourlyRate > 0 ? $(results.requiredHourlyRate, 2) : '—'}
               <span className="text-xl font-normal text-primary-foreground/60"> / man-hr</span>
@@ -276,13 +285,15 @@ export function DivisionPanel({
               Rate needed to hit {division.targetNetMarginPct}% net margin across {results.manHoursYear.toLocaleString()} billable man-hours.
             </p>
             {results.breakEvenRate > 0 && (
-              <p className="text-xs text-primary-foreground/60 mt-1" data-testid="division-break-even">
+              <p className="text-xs text-primary-foreground/60 mt-1 inline-flex items-center gap-1" data-testid="division-break-even">
                 Break-even: {$(results.breakEvenRate, 2)}/man-hr
+                <BudgetInfoButton id="division-break-even" label="break-even rate" title="Break-even rate" tone="inverse"><DivisionBreakEvenInfo /></BudgetInfoButton>
               </p>
             )}
             {(results.overheadLaborAnnual + results.allocatedCompanyLabor) > 0 && (
-              <p className="text-xs text-primary-foreground/70 mt-1" data-testid="division-overhead-labor-rate">
-                Recovers {$(results.overheadLaborAnnual + results.allocatedCompanyLabor)} of non-billable salary across {results.manHoursYear.toLocaleString()} productive hours ({$((results.manHoursYear > 0 ? (results.overheadLaborAnnual + results.allocatedCompanyLabor) / results.manHoursYear : 0), 2)}/man-hr).
+              <p className="text-xs text-primary-foreground/70 mt-1 inline-flex items-start gap-1" data-testid="division-overhead-labor-rate">
+                <span>Recovers {$(results.overheadLaborAnnual + results.allocatedCompanyLabor)} of non-billable salary across {results.manHoursYear.toLocaleString()} productive hours ({$((results.manHoursYear > 0 ? (results.overheadLaborAnnual + results.allocatedCompanyLabor) / results.manHoursYear : 0), 2)}/man-hr).</span>
+                <BudgetInfoButton id="division-overhead-labor-rate" label="overhead labor per man-hour" title="Overhead labor per man-hour" tone="inverse"><p>This is non-billable salary recovered on each productive hour.</p><p>Overhead and salaried labor counted on this division, plus the company-wide share split onto it, divided by productive man-hours.</p><p>It is already inside the break-even rate and the job floor. It is not an extra charge on top of those.</p></BudgetInfoButton>
               </p>
             )}
           </CardContent>
@@ -294,16 +305,16 @@ export function DivisionPanel({
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div className="flex justify-between gap-4">
-              <span className="text-muted-foreground">Owner salary + overhead</span>
+              <span className="text-muted-foreground inline-flex items-center gap-1">Owner salary + overhead <BudgetInfoButton id="division-fixed-cost" label="owner salary and overhead per man-hour" title="Owner salary and overhead"><FixedCostPerHourInfo /></BudgetInfoButton></span>
               <span className="font-medium">{$(results.fixedCostPerManHour, 2)}/man-hr</span>
             </div>
             <div className="flex justify-between gap-4">
-              <span className="text-muted-foreground">Employee wages + burden</span>
+              <span className="text-muted-foreground inline-flex items-center gap-1">Employee wages + burden <BudgetInfoButton id="division-employee-cost" label="employee wages and burden per man-hour" title="Employee wages and burden"><EmployeeCostPerHourInfo /></BudgetInfoButton></span>
               <span className="font-medium">{$(results.employeeCostPerManHour, 2)}/man-hr</span>
             </div>
             <Separator />
             <div className="flex justify-between gap-4 font-semibold">
-              <span>Break-even rate</span>
+              <span className="inline-flex items-center gap-1">Break-even rate <BudgetInfoButton id="division-break-even-split" label="break-even rate" title="Break-even rate"><DivisionBreakEvenInfo /></BudgetInfoButton></span>
               <span>{$(results.breakEvenRate, 2)}/man-hr</span>
             </div>
             <p className="text-xs text-muted-foreground">
@@ -325,16 +336,16 @@ export function DivisionPanel({
         </Card>
 
         <div className="grid grid-cols-2 gap-3">
-          <ResultCard label="Required Revenue" value={$(results.requiredRevenue)} sub="Annual gross" />
-          <ResultCard label="Net Profit" value={$(results.netProfit)} sub={`${pct(division.targetNetMarginPct)} margin`} />
-          <ResultCard label="Total Costs" value={$(results.totalAnnualCosts)} sub="Labor + overhead" />
-          <ResultCard label="Man-Hours" value={results.manHoursYear.toLocaleString()} sub={`${results.productiveWorkers} workers · per year`} />
+          <ResultCard label="Required Revenue" value={$(results.requiredRevenue)} sub="Annual gross" info={<BudgetInfoButton id="division-required-revenue" label="required revenue" title="Required revenue"><DivisionRequiredRevenueInfo /></BudgetInfoButton>} />
+          <ResultCard label="Net Profit" value={$(results.netProfit)} sub={`${pct(division.targetNetMarginPct)} margin`} info={<BudgetInfoButton id="division-net-profit" label="net profit" title="Net profit"><DivisionNetProfitInfo /></BudgetInfoButton>} />
+          <ResultCard label="Total Costs" value={$(results.totalAnnualCosts)} sub="Labor + overhead" info={<BudgetInfoButton id="division-total-costs" label="total costs" title="Total costs"><DivisionTotalCostsInfo /></BudgetInfoButton>} />
+          <ResultCard label="Man-Hours" value={results.manHoursYear.toLocaleString()} sub={`${results.productiveWorkers} workers · per year`} info={<BudgetInfoButton id="division-man-hours" label="man-hours" title="Man-hours"><ManHoursInfo /></BudgetInfoButton>} />
         </div>
 
         {/* Minimum show-up cost */}
         <Card>
           <CardHeader className="pb-2 pt-4">
-            <CardTitle className="text-sm flex items-center gap-2"><Package className="w-4 h-4 text-muted-foreground" /> Job Floor Price</CardTitle>
+            <CardTitle className="text-sm flex items-center gap-2"><Package className="w-4 h-4 text-muted-foreground" /> Job Floor Price <BudgetInfoButton id="division-job-floor" label="job floor price" title="Job floor price"><DivisionJobFloorInfo /></BudgetInfoButton></CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">Calculated cost floor</p>
@@ -355,12 +366,12 @@ export function DivisionPanel({
           </CardHeader>
           <CardContent className="space-y-2">
             {[
-              { label: 'Field Labor', val: results.totalLaborCost - division.ownerSalaryAnnual },
-              { label: 'Owner Salary', val: division.ownerSalaryAnnual },
-              { label: 'Annual Overhead', val: results.annualOverhead },
-            ].map(({ label, val }) => (
+              { label: 'Field Labor', id: 'division-cost-field-labor', infoLabel: 'field labor', title: 'Field labor', body: <FieldLaborInfo />, val: results.totalLaborCost - division.ownerSalaryAnnual },
+              { label: 'Owner Salary', id: 'division-cost-owner-salary', infoLabel: 'owner salary', title: 'Owner salary', body: <OwnerSalaryCostInfo />, val: division.ownerSalaryAnnual },
+              { label: 'Annual Overhead', id: 'division-cost-overhead', infoLabel: 'annual overhead', title: 'Annual overhead', body: <DivisionAnnualOverheadInfo />, val: results.annualOverhead },
+            ].map(({ label, id, infoLabel, title, body, val }) => (
               <div key={label} className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">{label}</span>
+                <span className="text-muted-foreground inline-flex items-center gap-1">{label} <BudgetInfoButton id={id} label={infoLabel} title={title}>{body}</BudgetInfoButton></span>
                 <div className="flex items-center gap-2">
                   <div className="h-1.5 rounded bg-muted overflow-hidden w-16">
                     <div
@@ -378,7 +389,7 @@ export function DivisionPanel({
         {/* Material Markup */}
         <Card>
           <CardHeader className="pb-2 pt-4">
-            <CardTitle className="text-sm">Recommended Material Markup</CardTitle>
+            <CardTitle className="text-sm flex items-center gap-1">Recommended Material Markup <BudgetInfoButton id="division-material-markup" label="material markup" title="Material markup"><MaterialMarkupInfo /></BudgetInfoButton></CardTitle>
           </CardHeader>
           <CardContent>
             {division.estimatedAnnualMaterialCost > 0 ? (
@@ -400,7 +411,7 @@ export function DivisionPanel({
         {previousResults && previousYear && (
           <Card>
             <CardHeader className="pb-2 pt-4">
-              <CardTitle className="text-sm">Year-over-Year vs. {previousYear}</CardTitle>
+              <CardTitle className="text-sm flex items-center gap-1">Year-over-Year vs. {previousYear} <BudgetInfoButton id="division-year-over-year" label="year-over-year change" title="Year-over-year change"><p>Each line is this year&apos;s figure minus the same figure from {previousYear}, for a division with the same name.</p><p>The badge is that difference as a percent of last year&apos;s number.</p><p>It compares saved budgets. It does not change this year&apos;s rate, floor, or markup.</p></BudgetInfoButton></CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
               {[

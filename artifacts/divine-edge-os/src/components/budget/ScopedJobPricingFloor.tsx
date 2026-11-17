@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
 import { JobPricingFloorInputs, calculateJobPricingFloor } from '@/lib/jobPricingFloor';
 import { BUDGET_LINKED_FLOOR_KEYS, SCENARIO_SEED_KEYS, presentFloorInputs } from '@/lib/jobPricingFloorBaseline';
 import { FIELDS, JobPricingFloorDraft, draftFromInputs, parseDraft, money, useOnSiteTimeField } from './JobPricingFloorPanel';
+import {
+  BudgetInfoButton, RecommendedMinimumInfo, StopBreakEvenInfo, StopDirectInfo, StopLaborInfo,
+  StopOverheadInfo, StopTrueHourlyInfo,
+} from './BudgetNumbersInfo';
 
 /**
  * Compact stop-floor calculator bound to one budget scope (a division or the
@@ -95,16 +99,16 @@ export function ScopedJobPricingFloor({ scopeId, scopeLabel, saved, baseline, on
       ) : (
         <div className="grid gap-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
           <div className="rounded-xl bg-emerald-900 text-emerald-50 p-4">
-            <p className="text-[11px] uppercase tracking-wider text-emerald-200/80">Recommended minimum per stop, {scopeLabel}</p>
+            <p className="text-[11px] uppercase tracking-wider text-emerald-200/80 inline-flex items-center gap-1">Recommended minimum per stop, {scopeLabel} <BudgetInfoButton id={`recommended-minimum-${scopeId}`} label="recommended minimum per stop" title="Recommended minimum per stop" tone="emerald"><RecommendedMinimumInfo /></BudgetInfoButton></p>
             <p className="text-3xl font-bold tabular-nums mt-1" data-testid={`metric-jpf-${scopeId}-recommendedMinimum`}>{money(result.recommendedMinimum)}</p>
             <p className="text-xs text-emerald-100/80 mt-1">{shown.targetMarginPct}% margin on price, {money(result.profitAtMinimum)} profit per stop</p>
           </div>
           <div className="rounded-xl border p-4 text-xs space-y-1 tabular-nums">
-            <Row label={`Crew labor (${result.totalClockMinutes} paid min)`} value={money(result.laborCost)} />
-            <Row label={`Overhead (${money(result.overheadPerBillableHour)}/crew hr on site)`} value={money(result.overheadShare)} />
-            <Row label="Other direct job costs" value={money(result.directJobCosts)} />
-            <div className="border-t pt-1"><Row label="Break-even floor" value={breakEven} bold /></div>
-            <Row label="True hourly cost (per on-site hr)" value={money(result.trueHourlyCost)} />
+            <Row label={`Crew labor (${result.totalClockMinutes} paid min)`} value={money(result.laborCost)} info={<BudgetInfoButton id={`stop-labor-${scopeId}`} label="crew labor for the stop" title="Crew labor"><StopLaborInfo /></BudgetInfoButton>} />
+            <Row label={`Overhead (${money(result.overheadPerBillableHour)}/crew hr on site)`} value={money(result.overheadShare)} info={<BudgetInfoButton id={`stop-overhead-${scopeId}`} label="overhead for the stop" title="Overhead for the stop"><StopOverheadInfo /></BudgetInfoButton>} />
+            <Row label="Other direct job costs" value={money(result.directJobCosts)} info={<BudgetInfoButton id={`stop-direct-${scopeId}`} label="other direct job costs" title="Other direct job costs"><StopDirectInfo /></BudgetInfoButton>} />
+            <div className="border-t pt-1"><Row label="Break-even floor" value={breakEven} bold info={<BudgetInfoButton id={`stop-breakeven-${scopeId}`} label="stop break-even floor" title="Break-even floor"><StopBreakEvenInfo /></BudgetInfoButton>} /></div>
+            <Row label="True hourly cost (per on-site hr)" value={money(result.trueHourlyCost)} info={<BudgetInfoButton id={`stop-true-hourly-${scopeId}`} label="true hourly cost" title="True hourly cost"><StopTrueHourlyInfo /></BudgetInfoButton>} />
           </div>
         </div>
       )}
@@ -112,6 +116,6 @@ export function ScopedJobPricingFloor({ scopeId, scopeLabel, saved, baseline, on
   );
 }
 
-function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
-  return <div className={`flex justify-between gap-3 ${bold ? 'font-semibold' : ''}`}><span className="text-muted-foreground">{label}</span><span>{value}</span></div>;
+function Row({ label, value, bold, info }: { label: string; value: string; bold?: boolean; info?: ReactNode }) {
+  return <div className={`flex justify-between gap-3 ${bold ? 'font-semibold' : ''}`}><span className="text-muted-foreground inline-flex items-center gap-1">{label}{info}</span><span>{value}</span></div>;
 }

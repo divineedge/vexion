@@ -149,12 +149,16 @@ export function Section({ title, icon: Icon, children, defaultOpen = true }: {
   );
 }
 
-export function ResultCard({ label, value, sub, highlight, trend }: {
+export function ResultCard({ label, value, sub, highlight, trend, info }: {
   label: string; value: string; sub?: string; highlight?: boolean; trend?: 'up' | 'down' | 'neutral';
+  info?: React.ReactNode;
 }) {
   return (
     <div className={`rounded-xl border p-4 ${highlight ? 'bg-primary text-primary-foreground border-primary' : 'bg-card'}`}>
-      <p className={`text-xs font-medium mb-1 ${highlight ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>{label}</p>
+      <div className="flex items-start justify-between gap-1 mb-1">
+        <p className={`text-xs font-medium ${highlight ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>{label}</p>
+        {info}
+      </div>
       <div className="flex items-end gap-1">
         <p className={`text-2xl font-bold leading-none ${highlight ? 'text-primary-foreground' : ''}`}>{value}</p>
         {trend === 'up' && <ArrowUp className="w-3.5 h-3.5 text-emerald-500 mb-0.5" />}

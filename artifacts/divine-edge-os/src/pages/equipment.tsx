@@ -69,9 +69,11 @@ import { Settings } from 'lucide-react';
 import { EquipmentFuelForm } from '@/components/equipment/EquipmentFuelForm';
 import { EquipmentFuelReport } from '@/components/equipment/EquipmentFuelReport';
 import { BulkFuelManager } from '@/components/equipment/BulkFuelManager';
+import { SearchableCombobox, isFromPickerPortal } from '@/components/shared/SearchableCombobox';
+import { CUSTOM_EQUIPMENT_TYPE, equipmentTypeAfterPick, equipmentTypeFieldState } from '@/lib/equipmentTypeField';
 
-// EQUIPMENT_TYPES is now loaded from the tenant's equipment types list via API.
-// The combobox below falls back to free-form entry for values not in the list.
+// Saved type labels come from the tenant equipment-type list.
+// The picker portals out of the sheet so the list is not clipped, and still allows a custom label.
 
 /**
  * The equipment list query is parameterized by `includeArchived`, so a plain
@@ -1154,11 +1156,12 @@ export default function EquipmentPage() {
   const [includeArchived, setIncludeArchived] = useState(false);
   const [equipmentSearch, setEquipmentSearch] = useState('');
   const [formOpen, setFormOpen] = useState(false);
+  const [customTypeMode, setCustomTypeMode] = useState(false);
   const { data: equipment, isLoading } = useListEquipment(
     { includeArchived },
     { query: { queryKey: getListEquipmentQueryKey({ includeArchived }) } },
   );
-  const { data: equipmentTypes = [] } = useListEquipmentTypes({ query: { queryKey: getListEquipmentTypesQueryKey() } });
+  const { data: equipmentTypes = [], isFetched: equipmentTypesLoaded } = useListEquipmentTypes({ query: { queryKey: getListEquipmentTypesQueryKey() } });
   const { data: users = [] } = useListUsers({ query: { queryKey: getListUsersQueryKey(), enabled: formOpen } });
   const { data: crews = [] } = useListCrews({ query: { queryKey: getListCrewsQueryKey(), enabled: formOpen } });
   const createEquipment = useCreateEquipment();
@@ -1205,15 +1208,25 @@ export default function EquipmentPage() {
 
   const selectedEquipment = equipment?.find(e => e.id === selectedId) ?? null;
 
+  const equipmentTypeLabels = equipmentTypes.map((t: { label: string }) => t.label);
+  const typeField = equipmentTypeFieldState({
+    type: form.type,
+    labels: equipmentTypeLabels,
+    customMode: customTypeMode,
+    typesLoaded: equipmentTypesLoaded,
+  });
+
   const openCreate = () => {
     setEditingItem(null);
     setForm(EMPTY_EQ_FORM);
+    setCustomTypeMode(false);
     setFormOpen(true);
   };
 
   const openEdit = (item: Equipment) => {
     setEditingItem(item);
     setForm(equipmentToForm(item));
+    setCustomTypeMode(false);
     setFormOpen(true);
   };
 
@@ -1700,7 +1713,12 @@ export default function EquipmentPage() {
 
       {/* Add/Edit sheet */}
       <Sheet open={formOpen} onOpenChange={setFormOpen}>
-        <SheetContent className="w-full sm:max-w-lg">
+        <SheetContent
+          className="w-full sm:max-w-lg"
+          onInteractOutside={e => { isFromPickerPortal(e); }}
+          onPointerDownOutside={e => { isFromPickerPortal(e); }}
+          onFocusOutside={e => { isFromPickerPortal(e); }}
+        >
           <SheetHeader className="pb-4">
             <SheetTitle>{editingItem ? 'Edit Equipment' : 'Add Equipment'}</SheetTitle>
             <SheetDescription>Track purchase cost, hours, and lifespan to calculate operating costs.</SheetDescription>
@@ -1712,19 +1730,32 @@ export default function EquipmentPage() {
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Type</label>
-              {/* Combobox: shows tenant-defined types as suggestions, allows free-form entry */}
-              <Input
-                list="equipment-type-options"
-                title="Equipment category — choose from saved types or enter a custom value"
+              <SearchableCombobox
+                className="h-9 w-full px-3 text-sm font-normal"
+                contentClassName="z-[1300] w-[var(--radix-popover-trigger-width)]"
+                options={equipmentTypes.map((t: { id: number; label: string }) => ({ value: t.label, label: t.label }))}
+                value={typeField.pickerValue}
+                leadingOption={{ value: CUSTOM_EQUIPMENT_TYPE, label: 'Custom type…' }}
+                onChange={value => {
+                  const next = equipmentTypeAfterPick(value, form.type, equipmentTypeLabels);
+                  setCustomTypeMode(next.customMode);
+                  setForm(f => ({ ...f, type: next.type }));
+                }}
                 placeholder="e.g. Mower"
-                value={form.type}
-                onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+                searchPlaceholder="Search types"
+                emptyText="No saved types match."
+                ariaLabel="Equipment type"
+                title="Equipment category — choose from saved types or enter a custom value"
               />
-              <datalist id="equipment-type-options">
-                {equipmentTypes.map((t: { id: number; label: string }) => (
-                  <option key={t.id} value={t.label} />
-                ))}
-              </datalist>
+              {typeField.showCustomInput && (
+                <Input
+                  aria-label="Custom equipment type"
+                  title="Type a category that is not in the saved list"
+                  placeholder="Custom type"
+                  value={form.type}
+                  onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+                />
+              )}
             </div>
             <div className="rounded-lg border p-3 space-y-3">
               <div>

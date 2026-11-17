@@ -1,5 +1,30 @@
 import { restoreJobPricingFloor, type JobPricingFloorInputs } from './jobPricingFloor';
 
+export type ExpenseFrequency = 'monthly' | 'annual';
+
+/** Saved lines without a frequency stay monthly, which is how those amounts were entered. */
+export function expenseFrequency(value: unknown): ExpenseFrequency {
+  return value === 'annual' ? 'annual' : 'monthly';
+}
+
+export function annualizedExpense(amount: number, frequency: ExpenseFrequency = 'monthly'): number {
+  const value = Number(amount) || 0;
+  return frequency === 'annual' ? value : value * 12;
+}
+
+export function monthlyExpense(amount: number, frequency: ExpenseFrequency = 'monthly'): number {
+  const value = Number(amount) || 0;
+  return frequency === 'annual' ? value / 12 : value;
+}
+
+/** Keep a partial entry untouched. Clamp only a finished value to 1–52. */
+export function clampAnnualWorkingWeeks(raw: string, fallback = 48): number {
+  if (raw.trim() === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(52, Math.max(1, Math.round(value)));
+}
+
 // ── Shared types & math for the Budget Calculator ──────────────────────────
 // Kept out of the page component so division panels, the company-total
 // rollup, and the checkup comparisons can all share one source of truth.
@@ -41,8 +66,11 @@ export const OVERHEAD_CATEGORIES: { key: keyof OverheadLineItems; label: string 
 export interface CustomOverheadLine {
   id: string;
   name: string;
-  /** Monthly amount, same basis as the standard overhead categories. */
+  /** Monthly equivalent. Older readers sum this. New readers use amount plus frequency. */
   monthlyAmount: number;
+  /** Typed amount. Missing on older lines, which are monthly and use monthlyAmount. */
+  amount?: number;
+  frequency?: ExpenseFrequency;
 }
 
 export type TechnicianSchedule = 'year_round' | 'seasonal';
@@ -110,6 +138,8 @@ export interface DivisionBudget extends OverheadLineItems {
   p4pPercentage: number;
   estimatedAnnualMaterialCost: number;
   minimumVisitHours: number;
+  /** Per standard overhead line. Missing keys are monthly. */
+  overheadFrequency: Partial<Record<keyof OverheadLineItems, ExpenseFrequency>>;
   midYearCheckup: CheckupData;
   endYearCheckup: CheckupData;
   /** Saved stop-level floor scenario for this division; undefined = follow budget-derived baseline. */
@@ -129,6 +159,7 @@ export function defaultDivision(name = 'Main'): DivisionBudget {
     weeksWorkedPerYear: 32,
     yearRoundPay: false,
     customOverhead: [],
+    overheadFrequency: {},
     floorPriceOverride: null,
     productionEfficiencyPct: 80,
     ownerSalaryAnnual: 65000,
@@ -161,6 +192,54 @@ export function defaultDivision(name = 'Main'): DivisionBudget {
   };
 }
 
+function normalizeFrequencyMap(raw: unknown): Partial<Record<keyof OverheadLineItems, ExpenseFrequency>> {
+  if (!raw || typeof raw !== 'object') return {};
+  const out: Partial<Record<keyof OverheadLineItems, ExpenseFrequency>> = {};
+  for (const { key } of OVERHEAD_CATEGORIES) {
+    const value = (raw as Record<string, unknown>)[key];
+    if (value === 'annual' || value === 'monthly') out[key] = value;
+  }
+  return out;
+}
+
+export function customLineAmount(line: CustomOverheadLine): number {
+  return typeof line.amount === 'number' && Number.isFinite(line.amount) ? line.amount : (Number(line.monthlyAmount) || 0);
+}
+
+export function customLineFrequency(line: CustomOverheadLine): ExpenseFrequency {
+  return expenseFrequency(line.frequency);
+}
+
+export function customLineWithAmount(line: CustomOverheadLine, amount: number): CustomOverheadLine {
+  const frequency = customLineFrequency(line);
+  return { ...line, amount, frequency, monthlyAmount: monthlyExpense(amount, frequency) };
+}
+
+export function customLineWithFrequency(line: CustomOverheadLine, frequency: ExpenseFrequency): CustomOverheadLine {
+  const amount = customLineAmount(line);
+  return { ...line, amount, frequency, monthlyAmount: monthlyExpense(amount, frequency) };
+}
+
+function normalizeCustomOverheadLine(line: any): CustomOverheadLine[] {
+  const name = typeof line?.name === 'string' ? line.name.trim() : '';
+  const frequency = line?.frequency === 'annual' || line?.frequency === 'monthly' ? line.frequency : 'monthly';
+  const typed = Number(line?.amount);
+  const monthlyAmount = Number(line?.monthlyAmount);
+  const amount = Number.isFinite(typed) ? typed : (Number.isFinite(monthlyAmount) ? monthlyAmount : NaN);
+  if (!name || !Number.isFinite(amount) || amount < 0) return [];
+  return [{
+    id: typeof line.id === 'string' && line.id ? line.id : crypto.randomUUID(),
+    name,
+    amount,
+    frequency,
+    monthlyAmount: monthlyExpense(amount, frequency),
+  }];
+}
+
+export function categoryAnnualAmount(d: DivisionBudget, key: keyof OverheadLineItems): number {
+  return annualizedExpense(Number(d[key]) || 0, expenseFrequency(d.overheadFrequency?.[key]));
+}
+
 // Migrates a single legacy "flat" budget object (pre-divisions) into a division.
 function migrateFlatToDivision(raw: any, name = 'Main'): DivisionBudget {
   const base = defaultDivision(name);
@@ -182,13 +261,9 @@ function migrateFlatToDivision(raw: any, name = 'Main'): DivisionBudget {
     : merged.workWeeksPerYear;
   merged.yearRoundPay = raw.yearRoundPay === true;
   merged.customOverhead = Array.isArray(raw.customOverhead)
-    ? raw.customOverhead.flatMap((line: any) => {
-        const name = typeof line?.name === 'string' ? line.name.trim() : '';
-        const monthlyAmount = Number(line?.monthlyAmount);
-        if (!name || !Number.isFinite(monthlyAmount) || monthlyAmount < 0) return [];
-        return [{ id: typeof line.id === 'string' && line.id ? line.id : crypto.randomUUID(), name, monthlyAmount }];
-      })
+    ? raw.customOverhead.flatMap((line: any) => normalizeCustomOverheadLine(line))
     : [];
+  merged.overheadFrequency = normalizeFrequencyMap(raw.overheadFrequency);
   merged.floorPriceOverride = typeof raw.floorPriceOverride === 'number' && Number.isFinite(raw.floorPriceOverride) && raw.floorPriceOverride >= 0
     ? raw.floorPriceOverride : null;
   return merged;
@@ -238,7 +313,7 @@ export function migrateBudgetPayload(saved: unknown): BudgetYear[] {
           : [defaultDivision('Main')],
         overheadOverrides: (raw.overheadOverrides && typeof raw.overheadOverrides === 'object') ? raw.overheadOverrides : {},
         annualWorkingWeeks: Number.isFinite(Number(raw.annualWorkingWeeks)) && Number(raw.annualWorkingWeeks) > 0
-          ? Number(raw.annualWorkingWeeks) : 48,
+          ? clampAnnualWorkingWeeks(String(raw.annualWorkingWeeks), 48) : 48,
         companyFloorPriceOverride: typeof raw.companyFloorPriceOverride === 'number' && Number.isFinite(raw.companyFloorPriceOverride) && raw.companyFloorPriceOverride >= 0
           ? raw.companyFloorPriceOverride : null,
         companyMidYearCheckup: migrateCheckup(raw.companyMidYearCheckup),
@@ -285,7 +360,11 @@ export function payrollWeeks(d: DivisionBudget, capacity: number, annualWorkingW
 }
 
 export function customOverheadMonthly(d: DivisionBudget): number {
-  return (d.customOverhead ?? []).reduce((sum, line) => sum + (Number(line.monthlyAmount) || 0), 0);
+  return (d.customOverhead ?? []).reduce((sum, line) => sum + monthlyExpense(customLineAmount(line), customLineFrequency(line)), 0);
+}
+
+export function customOverheadAnnual(d: DivisionBudget): number {
+  return (d.customOverhead ?? []).reduce((sum, line) => sum + annualizedExpense(customLineAmount(line), customLineFrequency(line)), 0);
 }
 
 export function calculatedJobFloor(d: Pick<DivisionBudget, 'estimatedAnnualMaterialCost' | 'minimumVisitHours'>, results: { totalLaborCost: number; annualOverhead: number; manHoursYear: number }): number {
@@ -320,10 +399,10 @@ export function computeDivision(d: DivisionBudget, annualWorkingWeeks?: number) 
   const offSeasonPayrollOverhead = offSeasonWages * (1 + d.payrollBurdenPct / 100);
   const totalLaborCost = employeeLaborCost + d.ownerSalaryAnnual;
 
-  const standardMonthly = OVERHEAD_CATEGORIES.reduce((s, { key }) => s + (Number(d[key]) || 0), 0);
-  const customMonthly = customOverheadMonthly(d);
-  const monthlyOverhead = standardMonthly + customMonthly;
-  const annualOverhead = monthlyOverhead * 12 + offSeasonPayrollOverhead;
+  const standardAnnual = OVERHEAD_CATEGORIES.reduce((s, { key }) => s + categoryAnnualAmount(d, key), 0);
+  const customAnnual = customOverheadAnnual(d);
+  const monthlyOverhead = (standardAnnual + customAnnual) / 12;
+  const annualOverhead = standardAnnual + customAnnual + offSeasonPayrollOverhead;
   const totalAnnualCosts = totalLaborCost + annualOverhead;
 
   const requiredRevenue = d.targetNetMarginPct >= 100 ? 0 :
@@ -386,7 +465,7 @@ export function computeDivision(d: DivisionBudget, annualWorkingWeeks?: number) 
     employeeLaborCost,
     totalLaborCost,
     monthlyOverhead,
-    customOverheadAnnual: customMonthly * 12,
+    customOverheadAnnual: customAnnual,
     offSeasonPayrollOverhead,
     annualOverhead,
     totalAnnualCosts,
@@ -428,7 +507,7 @@ export function computeCompanyTotal(year: BudgetYear) {
   const customAnnual = rows.reduce((s, r) => s + r.results.customOverheadAnnual, 0);
   const offSeasonAnnual = rows.reduce((s, r) => s + r.results.offSeasonPayrollOverhead, 0);
   const overheadByCategory = OVERHEAD_CATEGORIES.map(({ key, label }) => {
-    const auto = year.divisions.reduce((s, d) => s + (Number(d[key]) || 0), 0) * 12
+    const auto = year.divisions.reduce((s, d) => s + categoryAnnualAmount(d, key), 0)
       + (key === 'miscOverhead' ? customAnnual + offSeasonAnnual : 0);
     return { key, label, auto, override: undefined as number | undefined, effective: auto };
   });
@@ -492,7 +571,7 @@ export interface CheckupLineComparison {
 
 export function compareCheckup(
   checkup: CheckupData,
-  budgetedTotals: { revenue: number; laborCost: number; materialCost: number; overheadByCategory: { key: keyof OverheadLineItems; label: string; annual: number }[] },
+  budgetedTotals: { revenue: number; laborCost: number; materialCost: number; overheadByCategory: { key: string; label: string; annual: number }[] },
 ): { totals: CheckupLineComparison[]; overheadLines: CheckupLineComparison[] } {
   const line = (key: string, label: string, budgeted: number, actual: number): CheckupLineComparison => {
     const varianceAbs = actual - budgeted;
@@ -513,7 +592,7 @@ export function compareCheckup(
   ];
 
   const overheadLines: CheckupLineComparison[] = budgetedTotals.overheadByCategory.map(o =>
-    line(o.key, o.label, o.annual, Number(checkup.actualOverhead[o.key]) || 0),
+    line(o.key, o.label, o.annual, Number(checkup.actualOverhead[o.key as keyof OverheadLineItems]) || 0),
   );
 
   return { totals, overheadLines };

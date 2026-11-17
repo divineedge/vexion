@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import {
   BudgetYear, DivisionBudget, defaultBudgetYear, defaultDivision,
-  migrateBudgetPayload, computeDivision,
+  migrateBudgetPayload, computeDivision, clampAnnualWorkingWeeks,
 } from '@/lib/budgetCalc';
 import { DivisionPanel } from '@/components/budget/DivisionPanel';
 import { CompanyTotalPanel } from '@/components/budget/CompanyTotalPanel';
@@ -19,6 +19,7 @@ import {
   JobPricingFloorPanel, JobPricingFloorDraft, draftFromInputs, parseDraft, isDefaultScenario,
 } from '@/components/budget/JobPricingFloorPanel';
 import { calculateJobPricingFloor, defaultJobPricingFloor } from '@/lib/jobPricingFloor';
+import { AnnualWorkingWeeksField } from '@/components/budget/shared';
 
 const COMPANY_TAB = '__company__';
 const JPF_TAB = 'job-pricing-floor';
@@ -36,6 +37,8 @@ export default function BudgetPage() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [loadWarning, setLoadWarning] = useState(false);
+  const [weeksDraft, setWeeksDraft] = useState<string | null>(null);
+  useEffect(() => { setWeeksDraft(null); }, [currentYear]);
   const { data: serviceData, isLoading: servicesLoading, isError: servicesError, refetch: reloadServices } = useListServices(
     undefined, { query: { queryKey: getListServicesQueryKey(), enabled: canManageOffice } },
   );
@@ -177,7 +180,9 @@ export default function BudgetPage() {
       return;
     }
     setSaving(true);
-    const toSave = years.map(y => (y.year === currentYear ? { ...y, savedAt: new Date().toISOString() } : y));
+    const storedWeeks = year.annualWorkingWeeks ?? 48;
+    const weeks = clampAnnualWorkingWeeks(weeksDraft ?? String(storedWeeks), storedWeeks);
+    const toSave = years.map(y => (y.year === currentYear ? { ...y, annualWorkingWeeks: weeks, savedAt: new Date().toISOString() } : y));
     try {
       await customFetch('/api/settings/budget', {
         method: 'PATCH',
@@ -237,18 +242,12 @@ export default function BudgetPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
-          <div className="flex items-center gap-2 border rounded-lg px-3 py-1.5">
-            <span className="text-xs text-muted-foreground">Annual working weeks</span>
-            <input
-              type="number"
-              min={1}
-              max={52}
-              className="w-14 text-sm font-medium border-0 p-0 bg-transparent focus:outline-none"
-              value={year.annualWorkingWeeks ?? 48}
-              onChange={e => updateYear(y => ({ ...y, annualWorkingWeeks: Math.min(52, Math.max(1, parseFloat(e.target.value) || 1)) }))}
-              aria-label="Annual working weeks"
-            />
-          </div>
+          <AnnualWorkingWeeksField
+            key={currentYear}
+            value={year.annualWorkingWeeks ?? 48}
+            onDraft={setWeeksDraft}
+            onCommit={weeks => updateYear(y => ({ ...y, annualWorkingWeeks: weeks }))}
+          />
           <div className="flex items-center gap-2 border rounded-lg px-3 py-1.5">
             <span className="text-xs text-muted-foreground">Year</span>
             <input

@@ -7,13 +7,15 @@ import {
   Users, Building2, Target, TrendingUp, Clock, Package, Timer, AlertTriangle, Calculator,
 } from 'lucide-react';
 import {
-  DivisionBudget, computeDivision, OVERHEAD_CATEGORIES, resolvedWeeklyBillableHours, type CustomOverheadLine,
+  DivisionBudget, computeDivision, OVERHEAD_CATEGORIES, resolvedWeeklyBillableHours,
+  categoryAnnualAmount, expenseFrequency, customLineAmount, customLineFrequency, customLineWithAmount, customLineWithFrequency,
+  type CustomOverheadLine,
 } from '@/lib/budgetCalc';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Plus, Trash2 } from 'lucide-react';
-import { NumField, Section, ResultCard, $, pct } from './shared';
+import { NumField, Section, ResultCard, $, pct, ExpenseLineEditor, FrequencySelect } from './shared';
 import { CheckupPanel } from './CheckupPanel';
 import { ScopedJobPricingFloor } from './ScopedJobPricingFloor';
 import { divisionFloorBaseline } from '@/lib/jobPricingFloorBaseline';
@@ -39,7 +41,7 @@ export function DivisionPanel({
     laborCost: results.totalLaborCost,
     materialCost: division.estimatedAnnualMaterialCost,
     overheadByCategory: OVERHEAD_CATEGORIES.map(({ key, label }) => ({
-      key, label, annual: (Number(division[key]) || 0) * 12 + (key === 'miscOverhead' ? results.customOverheadAnnual + results.offSeasonPayrollOverhead : 0),
+      key, label, annual: categoryAnnualAmount(division, key) + (key === 'miscOverhead' ? results.customOverheadAnnual + results.offSeasonPayrollOverhead : 0),
     })),
   }), [division, results]);
 
@@ -122,28 +124,36 @@ export function DivisionPanel({
         </Section>
 
         {/* Overhead */}
-        <Section title="Monthly Overhead" icon={Building2}>
-          <p className="text-xs text-muted-foreground pt-1 pb-3">Enter each expense as a monthly amount. The calculator multiplies by 12 for the annual total.</p>
-          <div className="grid grid-cols-2 gap-3">
+        <Section title="Overhead" icon={Building2}>
+          <p className="text-xs text-muted-foreground pt-1 pb-3">Each line is monthly until you choose annual. Totals, man-hour rates, and the job floor use that choice immediately.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {OVERHEAD_CATEGORIES.map(({ key, label }) => (
-              <NumField
+              <ExpenseLineEditor
                 key={key}
                 label={label}
-                value={division[key] as number}
-                onChange={v => set(key, v)}
+                amount={division[key] as number}
+                frequency={expenseFrequency(division.overheadFrequency?.[key])}
+                testId={`expense-frequency-${key}`}
+                onAmount={v => set(key, v)}
+                onFrequency={frequency => set('overheadFrequency', { ...division.overheadFrequency, [key]: frequency })}
               />
             ))}
           </div>
           <div className="mt-4 space-y-2">
             <p className="text-xs font-medium">Custom overhead categories</p>
             {(division.customOverhead ?? []).map(line => (
-              <div key={line.id} className="flex items-center gap-2">
+              <div key={line.id} className="flex flex-wrap items-center gap-2">
                 <Input value={line.name} onChange={event => set('customOverhead', (division.customOverhead ?? []).map(item => item.id === line.id ? { ...item, name: event.target.value } : item))} placeholder="Category name" />
-                <Input type="number" min={0} className="w-32" value={line.monthlyAmount} onChange={event => set('customOverhead', (division.customOverhead ?? []).map(item => item.id === line.id ? { ...item, monthlyAmount: parseFloat(event.target.value) || 0 } : item))} />
+                <Input type="number" min={0} className="w-32" value={customLineAmount(line)} onChange={event => set('customOverhead', (division.customOverhead ?? []).map(item => item.id === line.id ? customLineWithAmount(item, parseFloat(event.target.value) || 0) : item))} />
+                <FrequencySelect
+                  value={customLineFrequency(line)}
+                  testId={`expense-frequency-${line.id}`}
+                  onChange={frequency => set('customOverhead', (division.customOverhead ?? []).map(item => item.id === line.id ? customLineWithFrequency(item, frequency) : item))}
+                />
                 <Button type="button" variant="ghost" size="icon" onClick={() => set('customOverhead', (division.customOverhead ?? []).filter(item => item.id !== line.id))} aria-label={`Remove ${line.name || 'custom overhead'}`}><Trash2 className="w-4 h-4" /></Button>
               </div>
             ))}
-            <Button type="button" variant="outline" size="sm" className="gap-1" onClick={() => set('customOverhead', [...(division.customOverhead ?? []), { id: crypto.randomUUID(), name: '', monthlyAmount: 0 } satisfies CustomOverheadLine])}><Plus className="w-3.5 h-3.5" /> Add overhead category</Button>
+            <Button type="button" variant="outline" size="sm" className="gap-1" onClick={() => set('customOverhead', [...(division.customOverhead ?? []), { id: crypto.randomUUID(), name: '', monthlyAmount: 0, amount: 0, frequency: 'monthly' } satisfies CustomOverheadLine])}><Plus className="w-3.5 h-3.5" /> Add overhead category</Button>
           </div>
           <div className="mt-4 p-3 rounded-lg bg-muted/40 text-sm flex items-center justify-between">
             <span className="text-muted-foreground">Monthly overhead total</span>

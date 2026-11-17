@@ -31,7 +31,7 @@ export function CheckupPanel({
   description: string;
   checkup: CheckupData;
   onChange: (c: CheckupData) => void;
-  budgeted: { revenue: number; laborCost: number; materialCost: number; overheadByCategory: { key: keyof OverheadLineItems; label: string; annual: number }[] };
+  budgeted: { revenue: number; laborCost: number; materialCost: number; overheadByCategory: { key: string; label: string; annual: number }[] };
   readOnlyActuals?: boolean;
 }) {
   const setField = <K extends keyof CheckupData>(key: K, val: CheckupData[K]) =>

@@ -6,7 +6,7 @@ import { db } from "@workspace/db";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { isMissingColumnError } from "../lib/settingsFallback";
-import { bytesFromDataUrl, detectInvoiceFile, extractInvoiceText, fuelCapacityCheck, invoiceDataUrl, matchVendor, MAX_VENDOR_INVOICE_BYTES, pdfText, rollingAverageCost, sanitizeUploadName } from "../lib/vendorInvoiceIntake";
+import { bytesFromDataUrl, detectInvoiceFile, extractInvoiceText, fuelCapacityCheck, invoiceDataUrl, matchInventoryItem, matchVendor, MAX_VENDOR_INVOICE_BYTES, pdfText, rollingAverageCost, sanitizeUploadName } from "../lib/vendorInvoiceIntake";
 
 const invoiceUpload = multer({
   storage: multer.memoryStorage(),
@@ -34,6 +34,20 @@ async function office(req: import("express").Request, res: import("express").Res
 }
 
 const TOO_LARGE = "That file is too large to review here. Use a PDF or image under 12 MB.";
+const SCHEMA_NOT_READY = "Vendor document tables are not ready yet. Reload and try the upload again.";
+
+/** Drizzle wraps the Postgres error, so the SQLSTATE lives on `cause`, not the thrown error. */
+function schemaNotReady(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    if (isMissingColumnError(current)) return true;
+    if ("code" in current && (current as { code?: unknown }).code === "42P01") return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
 
 function parseInvoiceUpload(req: Request, res: Response, next: NextFunction): void {
   const type = String(req.headers["content-type"] ?? "");
@@ -98,22 +112,27 @@ router.post("/vendor-documents", parseInvoiceUpload, async (req, res): Promise<v
       vendorId = Number(draftId.rows[0].id);
       draftVendorName = extracted.vendorName;
     }
+    const catalogRows = await db.execute(sql`SELECT id, name, sku FROM inventory_items WHERE tenant_id=${companyId} ORDER BY name`);
+    const catalog = catalogRows.rows.map(row => ({ id: Number(row.id), name: String(row.name ?? ""), sku: row.sku == null ? null : String(row.sku) }));
     await db.execute(sql`INSERT INTO document_uploads (id, company_id, file_url, file_name, file_type, processed_status)
       VALUES (${documentId}, ${companyId}, ${fileUrl}, ${fileName}, ${fileType}, 'pending')`);
     await db.execute(sql`INSERT INTO vendor_invoice_records (id, company_id, document_id, vendor_id, draft_vendor_name, invoice_number, invoice_date, total_amount, tax_amount, shipping_amount, raw_ocr_json)
       VALUES (${invoiceId}, ${companyId}, ${documentId}, ${vendorId}, ${draftVendorName}, ${extracted.invoiceNumber}, ${extracted.invoiceDate || null}, ${extracted.totalAmount}, ${extracted.taxAmount}, ${extracted.shippingAmount}, ${JSON.stringify(extracted)}::jsonb)`);
     for (const line of extracted.lines) {
-      await db.execute(sql`INSERT INTO vendor_invoice_line_items (id, invoice_id, description, quantity, unit_price, total_price, destination_type, bbox)
-        VALUES (${randomUUID()}, ${invoiceId}, ${line.description}, ${line.quantity}, ${line.unitPrice}, ${line.totalPrice}, ${line.destinationType}, ${JSON.stringify(line.bbox)}::jsonb)`);
+      const matched = line.destinationType === "inventory" ? matchInventoryItem(line.description, catalog) : null;
+      const destinationId = matched?.confident && matched.itemId != null ? String(matched.itemId) : null;
+      await db.execute(sql`INSERT INTO vendor_invoice_line_items (id, invoice_id, description, quantity, unit_price, total_price, destination_type, destination_id, bbox)
+        VALUES (${randomUUID()}, ${invoiceId}, ${line.description}, ${line.quantity}, ${line.unitPrice}, ${line.totalPrice}, ${line.destinationType}, ${destinationId}, ${JSON.stringify(line.bbox)}::jsonb)`);
     }
     res.status(201).json(await loadInvoice(companyId, invoiceId));
   } catch (error) {
-    const code = (error as { code?: string })?.code;
-    if (isMissingColumnError(error) || code === "42P01") {
-      res.status(503).json({ error: "Vendor document tables are not ready yet. Reload and try the upload again." });
+    if (schemaNotReady(error)) {
+      res.status(503).json({ error: SCHEMA_NOT_READY });
       return;
     }
-    throw error;
+    const log = (req as Request & { log?: { error: (obj: unknown, msg?: string) => void } }).log;
+    log?.error({ err: error }, "Vendor invoice upload failed");
+    res.status(500).json({ error: "Could not read that invoice. Try the upload again." });
   }
 });
 
@@ -137,12 +156,13 @@ router.get("/vendor-documents/:invoiceId/file", async (req, res): Promise<void> 
     res.setHeader("Cache-Control", "private, no-store");
     res.send(decoded.bytes);
   } catch (error) {
-    const code = (error as { code?: string })?.code;
-    if (isMissingColumnError(error) || code === "42P01") {
-      res.status(503).json({ error: "Vendor document tables are not ready yet. Reload and try the upload again." });
+    if (schemaNotReady(error)) {
+      res.status(503).json({ error: SCHEMA_NOT_READY });
       return;
     }
-    throw error;
+    const log = (req as Request & { log?: { error: (obj: unknown, msg?: string) => void } }).log;
+    log?.error({ err: error }, "Vendor invoice file failed");
+    res.status(500).json({ error: "Could not open that invoice file." });
   }
 });
 
@@ -307,8 +327,8 @@ async function loadInvoice(companyId: number, invoiceId: string) {
   const lines = await db.execute(sql`SELECT id, description, quantity, unit_price AS "unitPrice", total_price AS "totalPrice", destination_type AS "destinationType", destination_id AS "destinationId", fill_date AS "fillDate", bbox FROM vendor_invoice_line_items WHERE invoice_id=${invoiceId} ORDER BY description`);
   const vendors = await db.execute(sql`SELECT id, name, is_draft AS "isDraft" FROM vendors WHERE tenant_id=${companyId} ORDER BY is_draft, name`);
   const tanks = await db.execute(sql`SELECT id, name, COALESCE(current_gallons, available_thousandths / 1000.0) AS "currentGallons", COALESCE(max_capacity, capacity_thousandths / 1000.0) AS "maxCapacity" FROM bulk_fuel_tanks WHERE tenant_id=${companyId} AND is_active=true ORDER BY name`);
-  const jobs = await db.execute(sql`SELECT id, title, status FROM jobs WHERE tenant_id=${companyId} AND status IN ('scheduled', 'in_progress', 'pending', 'on_hold') ORDER BY scheduled_date NULLS LAST LIMIT 100`);
-  const items = await db.execute(sql`SELECT id, name FROM inventory_items WHERE tenant_id=${companyId} ORDER BY name LIMIT 200`);
+  const jobs = await db.execute(sql`SELECT id, title, status FROM jobs WHERE tenant_id=${companyId} AND status IN ('scheduled', 'in_progress', 'pending', 'on_hold') ORDER BY scheduled_at LIMIT 100`);
+  const items = await db.execute(sql`SELECT id, name, sku, quantity, unit, unit_price AS "unitPrice" FROM inventory_items WHERE tenant_id=${companyId} ORDER BY name`);
   const row = invoice.rows[0];
   const draftName = row.draftVendorName == null ? null : String(row.draftVendorName);
   const storedUrl = String(row.fileUrl ?? "");

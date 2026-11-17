@@ -21,6 +21,7 @@ import {
 import { calculateJobPricingFloor, type JobPricingFloorInputs } from '@/lib/jobPricingFloor';
 import { BUDGET_LINKED_FLOOR_KEYS, companyFloorBaseline, presentFloorInputs } from '@/lib/jobPricingFloorBaseline';
 import { AnnualWorkingWeeksField } from '@/components/budget/shared';
+import { BudgetNumbersInfo } from '@/components/budget/BudgetNumbersInfo';
 
 const COMPANY_TAB = '__company__';
 const JPF_TAB = 'job-pricing-floor';
@@ -247,7 +248,10 @@ export default function BudgetPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Budget Calculator</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold tracking-tight">Budget Calculator</h1>
+            <BudgetNumbersInfo />
+          </div>
           <p className="text-muted-foreground mt-1">
             Enter your costs and goals to find out what hourly rate you need to hit your target profit margin.
           </p>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { customFetch } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { groupPdfTextItems, MAX_VENDOR_INVOICE_BYTES } from '@/lib/vendorInvoiceFile';
 import { toast } from 'sonner';
 
 type Line = {
@@ -70,13 +71,19 @@ export default function VendorDocumentsPage() {
     setBusy(true);
     setError('');
     try {
-      const fileUrl = await readFile(file);
-      const created = await customFetch<Invoice>('/api/vendor-documents', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName: file.name, fileType: file.type === 'application/pdf' ? 'pdf' : 'image', fileUrl, ocrText }),
+      if (!file.size) throw new Error('That file is empty.');
+      if (file.size > MAX_VENDOR_INVOICE_BYTES) throw new Error('That file is too large to review here. Use a PDF or image under 12 MB.');
+      const body = new FormData();
+      body.append('file', file);
+      const pasted = ocrText.trim();
+      const extracted = pasted || (isPdf(file) ? await readPdfText(file).catch(() => '') : '');
+      if (extracted) body.append('ocrText', extracted.slice(0, 200_000));
+      const created = await customFetch<Invoice>('/api/vendor-documents', { method: 'POST', body });
+      const preview = URL.createObjectURL(file);
+      setInvoice(current => {
+        if (current?.fileUrl.startsWith('blob:')) URL.revokeObjectURL(current.fileUrl);
+        return { ...created, fileUrl: preview };
       });
-      setInvoice(created);
       setVendorId(created.vendorId);
       setConfirmed(false);
       setZoom(1);
@@ -114,7 +121,7 @@ export default function VendorDocumentsPage() {
           lines: invoice.lines.map(line => ({ id: line.id, destinationType: line.destinationType, destinationId: line.destinationId, fillDate: line.fillDate || String(invoice.invoiceDate).slice(0, 10) })),
         }),
       });
-      setInvoice(saved);
+      setInvoice(current => ({ ...saved, fileUrl: current?.fileUrl.startsWith('blob:') ? current.fileUrl : saved.fileUrl }));
       toast.success('Invoice posted');
       await loadReservations();
     } catch (cause) {
@@ -151,7 +158,7 @@ export default function VendorDocumentsPage() {
         <div className="flex gap-2 items-end">
           <textarea className="min-h-16 w-64 rounded-md border bg-background p-2 text-sm" placeholder="Paste invoice text when the file is a photo" value={ocrText} onChange={event => setOcrText(event.target.value)} />
           <Button disabled={busy} onClick={() => fileRef.current?.click()}>Upload PDF or image</Button>
-          <input ref={fileRef} hidden type="file" accept="application/pdf,image/*" onChange={event => { const file = event.target.files?.[0]; if (file) void upload(file); }} />
+          <input ref={fileRef} hidden type="file" accept="application/pdf,image/*" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void upload(file); }} />
         </div>
       </div>
       {invoice && (
@@ -221,11 +228,21 @@ export default function VendorDocumentsPage() {
   );
 }
 
-function readFile(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
+function isPdf(file: File): boolean {
+  return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+}
+
+async function readPdfText(file: File): Promise<string> {
+  const pdfjs = await import('pdfjs-dist');
+  const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+  pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const pages = Math.min(doc.numPages, 8);
+  const chunks: string[] = [];
+  for (let pageNumber = 1; pageNumber <= pages; pageNumber += 1) {
+    const page = await doc.getPage(pageNumber);
+    const content = await page.getTextContent();
+    chunks.push(groupPdfTextItems(content.items as { str?: string; transform?: number[] }[]));
+  }
+  return chunks.filter(Boolean).join('\n');
 }

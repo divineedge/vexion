@@ -54,10 +54,53 @@ export type ExtractedInvoice = {
   lines: ExtractedLine[];
 };
 
-const money = (value: string) => Number(value.replace(/,/g, ""));
+const money = (value: string) => {
+  const amount = Number(value.replace(/,/g, ""));
+  return Number.isFinite(amount) ? amount : 0;
+};
+
+/** Phone photos of invoices are often several megabytes. JSON bodies are capped far below this. */
+export const MAX_VENDOR_INVOICE_BYTES = 12 * 1024 * 1024;
+
+export function sanitizeUploadName(name: string): string {
+  const base = name.replace(/\\/g, "/").split("/").pop() ?? "";
+  const cleaned = base.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 180);
+  return cleaned || "invoice";
+}
+
+export function detectInvoiceFile(bytes: Buffer, _fileName = "", _mime = ""): { kind: "pdf" | "image"; contentType: string } | null {
+  if (bytes.length < 5 || bytes.length > MAX_VENDOR_INVOICE_BYTES) return null;
+  if (bytes.subarray(0, 5).toString("latin1") === "%PDF-") return { kind: "pdf", contentType: "application/pdf" };
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return { kind: "image", contentType: "image/jpeg" };
+  if (bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return { kind: "image", contentType: "image/png" };
+  if (bytes.length >= 6) {
+    const gif = bytes.subarray(0, 6).toString("latin1");
+    if (gif === "GIF87a" || gif === "GIF89a") return { kind: "image", contentType: "image/gif" };
+  }
+  if (bytes.length >= 12 && bytes.subarray(0, 4).toString("latin1") === "RIFF" && bytes.subarray(8, 12).toString("latin1") === "WEBP") {
+    return { kind: "image", contentType: "image/webp" };
+  }
+  if (bytes.length >= 12 && bytes.subarray(4, 8).toString("latin1") === "ftyp") {
+    const brand = bytes.subarray(8, 12).toString("latin1");
+    if (/^(heic|heix|hevc|hevx|heim|heis|heif|mif1|msf1)$/.test(brand)) return { kind: "image", contentType: "image/heic" };
+  }
+  return null;
+}
+
+export function invoiceDataUrl(contentType: string, bytes: Buffer): string {
+  return `data:${contentType};base64,${bytes.toString("base64")}`;
+}
+
+export function bytesFromDataUrl(fileUrl: string): { contentType: string; bytes: Buffer } | null {
+  const match = /^data:([^;,]+);base64,([A-Za-z0-9+/=\s]+)$/.exec(fileUrl);
+  if (!match) return null;
+  const bytes = Buffer.from(match[2].replace(/\s/g, ""), "base64");
+  if (!bytes.length) return null;
+  return { contentType: match[1], bytes };
+}
 
 export function extractInvoiceText(raw: string): ExtractedInvoice {
-  const text = raw.replace(/\r/g, "").trim();
+  const text = raw.replace(/\u0000/g, "").replace(/\r/g, "").trim();
   const lines = text.split("\n").map(line => line.trim()).filter(Boolean);
   const vendorName = lines.find(line => !/invoice|bill to|date|total|qty|quantity/i.test(line)) ?? "";
   const invoiceNumber = text.match(/invoice\s*(?:number|#|no\.?)?\s*[:#]?\s*([A-Z0-9-]+)/i)?.[1] ?? "";
@@ -110,6 +153,6 @@ export function rollingAverageCost(currentGallons: number, currentAverage: numbe
 }
 
 export function pdfText(bytes: string): string {
-  const found = [...bytes.matchAll(/\(([^()\\]{2,})\)/g)].map(match => match[1]);
+  const found = [...bytes.replace(/\u0000/g, "").matchAll(/\(([^()\\]{2,})\)/g)].map(match => match[1]);
   return found.join("\n");
 }

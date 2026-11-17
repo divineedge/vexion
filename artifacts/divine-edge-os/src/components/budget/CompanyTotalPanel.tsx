@@ -85,7 +85,7 @@ export function CompanyTotalPanel({
             saved={year.companyJobPricingFloor}
             baseline={jpfBaseline}
             onChange={onJobPricingFloorChange}
-            baselineNote="The company floor adds each division's labor, materials, and overhead, then divides by combined billable hours. The stop calculator shows that burden on a monthly basis. Stop times and direct costs are example values."
+            baselineNote="Wage is the headcount-weighted average of each division's hourly rate, and payroll burden is weighted by those wages. Monthly overhead adds every division's annualized expenses (monthly × 12, annual as entered, including custom categories) ÷ 12, plus owner salaries ÷ 12. Monthly crew hours add each division's crews × weekly billable hours × its working weeks, then ÷ 12. Seasonal divisions use weeks worked. Stop times and direct costs are example values."
           />
         </Section>
 

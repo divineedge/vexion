@@ -3,7 +3,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
 import { JobPricingFloorInputs, calculateJobPricingFloor } from '@/lib/jobPricingFloor';
-import { SCENARIO_SEED_KEYS } from '@/lib/jobPricingFloorBaseline';
+import { BUDGET_LINKED_FLOOR_KEYS, SCENARIO_SEED_KEYS, presentFloorInputs } from '@/lib/jobPricingFloorBaseline';
 import { FIELDS, JobPricingFloorDraft, draftFromInputs, parseDraft, money } from './JobPricingFloorPanel';
 
 /**
@@ -19,18 +19,23 @@ export function ScopedJobPricingFloor({ scopeId, scopeLabel, saved, baseline, on
   onChange: (next: JobPricingFloorInputs | undefined) => void;
   baselineNote: string;
 }) {
-  const [draft, setDraft] = useState<JobPricingFloorDraft | null>(null);
-  const shown = draft ?? draftFromInputs(saved ?? baseline);
-  const { errors, result } = calculateJobPricingFloor(parseDraft(shown));
-  const followsBudget = !saved && !draft;
+  const [session, setSession] = useState<Partial<JobPricingFloorInputs>>({});
+  const live = presentFloorInputs(baseline, saved, session);
+  const shown = draftFromInputs(live);
+  const { errors, result } = calculateJobPricingFloor(live);
+  const followsBudget = !saved && Object.keys(session).length === 0;
   const baseDraft = draftFromInputs(baseline);
 
-  const edit = (next: JobPricingFloorDraft) => {
-    setDraft(next);
+  const edit = (key: keyof JobPricingFloorInputs, next: JobPricingFloorDraft) => {
     const parsed = parseDraft(next);
-    if (calculateJobPricingFloor(parsed).result) onChange(parsed);
+    const patch: Partial<JobPricingFloorInputs> = { ...session, [key]: parsed[key] };
+    // A budget field edited back to the live budget value stops being an override.
+    if (BUDGET_LINKED_FLOOR_KEYS.includes(key) && parsed[key] === baseline[key]) delete patch[key];
+    setSession(patch);
+    const merged = presentFloorInputs(baseline, saved, patch);
+    if (calculateJobPricingFloor(merged).result) onChange(merged);
   };
-  const reset = () => { setDraft(null); onChange(undefined); };
+  const reset = () => { setSession({}); onChange(undefined); };
   const breakEven = result ? money(Math.ceil(result.breakEvenFloor * 100 - 1e-8) / 100) : '';
 
   return (
@@ -60,7 +65,7 @@ export function ScopedJobPricingFloor({ scopeId, scopeLabel, saved, baseline, on
                 {f.prefix && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">$</span>}
                 <Input id={`jpf-${scopeId}-${f.key}`} data-testid={`input-jpf-${scopeId}-${f.key}`} type="number" inputMode="decimal"
                   min={f.key === 'crewMembers' ? 1 : 0} step={f.step ?? 'any'} title={f.hint}
-                  value={shown[f.key]} onChange={e => edit({ ...shown, [f.key]: e.target.value })}
+                  value={shown[f.key]} onChange={e => edit(f.key, { ...shown, [f.key]: e.target.value })}
                   className={`h-9 tabular-nums focus-visible:ring-emerald-800 ${f.prefix ? 'pl-7' : ''}`} />
               </div>
               <p className="text-[11px] text-muted-foreground tabular-nums">

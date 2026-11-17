@@ -220,7 +220,7 @@ export function DivisionPanel({
             saved={division.jobPricingFloor}
             baseline={jpfBaseline}
             onChange={next => set('jobPricingFloor', next)}
-            baselineNote={`Overhead per billable hour is this division's annual overhead divided by ${results.capacityWeeks} working weeks and ${results.weeklyBillableHours} weekly billable hours per technician. The stop calculator still shows that same burden as a monthly figure. Stop times and direct costs are example values.`}
+            baselineNote={`Wage and payroll burden follow this division's field employees. Monthly overhead is annualized expenses (monthly lines × 12, annual lines as entered, including custom categories) ÷ 12, plus owner salary ÷ 12. Monthly crew hours are crews × weekly billable hours × ${results.capacityWeeks} working weeks ÷ 12. Stop times and direct costs are example values.`}
           />
         </Section>
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultBudgetYear, defaultDivision, migrateBudgetPayload, computeDivision, type BudgetYear, type DivisionBudget } from "./budgetCalc";
 import { calculateJobPricingFloor } from "./jobPricingFloor";
-import { divisionFloorBaseline, companyFloorBaseline, divisionCrewHoursYear } from "./jobPricingFloorBaseline";
+import { divisionFloorBaseline, companyFloorBaseline, divisionCrewHoursYear, presentFloorInputs } from "./jobPricingFloorBaseline";
 
 const div = (name: string, over: Partial<DivisionBudget>): DivisionBudget => ({ ...defaultDivision(name), ...over });
 const yearOf = (divisions: DivisionBudget[], extra: Partial<BudgetYear> = {}): BudgetYear => ({ ...defaultBudgetYear(2026), divisions, ...extra });
@@ -12,7 +12,7 @@ describe("job pricing floor baselines", () => {
     const b = div("Snow", { crewCount: 1, workWeeksPerYear: 12, workDaysPerWeek: 6, billableHoursPerDay: 8, productionEfficiencyPct: 50, employeesPerCrew: 1, avgEmployeeHourlyRate: 30, payrollBurdenPct: 10, targetNetMarginPct: 30 });
     const ba = divisionFloorBaseline(a), bb = divisionFloorBaseline(b);
     expect(ba.monthlyBillableHours).toBe(200); // 2*40*5*6/12 crew hrs, not x3 man-hours
-    expect(bb.monthlyBillableHours).toBe(24);
+    expect(bb.monthlyBillableHours).toBe(48); // 1 crew × 48 weekly hours × 12 weeks / 12; weekly hours are already billable
     expect([ba.hourlyWage, ba.crewMembers, ba.targetMarginPct]).toEqual([20, 3, 15]);
     expect([bb.hourlyWage, bb.crewMembers, bb.targetMarginPct]).toEqual([30, 1, 30]);
   });
@@ -65,5 +65,54 @@ describe("job pricing floor baselines", () => {
     expect(y.companyJobPricingFloor).toEqual(s3);
     const [bad] = migrateBudgetPayload([{ ...yearOf([div("A", { jobPricingFloor: { ...s1, monthlyBillableHours: 0 } })]) }]);
     expect(bad.divisions[0].jobPricingFloor).toBeUndefined();
+  });
+
+  it("pulls the crew wage and burden, and spreads weekly hours across working weeks", () => {
+    const d = div("Lawn", {
+      crewCount: 1, employeesPerCrew: 2, avgEmployeeHourlyRate: 22, payrollBurdenPct: 18,
+      weeklyBillableHours: 40, technicianSchedule: "year_round", productionEfficiencyPct: 80,
+    });
+    const floor = divisionFloorBaseline(d, 52);
+    expect(floor.hourlyWage).toBe(22);
+    expect(floor.payrollBurdenPct).toBe(18);
+    expect(floor.monthlyBillableHours).toBeCloseTo(40 * 52 / 12, 2);
+    const seasonal = divisionFloorBaseline(div("Spray", {
+      crewCount: 2, employeesPerCrew: 1, avgEmployeeHourlyRate: 19,
+      technicianSchedule: "seasonal", weeksWorkedPerYear: 30, weeklyBillableHours: 35, workWeeksPerYear: 48,
+    }), 52);
+    expect(seasonal.hourlyWage).toBe(19);
+    expect(seasonal.monthlyBillableHours).toBeCloseTo(2 * 35 * 30 / 12, 2);
+  });
+
+  it("uses annualized expense lines, including custom categories, as monthly overhead", () => {
+    const d = div("Ops", {
+      ownerSalaryAnnual: 12000,
+      fuelMaintenance: 100,
+      overheadFrequency: { fuelMaintenance: "monthly" },
+      generalLiabilityInsurance: 1200,
+      customOverhead: [{ id: "lic", name: "License", monthlyAmount: 50, amount: 600, frequency: "annual" }],
+    });
+    for (const { key } of [{ key: "vehiclePayments" }, { key: "vehicleInsurance" }, { key: "workersComp" }, { key: "equipmentPayments" }, { key: "equipmentRepair" }, { key: "officeRent" }, { key: "marketingAdvertising" }, { key: "softwareSubscriptions" }, { key: "phoneCommunication" }, { key: "uniformsPPE" }, { key: "accountingLegal" }, { key: "miscOverhead" }] as const) {
+      d[key] = 0;
+    }
+    d.overheadFrequency = { ...d.overheadFrequency, generalLiabilityInsurance: "annual" };
+    const floor = divisionFloorBaseline(d, 48);
+    const annualExpenses = 100 * 12 + 1200 + 600;
+    expect(floor.monthlyOverhead).toBeCloseTo(annualExpenses / 12 + 1000, 2);
+    const company = companyFloorBaseline(yearOf([d], { annualWorkingWeeks: 48 }));
+    expect(company.monthlyOverhead).toBeCloseTo(floor.monthlyOverhead, 2);
+    expect(company.hourlyWage).toBe(d.avgEmployeeHourlyRate);
+  });
+
+  it("keeps a manual stop-time edit and a session wage override while the budget wage stays live", () => {
+    const first = divisionFloorBaseline(div("A", { avgEmployeeHourlyRate: 18, employeesPerCrew: 2, crewCount: 1 }));
+    const saved = { ...first, onSiteMinutes: 30, hourlyWage: 18 };
+    const nextBudget = divisionFloorBaseline(div("A", { avgEmployeeHourlyRate: 24, employeesPerCrew: 2, crewCount: 1 }));
+    const live = presentFloorInputs(nextBudget, saved, {});
+    expect(live.hourlyWage).toBe(24);
+    expect(live.onSiteMinutes).toBe(30);
+    const held = presentFloorInputs(nextBudget, saved, { hourlyWage: 21 });
+    expect(held.hourlyWage).toBe(21);
+    expect(held.monthlyOverhead).toBe(nextBudget.monthlyOverhead);
   });
 });

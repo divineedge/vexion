@@ -18,7 +18,8 @@ import { CompanyTotalPanel } from '@/components/budget/CompanyTotalPanel';
 import {
   JobPricingFloorPanel, JobPricingFloorDraft, draftFromInputs, parseDraft, isDefaultScenario,
 } from '@/components/budget/JobPricingFloorPanel';
-import { calculateJobPricingFloor, defaultJobPricingFloor } from '@/lib/jobPricingFloor';
+import { calculateJobPricingFloor, type JobPricingFloorInputs } from '@/lib/jobPricingFloor';
+import { BUDGET_LINKED_FLOOR_KEYS, companyFloorBaseline, presentFloorInputs } from '@/lib/jobPricingFloorBaseline';
 import { AnnualWorkingWeeksField } from '@/components/budget/shared';
 
 const COMPANY_TAB = '__company__';
@@ -30,7 +31,6 @@ export default function BudgetPage() {
   const [years, setYears] = useState<BudgetYear[]>([]);
   const [currentYear, setCurrentYear] = useState<number>(new Date().getFullYear());
   const [activeTab, setActiveTab] = useState<string>(initialTabIsJpf() ? JPF_TAB : COMPANY_TAB);
-  const [jpfDrafts, setJpfDrafts] = useState<Record<number, JobPricingFloorDraft>>({});
   const [saving, setSaving] = useState(false);
   const [divisionSaving, setDivisionSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -85,12 +85,23 @@ export default function BudgetPage() {
     });
   }, [currentYear]);
 
-  const jpfDraft = jpfDrafts[currentYear] ?? draftFromInputs(year.jobPricingFloor ?? defaultJobPricingFloor());
-  const jpfInvalid = !calculateJobPricingFloor(parseDraft(jpfDraft)).result;
+  const [floorSession, setFloorSession] = useState<Record<number, Partial<JobPricingFloorInputs>>>({});
+  const companyBaseline = useMemo(() => companyFloorBaseline(year), [year]);
+  const floorPatch = floorSession[currentYear] ?? {};
+  const liveFloor = presentFloorInputs(companyBaseline, year.jobPricingFloor, floorPatch);
+  const jpfDraft = draftFromInputs(liveFloor);
+  const jpfInvalid = activeTab === JPF_TAB && !calculateJobPricingFloor(liveFloor).result;
   const changeJpf = (next: JobPricingFloorDraft) => {
-    setJpfDrafts(prev => ({ ...prev, [currentYear]: next }));
     const parsed = parseDraft(next);
-    if (calculateJobPricingFloor(parsed).result) updateYear(y => ({ ...y, jobPricingFloor: parsed }));
+    const patch: Partial<JobPricingFloorInputs> = { ...floorPatch };
+    for (const key of Object.keys(parsed) as (keyof JobPricingFloorInputs)[]) {
+      if (String(liveFloor[key]) === next[key]) continue;
+      if (BUDGET_LINKED_FLOOR_KEYS.includes(key) && parsed[key] === companyBaseline[key]) delete patch[key];
+      else patch[key] = parsed[key];
+    }
+    setFloorSession(prev => ({ ...prev, [currentYear]: patch }));
+    const merged = presentFloorInputs(companyBaseline, year.jobPricingFloor, patch);
+    if (calculateJobPricingFloor(merged).result) updateYear(y => ({ ...y, jobPricingFloor: merged }));
   };
 
   const updateDivision = (divisionId: string, updated: DivisionBudget) => {

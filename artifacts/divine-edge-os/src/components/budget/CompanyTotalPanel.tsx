@@ -26,7 +26,11 @@ export function CompanyTotalPanel({
     revenue: totals.combinedRequiredRevenue,
     laborCost: totals.combinedLaborCost,
     materialCost: totals.combinedMaterialCost,
-    overheadByCategory: totals.overheadByCategory.map(o => ({ key: o.key, label: o.label, annual: o.effective })),
+    overheadByCategory: totals.overheadByCategory.filter(o => o.key !== 'overheadLabor').map(o => ({
+      key: o.key,
+      label: o.label,
+      annual: o.effective + (o.key === 'miscOverhead' ? totals.overheadLaborAnnual : 0),
+    })),
   }), [totals]);
 
   return (
@@ -54,7 +58,7 @@ export function CompanyTotalPanel({
         {/* Overhead rollup with override capability */}
         <Section title="Company overhead (from divisions)" icon={Building2}>
           <p className="text-xs text-muted-foreground pt-1 pb-3">
-            These totals add every division. A monthly line is multiplied by 12. An annual line is used as entered. Custom categories that are not in the standard list are included in Miscellaneous Overhead.
+            These totals add every division. A monthly line is multiplied by 12. An annual line is used as entered. Custom categories that are not in the standard list are included in Miscellaneous Overhead. Overhead and salaried labor is its own line and is included in the combined annual and monthly totals.
           </p>
           <div className="space-y-2">
             {totals.overheadByCategory.map(o => (
@@ -75,6 +79,27 @@ export function CompanyTotalPanel({
               <p className="text-[11px] text-muted-foreground">Annual overhead ÷ 12, for cash-flow reference. Rates still use {year.annualWorkingWeeks ?? totals.annualWorkingWeeks} working weeks.</p>
             </div>
           </div>
+          <div className="mt-4 space-y-2" data-testid="company-overhead-labor">
+            <p className="text-sm font-medium">Overhead & Salaried Labor</p>
+            <p className="text-xs text-muted-foreground">
+              Read-only rollup. Annualized and monthly amounts are inside combined annual overhead and monthly overhead expense, and are recovered across productive field hours in the company break-even rate and job floor.
+            </p>
+            {totals.overheadLaborLines.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No overhead or salaried labor on any division yet.</p>
+            ) : totals.overheadLaborLines.map(line => (
+              <div key={line.id} className="flex items-start justify-between gap-3 text-sm">
+                <span>
+                  <span className="font-medium">{line.name}</span>
+                  <span className="block text-xs text-muted-foreground">{line.divisionName} · {line.allocation === 'division' ? 'This division' : line.allocation === 'company_proportional' ? 'Split by billable hours' : 'Company total only'} · {line.payType === 'hourly' ? 'Hourly' : 'Salary'}</span>
+                </span>
+                <span className="font-medium tabular-nums text-right">{$(line.annualCost)}/yr<br /><span className="text-xs font-normal text-muted-foreground">{$(line.monthlyCost)}/mo</span></span>
+              </div>
+            ))}
+            <div className="flex items-center justify-between text-sm" data-testid="company-overhead-labor-total">
+              <span className="text-muted-foreground">Total overhead & salaried labor</span>
+              <span className="font-semibold">{$(totals.overheadLaborAnnual)} / yr · {$(totals.overheadLaborMonthly)} / mo</span>
+            </div>
+          </div>
         </Section>
 
         {/* Company-wide job pricing floor */}
@@ -85,7 +110,7 @@ export function CompanyTotalPanel({
             saved={year.companyJobPricingFloor}
             baseline={jpfBaseline}
             onChange={onJobPricingFloorChange}
-            baselineNote="Wage is the headcount-weighted average of each division's hourly rate, and payroll burden is weighted by those wages. Monthly overhead adds every division's annualized expenses (monthly × 12, annual as entered, including custom categories) ÷ 12, plus owner salaries ÷ 12. Monthly crew hours add each division's crews × weekly billable hours × its working weeks, then ÷ 12. Seasonal divisions use weeks worked. Stop times and direct costs are example values."
+            baselineNote="Wage is the headcount-weighted average of each division's hourly rate, and payroll burden is weighted by those wages. Monthly overhead adds every division's annualized expenses (monthly × 12, annual as entered, including custom categories and overhead/salaried labor) ÷ 12, plus owner salaries ÷ 12, plus company-wide salaried labor ÷ 12. Monthly crew hours add each division's crews × weekly billable hours × its working weeks, then ÷ 12. Seasonal divisions use weeks worked. Stop times and direct costs are example values."
           />
         </Section>
 
@@ -130,8 +155,9 @@ export function CompanyTotalPanel({
               Blended across all divisions at a {pct(totals.blendedMarginPct)} weighted margin target, across {totals.combinedManHours.toLocaleString()} combined man-hours.
             </p>
             {totals.combinedBreakEvenRate > 0 && (
-              <p className="text-xs text-primary-foreground/60 mt-1">
+              <p className="text-xs text-primary-foreground/60 mt-1" data-testid="company-break-even">
                 Break-even: {$(totals.combinedBreakEvenRate, 2)}/man-hr
+                {totals.overheadLaborAnnual > 0 ? ` · includes ${$(totals.overheadLaborAnnual)} overhead & salaried labor` : ''}
               </p>
             )}
           </CardContent>
@@ -150,7 +176,7 @@ export function CompanyTotalPanel({
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">Calculated company floor</p>
-            <p className="text-3xl font-bold">{totals.companyJobFloorCalculated > 0 ? $(totals.companyJobFloorCalculated, 2) : '—'}</p>
+            <p className="text-3xl font-bold" data-testid="company-job-floor">{totals.companyJobFloorCalculated > 0 ? $(totals.companyJobFloorCalculated, 2) : '—'}</p>
             <p className="text-xs text-muted-foreground mt-1">
               Live sum of division labor, materials, and overhead per billable hour, times the average minimum visit.
             </p>

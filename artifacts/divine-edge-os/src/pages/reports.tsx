@@ -21,13 +21,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import {
-  Briefcase, Users, ScrollText, Clock3, Percent, Download, Printer, Settings,
+  Briefcase, Users, ScrollText, Clock, Clock3, Percent, Download, Printer, Settings,
   RefreshCw, ShieldAlert, Package, Search, X, ShoppingCart, Building2, CheckSquare, Square, AlertTriangle,
   TrendingUp, Gauge, ThumbsDown,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { downloadCsv } from '@/lib/csvExport';
 import EstimateDeclinesReport from '@/components/reports/EstimateDeclinesReport';
+import ClockedTimeReport from '@/components/reports/ClockedTimeReport';
 
 function defaultRange() {
   const now = new Date();
@@ -199,6 +200,7 @@ const REPORTS = [
   { id: 'inventory-sales', label: 'Inventory Sales', icon: Package, description: 'Units sold, margin, and commission per inventory item.' },
   { id: 'reorder-list', label: 'Reorder List', icon: ShoppingCart, description: 'Low-stock items grouped by supplier, ready to export as a purchase order.' },
   { id: 'hourly-productivity', label: 'Revenue / Hour', icon: Gauge, description: 'Revenue per billable hour by service, crew, and employee — compare to your budget target.' },
+  { id: 'clocked-time', label: 'Clocked Time', icon: Clock, description: 'Clocked hours by service and shop task, for the company or one employee.' },
   { id: 'estimate-declines', label: 'Estimate Declines', icon: ThumbsDown, description: 'Why customers decline estimates, counted by reason with comments.' },
   { id: 'service-categories', label: 'Service Categories', icon: Briefcase, description: 'Revenue, job volume, and profit grouped by service category.' },
 ] as const;
@@ -256,6 +258,7 @@ export default function ReportsPage() {
         <TabsContent value="inventory-sales"><InventorySalesReport /></TabsContent>
         <TabsContent value="reorder-list"><ReorderListReportPanel /></TabsContent>
         <TabsContent value="hourly-productivity"><HourlyProductivityReport /></TabsContent>
+        <TabsContent value="clocked-time"><ClockedTimeReport /></TabsContent>
         <TabsContent value="estimate-declines"><EstimateDeclinesReport /></TabsContent>
         <TabsContent value="service-categories"><ServiceCategoryReport /></TabsContent>
       </Tabs>

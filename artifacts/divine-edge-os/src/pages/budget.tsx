@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import {
   BudgetYear, DivisionBudget, defaultBudgetYear, defaultDivision,
-  migrateBudgetPayload, computeDivision, clampAnnualWorkingWeeks,
+  migrateBudgetPayload,   computeDivision, clampAnnualWorkingWeeks, proportionalOverheadLaborShares,
 } from '@/lib/budgetCalc';
 import { DivisionPanel } from '@/components/budget/DivisionPanel';
 import { CompanyTotalPanel } from '@/components/budget/CompanyTotalPanel';
@@ -402,9 +402,10 @@ export default function BudgetPage() {
         <DivisionPanel
           key={`${currentYear}-${activeDivision.id}`}
           division={activeDivision}
+          year={year}
           annualWorkingWeeks={year.annualWorkingWeeks ?? 48}
           onChange={updated => updateDivision(activeDivision.id, updated)}
-          previousResults={previousDivision ? computeDivision(previousDivision, previousYear?.annualWorkingWeeks) : null}
+          previousResults={previousDivision && previousYear ? computeDivision(previousDivision, previousYear.annualWorkingWeeks, proportionalOverheadLaborShares(previousYear).get(previousDivision.id) ?? 0) : null}
           previousYear={previousDivision ? previousYear!.year : undefined}
         />
         </>

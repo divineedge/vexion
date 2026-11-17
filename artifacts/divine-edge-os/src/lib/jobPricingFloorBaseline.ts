@@ -1,4 +1,4 @@
-import { BudgetYear, DivisionBudget, capacityWeeks, computeDivision, resolvedWeeklyBillableHours } from './budgetCalc';
+import { BudgetYear, DivisionBudget, capacityWeeks, computeDivision, resolvedWeeklyBillableHours, summarizeOverheadLabor } from './budgetCalc';
 import { JobPricingFloorInputs, defaultJobPricingFloor } from './jobPricingFloor';
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -32,9 +32,9 @@ export function divisionCrewHoursYear(d: DivisionBudget, annualWorkingWeeks?: nu
  * shared validation forces the user to enter real hours.
  * Stop times and direct job costs have no budget source; they are scenario seeds.
  */
-export function divisionFloorBaseline(d: DivisionBudget, annualWorkingWeeks?: number): JobPricingFloorInputs {
+export function divisionFloorBaseline(d: DivisionBudget, annualWorkingWeeks?: number, extraAnnualOverhead = 0): JobPricingFloorInputs {
   const base = defaultJobPricingFloor();
-  const res = computeDivision(d, annualWorkingWeeks);
+  const res = computeDivision(d, annualWorkingWeeks, extraAnnualOverhead);
   const paidEmployees = fieldEmployeeCount(d);
   const paidPerCrew = Math.max(0, Math.round(Number(d.employeesPerCrew) || 0));
   return {
@@ -49,12 +49,13 @@ export function divisionFloorBaseline(d: DivisionBudget, annualWorkingWeeks?: nu
 }
 
 /**
- * Company-wide baseline. Overhead uses the Company Total effective overhead
- * (honours overrides for shared costs) plus all owner salaries; wage and burden
- * are weighted by paid employee headcount; crew-hours are summed per division.
+ * Company-wide baseline. Overhead uses each division's monthly overhead (expenses
+ * plus division-allocated salaried labor) plus owner salaries. Company-wide
+ * salaried labor is added once, whether it is split by hours or kept at the company total.
  */
 export function companyFloorBaseline(year: BudgetYear): JobPricingFloorInputs {
   const base = defaultJobPricingFloor();
+  const companyLabor = summarizeOverheadLabor(year, year.annualWorkingWeeks);
   let heads = 0, wageSum = 0, burdenWeighted = 0, crews = 0, crewHours = 0, ownerSalaries = 0, expenseMonthly = 0, marginWeighted = 0, marginWeight = 0;
   for (const d of year.divisions) {
     const result = computeDivision(d, year.annualWorkingWeeks);
@@ -78,7 +79,7 @@ export function companyFloorBaseline(year: BudgetYear): JobPricingFloorInputs {
     // Wage-weighted so blended burdened labor cost matches the sum of divisions.
     payrollBurdenPct: wageSum > 0 ? r2(burdenWeighted / wageSum) : base.payrollBurdenPct,
     crewMembers: crews > 0 ? Math.max(1, Math.round(heads / crews)) : 1,
-    monthlyOverhead: r2(expenseMonthly + ownerSalaries / 12),
+    monthlyOverhead: r2(expenseMonthly + ownerSalaries / 12 + (companyLabor.proportional + companyLabor.companyOnly) / 12),
     monthlyBillableHours: r2(crewHours / 12),
     targetMarginPct: Math.min(99, r2(marginWeight > 0 ? marginWeighted / marginWeight : 0)),
   };

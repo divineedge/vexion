@@ -6,6 +6,7 @@ import {z} from 'zod';
 import {listVendorCategories} from '../lib/vendorCategories';
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
+import { logger } from "../lib/logger";
 import vendorExpenseDefaultsRouter from './vendorExpenseDefaults';
 
 const router: IRouter = Router();
@@ -119,8 +120,85 @@ router.delete("/vendors/:id", async (req, res): Promise<void> => {
   if (!(await isAdminRole(tenantId, userId))) { res.status(403).json({ error: "Restricted to owner/admin roles" }); return; }
 
   const id = parseInt(req.params.id, 10);
-  await db.delete(vendorsTable).where(and(eq(vendorsTable.id, id), eq(vendorsTable.tenantId, tenantId)));
-  res.sendStatus(204);
+  if (!Number.isInteger(id)) { res.status(400).json({ error: "Vendor not found" }); return; }
+
+  try {
+    const outcome = await db.transaction(async tx => {
+      const existing = await tx.select({ id: vendorsTable.id }).from(vendorsTable).where(and(eq(vendorsTable.id, id), eq(vendorsTable.tenantId, tenantId))).for("update");
+      if (!existing.length) return { status: 404, error: "Vendor not found" };
+
+      const invoices = await tx.execute(sql`SELECT to_regclass('vendor_invoice_records') AS present`);
+      if (invoices.rows[0]?.present) {
+        const posted = await countRows(tx, sql`SELECT count(*)::int AS count FROM vendor_invoice_records WHERE company_id=${tenantId} AND vendor_id=${id} AND vendor_confirmed IS TRUE`);
+        const postedCount = posted ?? await countRows(tx, sql`SELECT count(*)::int AS count FROM vendor_invoice_records WHERE company_id=${tenantId} AND vendor_id=${id}`);
+        if (postedCount == null) return { status: 409, error: "This vendor is still referenced by an invoice, so it was not deleted." };
+        if (postedCount > 0) return { status: 409, error: postedInvoiceMessage(postedCount) };
+        await optionalSql(tx, sql`UPDATE vendor_invoice_records SET vendor_id=NULL WHERE company_id=${tenantId} AND vendor_id=${id} AND vendor_confirmed IS NOT TRUE`);
+      }
+
+      // Expense history, stock, and bank guesses already keep their rows when the vendor link is cleared.
+      await optionalSql(tx, sql`UPDATE expense_entries SET vendor_id=NULL WHERE tenant_id=${tenantId} AND vendor_id=${id}`);
+      await optionalSql(tx, sql`UPDATE inventory_items SET vendor_id=NULL WHERE tenant_id=${tenantId} AND vendor_id=${id}`);
+      await optionalSql(tx, sql`UPDATE bank_transactions SET guessed_vendor_id=NULL WHERE tenant_id=${tenantId} AND guessed_vendor_id=${id}`);
+      await optionalSql(tx, sql`DELETE FROM vendor_expense_defaults WHERE tenant_id=${tenantId} AND vendor_id=${id}`);
+
+      const deleted = await tx.delete(vendorsTable).where(and(eq(vendorsTable.id, id), eq(vendorsTable.tenantId, tenantId))).returning({ id: vendorsTable.id });
+      if (!deleted.length) return { status: 404, error: "Vendor not found" };
+      return { status: 204, error: "" };
+    });
+    if (outcome.status === 204) { res.sendStatus(204); return; }
+    res.status(outcome.status).json({ error: outcome.error });
+  } catch (error) {
+    if (postgresCode(error) === "23503") {
+      res.status(409).json({ error: "This vendor is still referenced by an invoice, so it was not deleted." });
+      return;
+    }
+    logger.error({ err: error }, "Vendor delete failed");
+    res.status(500).json({ error: "Could not delete this vendor." });
+  }
 });
+
+function postedInvoiceMessage(count: number): string {
+  if (count === 1) return "This vendor is still on a posted invoice, so it was not deleted. Posted invoices need this vendor.";
+  return `This vendor is still on ${count} posted invoices, so it was not deleted. Posted invoices need this vendor.`;
+}
+
+function postgresCode(error: unknown): string {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    const code = (current as { code?: unknown }).code;
+    if (typeof code === "string") return code;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return "";
+}
+
+type Queryable = { execute: typeof db.execute };
+
+/** Runs a count query. Undefined means the table or column is not there yet. Null means it failed closed. */
+async function countRows(tx: Queryable, statement: ReturnType<typeof sql>): Promise<number | null | undefined> {
+  const result = await optionalSql(tx, statement);
+  if (result.status === "missing") return undefined;
+  if (result.status === "failed") return null;
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+async function optionalSql(tx: Queryable, statement: ReturnType<typeof sql>): Promise<{ status: "ok"; rows: Record<string, unknown>[] } | { status: "missing" | "failed"; rows: [] }> {
+  await tx.execute(sql`SAVEPOINT vendor_delete_optional`);
+  try {
+    const result = await tx.execute(statement);
+    await tx.execute(sql`RELEASE SAVEPOINT vendor_delete_optional`);
+    return { status: "ok", rows: result.rows as Record<string, unknown>[] };
+  } catch (error) {
+    await tx.execute(sql`ROLLBACK TO SAVEPOINT vendor_delete_optional`);
+    await tx.execute(sql`RELEASE SAVEPOINT vendor_delete_optional`);
+    const code = postgresCode(error);
+    if (code === "42P01" || code === "42703") return { status: "missing", rows: [] };
+    if (code === "23503") return { status: "failed", rows: [] };
+    throw error;
+  }
+}
 
 export default router;

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { bytesFromDataUrl, detectInvoiceFile, extractInvoiceText, fuelCapacityCheck, invoiceDataUrl, matchInventoryItem, matchVendor, MAX_VENDOR_INVOICE_BYTES, pdfText, readInvoiceText, rollingAverageCost, sanitizeUploadName } from "./vendorInvoiceIntake";
+import { bytesFromDataUrl, detectInvoiceFile, extractInvoiceText, fuelCapacityCheck, invoiceDataUrl, matchInventoryItem, matchVendor, MAX_VENDOR_INVOICE_BYTES, pdfText, readInvoiceText, resolveInvoiceVendor, rollingAverageCost, sanitizeUploadName, sellerBesidesCustomer } from "./vendorInvoiceIntake";
 import { companyNameFromOcr } from "./vendorInvoiceOcrText";
 
 describe("vendor invoice intake", () => {
@@ -12,6 +12,45 @@ describe("vendor invoice intake", () => {
     expect(matchVendor("Horizon Fuel Company", vendors).vendorId).toBe(4);
     const unknown = matchVendor("Brand New Supply", vendors);
     expect(unknown.confident).toBe(false);
+  });
+
+  it("keeps a typed vendor, selects a close existing vendor, and ignores the customer", () => {
+    const vendors = [{ id: 7, name: "Great Basin Turf Products" }, { id: 4, name: "Horizon Fuel Co." }];
+    const kept = resolveInvoiceVendor("Great Basin Turf", "Divine Edge Property Management, LLC", vendors);
+    expect(kept.vendorName).toBe("Great Basin Turf");
+    expect(kept.vendorId).toBe(7);
+    const emptyFile = resolveInvoiceVendor("Horizon Fuel", "", vendors);
+    expect(emptyFile.vendorName).toBe("Horizon Fuel");
+    expect(emptyFile.vendorId).toBe(4);
+    const agreed = resolveInvoiceVendor("Great Basin Turf", "GREAT BASIN TURF PRODUCTS", vendors);
+    expect(agreed.vendorId).toBe(7);
+    expect(agreed.vendorName).toBe("Great Basin Turf");
+    expect(resolveInvoiceVendor("", "Page header junk", vendors).vendorId).toBeNull();
+  });
+
+  it("does not treat sold-to or ship-to text as the vendor", () => {
+    const seller = extractInvoiceText("Acme Fuel\nSold to: Divine Edge Property Management, LLC\nInvoice # A-14\nTotal $10.00");
+    expect(seller.vendorName).toBe("Acme Fuel");
+    const customerFirst = [
+      "Acme Fuel",
+      "Divine Edge Property Management, LLC",
+      "Sold to:\tShip to:",
+      "P O Box\t400",
+      "Invoice # 480584",
+      "Total $8,261.04",
+    ].join("\n");
+    expect(extractInvoiceText(customerFirst).vendorName).toBe("Acme Fuel");
+    const onlyCustomer = [
+      "Divine Edge Property Management, LLC",
+      "Sold to:\tShip to:",
+      "Divine Edge Property Management, LLC\tDivine Edge Property Management, LLC",
+      "Invoice # 480584",
+      "Total $8,261.04",
+    ].join("\n");
+    expect(extractInvoiceText(onlyCustomer).vendorName).toBe("");
+    expect(extractInvoiceText(onlyCustomer).vendorName).not.toMatch(/divine edge/i);
+    expect(sellerBesidesCustomer("Divine Edge Property Management, LLC", onlyCustomer)).toBe("");
+    expect(sellerBesidesCustomer("GREAT BASIN TURF PRODUCTS", onlyCustomer)).toBe("GREAT BASIN TURF PRODUCTS");
   });
 
   it("reads invoice fields and fuel lines from text", () => {

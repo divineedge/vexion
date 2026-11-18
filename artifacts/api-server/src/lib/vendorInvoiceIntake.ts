@@ -37,6 +37,39 @@ export function matchVendor(extracted: string, vendors: VendorCandidate[]): { ve
   return { vendorId: best.id, vendorName: best.name, confidence: Math.round(best.confidence * 1000) / 1000, confident: best.confidence >= 0.84 };
 }
 
+export type ResolvedInvoiceVendor = {
+  vendorId: number | null;
+  /** Name to keep on the review form. A typed name is never replaced. */
+  vendorName: string;
+  extractedSeller: string;
+};
+
+/**
+ * The name the user typed stays, even when the file's seller is wrong or blank.
+ * A close existing vendor is selected from that typed name, or from the extracted
+ * seller when the two names agree. Nothing here creates a vendor.
+ */
+export function resolveInvoiceVendor(typedName: string, extractedSeller: string, vendors: VendorCandidate[]): ResolvedInvoiceVendor {
+  const typed = typedName.trim().slice(0, 200);
+  const seller = extractedSeller.trim().slice(0, 200);
+  const typedMatch = typed ? matchVendor(typed, vendors) : null;
+  const sellerMatch = seller ? matchVendor(seller, vendors) : null;
+  const agrees = typed && seller ? matchVendor(typed, [{ id: 0, name: seller }]).confident : false;
+  if (typed) {
+    if (typedMatch?.confident && typedMatch.vendorId != null) {
+      return { vendorId: typedMatch.vendorId, vendorName: typed, extractedSeller: seller };
+    }
+    if (agrees && sellerMatch?.confident && sellerMatch.vendorId != null) {
+      return { vendorId: sellerMatch.vendorId, vendorName: typed, extractedSeller: seller };
+    }
+    return { vendorId: null, vendorName: typed, extractedSeller: seller };
+  }
+  if (sellerMatch?.confident && sellerMatch.vendorId != null) {
+    return { vendorId: sellerMatch.vendorId, vendorName: sellerMatch.vendorName ?? seller, extractedSeller: seller };
+  }
+  return { vendorId: null, vendorName: seller, extractedSeller: seller };
+}
+
 export type ExtractedLine = {
   description: string;
   quantity: number;
@@ -107,7 +140,8 @@ export function extractInvoiceText(raw: string): ExtractedInvoice {
   const text = raw.replace(/\u0000/g, "").replace(/\r/g, "").trim();
   const lines = text.split("\n").map(line => line.trim()).filter(Boolean);
   const flat = lines.map(line => line.replace(/\t+/g, " ").replace(/[ ]+/g, " ").trim()).join("\n");
-  const vendorName = vendorFrom(lines.map(line => line.replace(/\t+/g, " ").replace(/[ ]+/g, " ").trim()));
+  const vendorLines = lines.map(line => line.replace(/[ ]+/g, " ").trim());
+  const vendorName = sellerBesidesCustomer(vendorFrom(vendorLines), vendorLines.join("\n"));
   const invoiceNumber = flat.match(/invoice\s*(?:#|number|no\.?)\s*:?\s*([A-Z0-9-]{2,})/i)?.[1] ?? "";
   const dateMatch = flat.match(/invoice\s*date\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i)
     ?? flat.match(/\bdate\s*:?\s*(20\d{2}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})/i)
@@ -138,10 +172,69 @@ function lastLabeledMoney(text: string, pattern: RegExp): number {
   return matched ? found : 0;
 }
 
+const partyLabel = /sold to|ship to|bill to/i;
+
+function partyPieces(line: string): string[] {
+  return line.split(/\t+/).map(part => part.trim()).filter(Boolean);
+}
+
+function nameFromParty(part: string): string {
+  return part.replace(/^(?:sold to|ship to|bill to)\s*:\s*/i, "").trim();
+}
+
+/** Names in Sold to / Ship to / Bill to blocks. Those are the customer, never the seller. */
+export function customerPartyNames(lines: string[]): string[] {
+  const names: string[] = [];
+  const push = (value: string) => {
+    const name = nameFromParty(value).replace(/:+$/, "").trim();
+    if (!name || /^(?:sold to|ship to|bill to)\s*:?$/i.test(name) || !looksLikeVendor(name)) return;
+    names.push(name);
+  };
+  for (let index = 0; index < lines.length; index += 1) {
+    const parts = partyPieces(lines[index]);
+    if (!parts.some(part => partyLabel.test(part))) continue;
+    const inline = parts.map(nameFromParty).filter(name => looksLikeVendor(name));
+    if (inline.length) {
+      inline.forEach(push);
+      continue;
+    }
+    const next = partyPieces(lines[index + 1] ?? "").filter(part => looksLikeVendor(part));
+    if (next.length) {
+      next.forEach(push);
+      continue;
+    }
+    partyPieces(lines[index - 1] ?? "").filter(part => looksLikeVendor(part)).forEach(push);
+  }
+  return names;
+}
+
+/** Drops a seller read from the customer block, including a logo read that matched Sold to / Ship to. */
+export function sellerBesidesCustomer(seller: string, source: string): string {
+  const name = seller.trim().slice(0, 200);
+  if (!name || partyLabel.test(name) || /crystal reports/i.test(name)) return "";
+  const lines = source.split("\n").map(line => line.trim()).filter(Boolean);
+  const customers = customerPartyNames(lines);
+  if (customers.some(customer => matchVendor(name, [{ id: 1, name: customer }]).confident)) return "";
+  return name;
+}
+
+function looksLikeAddress(line: string): boolean {
+  const value = line.replace(/\t+/g, " ").replace(/[ ]+/g, " ").trim();
+  if (/\b\d{5}(?:-\d{4})?\b/.test(value)) return true;
+  if (/\d/.test(value) && /\b(rd|st|ave|road|street|drive|dr|blvd|ln|lane|way|pkwy)\b/i.test(value)) return true;
+  if (/\bp\s*\.?\s*o\s*\.?\s*box\b/i.test(value)) return true;
+  return false;
+}
+
 function vendorFrom(lines: string[]): string {
+  const customers = new Set(customerPartyNames(lines).map(name => normalizeVendorName(name)));
   for (const line of lines) {
-    if (/sold to|ship to|bill to/i.test(line)) break;
-    if (looksLikeVendor(line)) return line;
+    if (partyLabel.test(line)) break;
+    if (looksLikeAddress(line)) continue;
+    for (const part of partyPieces(line)) {
+      if (customers.has(normalizeVendorName(part))) continue;
+      if (looksLikeVendor(part)) return part;
+    }
   }
   return "";
 }
@@ -150,9 +243,11 @@ function looksLikeVendor(line: string): boolean {
   const value = line.trim();
   if (value.length < 3 || value.length > 80) return false;
   if (!/[A-Za-z]{2}/.test(value)) return false;
+  if (/^[A-Za-z.'-]+,$/.test(value)) return false;
   if (/\d{3}[-.)\s]\d{3}/.test(value)) return false;
   if (/\b\d{5}(?:-\d{4})?\b/.test(value) && /,/.test(value)) return false;
   if (/\d/.test(value) && /\b(rd|st|ave|road|street|drive|dr|blvd|ln|lane|way|pkwy|box)\b/i.test(value)) return false;
+  if (/\bp\s*\.?\s*o\s*\.?\s*box\b/i.test(value)) return false;
   if (/invoice|page\b|station|duplicate|sold to|ship to|quantity|description|subtotal|\btotal\b|\btax\b|terms|customer|sales rep|ship date|remit|received|billing|signature|item\s*#|ext prc|selling unit|po box|location|user:|\bnotes\b|\bprice\b|\bdate\b/i.test(value)) return false;
   return true;
 }

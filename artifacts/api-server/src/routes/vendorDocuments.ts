@@ -7,7 +7,7 @@ import { logger } from "../lib/logger";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { isMissingColumnError } from "../lib/settingsFallback";
-import { bytesFromDataUrl, detectInvoiceFile, fuelCapacityCheck, invoiceDataUrl, matchInventoryItem, matchVendor, MAX_VENDOR_INVOICE_BYTES, readInvoiceText, rollingAverageCost, sanitizeUploadName } from "../lib/vendorInvoiceIntake";
+import { bytesFromDataUrl, detectInvoiceFile, fuelCapacityCheck, invoiceDataUrl, matchInventoryItem, MAX_VENDOR_INVOICE_BYTES, pdfText, readInvoiceText, resolveInvoiceVendor, rollingAverageCost, sanitizeUploadName, sellerBesidesCustomer } from "../lib/vendorInvoiceIntake";
 import { vendorNameFromPdf } from "../lib/vendorInvoiceOcr";
 
 const invoiceUpload = multer({
@@ -101,6 +101,7 @@ router.post("/vendor-documents", parseInvoiceUpload, async (req, res): Promise<v
   const fileType = detected.kind;
   const fileUrl = invoiceDataUrl(detected.contentType, uploaded.bytes);
   const suppliedText = uploaded.ocrText.replace(/\u0000/g, "").slice(0, 200_000);
+  const typedName = typeof req.body?.vendorName === "string" ? req.body.vendorName.trim().slice(0, 200) : "";
   let extracted = readInvoiceText(suppliedText, fileType === "pdf" ? uploaded.bytes : undefined);
   if (!extracted.vendorName && fileType === "pdf") {
     try {
@@ -111,18 +112,17 @@ router.post("/vendor-documents", parseInvoiceUpload, async (req, res): Promise<v
       log?.error({ err: error }, "Vendor logo text was not read");
     }
   }
+  const sourceText = [suppliedText, fileType === "pdf" ? pdfText(uploaded.bytes) : ""].filter(Boolean).join("\n");
+  extracted = { ...extracted, vendorName: sellerBesidesCustomer(extracted.vendorName, sourceText) };
   const documentId = randomUUID();
   const invoiceId = randomUUID();
   try {
     const vendors = await db.execute(sql`SELECT id, name FROM vendors WHERE tenant_id=${companyId} AND is_draft=false ORDER BY name`);
-    const match = matchVendor(extracted.vendorName, vendors.rows.map(row => ({ id: Number(row.id), name: String(row.name) })));
-    let vendorId = match.confident ? match.vendorId : null;
-    let draftVendorName: string | null = null;
-    if (!match.confident && extracted.vendorName) {
-      const draftId = await db.execute(sql`INSERT INTO vendors (tenant_id, name, notes, is_draft) VALUES (${companyId}, ${extracted.vendorName}, 'Draft vendor from an invoice upload. Confirm or merge before posting.', true) RETURNING id`);
-      vendorId = Number(draftId.rows[0].id);
-      draftVendorName = extracted.vendorName;
-    }
+    const resolved = resolveInvoiceVendor(typedName, extracted.vendorName, vendors.rows.map(row => ({ id: Number(row.id), name: String(row.name) })));
+    // A typed name is kept. An existing vendor is selected when the names agree.
+    // Stray invoice text, including Sold to / Ship to, never becomes a new vendor.
+    const vendorId = resolved.vendorId;
+    const draftVendorName = vendorId == null && resolved.vendorName ? resolved.vendorName : null;
     const catalogRows = await db.execute(sql`SELECT id, name, sku FROM inventory_items WHERE tenant_id=${companyId} ORDER BY name`);
     const catalog = catalogRows.rows.map(row => ({ id: Number(row.id), name: String(row.name ?? ""), sku: row.sku == null ? null : String(row.sku) }));
     await db.execute(sql`INSERT INTO document_uploads (id, company_id, file_url, file_name, file_type, processed_status)
@@ -135,7 +135,14 @@ router.post("/vendor-documents", parseInvoiceUpload, async (req, res): Promise<v
       await db.execute(sql`INSERT INTO vendor_invoice_line_items (id, invoice_id, description, quantity, unit_price, total_price, destination_type, destination_id, bbox)
         VALUES (${randomUUID()}, ${invoiceId}, ${line.description}, ${line.quantity}, ${line.unitPrice}, ${line.totalPrice}, ${line.destinationType}, ${destinationId}, ${JSON.stringify(line.bbox)}::jsonb)`);
     }
-    res.status(201).json(await loadInvoice(companyId, invoiceId));
+    const loaded = await loadInvoice(companyId, invoiceId);
+    res.status(201).json({
+      ...loaded,
+      vendorId,
+      enteredVendorName: resolved.vendorName,
+      draftVendorName,
+      vendorWarning: draftVendorName ? `New vendor detected: '${draftVendorName}'. Create new profile or merge with existing?` : null,
+    });
   } catch (error) {
     if (schemaNotReady(error)) {
       res.status(503).json({ error: SCHEMA_NOT_READY });

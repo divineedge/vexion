@@ -6,7 +6,8 @@ import { db } from "@workspace/db";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { isMissingColumnError } from "../lib/settingsFallback";
-import { bytesFromDataUrl, detectInvoiceFile, extractInvoiceText, fuelCapacityCheck, invoiceDataUrl, matchInventoryItem, matchVendor, MAX_VENDOR_INVOICE_BYTES, pdfText, rollingAverageCost, sanitizeUploadName } from "../lib/vendorInvoiceIntake";
+import { bytesFromDataUrl, detectInvoiceFile, fuelCapacityCheck, invoiceDataUrl, matchInventoryItem, matchVendor, MAX_VENDOR_INVOICE_BYTES, readInvoiceText, rollingAverageCost, sanitizeUploadName } from "../lib/vendorInvoiceIntake";
+import { vendorNameFromPdf } from "../lib/vendorInvoiceOcr";
 
 const invoiceUpload = multer({
   storage: multer.memoryStorage(),
@@ -99,7 +100,16 @@ router.post("/vendor-documents", parseInvoiceUpload, async (req, res): Promise<v
   const fileType = detected.kind;
   const fileUrl = invoiceDataUrl(detected.contentType, uploaded.bytes);
   const suppliedText = uploaded.ocrText.replace(/\u0000/g, "").slice(0, 200_000);
-  const extracted = extractInvoiceText(suppliedText || (fileType === "pdf" ? pdfText(uploaded.bytes.toString("latin1").slice(0, 200_000)) : ""));
+  let extracted = readInvoiceText(suppliedText, fileType === "pdf" ? uploaded.bytes : undefined);
+  if (!extracted.vendorName && fileType === "pdf") {
+    try {
+      const named = await vendorNameFromPdf(uploaded.bytes);
+      if (named) extracted = { ...extracted, vendorName: named };
+    } catch (error) {
+      const log = (req as Request & { log?: { error: (obj: unknown, msg?: string) => void } }).log;
+      log?.error({ err: error }, "Vendor logo text was not read");
+    }
+  }
   const documentId = randomUUID();
   const invoiceId = randomUUID();
   try {
@@ -119,7 +129,7 @@ router.post("/vendor-documents", parseInvoiceUpload, async (req, res): Promise<v
     await db.execute(sql`INSERT INTO vendor_invoice_records (id, company_id, document_id, vendor_id, draft_vendor_name, invoice_number, invoice_date, total_amount, tax_amount, shipping_amount, raw_ocr_json)
       VALUES (${invoiceId}, ${companyId}, ${documentId}, ${vendorId}, ${draftVendorName}, ${extracted.invoiceNumber}, ${extracted.invoiceDate || null}, ${extracted.totalAmount}, ${extracted.taxAmount}, ${extracted.shippingAmount}, ${JSON.stringify(extracted)}::jsonb)`);
     for (const line of extracted.lines) {
-      const matched = line.destinationType === "inventory" ? matchInventoryItem(line.description, catalog) : null;
+      const matched = line.destinationType === "inventory" ? matchInventoryItem([line.sku, line.description].filter(Boolean).join(" "), catalog) : null;
       const destinationId = matched?.confident && matched.itemId != null ? String(matched.itemId) : null;
       await db.execute(sql`INSERT INTO vendor_invoice_line_items (id, invoice_id, description, quantity, unit_price, total_price, destination_type, destination_id, bbox)
         VALUES (${randomUUID()}, ${invoiceId}, ${line.description}, ${line.quantity}, ${line.unitPrice}, ${line.totalPrice}, ${line.destinationType}, ${destinationId}, ${JSON.stringify(line.bbox)}::jsonb)`);
@@ -194,6 +204,8 @@ router.post("/vendor-documents/:invoiceId/commit", async (req, res): Promise<voi
       const vendor = await tx.execute(sql`SELECT id, is_draft FROM vendors WHERE id=${vendorId} AND tenant_id=${companyId}`);
       if (!vendor.rows.length) throw new IntakeError(400, "Choose a vendor from this company.");
       const draftId = current.rows[0].vendor_id == null ? null : Number(current.rows[0].vendor_id);
+      const vendorName = typeof req.body?.vendorName === "string" ? req.body.vendorName.trim().slice(0, 200) : "";
+      if (vendor.rows[0].is_draft === true && vendorName) await tx.execute(sql`UPDATE vendors SET name=${vendorName} WHERE id=${vendorId} AND tenant_id=${companyId} AND is_draft=true`);
       if (vendor.rows[0].is_draft === true) await tx.execute(sql`UPDATE vendors SET is_draft=false WHERE id=${vendorId} AND tenant_id=${companyId}`);
       const invoiceDate = typeof req.body?.invoiceDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.body.invoiceDate) ? req.body.invoiceDate : String(current.rows[0].invoice_date ?? "").slice(0, 10);
       for (const line of lines) {
@@ -201,11 +213,12 @@ router.post("/vendor-documents/:invoiceId/commit", async (req, res): Promise<voi
         const destinationType = destinations.has(line.destinationType) ? String(line.destinationType) : "overhead";
         const destinationId = line.destinationId == null || line.destinationId === "" ? null : String(line.destinationId);
         const fillDate = typeof line.fillDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(line.fillDate) ? line.fillDate : invoiceDate;
-        const owned = await tx.execute(sql`SELECT id, description, quantity, unit_price, total_price FROM vendor_invoice_line_items WHERE id=${lineId} AND invoice_id=${invoiceId}`);
+        const owned = await tx.execute(sql`SELECT id, description, quantity, unit_price, total_price, bbox FROM vendor_invoice_line_items WHERE id=${lineId} AND invoice_id=${invoiceId}`);
         if (!owned.rows.length) throw new IntakeError(400, "A line on this invoice could not be found.");
-        if (destinationType === "bulk_fuel") await receiveFuel(tx, companyId, Number(destinationId), owned.rows[0], fillDate, current.rows[0]);
-        if (destinationType === "inventory" || destinationType === "job_direct_expense") await receiveStock(tx, companyId, destinationType, destinationId, lineId, owned.rows[0]);
-        await tx.execute(sql`UPDATE vendor_invoice_line_items SET destination_type=${destinationType}, destination_id=${destinationId}, fill_date=${fillDate} WHERE id=${lineId}`);
+        const priced = editedLine(owned.rows[0], line);
+        if (destinationType === "bulk_fuel") await receiveFuel(tx, companyId, Number(destinationId), priced, fillDate, current.rows[0]);
+        if (destinationType === "inventory" || destinationType === "job_direct_expense") await receiveStock(tx, companyId, destinationType, destinationId, lineId, priced);
+        await tx.execute(sql`UPDATE vendor_invoice_line_items SET description=${priced.description}, quantity=${priced.quantity}, unit_price=${priced.unit_price}, total_price=${priced.total_price}, bbox=${JSON.stringify(priced.bbox)}::jsonb, destination_type=${destinationType}, destination_id=${destinationId}, fill_date=${fillDate} WHERE id=${lineId}`);
       }
       if (draftId && draftId !== vendorId) await tx.execute(sql`DELETE FROM vendors WHERE id=${draftId} AND tenant_id=${companyId} AND is_draft=true`);
       const total = Number(req.body?.totalAmount ?? current.rows[0].total_amount);
@@ -284,18 +297,36 @@ async function receiveFuel(tx: { execute: typeof db.execute }, companyId: number
     VALUES (${tankId}, ${companyId}, 'delivery', ${fillDate}, ${Math.round(gallons * 1000)}, ${addedCents}, ${String(invoice.invoice_number ?? "")}, 'Vendor invoice delivery', ${Number(row.available_thousandths)}, ${nextThousandths}, ${Number(row.inventory_value_cents)}, ${nextCents})`);
 }
 
+function editedLine(stored: Record<string, unknown>, line: Record<string, unknown>): Record<string, unknown> {
+  const description = typeof line.description === "string" && line.description.trim() ? line.description.trim().slice(0, 500) : String(stored.description ?? "");
+  const quantity = line.quantity == null || line.quantity === "" ? Number(stored.quantity) : Number(line.quantity);
+  const unitPrice = line.unitPrice == null || line.unitPrice === "" ? Number(stored.unit_price) : Number(line.unitPrice);
+  const totalPrice = line.totalPrice == null || line.totalPrice === "" ? Number(stored.total_price) : Number(line.totalPrice);
+  if (!description) throw new IntakeError(400, "Enter a description for every line.");
+  if (!Number.isFinite(quantity) || quantity < 0) throw new IntakeError(400, "Enter a quantity for every line.");
+  if (!Number.isFinite(unitPrice) || unitPrice < 0 || !Number.isFinite(totalPrice) || totalPrice < 0) throw new IntakeError(400, "Enter a price for every line.");
+  const bbox = stored.bbox && typeof stored.bbox === "object" ? { ...(stored.bbox as Record<string, unknown>) } : {};
+  if (typeof line.sku === "string") bbox.sku = line.sku.trim().slice(0, 80);
+  if (typeof line.unit === "string") bbox.unit = line.unit.trim().slice(0, 40);
+  return { ...stored, description, quantity, unit_price: unitPrice, total_price: totalPrice, bbox };
+}
+
 async function receiveStock(tx: { execute: typeof db.execute }, companyId: number, destinationType: string, destinationId: string | null, lineId: string, line: Record<string, unknown>) {
   const jobId = destinationType === "job_direct_expense" ? Number(destinationId) : null;
   if (destinationType === "job_direct_expense" && !Number.isInteger(jobId)) throw new IntakeError(400, "Choose the job that should receive this material.");
   const quantity = Math.max(0, Math.round(Number(line.quantity)));
   const description = String(line.description);
   const unitCost = Number(line.unit_price);
-  let itemId = destinationType === "inventory" && Number.isInteger(Number(destinationId)) ? Number(destinationId) : 0;
+  const destinationNumber = Number(destinationId);
+  let itemId = destinationType === "inventory" && Number.isInteger(destinationNumber) && destinationNumber > 0 ? destinationNumber : 0;
   if (!itemId) {
     const existing = await tx.execute(sql`SELECT id FROM inventory_items WHERE tenant_id=${companyId} AND lower(name)=lower(${description}) ORDER BY id LIMIT 1`);
     if (existing.rows.length) itemId = Number(existing.rows[0].id);
     else {
-      const created = await tx.execute(sql`INSERT INTO inventory_items (tenant_id, name, sku, unit_price, quantity, unit) VALUES (${companyId}, ${description}, ${`OCR-${randomUUID().slice(0, 8)}`}, ${unitCost}, 0, 'each') RETURNING id`);
+      const bbox = line.bbox && typeof line.bbox === "object" ? line.bbox as { sku?: unknown; unit?: unknown } : {};
+      const sku = typeof bbox.sku === "string" && bbox.sku.trim() ? bbox.sku.trim().slice(0, 80) : `OCR-${randomUUID().slice(0, 8)}`;
+      const unit = typeof bbox.unit === "string" && bbox.unit.trim() ? bbox.unit.trim().slice(0, 40) : "each";
+      const created = await tx.execute(sql`INSERT INTO inventory_items (tenant_id, name, sku, unit_price, quantity, unit) VALUES (${companyId}, ${description}, ${sku}, ${unitCost}, 0, ${unit}) RETURNING id`);
       itemId = Number(created.rows[0].id);
     }
   }
@@ -325,6 +356,10 @@ async function loadInvoice(companyId: number, invoiceId: string) {
     FROM vendor_invoice_records r JOIN document_uploads d ON d.id=r.document_id WHERE r.id=${invoiceId} AND r.company_id=${companyId}`);
   if (!invoice.rows.length) return null;
   const lines = await db.execute(sql`SELECT id, description, quantity, unit_price AS "unitPrice", total_price AS "totalPrice", destination_type AS "destinationType", destination_id AS "destinationId", fill_date AS "fillDate", bbox FROM vendor_invoice_line_items WHERE invoice_id=${invoiceId} ORDER BY description`);
+  const lineRows = lines.rows.map(row => {
+    const bbox = row.bbox && typeof row.bbox === "object" ? row.bbox as { sku?: unknown; unit?: unknown } : {};
+    return { ...row, sku: typeof bbox.sku === "string" ? bbox.sku : "", unit: typeof bbox.unit === "string" ? bbox.unit : "" };
+  });
   const vendors = await db.execute(sql`SELECT id, name, is_draft AS "isDraft" FROM vendors WHERE tenant_id=${companyId} ORDER BY is_draft, name`);
   const tanks = await db.execute(sql`SELECT id, name, COALESCE(current_gallons, available_thousandths / 1000.0) AS "currentGallons", COALESCE(max_capacity, capacity_thousandths / 1000.0) AS "maxCapacity" FROM bulk_fuel_tanks WHERE tenant_id=${companyId} AND is_active=true ORDER BY name`);
   const jobs = await db.execute(sql`SELECT id, title, status FROM jobs WHERE tenant_id=${companyId} AND status IN ('scheduled', 'in_progress', 'pending', 'on_hold') ORDER BY scheduled_at LIMIT 100`);
@@ -333,7 +368,7 @@ async function loadInvoice(companyId: number, invoiceId: string) {
   const draftName = row.draftVendorName == null ? null : String(row.draftVendorName);
   const storedUrl = String(row.fileUrl ?? "");
   const fileUrl = storedUrl.startsWith("data:") ? `/api/vendor-documents/${row.id}/file` : storedUrl;
-  return { ...row, fileUrl, lines: lines.rows, vendors: vendors.rows, tanks: tanks.rows, jobs: jobs.rows, items: items.rows, vendorWarning: draftName ? `New vendor detected: '${draftName}'. Create new profile or merge with existing?` : null };
+  return { ...row, fileUrl, lines: lineRows, vendors: vendors.rows, tanks: tanks.rows, jobs: jobs.rows, items: items.rows, vendorWarning: draftName ? `New vendor detected: '${draftName}'. Create new profile or merge with existing?` : null };
 }
 
 export default router;

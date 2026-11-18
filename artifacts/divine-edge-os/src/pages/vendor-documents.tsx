@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { customFetch, type InventoryItem } from '@workspace/api-client-react';
+import { createInventoryItem, createVendor, customFetch, type InventoryItem } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { InventoryItemCombobox } from '@/components/inventory/InventoryItemCombobox';
+import { InvoiceFileView } from '@/components/vendors/InvoiceFileView';
 import { groupPdfTextItems, MAX_VENDOR_INVOICE_BYTES } from '@/lib/vendorInvoiceFile';
 import { toast } from 'sonner';
 
@@ -12,10 +13,12 @@ type Line = {
   quantity: number;
   unitPrice: number;
   totalPrice: number;
+  sku: string;
+  unit: string;
   destinationType: string;
   destinationId: string | null;
   fillDate: string | null;
-  bbox?: { x?: number; y?: number; width?: number; height?: number };
+  bbox?: { x?: number; y?: number; width?: number; height?: number; sku?: string; unit?: string };
 };
 type Choice = { id: number; name: string; sku?: string | null; quantity?: number; unit?: string | null; unitPrice?: number; isDraft?: boolean; title?: string; status?: string; currentGallons?: number; maxCapacity?: number };
 type Invoice = {
@@ -55,15 +58,13 @@ export default function VendorDocumentsPage() {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [vendorId, setVendorId] = useState<number | null>(null);
   const [confirmed, setConfirmed] = useState(false);
-  const [zoom, setZoom] = useState(1);
-  const [rotation, setRotation] = useState(0);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [activeLine, setActiveLine] = useState<string | null>(null);
+  const [sourceFile, setSourceFile] = useState<File | null>(null);
+  const [vendorName, setVendorName] = useState('');
+  const [addingLine, setAddingLine] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [consumed, setConsumed] = useState<Record<string, string>>({});
-  const drag = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
 
   const loadReservations = () => customFetch<{ reservations: Reservation[] }>('/api/inventory-reservations').then(data => setReservations(data.reservations ?? [])).catch(() => setReservations([]));
   useEffect(() => { void loadReservations(); }, []);
@@ -83,13 +84,12 @@ export default function VendorDocumentsPage() {
       const preview = URL.createObjectURL(file);
       setInvoice(current => {
         if (current?.fileUrl.startsWith('blob:')) URL.revokeObjectURL(current.fileUrl);
-        return { ...created, fileUrl: preview };
+        return { ...created, fileUrl: preview, lines: (created.lines ?? []).map(normalizeLine) };
       });
+      setSourceFile(file);
       setVendorId(created.vendorId);
+      setVendorName(created.draftVendorName ?? '');
       setConfirmed(false);
-      setZoom(1);
-      setRotation(0);
-      setPan({ x: 0, y: 0 });
       await loadReservations();
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Upload failed';
@@ -121,7 +121,19 @@ export default function VendorDocumentsPage() {
           taxAmount: Number(invoice.taxAmount),
           shippingAmount: Number(invoice.shippingAmount),
           paymentStatus: invoice.paymentStatus,
-          lines: invoice.lines.map(line => ({ id: line.id, destinationType: line.destinationType, destinationId: line.destinationId, fillDate: line.fillDate || String(invoice.invoiceDate).slice(0, 10) })),
+          vendorName,
+          lines: invoice.lines.map(line => ({
+            id: line.id,
+            description: line.description,
+            quantity: Number(line.quantity),
+            unitPrice: Number(line.unitPrice),
+            totalPrice: Number(line.totalPrice),
+            sku: line.sku,
+            unit: line.unit,
+            destinationType: line.destinationType,
+            destinationId: line.destinationId,
+            fillDate: line.fillDate || String(invoice.invoiceDate).slice(0, 10),
+          })),
         }),
       });
       setInvoice(current => ({ ...saved, fileUrl: current?.fileUrl.startsWith('blob:') ? current.fileUrl : saved.fileUrl }));
@@ -135,6 +147,65 @@ export default function VendorDocumentsPage() {
       toast.error(message);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const addVendor = async () => {
+    const name = vendorName.trim();
+    if (!name) {
+      toast.error('Enter a vendor name.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const created = await createVendor({ name });
+      setInvoice(current => current ? {
+        ...current,
+        vendors: [...current.vendors.filter(vendor => vendor.id !== created.id), { id: created.id, name: created.name, isDraft: false }],
+      } : current);
+      setVendorId(created.id);
+      setVendorName(created.name);
+      toast.success(`Added vendor ${created.name}`);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Could not add that vendor';
+      setError(message);
+      toast.error(message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addInventoryPart = async (line: Line) => {
+    const name = line.description.trim();
+    if (!name) {
+      toast.error('Enter a name for the new inventory part.');
+      return;
+    }
+    setAddingLine(line.id);
+    try {
+      const created = await createInventoryItem({
+        name,
+        sku: line.sku.trim() || `PART-${name.replace(/[^A-Za-z0-9]+/g, '').slice(0, 12) || 'NEW'}-${line.id.slice(0, 4)}`,
+        costPrice: Number(line.unitPrice) || 0,
+        quantity: 0,
+        unit: line.unit.trim() || 'each',
+      });
+      setInvoice(current => {
+        if (!current) return current;
+        const choice: Choice = { id: created.id, name: created.name, sku: created.sku, quantity: created.quantity, unit: created.unit, unitPrice: Number(created.costPrice ?? created.unitPrice ?? 0) };
+        return {
+          ...current,
+          items: [...current.items.filter(item => item.id !== created.id), choice],
+          lines: current.lines.map(row => row.id === line.id ? { ...row, destinationType: 'inventory', destinationId: String(created.id) } : row),
+        };
+      });
+      toast.success(`Added ${created.name} as a new inventory part`);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Could not add that inventory part';
+      setError(message);
+      toast.error(message);
+    } finally {
+      setAddingLine(null);
     }
   };
 
@@ -167,22 +238,14 @@ export default function VendorDocumentsPage() {
       {error && !invoice && <div className="rounded-md border border-red-500 bg-red-50 p-3 text-sm text-red-900">{error}</div>}
       {invoice && (
         <div className="grid gap-4 lg:grid-cols-2 min-h-[70vh]">
-          <div className="overflow-hidden rounded-lg border bg-muted/30">
-            <div className="flex gap-2 border-b bg-background p-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => setZoom(value => Math.min(3, value + 0.25))}>Zoom in</Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => setZoom(value => Math.max(0.5, value - 0.25))}>Zoom out</Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => setRotation(value => (value + 90) % 360)}>Rotate</Button>
-            </div>
-            <div className="relative h-[68vh] overflow-hidden" onMouseDown={event => { drag.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y }; }} onMouseMove={event => { if (!drag.current) return; setPan({ x: drag.current.panX + event.clientX - drag.current.x, y: drag.current.panY + event.clientY - drag.current.y }); }} onMouseUp={() => { drag.current = null; }} onMouseLeave={() => { drag.current = null; }}>
-              <div className="absolute left-1/2 top-1/2" style={{ transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotation}deg)` }}>
-                {invoice.fileType === 'pdf' ? <iframe title={invoice.fileName} src={invoice.fileUrl} className="h-[60vh] w-[36vw] bg-white pointer-events-none" /> : <img alt={invoice.fileName} src={invoice.fileUrl} className="max-h-[60vh] max-w-full" />}
-                {invoice.lines.map(line => activeLine === line.id && line.bbox ? <button key={line.id} className="absolute border-2 border-amber-500 bg-amber-300/30" style={{ left: `${line.bbox.x ?? 0}%`, top: `${line.bbox.y ?? 0}%`, width: `${line.bbox.width ?? 0}%`, height: `${line.bbox.height ?? 0}%` }} /> : null)}
-              </div>
-            </div>
-          </div>
+          <InvoiceFileView file={sourceFile} fileUrl={invoice.fileUrl} fileType={invoice.fileType} fileName={invoice.fileName} />
           <div className="space-y-3 overflow-auto rounded-lg border p-4">
-            {invoice.vendorWarning && <div className="rounded-md border border-amber-500 bg-amber-50 p-3 text-sm text-amber-950">New vendor detected: '{invoice.draftVendorName}'. Create new profile or merge with existing <select className="mx-1 rounded border bg-white p-1" aria-label="Existing vendors" value={vendorId ?? ''} onChange={event => setVendorId(Number(event.target.value))}><option value={invoice.vendorId ?? ''}>Create new profile</option>{invoice.vendors.filter(vendor => !vendor.isDraft).map(vendor => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select>?</div>}
-            <label className="block text-sm">Vendor<select className="mt-1 w-full rounded border p-2" value={vendorId ?? ''} onChange={event => setVendorId(Number(event.target.value))}>{invoice.vendors.map(vendor => <option key={vendor.id} value={vendor.id}>{vendor.name}{vendor.isDraft ? ' (new)' : ''}</option>)}</select></label>
+            {invoice.vendorWarning && <div className="rounded-md border border-amber-500 bg-amber-50 p-3 text-sm text-amber-950">New vendor detected: '{invoice.draftVendorName}'. Create a new profile or pick an existing vendor below.</div>}
+            <label className="block text-sm">Vendor<select className="mt-1 w-full rounded border p-2" data-testid="vendor-select" value={vendorId ?? ''} onChange={event => setVendorId(event.target.value ? Number(event.target.value) : null)}><option value="">Choose a vendor</option>{invoice.vendors.map(vendor => <option key={vendor.id} value={vendor.id}>{vendor.name}{vendor.isDraft ? ' (new)' : ''}</option>)}</select></label>
+            <div className="flex items-end gap-2">
+              <label className="block flex-1 text-sm">Vendor name<Input data-testid="vendor-name" value={vendorName} onChange={event => setVendorName(event.target.value)} placeholder="Name from the document, or a new vendor" /></label>
+              <Button type="button" variant="outline" data-testid="add-vendor" disabled={busy} onClick={() => void addVendor()}>Add vendor</Button>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <label className="text-sm">Invoice number<Input value={invoice.invoiceNumber ?? ''} onChange={event => setInvoice({ ...invoice, invoiceNumber: event.target.value })} /></label>
               <label className="text-sm">Invoice date<Input type="date" value={String(invoice.invoiceDate ?? '').slice(0, 10)} onChange={event => setInvoice({ ...invoice, invoiceDate: event.target.value })} /></label>
@@ -195,12 +258,22 @@ export default function VendorDocumentsPage() {
               <p className="text-xs text-muted-foreground">{(invoice.lines ?? []).length ? 'These lines were read from the file. Match a line to an inventory part, or add it as a new part.' : 'No parts or supplies were read from this file. For a photo, paste the invoice text and upload it again.'}</p>
             </div>
             <table className="w-full text-sm">
-              <thead><tr className="text-left"><th>Item</th><th>Qty</th><th>Send to</th><th>Fill date</th></tr></thead>
+              <thead><tr className="text-left"><th>Item</th><th>Qty</th><th>Price</th><th>Send to</th><th>Fill date</th></tr></thead>
               <tbody>
                 {(invoice.lines ?? []).map(line => (
-                  <tr key={line.id} className={activeLine === line.id ? 'bg-amber-50' : ''} onMouseEnter={() => setActiveLine(line.id)}>
-                    <td className="py-1 pr-2">{line.description}</td>
-                    <td>{line.quantity}</td>
+                  <tr key={line.id}>
+                    <td className="py-1 pr-2 space-y-1">
+                      <Input aria-label="Part name" data-testid={`line-description-${line.id}`} value={line.description} onChange={event => updateLine(line.id, { description: event.target.value })} />
+                      <Input aria-label="SKU" data-testid={`line-sku-${line.id}`} value={line.sku} onChange={event => updateLine(line.id, { sku: event.target.value })} placeholder="SKU" />
+                    </td>
+                    <td className="space-y-1">
+                      <Input aria-label="Quantity" data-testid={`line-quantity-${line.id}`} type="number" value={line.quantity} onChange={event => updateLine(line.id, { quantity: Number(event.target.value) })} />
+                      <Input aria-label="Unit" data-testid={`line-unit-${line.id}`} value={line.unit} onChange={event => updateLine(line.id, { unit: event.target.value })} placeholder="Unit" />
+                    </td>
+                    <td className="space-y-1">
+                      <Input aria-label="Unit price" data-testid={`line-unit-price-${line.id}`} type="number" value={line.unitPrice} onChange={event => updateLine(line.id, { unitPrice: Number(event.target.value) })} />
+                      <Input aria-label="Line total" data-testid={`line-total-${line.id}`} type="number" value={line.totalPrice} onChange={event => updateLine(line.id, { totalPrice: Number(event.target.value) })} />
+                    </td>
                     <td>
                       <select className="rounded border p-1" value={line.destinationType} onChange={event => updateLine(line.id, { destinationType: event.target.value, destinationId: null })}>{destinations.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
                       {line.destinationType === 'bulk_fuel' && <select className="mt-1 block rounded border p-1" value={line.destinationId ?? ''} onChange={event => updateLine(line.id, { destinationId: event.target.value })}><option value="">Tank</option>{invoice.tanks.map(tank => <option key={tank.id} value={tank.id}>{tank.name}</option>)}</select>}
@@ -213,7 +286,7 @@ export default function VendorDocumentsPage() {
                             onSelect={item => updateLine(line.id, { destinationId: String(item.id), destinationType: 'inventory' })}
                             placeholder="Match an existing part"
                           />
-                          <Button type="button" variant="outline" size="sm" onClick={() => updateLine(line.id, { destinationId: null, destinationType: 'inventory' })}>Add as new inventory part</Button>
+                          <Button type="button" variant="outline" size="sm" data-testid={`add-inventory-part-${line.id}`} disabled={addingLine === line.id} onClick={() => void addInventoryPart(line)}>Add as new inventory part</Button>
                           <p className="text-xs text-muted-foreground">{line.destinationId ? 'Matched to an existing inventory part. Posting adds this quantity to that part.' : 'This line will be added as a new inventory part when you post.'}</p>
                         </div>
                       )}
@@ -257,6 +330,19 @@ function inventoryChoice(item: Choice): InventoryItem {
     quantity: Number(item.quantity ?? 0),
     unit: item.unit ?? 'each',
     createdAt: '',
+  };
+}
+
+function normalizeLine(line: Line): Line {
+  const bbox = line.bbox ?? {};
+  return {
+    ...line,
+    description: line.description ?? '',
+    quantity: Number(line.quantity ?? 0),
+    unitPrice: Number(line.unitPrice ?? 0),
+    totalPrice: Number(line.totalPrice ?? 0),
+    sku: line.sku || bbox.sku || '',
+    unit: line.unit || bbox.unit || '',
   };
 }
 

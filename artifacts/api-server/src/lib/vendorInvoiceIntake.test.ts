@@ -1,5 +1,9 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { bytesFromDataUrl, detectInvoiceFile, extractInvoiceText, fuelCapacityCheck, invoiceDataUrl, matchInventoryItem, matchVendor, MAX_VENDOR_INVOICE_BYTES, rollingAverageCost, sanitizeUploadName } from "./vendorInvoiceIntake";
+import { bytesFromDataUrl, detectInvoiceFile, extractInvoiceText, fuelCapacityCheck, invoiceDataUrl, matchInventoryItem, matchVendor, MAX_VENDOR_INVOICE_BYTES, pdfText, readInvoiceText, rollingAverageCost, sanitizeUploadName } from "./vendorInvoiceIntake";
+import { companyNameFromOcr } from "./vendorInvoiceOcrText";
 
 describe("vendor invoice intake", () => {
   it("auto-selects a close vendor and leaves an unknown name for approval", () => {
@@ -64,6 +68,44 @@ describe("vendor invoice intake", () => {
     expect(bytesFromDataUrl(stored)?.bytes.equals(pdf)).toBe(true);
     expect(sanitizeUploadName("../Invoice\u0000.pdf")).toBe("Invoice.pdf");
   });
+
+  it("reads the Great Basin receipt text instead of the customer or Crystal Reports", () => {
+    const receipt = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "fixtures/great-basin-turf-invoice.pdf"));
+    const invoice = extractInvoiceText(pdfText(receipt));
+    expect(invoice.vendorName).toBe("");
+    expect(invoice.vendorName).not.toMatch(/divine edge|crystal/i);
+    expect(invoice.invoiceNumber).toBe("480584");
+    expect(invoice.invoiceDate).toBe("2026-03-19");
+    expect(invoice.taxAmount).toBe(572.78);
+    expect(invoice.totalAmount).toBe(8261.04);
+    expect(invoice.lines.map(line => [line.sku, line.description, line.quantity, line.unitPrice, line.totalPrice, line.unit])).toEqual([
+      ["28686", "diuron/ bromacil 40/40 (krovar", 45, 79, 3555, "6LB."],
+      ["2HAQU01", "Aquaneat 2.5 gal", 6, 139.99, 839.94, "EACH"],
+      ["5350", "Crossroad 2.5 gal.", 2, 116.99, 233.98, "JUG"],
+      ["28241", "TURF SAVER RTF Y/J 50LB. BAG", 1, 159.99, 159.99, "EACH"],
+      ["3S2104", "21-3-7 50% XRTW/Humate &AG", 40, 24.99, 999.6, "EACH"],
+      ["28681", "Makaze 2.5 Gal", 10, 59.99, 599.9, "EACH"],
+      ["2H4DTRIAD", "Triad 2.5 gal.", 2, 72.99, 145.98, "EACH"],
+      ["2HSEM02", "Semera 51%", 1, 369.99, 369.99, "EACH"],
+      ["35465", "PS 804 2.5 GAL", 10, 65.99, 659.9, "EACH"],
+      ["2HSPRO01", "Qp Prodoxaben G 50 lb.", 1, 88.99, 88.99, "EACH"],
+      ["2IBIF02", "Qp bifenthrin i/t 7.9 1 gal.", 1, 34.99, 34.99, "EACH"],
+    ]);
+    expect(readInvoiceText("Sold to: Divine Edge Property Management, LLC\nTotal $1.00", receipt).invoiceNumber).toBe("480584");
+    expect(readInvoiceText("Sold to: Divine Edge Property Management, LLC\nTotal $1.00", receipt).lines).toHaveLength(11);
+  });
+
+  it("joins a stacked logo into the seller name", () => {
+    expect(companyNameFromOcr("GREAT BASIN\nTURF PRODUCTS\n")).toBe("GREAT BASIN TURF PRODUCTS");
+    expect(companyNameFromOcr("Invoice\nPage 1")).toBe("");
+  });
+
+  it("reads Great Basin Turf Products from the receipt logo", async () => {
+    const { vendorNameFromPdf } = await import("./vendorInvoiceOcr");
+    const receipt = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "fixtures/great-basin-turf-invoice.pdf"));
+    const name = await vendorNameFromPdf(receipt);
+    expect(name).toBe("GREAT BASIN TURF PRODUCTS");
+  }, 60_000);
 
   it("blocks a delivery that does not fit and rolls the gallon cost", () => {
     const blocked = fuelCapacityCheck(80, 100, 30);

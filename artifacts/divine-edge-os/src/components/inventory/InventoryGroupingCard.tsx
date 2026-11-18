@@ -105,7 +105,7 @@ export function InventoryGroupingCard() {
       <CardHeader>
         <CardTitle>Inventory grouping</CardTitle>
         <CardDescription>
-          Type is the parent, such as Pipe or Fitting. Size belongs to that type, such as 1&quot; or elbow.
+          Type is the parent, such as Pipe or Fitting. A size such as 1&quot; or elbow can be used on any type and category.
           The inventory list uses the organize-by choice below.
         </CardDescription>
       </CardHeader>

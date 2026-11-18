@@ -5,7 +5,7 @@ import type { JobPricingFloorInputs } from '@/lib/jobPricingFloor';
 import { companyFloorBaseline } from '@/lib/jobPricingFloorBaseline';
 import { ScopedJobPricingFloor } from './ScopedJobPricingFloor';
 import {
-  BudgetYear, OVERHEAD_CATEGORIES, computeCompanyTotal, expenseFrequency,
+  BudgetYear, OVERHEAD_CATEGORIES, computeCompanyTotal, expenseFrequency, salaryPayrollAnnual,
   type ExpenseFrequency, type OverheadLineItems,
 } from '@/lib/budgetCalc';
 import { NumField, Section, ResultCard, $, pct, ExpenseLineEditor, PriorYearPrice } from './shared';
@@ -19,6 +19,7 @@ import {
 export function CompanyTotalPanel({
   year, previousYear, onCompanyFloorChange, onCompanyCheckupChange, onJobPricingFloorChange,
   onCompanyTotalRevenueChange, onCompanyOverheadChange, onCompanyOverheadFrequencyChange, onDivisionIncomeChange,
+  onCompanyCogsChange, onCompanyCogsFrequencyChange, onCompanySalaryChange, onCompanySalaryFrequencyChange,
 }: {
   onJobPricingFloorChange: (next: JobPricingFloorInputs | undefined) => void;
   year: BudgetYear;
@@ -29,6 +30,10 @@ export function CompanyTotalPanel({
   onCompanyOverheadChange: (key: keyof OverheadLineItems, amount: number) => void;
   onCompanyOverheadFrequencyChange: (key: keyof OverheadLineItems, frequency: ExpenseFrequency) => void;
   onDivisionIncomeChange: (divisionId: string, income: number) => void;
+  onCompanyCogsChange: (amount: number) => void;
+  onCompanyCogsFrequencyChange: (frequency: ExpenseFrequency) => void;
+  onCompanySalaryChange: (amount: number) => void;
+  onCompanySalaryFrequencyChange: (frequency: ExpenseFrequency) => void;
 }) {
   const totals = useMemo(() => computeCompanyTotal(year), [year]);
   const previousTotals = useMemo(() => previousYear ? computeCompanyTotal(previousYear) : null, [previousYear]);
@@ -42,7 +47,7 @@ export function CompanyTotalPanel({
     overheadByCategory: totals.overheadByCategory.filter(o => o.key !== 'overheadLabor').map(o => ({
       key: o.key,
       label: o.label,
-      annual: o.effective + (o.key === 'miscOverhead' ? totals.overheadLaborAnnual : 0),
+      annual: o.effective + (o.key === 'miscOverhead' ? totals.salaryPayrollAnnual : 0),
     })),
   }), [totals]);
 
@@ -76,6 +81,26 @@ export function CompanyTotalPanel({
                     onFrequency={frequency => onCompanyOverheadFrequencyChange(key, frequency)}
                   />
                 ))}
+                <ExpenseLineEditor
+                  label="COGS / Supplies"
+                  amount={year.companyCogs ?? 0}
+                  frequency={expenseFrequency(year.companyCogsFrequency)}
+                  amountTestId="input-company-cogs"
+                  testId="company-cogs-frequency"
+                  onAmount={value => onCompanyCogsChange(Math.max(0, value))}
+                  onFrequency={onCompanyCogsFrequencyChange}
+                  note="Company-level materials and supplies. Division COGS is added once in the total below and is not typed again here. Included in the company job floor, not in overhead or break-even."
+                />
+                <ExpenseLineEditor
+                  label="Salary / Payroll"
+                  amount={year.companySalaryPayroll ?? 0}
+                  frequency={expenseFrequency(year.companySalaryPayrollFrequency)}
+                  amountTestId="input-company-salary-payroll"
+                  testId="company-salary-frequency"
+                  onAmount={value => onCompanySalaryChange(Math.max(0, value))}
+                  onFrequency={onCompanySalaryFrequencyChange}
+                  note="Company-level salary and payroll. Division salary lines and salaried roles are added once in the total below. Included once in company overhead, break-even, and the job floor."
+                />
               </div>
             </div>
             <div className="space-y-2">
@@ -89,6 +114,7 @@ export function CompanyTotalPanel({
                     testId={`input-division-income-${division.name}`}
                     value={division.income ?? 0}
                     onChange={value => onDivisionIncomeChange(division.id, Math.max(0, value))}
+                    hint="Also shown as this division's revenue."
                   />
                 ))}
               </div>
@@ -118,15 +144,23 @@ export function CompanyTotalPanel({
         {/* Overhead rollup with override capability */}
         <Section title="Company overhead (from divisions)" icon={Building2}>
           <p className="text-xs text-muted-foreground pt-1 pb-3">
-            These totals add every division. A monthly line is multiplied by 12. An annual line is used as entered. Custom categories that are not in the standard list are included in Miscellaneous Overhead. Overhead and salaried labor is its own line and is included in the combined annual and monthly totals.
+            These totals add every division. A monthly line is multiplied by 12. An annual line is used as entered. Custom categories that are not in the standard list are included in Miscellaneous Overhead. Salary / payroll is its own line and is included once in the combined annual and monthly totals. COGS / supplies is shown with it and is included in the job floor, not in overhead.
           </p>
           <div className="space-y-2">
             {totals.overheadByCategory.map(o => (
-              <div key={o.key} className="flex items-center justify-between gap-3 text-sm">
+              <div key={o.key} className="flex items-center justify-between gap-3 text-sm" data-testid={o.key === 'overheadLabor' ? 'company-salary-total' : undefined}>
                 <span className="text-muted-foreground">{o.label}</span>
                 <span className="font-medium tabular-nums">{$(o.effective)}</span>
               </div>
             ))}
+            <div className="flex items-center justify-between gap-3 text-sm" data-testid="company-cogs-total">
+              <span className="text-muted-foreground">COGS / Supplies</span>
+              <span className="font-medium tabular-nums">{$(totals.combinedMaterialCost)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 text-sm font-semibold" data-testid="company-total-with-cogs">
+              <span>Total including COGS</span>
+              <span className="tabular-nums">{$(totals.combinedTotalAnnualCosts + totals.combinedMaterialCost)}</span>
+            </div>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm">
@@ -140,12 +174,34 @@ export function CompanyTotalPanel({
             </div>
           </div>
           <div className="mt-4 space-y-2" data-testid="company-overhead-labor">
-            <p className="text-sm font-medium inline-flex items-center gap-1">Overhead & Salaried Labor <BudgetInfoButton id="company-overhead-labor" label="overhead and salaried labor" title="Overhead and salaried labor"><CompanyOverheadLaborInfo /></BudgetInfoButton></p>
+            <p className="text-sm font-medium inline-flex items-center gap-1">Salary / Payroll <BudgetInfoButton id="company-overhead-labor" label="salary and payroll" title="Salary / payroll"><CompanyOverheadLaborInfo /></BudgetInfoButton></p>
             <p className="text-xs text-muted-foreground">
-              Read-only rollup. Annualized and monthly amounts are inside combined annual overhead and monthly overhead expense, and are recovered across productive field hours in the company break-even rate and job floor.
+              Itemized breakdown of the Salary / Payroll line above. Division salary lines, company salary, and salaried roles are each included once in combined overhead, the break-even rate, and the job floor.
             </p>
-            {totals.overheadLaborLines.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No overhead or salaried labor on any division yet.</p>
+            {year.divisions.map(division => {
+              const annual = salaryPayrollAnnual(division);
+              if (!(annual > 0)) return null;
+              return (
+                <div key={`salary-${division.id}`} className="flex items-start justify-between gap-3 text-sm">
+                  <span>
+                    <span className="font-medium">Salary / Payroll</span>
+                    <span className="block text-xs text-muted-foreground">{division.name} · Expense line</span>
+                  </span>
+                  <span className="font-medium tabular-nums text-right">{$(annual)}/yr<br /><span className="text-xs font-normal text-muted-foreground">{$(annual / 12)}/mo</span></span>
+                </div>
+              );
+            })}
+            {totals.companySalaryExpense > 0 && (
+              <div className="flex items-start justify-between gap-3 text-sm">
+                <span>
+                  <span className="font-medium">Salary / Payroll</span>
+                  <span className="block text-xs text-muted-foreground">Company total · Expense line</span>
+                </span>
+                <span className="font-medium tabular-nums text-right">{$(totals.companySalaryExpense)}/yr<br /><span className="text-xs font-normal text-muted-foreground">{$(totals.companySalaryExpense / 12)}/mo</span></span>
+              </div>
+            )}
+            {totals.overheadLaborLines.length === 0 && totals.salaryPayrollAnnual === 0 ? (
+              <p className="text-sm text-muted-foreground">No salary or payroll on any division yet.</p>
             ) : totals.overheadLaborLines.map(line => (
               <div key={line.id} className="flex items-start justify-between gap-3 text-sm">
                 <span>
@@ -156,8 +212,8 @@ export function CompanyTotalPanel({
               </div>
             ))}
             <div className="flex items-center justify-between text-sm" data-testid="company-overhead-labor-total">
-              <span className="text-muted-foreground">Total overhead & salaried labor</span>
-              <span className="font-semibold">{$(totals.overheadLaborAnnual)} / yr · {$(totals.overheadLaborMonthly)} / mo</span>
+              <span className="text-muted-foreground">Total salary / payroll</span>
+              <span className="font-semibold">{$(totals.salaryPayrollAnnual)} / yr · {$(totals.salaryPayrollMonthly)} / mo</span>
             </div>
           </div>
         </Section>
@@ -217,7 +273,7 @@ export function CompanyTotalPanel({
             {totals.combinedBreakEvenRate > 0 && (
               <p className="text-xs text-primary-foreground/60 mt-1 inline-flex items-center gap-1" data-testid="company-break-even">
                 <span>Break-even: {$(totals.combinedBreakEvenRate, 2)}/man-hr
-                {totals.overheadLaborAnnual > 0 ? ` · includes ${$(totals.overheadLaborAnnual)} overhead & salaried labor` : ''}</span>
+                {totals.salaryPayrollAnnual > 0 ? ` · includes ${$(totals.salaryPayrollAnnual)} salary / payroll` : ''}</span>
                 <BudgetInfoButton id="company-break-even" label="company break-even rate" title="Company break-even rate" tone="inverse"><CompanyBreakEvenInfo /></BudgetInfoButton>
               </p>
             )}
@@ -246,6 +302,9 @@ export function CompanyTotalPanel({
             )}
             <p className="text-xs text-muted-foreground mt-1">
               Live sum of division labor, materials, and overhead per billable hour, times the average minimum visit.
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              COGS / Supplies {$(totals.combinedMaterialCost)} included in this floor
             </p>
             <div className="mt-3">
               <NumField label="Company floor override" value={year.companyFloorPriceOverride ?? 0} onChange={v => onCompanyFloorChange(v > 0 ? v : null)} hint={year.companyFloorPriceOverride != null ? `Using ${$(totals.companyJobFloorPrice, 2)}.` : 'Leave at zero to follow the division math.'} />

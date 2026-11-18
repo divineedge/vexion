@@ -1,4 +1,4 @@
-import { BudgetYear, DivisionBudget, capacityWeeks, computeDivision, resolvedWeeklyBillableHours, summarizeOverheadLabor } from './budgetCalc';
+import { BudgetYear, DivisionBudget, capacityWeeks, companySalaryAnnual, computeDivision, resolvedWeeklyBillableHours, summarizeOverheadLabor } from './budgetCalc';
 import { JobPricingFloorInputs, defaultJobPricingFloor } from './jobPricingFloor';
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -49,9 +49,10 @@ export function divisionFloorBaseline(d: DivisionBudget, annualWorkingWeeks?: nu
 }
 
 /**
- * Company-wide baseline. Overhead uses each division's monthly overhead (expenses
- * plus division-allocated salaried labor) plus owner salaries. Company-wide
- * salaried labor is added once, whether it is split by hours or kept at the company total.
+ * Company-wide baseline. Overhead uses each division's monthly overhead (expenses,
+ * salary / payroll lines, and division-allocated salaried labor) plus owner salaries.
+ * Company-wide salaried labor and company-level salary / payroll are added once.
+ * COGS stays out of this overhead figure so the stop floor does not count materials twice.
  */
 export function companyFloorBaseline(year: BudgetYear): JobPricingFloorInputs {
   const base = defaultJobPricingFloor();
@@ -79,7 +80,7 @@ export function companyFloorBaseline(year: BudgetYear): JobPricingFloorInputs {
     // Wage-weighted so blended burdened labor cost matches the sum of divisions.
     payrollBurdenPct: wageSum > 0 ? r2(burdenWeighted / wageSum) : base.payrollBurdenPct,
     crewMembers: crews > 0 ? Math.max(1, Math.round(heads / crews)) : 1,
-    monthlyOverhead: r2(expenseMonthly + ownerSalaries / 12 + (companyLabor.proportional + companyLabor.companyOnly) / 12),
+    monthlyOverhead: r2(expenseMonthly + ownerSalaries / 12 + (companyLabor.proportional + companyLabor.companyOnly) / 12 + companySalaryAnnual(year) / 12),
     monthlyBillableHours: r2(crewHours / 12),
     targetMarginPct: Math.min(99, r2(marginWeight > 0 ? marginWeighted / marginWeight : 0)),
   };

@@ -9,6 +9,7 @@ import {
 import {
   DivisionBudget, BudgetYear, computeDivision, OVERHEAD_CATEGORIES, resolvedWeeklyBillableHours,
   categoryAnnualAmount, companyCategoryOverheadAnnual, companyOverheadShare, expenseFrequency, customLineAmount, customLineFrequency, customLineWithAmount, customLineWithFrequency,
+  materialCostAnnual, materialExpenseFrequency, salaryPayrollAnnual, divisionWithSharedRevenue,
   overheadLaborAnnualCost, overheadLaborBasePay, newOverheadLaborRole, OVERHEAD_LABOR_PRESETS, proportionalOverheadLaborShares,
   type CustomOverheadLine, type OverheadLaborRole, type OverheadPayType, type OverheadLaborAllocation,
 } from '@/lib/budgetCalc';
@@ -54,14 +55,17 @@ export function DivisionPanel({
     [division, annualWorkingWeeks, companyLaborShare],
   );
 
+  const cogsAnnual = materialCostAnnual(division);
+  const salaryTotal = salaryPayrollAnnual(division) + results.overheadLaborAnnual + results.allocatedCompanyLabor;
+
   const budgetedForCheckup = useMemo(() => ({
     revenue: results.requiredRevenue,
     laborCost: results.totalLaborCost,
-    materialCost: division.estimatedAnnualMaterialCost,
+    materialCost: cogsAnnual,
     overheadByCategory: OVERHEAD_CATEGORIES.map(({ key, label }) => ({
-      key, label, annual: categoryAnnualAmount(division, key) + (key === 'miscOverhead' ? results.customOverheadAnnual + results.offSeasonPayrollOverhead + results.overheadLaborAnnual + results.allocatedCompanyLabor : 0),
+      key, label, annual: categoryAnnualAmount(division, key) + (key === 'miscOverhead' ? results.customOverheadAnnual + results.offSeasonPayrollOverhead + results.overheadLaborAnnual + results.allocatedCompanyLabor + results.salaryExpenseAnnual : 0),
     })),
-  }), [division, results]);
+  }), [division, results, cogsAnnual]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -74,8 +78,8 @@ export function DivisionPanel({
               label="Division revenue"
               testId="input-division-revenue"
               value={division.revenue ?? 0}
-              onChange={v => set('revenue', Math.max(0, v))}
-              hint="Annual revenue for this division."
+              onChange={v => onChange(divisionWithSharedRevenue(division, v))}
+              hint="Annual revenue for this division. The same amount is this division's income on Company Total."
             />
           </div>
         </Section>
@@ -156,6 +160,33 @@ export function DivisionPanel({
           </div>
         </Section>
 
+        <Section title="COGS / Supplies & Salary / Payroll" icon={Package}>
+          <p className="text-xs text-muted-foreground pt-1 pb-3">
+            COGS / supplies is materials at cost. It is included once in this division&apos;s job floor and in the company COGS total, and it is not added to overhead or the break-even rate. Salary / payroll is included once in overhead, the break-even rate, and the job floor. Field wages and the owner salary stay in Labor &amp; Payroll. Roles below are part of the salary total and are not added a second time.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <ExpenseLineEditor
+              label="COGS / Supplies"
+              amount={division.estimatedAnnualMaterialCost}
+              frequency={materialExpenseFrequency(division.materialFrequency)}
+              amountTestId="input-cogs-supplies"
+              testId="expense-frequency-cogs"
+              onAmount={v => set('estimatedAnnualMaterialCost', Math.max(0, v))}
+              onFrequency={frequency => set('materialFrequency', frequency)}
+            />
+            <ExpenseLineEditor
+              label="Salary / Payroll"
+              amount={division.salaryPayroll ?? 0}
+              frequency={expenseFrequency(division.salaryPayrollFrequency)}
+              amountTestId="input-salary-payroll"
+              testId="expense-frequency-salary"
+              onAmount={v => set('salaryPayroll', Math.max(0, v))}
+              onFrequency={frequency => set('salaryPayrollFrequency', frequency)}
+            />
+          </div>
+          <OverheadLaborEditor division={division} annualWorkingWeeks={annualWorkingWeeks} companyLaborShare={companyLaborShare} onChange={roles => set('overheadLabor', roles)} />
+        </Section>
+
         {/* Overhead */}
         <Section title="Overhead" icon={Building2}>
           <p className="text-xs text-muted-foreground pt-1 pb-3">Each line is monthly until you choose annual. Totals, man-hour rates, and the job floor use that choice immediately.</p>
@@ -197,7 +228,6 @@ export function DivisionPanel({
             ))}
             <Button type="button" variant="outline" size="sm" className="gap-1" onClick={() => set('customOverhead', [...(division.customOverhead ?? []), { id: crypto.randomUUID(), name: '', monthlyAmount: 0, amount: 0, frequency: 'monthly' } satisfies CustomOverheadLine])}><Plus className="w-3.5 h-3.5" /> Add overhead category</Button>
           </div>
-          <OverheadLaborEditor division={division} annualWorkingWeeks={annualWorkingWeeks} companyLaborShare={companyLaborShare} onChange={roles => set('overheadLabor', roles)} />
           <div className="mt-4 p-3 rounded-lg bg-muted/40 text-sm flex items-center justify-between">
             <span className="text-muted-foreground inline-flex items-center gap-1">Monthly overhead total <BudgetInfoButton id="division-monthly-overhead" label="monthly overhead" title="Monthly overhead"><DivisionMonthlyOverheadInfo /></BudgetInfoButton></span>
             <span className="font-semibold">{$(results.monthlyOverhead)} / mo</span>
@@ -209,11 +239,10 @@ export function DivisionPanel({
         </Section>
 
         {/* Goals */}
-        <Section title="Profit Goals & Materials" icon={Target}>
+        <Section title="Profit Goals" icon={Target}>
           <div className="grid grid-cols-2 gap-4 pt-2">
             <NumField label="Target Net Margin %" value={division.targetNetMarginPct} onChange={v => set('targetNetMarginPct', Math.min(99, v))} prefix="%" hint="Net profit as % of revenue (10–35% is typical)" />
             <NumField label="Minimum Visit Hours" value={division.minimumVisitHours} onChange={v => set('minimumVisitHours', v)} prefix="" hint="Min. hours billed per stop (drive + setup + minimum job time)" />
-            <NumField label="Estimated Total Material Sold" value={division.estimatedAnnualMaterialCost} onChange={v => set('estimatedAnnualMaterialCost', v)} hint="Annual $ of materials sold at cost (before markup)" />
           </div>
         </Section>
 
@@ -314,9 +343,9 @@ export function DivisionPanel({
             {previousResults && previousYear != null && (
               <PriorYearPrice inverse year={previousYear} testId="prior-year-target-rate" text={`${$(previousResults.requiredHourlyRate, 2)}/man-hr · break-even ${$(previousResults.breakEvenRate, 2)}/man-hr`} />
             )}
-            {(results.overheadLaborAnnual + results.allocatedCompanyLabor) > 0 && (
+            {salaryTotal > 0 && (
               <p className="text-xs text-primary-foreground/70 mt-1 inline-flex items-start gap-1" data-testid="division-overhead-labor-rate">
-                <span>Recovers {$(results.overheadLaborAnnual + results.allocatedCompanyLabor)} of non-billable salary across {results.manHoursYear.toLocaleString()} productive hours ({$((results.manHoursYear > 0 ? (results.overheadLaborAnnual + results.allocatedCompanyLabor) / results.manHoursYear : 0), 2)}/man-hr).</span>
+                <span>Recovers {$(salaryTotal)} of salary / payroll across {results.manHoursYear.toLocaleString()} productive hours ({$((results.manHoursYear > 0 ? salaryTotal / results.manHoursYear : 0), 2)}/man-hr).</span>
                 <BudgetInfoButton id="division-overhead-labor-rate" label="overhead labor per man-hour" title="Overhead labor per man-hour" tone="inverse"><p>This is non-billable salary recovered on each productive hour.</p><p>Overhead and salaried labor counted on this division, plus the company-wide share split onto it, divided by productive man-hours.</p><p>It is already inside the break-even rate and the job floor. It is not an extra charge on top of those.</p></BudgetInfoButton>
               </p>
             )}
@@ -380,6 +409,9 @@ export function DivisionPanel({
             <p className="text-xs text-muted-foreground mt-1">
               Labor, materials, and overhead for {division.minimumVisitHours} hour{division.minimumVisitHours !== 1 ? 's' : ''}, using {results.capacityWeeks} working weeks.
             </p>
+            <p className="text-xs text-muted-foreground mt-1" data-testid="division-cogs-total">
+              COGS / Supplies {$(cogsAnnual)} included in this floor
+            </p>
             <div className="mt-3">
               <NumField label="Floor price override" value={division.floorPriceOverride ?? 0} onChange={v => set('floorPriceOverride', v > 0 ? v : null)} hint={division.floorPriceOverride != null ? `Using ${$(results.jobFloorPrice, 2)}. Clear to zero to follow the calculated floor.` : 'Leave at zero to keep the calculated floor.'} />
             </div>
@@ -393,11 +425,13 @@ export function DivisionPanel({
           </CardHeader>
           <CardContent className="space-y-2">
             {[
-              { label: 'Field Labor', id: 'division-cost-field-labor', infoLabel: 'field labor', title: 'Field labor', body: <FieldLaborInfo />, val: results.totalLaborCost - division.ownerSalaryAnnual },
-              { label: 'Owner Salary', id: 'division-cost-owner-salary', infoLabel: 'owner salary', title: 'Owner salary', body: <OwnerSalaryCostInfo />, val: division.ownerSalaryAnnual },
-              { label: 'Annual Overhead', id: 'division-cost-overhead', infoLabel: 'annual overhead', title: 'Annual overhead', body: <DivisionAnnualOverheadInfo />, val: results.annualOverhead },
-            ].map(({ label, id, infoLabel, title, body, val }) => (
-              <div key={label} className="flex items-center justify-between text-sm">
+              { label: 'Field Labor', id: 'division-cost-field-labor', infoLabel: 'field labor', title: 'Field labor', body: <FieldLaborInfo />, val: results.totalLaborCost - division.ownerSalaryAnnual, testId: undefined as string | undefined },
+              { label: 'Owner Salary', id: 'division-cost-owner-salary', infoLabel: 'owner salary', title: 'Owner salary', body: <OwnerSalaryCostInfo />, val: division.ownerSalaryAnnual, testId: undefined as string | undefined },
+              { label: 'Salary / Payroll', id: 'division-cost-salary', infoLabel: 'salary and payroll', title: 'Salary / payroll', body: <p>Salary / payroll entered on this division, plus overhead and salaried roles counted here. It is already inside annual overhead, the break-even rate, and the job floor.</p>, val: salaryTotal, testId: 'division-salary-total' },
+              { label: 'Other Overhead', id: 'division-cost-overhead', infoLabel: 'annual overhead', title: 'Annual overhead', body: <DivisionAnnualOverheadInfo />, val: results.annualOverhead - salaryTotal, testId: undefined as string | undefined },
+              { label: 'COGS / Supplies', id: 'division-cost-cogs', infoLabel: 'COGS and supplies', title: 'COGS / supplies', body: <p>Materials and supplies at cost. Included once in the job floor. Not included in overhead or the break-even rate.</p>, val: cogsAnnual, testId: 'division-cogs-line' },
+            ].map(({ label, id, infoLabel, title, body, val, testId }) => (
+              <div key={label} className="flex items-center justify-between text-sm" data-testid={testId}>
                 <span className="text-muted-foreground inline-flex items-center gap-1">{label} <BudgetInfoButton id={id} label={infoLabel} title={title}>{body}</BudgetInfoButton></span>
                 <div className="flex items-center gap-2">
                   <div className="h-1.5 rounded bg-muted overflow-hidden w-16">
@@ -410,6 +444,10 @@ export function DivisionPanel({
                 </div>
               </div>
             ))}
+            <div className="flex items-center justify-between text-sm font-semibold pt-1" data-testid="division-total-with-cogs">
+              <span>Total including COGS</span>
+              <span>{$(results.totalAnnualCosts + cogsAnnual)}</span>
+            </div>
           </CardContent>
         </Card>
 
@@ -419,7 +457,7 @@ export function DivisionPanel({
             <CardTitle className="text-sm flex items-center gap-1">Recommended Material Markup <BudgetInfoButton id="division-material-markup" label="material markup" title="Material markup"><MaterialMarkupInfo /></BudgetInfoButton></CardTitle>
           </CardHeader>
           <CardContent>
-                {division.estimatedAnnualMaterialCost > 0 ? (
+                {cogsAnnual > 0 ? (
               <>
                 <p className="text-3xl font-bold">{results.recommendedMarkup}%</p>
                 {previousResults && previousYear != null && (
@@ -431,7 +469,7 @@ export function DivisionPanel({
               </>
             ) : (
               <p className="text-xs text-muted-foreground">
-                Enter "Estimated Total Material Sold" above to calculate a markup recommendation.
+                Enter COGS / Supplies above to calculate a markup recommendation.
               </p>
             )}
           </CardContent>
@@ -492,12 +530,13 @@ function OverheadLaborEditor({
   const roles = division.overheadLabor ?? [];
   const patch = (id: string, next: Partial<OverheadLaborRole>) => onChange(roles.map(role => role.id === id ? { ...role, ...next } : role));
   const divisionAnnual = roles.reduce((sum, role) => role.allocation === 'division' ? sum + overheadLaborAnnualCost(role, annualWorkingWeeks, division.payrollBurdenPct) : sum, 0);
+  const payrollAnnual = salaryPayrollAnnual(division) + divisionAnnual + companyLaborShare;
   return (
     <div className="mt-6 space-y-3 border-t pt-4" data-testid="overhead-labor-section">
       <div>
-        <p className="text-sm font-medium">Overhead & Salaried Labor</p>
+        <p className="text-sm font-medium">Salary / Payroll roles</p>
         <p className="text-xs text-muted-foreground">
-          Non-billable roles (office, shop, sales, admin). Annual salary, or hourly rate × hours/week × {annualWorkingWeeks} working weeks, plus payroll tax and burden. This is separate from field wages and the owner salary in Labor & Payroll. Division roles are recovered on this division's productive hours. Company-wide roles are split across divisions by productive hours, or kept in the company total only.
+          Non-billable roles (office, shop, sales, admin). Annual salary, or hourly rate × hours/week × {annualWorkingWeeks} working weeks, plus payroll tax and burden. These roles are part of the Salary / Payroll total above, together with the salary / payroll expense line. They are separate from field wages and the owner salary in Labor & Payroll. Division roles are recovered on this division&apos;s productive hours. Company-wide roles are split across divisions by productive hours, or kept in the company total only.
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -583,8 +622,8 @@ function OverheadLaborEditor({
       })}
       <div className="rounded-lg bg-muted/40 p-3 text-sm" data-testid="overhead-labor-annual-total">
         <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Overhead & salaried labor in this division</span>
-          <span className="font-semibold">{$(divisionAnnual + companyLaborShare)} / yr · {$((divisionAnnual + companyLaborShare) / 12)} / mo</span>
+          <span className="text-muted-foreground">Salary / payroll in this division</span>
+          <span className="font-semibold">{$(payrollAnnual)} / yr · {$(payrollAnnual / 12)} / mo</span>
         </div>
         {companyLaborShare > 0 && <p className="text-[11px] text-muted-foreground mt-1">Includes {$(companyLaborShare)} of company-wide labor spread by productive hours.</p>}
       </div>

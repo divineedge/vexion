@@ -210,7 +210,7 @@ export function DivisionAnnualOverheadInfo() {
   return (
     <>
       <P>This is the division&apos;s overhead for a full year.</P>
-      <P>Monthly lines are multiplied by 12. Annual lines are used as entered. Custom categories, off-season wages when technicians are paid year-round, and overhead or salaried labor counted on this division are included.</P>
+      <P>Monthly lines are multiplied by 12. Annual lines are used as entered. Custom categories, off-season wages when technicians are paid year-round, the salary / payroll line, and overhead or salaried labor counted on this division are included. COGS / supplies is not in this overhead total.</P>
       <P>The man-hour rate, break-even rate, and job floor use this annual total.</P>
     </>
   );
@@ -320,7 +320,7 @@ export function CompanyAnnualOverheadInfo() {
   return (
     <>
       <P>This is overhead for the whole company for a year.</P>
-      <P>Each line above adds that category across divisions. A monthly line is multiplied by 12. An annual line is used as entered. Custom categories land in Miscellaneous Overhead. Overhead and salaried labor is included.</P>
+      <P>Each line above adds that category across divisions. A monthly line is multiplied by 12. An annual line is used as entered. Custom categories land in Miscellaneous Overhead. Salary / payroll, including salaried roles, is included once. COGS / supplies is not in this overhead total.</P>
       <P>The company break-even rate and the company floor recover this total across productive hours.</P>
     </>
   );
@@ -339,9 +339,9 @@ export function CompanyMonthlyOverheadInfo() {
 export function CompanyOverheadLaborInfo() {
   return (
     <>
-      <P>This is non-billable salary added across divisions.</P>
-      <P>Each office, shop, sales, or admin role is annualized (salary, or hourly rate × hours per week × working weeks, plus payroll burden) and then added.</P>
-      <P>The total sits inside combined overhead and is recovered on productive field hours in the company break-even rate and job floor.</P>
+      <P>This is salary and payroll for the company.</P>
+      <P>It adds each division's salary / payroll line, company-level salary / payroll, and each office, shop, sales, or admin role (salary, or hourly rate × hours per week × working weeks, plus payroll burden). Each of those amounts is included once.</P>
+      <P>The total sits inside combined overhead and is recovered on productive field hours in the company break-even rate and job floor. COGS / supplies is separate and is only in the job floor.</P>
     </>
   );
 }

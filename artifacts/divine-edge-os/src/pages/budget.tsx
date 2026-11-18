@@ -12,7 +12,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import {
   BudgetYear, DivisionBudget, defaultBudgetYear, defaultDivision,
   migrateBudgetPayload, computeDivision, clampAnnualWorkingWeeks, proportionalOverheadLaborShares,
-  resolveBudgetYear,
+  resolveBudgetYear, divisionWithSharedRevenue,
 } from '@/lib/budgetCalc';
 import { DivisionPanel } from '@/components/budget/DivisionPanel';
 import { CompanyTotalPanel } from '@/components/budget/CompanyTotalPanel';
@@ -408,9 +408,13 @@ export default function BudgetPage() {
           onCompanyTotalRevenueChange={companyTotalRevenue => updateYear(y => ({ ...y, companyTotalRevenue }))}
           onCompanyOverheadChange={(key, amount) => updateYear(y => ({ ...y, companyOverhead: { ...y.companyOverhead, [key]: amount } }))}
           onCompanyOverheadFrequencyChange={(key, frequency) => updateYear(y => ({ ...y, companyOverheadFrequency: { ...y.companyOverheadFrequency, [key]: frequency } }))}
+          onCompanyCogsChange={companyCogs => updateYear(y => ({ ...y, companyCogs }))}
+          onCompanyCogsFrequencyChange={companyCogsFrequency => updateYear(y => ({ ...y, companyCogsFrequency }))}
+          onCompanySalaryChange={companySalaryPayroll => updateYear(y => ({ ...y, companySalaryPayroll }))}
+          onCompanySalaryFrequencyChange={companySalaryPayrollFrequency => updateYear(y => ({ ...y, companySalaryPayrollFrequency }))}
           onDivisionIncomeChange={(divisionId, income) => updateYear(y => ({
             ...y,
-            divisions: y.divisions.map(division => division.id === divisionId ? { ...division, income } : division),
+            divisions: y.divisions.map(division => division.id === divisionId ? divisionWithSharedRevenue(division, income) : division),
           }))}
         />
       ) : activeDivision ? (

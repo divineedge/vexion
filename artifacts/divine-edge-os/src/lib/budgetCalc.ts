@@ -186,7 +186,17 @@ export interface DivisionBudget extends OverheadLineItems {
   targetNetMarginPct: number;
   employeeBaseHourlyRate: number;
   p4pPercentage: number;
+  /** Typed COGS / supplies amount. Annual unless materialFrequency is monthly. */
   estimatedAnnualMaterialCost: number;
+  /**
+   * Missing frequency stays annual. Older budgets stored this amount as a yearly
+   * material total, so treating a missing key as monthly would multiply it by 12.
+   */
+  materialFrequency?: ExpenseFrequency;
+  /** Salary / payroll expense besides overhead labor roles and field wages. */
+  salaryPayroll?: number;
+  /** Missing frequency is monthly, same as the other expense lines. */
+  salaryPayrollFrequency?: ExpenseFrequency;
   minimumVisitHours: number;
   /** Per standard overhead line. Missing keys are monthly. */
   overheadFrequency: Partial<Record<keyof OverheadLineItems, ExpenseFrequency>>;
@@ -239,6 +249,7 @@ export function defaultDivision(name = 'Main'): DivisionBudget {
     employeeBaseHourlyRate: 18,
     p4pPercentage: 35,
     estimatedAnnualMaterialCost: 0,
+    salaryPayroll: 0,
     minimumVisitHours: 1,
     midYearCheckup: defaultCheckup(),
     endYearCheckup: defaultCheckup(),
@@ -421,7 +432,14 @@ function migrateFlatToDivision(raw: any, name = 'Main'): DivisionBudget {
   merged.midYearCheckup = migrateCheckup(raw.midYearCheckup);
   merged.endYearCheckup = migrateCheckup(raw.endYearCheckup);
   merged.jobPricingFloor = restoreJobPricingFloor(raw.jobPricingFloor);
-  merged.estimatedAnnualMaterialCost = Number(raw.estimatedAnnualMaterialCost) || 0;
+  merged.estimatedAnnualMaterialCost = nonNegative(raw.estimatedAnnualMaterialCost);
+  merged.materialFrequency = raw.materialFrequency === 'monthly' || raw.materialFrequency === 'annual'
+    ? raw.materialFrequency
+    : undefined;
+  merged.salaryPayroll = nonNegative(raw.salaryPayroll);
+  merged.salaryPayrollFrequency = raw.salaryPayrollFrequency === 'monthly' || raw.salaryPayrollFrequency === 'annual'
+    ? raw.salaryPayrollFrequency
+    : undefined;
   merged.minimumVisitHours = raw.minimumVisitHours != null && Number.isFinite(Number(raw.minimumVisitHours))
     ? Math.max(0, Number(raw.minimumVisitHours)) : 1;
   merged.serviceIds = Array.isArray(raw.serviceIds)
@@ -468,6 +486,12 @@ export interface BudgetYear {
   /** Company overhead entered per category on the checkup review. */
   companyOverhead?: Partial<OverheadLineItems>;
   companyOverheadFrequency?: Partial<Record<keyof OverheadLineItems, ExpenseFrequency>>;
+  /** Company-level COGS / supplies not already entered on a division. */
+  companyCogs?: number;
+  companyCogsFrequency?: ExpenseFrequency;
+  /** Company-level salary / payroll not already entered on a division or overhead role. */
+  companySalaryPayroll?: number;
+  companySalaryPayrollFrequency?: ExpenseFrequency;
   jobPricingFloor?: JobPricingFloorInputs;
   /** Company-wide stop floor scenario; undefined = follow budget-derived baseline. */
   companyJobPricingFloor?: JobPricingFloorInputs;
@@ -482,6 +506,8 @@ export function defaultBudgetYear(year = new Date().getFullYear()): BudgetYear {
     companyTotalRevenue: 0,
     companyOverhead: {},
     companyOverheadFrequency: {},
+    companyCogs: 0,
+    companySalaryPayroll: 0,
     companyFloorPriceOverride: null,
     companyMidYearCheckup: defaultCheckup(),
     companyEndYearCheckup: defaultCheckup(),
@@ -529,6 +555,10 @@ export function migrateBudgetPayload(saved: unknown): BudgetYear[] {
         companyTotalRevenue: nonNegative(raw.companyTotalRevenue),
         companyOverhead: normalizeCompanyOverhead(raw.companyOverhead),
         companyOverheadFrequency: normalizeFrequencyMap(raw.companyOverheadFrequency),
+        companyCogs: nonNegative(raw.companyCogs),
+        companyCogsFrequency: expenseFrequency(raw.companyCogsFrequency),
+        companySalaryPayroll: nonNegative(raw.companySalaryPayroll),
+        companySalaryPayrollFrequency: expenseFrequency(raw.companySalaryPayrollFrequency),
         companyFloorPriceOverride: typeof raw.companyFloorPriceOverride === 'number' && Number.isFinite(raw.companyFloorPriceOverride) && raw.companyFloorPriceOverride >= 0
           ? raw.companyFloorPriceOverride : null,
         companyMidYearCheckup: migrateCheckup(raw.companyMidYearCheckup),
@@ -547,6 +577,10 @@ export function migrateBudgetPayload(saved: unknown): BudgetYear[] {
       companyTotalRevenue: nonNegative(raw?.companyTotalRevenue),
       companyOverhead: normalizeCompanyOverhead(raw?.companyOverhead),
       companyOverheadFrequency: normalizeFrequencyMap(raw?.companyOverheadFrequency),
+      companyCogs: nonNegative(raw?.companyCogs),
+      companyCogsFrequency: expenseFrequency(raw?.companyCogsFrequency),
+      companySalaryPayroll: nonNegative(raw?.companySalaryPayroll),
+      companySalaryPayrollFrequency: expenseFrequency(raw?.companySalaryPayrollFrequency),
       companyFloorPriceOverride: null,
       companyMidYearCheckup: defaultCheckup(),
       companyEndYearCheckup: defaultCheckup(),
@@ -585,9 +619,38 @@ export function customOverheadAnnual(d: DivisionBudget): number {
   return (d.customOverhead ?? []).reduce((sum, line) => sum + annualizedExpense(customLineAmount(line), customLineFrequency(line)), 0);
 }
 
-export function calculatedJobFloor(d: Pick<DivisionBudget, 'estimatedAnnualMaterialCost' | 'minimumVisitHours'>, results: { totalLaborCost: number; annualOverhead: number; manHoursYear: number }): number {
+/** COGS stays annual when the frequency was never saved. */
+export function materialExpenseFrequency(value: unknown): ExpenseFrequency {
+  return value === 'monthly' ? 'monthly' : 'annual';
+}
+
+/** Annual COGS / supplies. A monthly line is multiplied by 12. An annual line is used as entered. */
+export function materialCostAnnual(d: Pick<DivisionBudget, 'estimatedAnnualMaterialCost' | 'materialFrequency'>): number {
+  return annualizedExpense(Number(d.estimatedAnnualMaterialCost) || 0, materialExpenseFrequency(d.materialFrequency));
+}
+
+/** Annual salary / payroll expense line. Missing frequency is monthly. */
+export function salaryPayrollAnnual(d: Pick<DivisionBudget, 'salaryPayroll' | 'salaryPayrollFrequency'>): number {
+  return annualizedExpense(Number(d.salaryPayroll) || 0, expenseFrequency(d.salaryPayrollFrequency));
+}
+
+export function companyCogsAnnual(year: Pick<BudgetYear, 'companyCogs' | 'companyCogsFrequency'>): number {
+  return annualizedExpense(Number(year.companyCogs) || 0, expenseFrequency(year.companyCogsFrequency));
+}
+
+export function companySalaryAnnual(year: Pick<BudgetYear, 'companySalaryPayroll' | 'companySalaryPayrollFrequency'>): number {
+  return annualizedExpense(Number(year.companySalaryPayroll) || 0, expenseFrequency(year.companySalaryPayrollFrequency));
+}
+
+/** Division revenue and Company Total income are one entered amount. */
+export function divisionWithSharedRevenue(division: DivisionBudget, amount: number): DivisionBudget {
+  const value = Math.max(0, Number(amount) || 0);
+  return { ...division, income: value, revenue: value };
+}
+
+export function calculatedJobFloor(d: Pick<DivisionBudget, 'estimatedAnnualMaterialCost' | 'materialFrequency' | 'minimumVisitHours'>, results: { totalLaborCost: number; annualOverhead: number; manHoursYear: number }): number {
   if (!(results.manHoursYear > 0)) return 0;
-  const cost = results.totalLaborCost + results.annualOverhead + (Number(d.estimatedAnnualMaterialCost) || 0);
+  const cost = results.totalLaborCost + results.annualOverhead + materialCostAnnual(d);
   return (cost / results.manHoursYear) * Math.max(0, Number(d.minimumVisitHours) || 0);
 }
 
@@ -628,9 +691,10 @@ export function computeDivision(d: DivisionBudget, annualWorkingWeeks?: number, 
   const standardAnnual = OVERHEAD_CATEGORIES.reduce((s, { key }) => s + categoryAnnualAmount(d, key), 0);
   const customAnnual = customOverheadAnnual(d);
   const overheadLaborAnnual = divisionAllocatedLaborAnnual(d, annualWorkingWeeks);
+  const salaryExpenseAnnual = salaryPayrollAnnual(d);
   const allocatedCompanyLabor = Number.isFinite(extraAnnualOverhead) && extraAnnualOverhead > 0 ? extraAnnualOverhead : 0;
-  const monthlyOverhead = (standardAnnual + customAnnual + overheadLaborAnnual + allocatedCompanyLabor) / 12;
-  const annualOverhead = standardAnnual + customAnnual + offSeasonPayrollOverhead + overheadLaborAnnual + allocatedCompanyLabor;
+  const monthlyOverhead = (standardAnnual + customAnnual + overheadLaborAnnual + allocatedCompanyLabor + salaryExpenseAnnual) / 12;
+  const annualOverhead = standardAnnual + customAnnual + offSeasonPayrollOverhead + overheadLaborAnnual + allocatedCompanyLabor + salaryExpenseAnnual;
   const totalAnnualCosts = totalLaborCost + annualOverhead;
 
   const requiredRevenue = d.targetNetMarginPct >= 100 ? 0 :
@@ -668,14 +732,15 @@ export function computeDivision(d: DivisionBudget, annualWorkingWeeks?: number, 
   // Material markup: overhead is allocated to materials only in proportion
   // to material cost's share of the total cost base — not the full overhead
   // burden, since labor/hourly billing already carries most of it.
-  const totalCostBase = totalLaborCost + annualOverhead + d.estimatedAnnualMaterialCost;
-  const materialShareOfCosts = totalCostBase > 0 ? d.estimatedAnnualMaterialCost / totalCostBase : 0;
+  const materialsAnnual = materialCostAnnual(d);
+  const totalCostBase = totalLaborCost + annualOverhead + materialsAnnual;
+  const materialShareOfCosts = totalCostBase > 0 ? materialsAnnual / totalCostBase : 0;
   const overheadAllocatedToMaterials = annualOverhead * materialShareOfCosts;
-  const requiredMaterialRevenue = (d.estimatedAnnualMaterialCost > 0 && d.targetNetMarginPct < 100)
-    ? (d.estimatedAnnualMaterialCost + overheadAllocatedToMaterials) / (1 - d.targetNetMarginPct / 100)
+  const requiredMaterialRevenue = (materialsAnnual > 0 && d.targetNetMarginPct < 100)
+    ? (materialsAnnual + overheadAllocatedToMaterials) / (1 - d.targetNetMarginPct / 100)
     : 0;
-  const recommendedMarkup = d.estimatedAnnualMaterialCost > 0
-    ? Math.round(((requiredMaterialRevenue - d.estimatedAnnualMaterialCost) / d.estimatedAnnualMaterialCost) * 100)
+  const recommendedMarkup = materialsAnnual > 0
+    ? Math.round(((requiredMaterialRevenue - materialsAnnual) / materialsAnnual) * 100)
     : 0;
 
   return {
@@ -695,6 +760,7 @@ export function computeDivision(d: DivisionBudget, annualWorkingWeeks?: number, 
     monthlyOverhead,
     customOverheadAnnual: customAnnual,
     overheadLaborAnnual,
+    salaryExpenseAnnual,
     allocatedCompanyLabor,
     offSeasonPayrollOverhead,
     annualOverhead,
@@ -753,7 +819,14 @@ export function computeCompanyTotal(year: BudgetYear) {
   const combinedTotalEmployees = rows.reduce((s, r) => s + r.results.totalEmployees, 0);
   const combinedProductiveWorkers = rows.reduce((s, r) => s + r.results.productiveWorkers, 0);
   const combinedLaborCost = rows.reduce((s, r) => s + r.results.totalLaborCost, 0);
-  const combinedMaterialCost = year.divisions.reduce((s, d) => s + d.estimatedAnnualMaterialCost, 0);
+  const divisionMaterialCost = year.divisions.reduce((s, d) => s + materialCostAnnual(d), 0);
+  const companyMaterialCost = companyCogsAnnual(year);
+  const combinedMaterialCost = divisionMaterialCost + companyMaterialCost;
+  const divisionSalaryExpense = rows.reduce((s, r) => s + r.results.salaryExpenseAnnual, 0);
+  const companySalaryExpense = companySalaryAnnual(year);
+  // Roles, division salary lines, and company salary are each added once.
+  // Company salary is not inside a division's annual overhead.
+  const salaryPayrollAnnualTotal = labor.total + divisionSalaryExpense + companySalaryExpense;
 
   const customAnnual = rows.reduce((s, r) => s + r.results.customOverheadAnnual, 0);
   const offSeasonAnnual = rows.reduce((s, r) => s + r.results.offSeasonPayrollOverhead, 0);
@@ -765,10 +838,10 @@ export function computeCompanyTotal(year: BudgetYear) {
     }),
     {
       key: 'overheadLabor',
-      label: 'Overhead & Salaried Labor',
-      auto: labor.total,
+      label: 'Salary / Payroll',
+      auto: salaryPayrollAnnualTotal,
       override: undefined as number | undefined,
-      effective: labor.total,
+      effective: salaryPayrollAnnualTotal,
     },
   ];
   const combinedAnnualOverhead = overheadByCategory.reduce((s, o) => s + o.effective, 0);
@@ -819,6 +892,12 @@ export function computeCompanyTotal(year: BudgetYear) {
     overheadLaborAnnual: labor.total,
     overheadLaborMonthly: labor.total / 12,
     overheadLaborLines: listOverheadLabor(year, annualWorkingWeeks),
+    salaryPayrollAnnual: salaryPayrollAnnualTotal,
+    salaryPayrollMonthly: salaryPayrollAnnualTotal / 12,
+    divisionMaterialCost,
+    companyMaterialCost,
+    divisionSalaryExpense,
+    companySalaryExpense,
   };
 }
 

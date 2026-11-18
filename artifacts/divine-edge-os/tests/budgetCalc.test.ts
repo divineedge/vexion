@@ -15,6 +15,11 @@ import {
   resolveBudgetYear,
   companyOverheadShare,
   companyCategoryOverheadAnnual,
+  materialCostAnnual,
+  salaryPayrollAnnual,
+  companyCogsAnnual,
+  companySalaryAnnual,
+  divisionWithSharedRevenue,
   type DivisionBudget,
   type OverheadLaborRole,
 } from "../src/lib/budgetCalc";
@@ -373,5 +378,140 @@ describe("budget year carry-forward", () => {
     expect(year.companyOverhead?.marketingAdvertising).toBeUndefined();
     expect(year.companyOverheadFrequency?.fuelMaintenance).toBe("annual");
     expect(year.divisions.map(division => [division.revenue, division.income])).toEqual([[80_000, 70_000], [20_000, 15_000]]);
+  });
+
+  it("carries COGS and salary lines into the next year", () => {
+    const prior = defaultBudgetYear(2026);
+    prior.companyCogs = 300;
+    prior.companyCogsFrequency = "annual";
+    prior.companySalaryPayroll = 1_000;
+    prior.companySalaryPayrollFrequency = "monthly";
+    prior.divisions = [{
+      ...defaultDivision("Lawn"),
+      id: "lawn",
+      estimatedAnnualMaterialCost: 4_000,
+      materialFrequency: "annual",
+      salaryPayroll: 500,
+      salaryPayrollFrequency: "monthly",
+    }];
+
+    const opened = resolveBudgetYear([prior], 2027);
+
+    expect(opened.companyCogs).toBe(300);
+    expect(opened.companyCogsFrequency).toBe("annual");
+    expect(opened.companySalaryPayroll).toBe(1_000);
+    expect(opened.divisions[0].estimatedAnnualMaterialCost).toBe(4_000);
+    expect(opened.divisions[0].materialFrequency).toBe("annual");
+    expect(opened.divisions[0].salaryPayroll).toBe(500);
+    expect(opened.divisions[0]).not.toBe(prior.divisions[0]);
+  });
+});
+
+describe("COGS and salary payroll", () => {
+  it("keeps a saved annual material total annual and puts it in the job floor once", () => {
+    const division = budgetWithWorkers(0);
+    division.estimatedAnnualMaterialCost = 2_400;
+    const without = computeDivision({ ...division, estimatedAnnualMaterialCost: 0 });
+    const result = computeDivision(division);
+    expect(materialCostAnnual(division)).toBe(2_400);
+    expect(result.breakEvenRate).toBe(without.breakEvenRate);
+    expect(result.annualOverhead).toBe(without.annualOverhead);
+    expect(result.jobFloorCalculated).toBeCloseTo(without.jobFloorCalculated + 2_400 / result.manHoursYear, 5);
+  });
+
+  it("annualizes monthly COGS into the floor once", () => {
+    const division = budgetWithWorkers(0);
+    division.estimatedAnnualMaterialCost = 100;
+    division.materialFrequency = "monthly";
+    const result = computeDivision(division);
+    expect(materialCostAnnual(division)).toBe(1_200);
+    expect(result.jobFloorCalculated).toBeCloseTo((result.totalAnnualCosts + 1_200) / result.manHoursYear, 5);
+    expect(result.breakEvenRate).toBeCloseTo(result.totalAnnualCosts / result.manHoursYear, 5);
+  });
+
+  it("adds the salary line to overhead, break-even, and the floor once", () => {
+    const division = budgetWithWorkers(0);
+    division.salaryPayroll = 100;
+    division.salaryPayrollFrequency = "monthly";
+    division.overheadLabor = [salaried({ annualAmount: 12_000, inheritBurden: true })];
+    const result = computeDivision(division);
+    expect(salaryPayrollAnnual(division)).toBe(1_200);
+    expect(result.salaryExpenseAnnual).toBe(1_200);
+    expect(result.overheadLaborAnnual).toBe(12_000);
+    expect(result.annualOverhead).toBe(13_200);
+    expect(result.monthlyOverhead).toBeCloseTo(13_200 / 12, 5);
+    expect(result.breakEvenRate).toBeCloseTo(result.totalAnnualCosts / result.manHoursYear, 5);
+    expect(result.jobFloorCalculated).toBeCloseTo(result.breakEvenRate, 5);
+    expect(divisionFloorBaseline(division).monthlyOverhead).toBeCloseTo(result.monthlyOverhead + 100_000 / 12, 2);
+  });
+
+  it("adds company COGS to the company floor once and company salary to break-even once", () => {
+    const division = budgetWithWorkers(0);
+    division.estimatedAnnualMaterialCost = 1_000;
+    division.salaryPayroll = 2_000;
+    division.salaryPayrollFrequency = "annual";
+    const year = {
+      ...defaultBudgetYear(2026),
+      annualWorkingWeeks: 50,
+      divisions: [division],
+      companyCogs: 500,
+      companyCogsFrequency: "annual" as const,
+      companySalaryPayroll: 1_000,
+      companySalaryPayrollFrequency: "monthly" as const,
+    };
+    const alone = computeDivision(division, 50);
+    expect(alone.breakEvenRate).toBeCloseTo((100_000 + 2_000) / 2_000, 5);
+    expect(alone.jobFloorCalculated).toBeCloseTo((100_000 + 2_000 + 1_000) / 2_000, 5);
+    const totals = computeCompanyTotal(year);
+    expect(companyCogsAnnual(year)).toBe(500);
+    expect(companySalaryAnnual(year)).toBe(12_000);
+    expect(totals.combinedMaterialCost).toBe(1_500);
+    expect(totals.salaryPayrollAnnual).toBe(2_000 + 12_000);
+    expect(totals.combinedBreakEvenRate).toBeCloseTo((100_000 + 2_000 + 12_000) / 2_000, 5);
+    expect(totals.companyJobFloorCalculated).toBeCloseTo((100_000 + 2_000 + 12_000 + 1_500) / 2_000, 5);
+    const salaryLine = totals.overheadByCategory.find(line => line.key === "overheadLabor");
+    expect(salaryLine?.label).toBe("Salary / Payroll");
+    expect(salaryLine?.effective).toBe(totals.salaryPayrollAnnual);
+    expect(totals.combinedAnnualOverhead).toBe(totals.salaryPayrollAnnual);
+    const withoutCompanySalary = companyFloorBaseline({ ...year, companySalaryPayroll: 0 });
+    expect(companyFloorBaseline(year).monthlyOverhead - withoutCompanySalary.monthlyOverhead).toBeCloseTo(1_000, 2);
+    const withCogs = companyFloorBaseline(year);
+    const withoutCogs = companyFloorBaseline({ ...year, companyCogs: 0, divisions: [{ ...division, estimatedAnnualMaterialCost: 0 }] });
+    expect(withCogs.monthlyOverhead).toBeCloseTo(withoutCogs.monthlyOverhead, 2);
+  });
+
+  it("writes Company Total income onto division revenue and back", () => {
+    const division = defaultDivision("Lawn");
+    division.revenue = 10;
+    division.income = 20;
+    const fromCompany = divisionWithSharedRevenue(division, 45000);
+    expect(fromCompany.income).toBe(45_000);
+    expect(fromCompany.revenue).toBe(45_000);
+    expect(fromCompany.name).toBe("Lawn");
+    const fromDivision = divisionWithSharedRevenue(fromCompany, -5);
+    expect(fromDivision.income).toBe(0);
+    expect(fromDivision.revenue).toBe(0);
+  });
+
+  it("reloads COGS frequency and salary lines", () => {
+    const [year] = migrateBudgetPayload({
+      year: 2026,
+      companyCogs: 40,
+      companyCogsFrequency: "annual",
+      companySalaryPayroll: 25,
+      companySalaryPayrollFrequency: "monthly",
+      divisions: [{
+        name: "Main",
+        estimatedAnnualMaterialCost: 800,
+        salaryPayroll: 90,
+        salaryPayrollFrequency: "annual",
+      }],
+    });
+    expect(year.companyCogs).toBe(40);
+    expect(year.companyCogsFrequency).toBe("annual");
+    expect(year.companySalaryPayroll).toBe(25);
+    expect(materialCostAnnual(year.divisions[0])).toBe(800);
+    expect(salaryPayrollAnnual(year.divisions[0])).toBe(90);
+    expect(computeDivision(year.divisions[0]).jobFloorCalculated).toBeGreaterThan(0);
   });
 });

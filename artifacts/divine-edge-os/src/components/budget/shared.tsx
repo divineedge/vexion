@@ -50,10 +50,10 @@ export function AnnualWorkingWeeksField({
 }
 
 export function NumField({
-  label, value, onChange, prefix = '$', hint, min = 0,
+  label, value, onChange, prefix = '$', hint, min = 0, testId,
 }: {
   label: string; value: number; onChange: (v: number) => void;
-  prefix?: string; hint?: string; min?: number;
+  prefix?: string; hint?: string; min?: number; testId?: string;
 }) {
   return (
     <div className="space-y-1">
@@ -68,6 +68,7 @@ export function NumField({
           type="number"
           min={min}
           value={value}
+          data-testid={testId}
           onChange={e => onChange(parseFloat(e.target.value) || 0)}
           className={prefix ? 'pl-7' : ''}
         />
@@ -99,7 +100,7 @@ export function FrequencySelect({
 }
 
 export function ExpenseLineEditor({
-  label, amount, frequency, onAmount, onFrequency, testId,
+  label, amount, frequency, onAmount, onFrequency, testId, amountTestId, note, noteTestId,
 }: {
   label: string;
   amount: number;
@@ -107,19 +108,34 @@ export function ExpenseLineEditor({
   onAmount: (amount: number) => void;
   onFrequency: (frequency: ExpenseFrequency) => void;
   testId?: string;
+  amountTestId?: string;
+  note?: string | null;
+  noteTestId?: string;
 }) {
   return (
     <div className="space-y-1">
       <div className="flex items-end gap-2">
         <div className="flex-1">
-          <NumField label={label} value={amount} onChange={onAmount} />
+          <NumField label={label} value={amount} onChange={onAmount} testId={amountTestId} />
         </div>
         <FrequencySelect value={frequency} onChange={onFrequency} testId={testId} />
       </div>
       <p className="text-[11px] text-muted-foreground">
         {$(monthlyExpense(amount, frequency))}/mo · {$(annualizedExpense(amount, frequency))}/yr
       </p>
+      {note ? <p className="text-[11px] text-muted-foreground" data-testid={noteTestId}>{note}</p> : null}
     </div>
+  );
+}
+
+/** Prior-year price shown on a calculation, not on an input. */
+export function PriorYearPrice({ year, text, testId, inverse = false }: {
+  year: number; text: string; testId: string; inverse?: boolean;
+}) {
+  return (
+    <p className={`text-xs mt-1 ${inverse ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} data-testid={testId}>
+      {year}: {text}
+    </p>
   );
 }
 

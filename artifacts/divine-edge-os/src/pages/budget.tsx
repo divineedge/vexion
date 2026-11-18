@@ -11,7 +11,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import {
   BudgetYear, DivisionBudget, defaultBudgetYear, defaultDivision,
-  migrateBudgetPayload,   computeDivision, clampAnnualWorkingWeeks, proportionalOverheadLaborShares,
+  migrateBudgetPayload, computeDivision, clampAnnualWorkingWeeks, proportionalOverheadLaborShares,
+  resolveBudgetYear,
 } from '@/lib/budgetCalc';
 import { DivisionPanel } from '@/components/budget/DivisionPanel';
 import { CompanyTotalPanel } from '@/components/budget/CompanyTotalPanel';
@@ -38,7 +39,9 @@ export default function BudgetPage() {
   const [loadError, setLoadError] = useState(false);
   const [loadWarning, setLoadWarning] = useState(false);
   const [weeksDraft, setWeeksDraft] = useState<string | null>(null);
+  const [yearText, setYearText] = useState(String(currentYear));
   useEffect(() => { setWeeksDraft(null); }, [currentYear]);
+  useEffect(() => { setYearText(String(currentYear)); }, [currentYear]);
   const { data: serviceData, isLoading: servicesLoading, isError: servicesError, refetch: reloadServices } = useListServices(
     undefined, { query: { queryKey: getListServicesQueryKey(), enabled: canManageOffice } },
   );
@@ -69,7 +72,7 @@ export default function BudgetPage() {
   }, []);
 
   const year = useMemo(
-    () => years.find(y => y.year === currentYear) ?? defaultBudgetYear(currentYear),
+    () => years.find(y => y.year === currentYear) ?? (years.length ? resolveBudgetYear(years, currentYear) : defaultBudgetYear(currentYear)),
     [years, currentYear],
   );
   const previousYear = useMemo(() => {
@@ -77,11 +80,26 @@ export default function BudgetPage() {
     return candidates[0] ?? null;
   }, [years, currentYear]);
 
+  useEffect(() => {
+    if (loading) return;
+    setYears(prev => {
+      if (prev.length === 0 || prev.some(item => item.year === currentYear)) return prev;
+      return [...prev, resolveBudgetYear(prev, currentYear)];
+    });
+  }, [currentYear, loading]);
+
+  useEffect(() => {
+    if (loading || activeTab === COMPANY_TAB || activeTab === JPF_TAB) return;
+    if (year.divisions.some(division => division.id === activeTab)) return;
+    setActiveTab(year.divisions[0]?.id ?? COMPANY_TAB);
+  }, [activeTab, loading, year.divisions]);
+
   const updateYear = useCallback((updater: (y: BudgetYear) => BudgetYear) => {
     setYears(prev => {
-      const exists = prev.some(y => y.year === currentYear);
-      if (!exists) return [...prev, updater(defaultBudgetYear(currentYear))];
-      return prev.map(y => (y.year === currentYear ? updater(y) : y));
+      const current = prev.find(y => y.year === currentYear) ?? resolveBudgetYear(prev, currentYear);
+      const next = updater(current);
+      if (!prev.some(y => y.year === currentYear)) return [...prev, next];
+      return prev.map(y => (y.year === currentYear ? next : y));
     });
   }, [currentYear]);
 
@@ -111,7 +129,8 @@ export default function BudgetPage() {
   const addDivision = async () => {
     const name = `Division ${year.divisions.length + 1}`;
     const newDiv = defaultDivision(name);
-    const nextYears = years.map(y => y.year === currentYear
+    const ensured = years.some(item => item.year === currentYear) ? years : [...years, resolveBudgetYear(years, currentYear)];
+    const nextYears = ensured.map(y => y.year === currentYear
       ? { ...y, divisions: [...y.divisions, newDiv] }
       : y);
     setYears(nextYears);
@@ -149,11 +168,12 @@ export default function BudgetPage() {
   const renameDivision = async (divisionId: string, name: string): Promise<boolean> => {
     const trimmed = name.trim();
     if (!trimmed) return false;
-    const previousName = years
+    const ensured = years.some(item => item.year === currentYear) ? years : [...years, resolveBudgetYear(years, currentYear)];
+    const previousName = ensured
       .find(y => y.year === currentYear)
       ?.divisions.find(d => d.id === divisionId)?.name;
     if (!previousName || previousName === trimmed) return true;
-    const nextYears = years.map(y => y.year === currentYear ? {
+    const nextYears = ensured.map(y => y.year === currentYear ? {
       ...y,
       divisions: y.divisions.map(d => (d.id === divisionId ? { ...d, name: trimmed } : d)),
     } : y);
@@ -239,7 +259,9 @@ export default function BudgetPage() {
   }
 
   const activeDivision = year.divisions.find(d => d.id === activeTab) ?? null;
-  const previousDivision = previousYear?.divisions.find(d => d.name === activeDivision?.name) ?? null;
+  const previousDivision = previousYear?.divisions.find(d => d.id === activeDivision?.id)
+    ?? previousYear?.divisions.find(d => d.name === activeDivision?.name)
+    ?? null;
 
   return (
       <div className="budget-print-area min-w-0 max-w-full space-y-6 animate-in fade-in duration-500">
@@ -263,9 +285,19 @@ export default function BudgetPage() {
             <span className="text-xs text-muted-foreground">Year</span>
             <input
               type="number"
+              data-testid="input-budget-year"
               className="w-16 text-sm font-medium border-0 p-0 bg-transparent focus:outline-none"
-              value={currentYear}
-              onChange={e => setCurrentYear(parseInt(e.target.value) || new Date().getFullYear())}
+              value={yearText}
+              onChange={e => {
+                const raw = e.target.value;
+                setYearText(raw);
+                const next = Number(raw);
+                if (Number.isInteger(next) && next >= 2000 && next <= 2100) setCurrentYear(next);
+              }}
+              onBlur={() => {
+                const next = Number(yearText);
+                if (!(Number.isInteger(next) && next >= 2000 && next <= 2100)) setYearText(String(currentYear));
+              }}
             />
           </div>
           <div className="budget-print-controls flex flex-wrap items-center gap-2 min-w-0 max-w-full">
@@ -317,6 +349,7 @@ export default function BudgetPage() {
             ) : (
               <>
                 <button
+                  data-testid={`tab-division-${d.name}`}
                   onClick={() => setActiveTab(d.id)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                     activeTab === d.id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
@@ -368,9 +401,17 @@ export default function BudgetPage() {
         <CompanyTotalPanel
           key={`company-${currentYear}`}
           year={year}
+          previousYear={previousYear}
           onJobPricingFloorChange={next => updateYear(y => ({ ...y, companyJobPricingFloor: next }))}
           onCompanyFloorChange={override => updateYear(y => ({ ...y, companyFloorPriceOverride: override }))}
           onCompanyCheckupChange={(which, c) => updateYear(y => ({ ...y, [which]: c }))}
+          onCompanyTotalRevenueChange={companyTotalRevenue => updateYear(y => ({ ...y, companyTotalRevenue }))}
+          onCompanyOverheadChange={(key, amount) => updateYear(y => ({ ...y, companyOverhead: { ...y.companyOverhead, [key]: amount } }))}
+          onCompanyOverheadFrequencyChange={(key, frequency) => updateYear(y => ({ ...y, companyOverheadFrequency: { ...y.companyOverheadFrequency, [key]: frequency } }))}
+          onDivisionIncomeChange={(divisionId, income) => updateYear(y => ({
+            ...y,
+            divisions: y.divisions.map(division => division.id === divisionId ? { ...division, income } : division),
+          }))}
         />
       ) : activeDivision ? (
         <>

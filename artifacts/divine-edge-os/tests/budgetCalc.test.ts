@@ -11,6 +11,10 @@ import {
   migrateBudgetPayload,
   overheadLaborAnnualCost,
   newOverheadLaborRole,
+  carryForwardBudgetYear,
+  resolveBudgetYear,
+  companyOverheadShare,
+  companyCategoryOverheadAnnual,
   type DivisionBudget,
   type OverheadLaborRole,
 } from "../src/lib/budgetCalc";
@@ -283,5 +287,91 @@ describe("overhead and salaried labor", () => {
     expect(year.divisions[0].overheadLabor).toHaveLength(1);
     expect(year.divisions[0].overheadLabor?.[0].name).toBe("Shop Mechanic");
     expect(computeDivision(year.divisions[0], 48).overheadLaborAnnual).toBe(33_000);
+  });
+});
+
+describe("budget year carry-forward", () => {
+  it("keeps divisions and checkup numbers the first time a later year is opened", () => {
+    const prior = defaultBudgetYear(2026);
+    prior.savedAt = "2026-06-01T00:00:00.000Z";
+    prior.companyTotalRevenue = 120_000;
+    prior.companyOverhead = { fuelMaintenance: 1_000, vehiclePayments: 500 };
+    prior.companyOverheadFrequency = { fuelMaintenance: "annual", vehiclePayments: "monthly" };
+    prior.divisions = [
+      { ...defaultDivision("Lawn"), id: "lawn", income: 60_000, revenue: 70_000, fuelMaintenance: 100 },
+      { ...defaultDivision("Snow"), id: "snow", income: 40_000, revenue: 50_000, vehiclePayments: 80 },
+    ];
+
+    const opened = resolveBudgetYear([prior], 2027);
+
+    expect(opened.year).toBe(2027);
+    expect(opened.savedAt).toBeUndefined();
+    expect(opened.divisions.map(division => division.name)).toEqual(["Lawn", "Snow"]);
+    expect(opened.divisions.map(division => division.id)).toEqual(["lawn", "snow"]);
+    expect(opened.divisions[0].fuelMaintenance).toBe(100);
+    expect(opened.divisions[0].revenue).toBe(70_000);
+    expect(opened.divisions[1].income).toBe(40_000);
+    expect(opened.companyTotalRevenue).toBe(120_000);
+    expect(opened.companyOverhead?.vehiclePayments).toBe(500);
+    expect(opened.divisions[0]).not.toBe(prior.divisions[0]);
+    opened.divisions[0].fuelMaintenance = 1;
+    expect(prior.divisions[0].fuelMaintenance).toBe(100);
+  });
+
+  it("does not copy again once that year has been stored", () => {
+    const prior = defaultBudgetYear(2026);
+    prior.divisions = [
+      { ...defaultDivision("Lawn"), id: "lawn", revenue: 70_000, income: 60_000, fuelMaintenance: 100 },
+      { ...defaultDivision("Snow"), id: "snow", revenue: 50_000, income: 40_000 },
+    ];
+    const first = carryForwardBudgetYear(prior, 2027);
+    const saved = {
+      ...first,
+      savedAt: "2027-01-02T00:00:00.000Z",
+      companyTotalRevenue: 90_000,
+      divisions: first.divisions.map(division => division.id === "lawn" ? { ...division, fuelMaintenance: 250, revenue: 80_000 } : division),
+    };
+    const changedPrior = {
+      ...prior,
+      companyTotalRevenue: 10,
+      divisions: prior.divisions.map(division => ({ ...division, fuelMaintenance: 1, revenue: 1, income: 1 })),
+    };
+
+    const again = resolveBudgetYear([changedPrior, saved], 2027);
+
+    expect(again).toBe(saved);
+    expect(again.divisions.find(division => division.id === "lawn")?.fuelMaintenance).toBe(250);
+    expect(again.divisions.find(division => division.id === "lawn")?.revenue).toBe(80_000);
+    expect(again.companyTotalRevenue).toBe(90_000);
+    expect(again.divisions.map(division => division.name)).toEqual(["Lawn", "Snow"]);
+  });
+
+  it("splits company overhead by division income and skips a zero total", () => {
+    expect(companyOverheadShare(60_000, [60_000, 40_000], 1_000)).toBe(600);
+    expect(companyOverheadShare(0, [0, 50_000], 1_000)).toBe(0);
+    expect(companyOverheadShare(10, [0, 0], 1_000)).toBeNull();
+    const year = defaultBudgetYear(2026);
+    year.companyOverhead = { fuelMaintenance: 100 };
+    year.companyOverheadFrequency = { fuelMaintenance: "monthly" };
+    expect(companyCategoryOverheadAnnual(year, "fuelMaintenance")).toBe(1_200);
+    expect(companyOverheadShare(25, [25, 75], companyCategoryOverheadAnnual(year, "fuelMaintenance"))).toBe(300);
+  });
+
+  it("reloads company revenue, division income, and company overhead", () => {
+    const [year] = migrateBudgetPayload({
+      year: 2026,
+      companyTotalRevenue: 150_000,
+      companyOverhead: { fuelMaintenance: 40, marketingAdvertising: -5 },
+      companyOverheadFrequency: { fuelMaintenance: "annual" },
+      divisions: [
+        { id: "lawn", name: "Lawn", revenue: 80_000, income: 70_000 },
+        { id: "snow", name: "Snow", revenue: 20_000, income: 15_000 },
+      ],
+    });
+    expect(year.companyTotalRevenue).toBe(150_000);
+    expect(year.companyOverhead?.fuelMaintenance).toBe(40);
+    expect(year.companyOverhead?.marketingAdvertising).toBeUndefined();
+    expect(year.companyOverheadFrequency?.fuelMaintenance).toBe("annual");
+    expect(year.divisions.map(division => [division.revenue, division.income])).toEqual([[80_000, 70_000], [20_000, 15_000]]);
   });
 });

@@ -156,6 +156,10 @@ export interface DivisionBudget extends OverheadLineItems {
   id: string;
   name: string;
   serviceIds: number[];
+  /** Annual revenue entered on this division. */
+  revenue?: number;
+  /** Annual income used to split company overhead. Entered on Company Total. */
+  income?: number;
   crewCount: number;
   workWeeksPerYear: number;
   workDaysPerWeek: number;
@@ -197,6 +201,8 @@ export function defaultDivision(name = 'Main'): DivisionBudget {
     id: crypto.randomUUID(),
     name,
     serviceIds: [],
+    revenue: 0,
+    income: 0,
     crewCount: 2,
     workWeeksPerYear: 32,
     workDaysPerWeek: 5,
@@ -247,6 +253,34 @@ function normalizeFrequencyMap(raw: unknown): Partial<Record<keyof OverheadLineI
     if (value === 'annual' || value === 'monthly') out[key] = value;
   }
   return out;
+}
+
+function normalizeCompanyOverhead(raw: unknown): Partial<OverheadLineItems> {
+  if (!raw || typeof raw !== 'object') return {};
+  const out: Partial<OverheadLineItems> = {};
+  for (const { key } of OVERHEAD_CATEGORIES) {
+    const value = Number((raw as Record<string, unknown>)[key]);
+    if (Number.isFinite(value) && value >= 0) out[key] = value;
+  }
+  return out;
+}
+
+/** Annual company overhead entered for one category. Monthly amounts are multiplied by 12. */
+export function companyCategoryOverheadAnnual(year: BudgetYear, key: keyof OverheadLineItems): number {
+  return annualizedExpense(Number(year.companyOverhead?.[key]) || 0, expenseFrequency(year.companyOverheadFrequency?.[key]));
+}
+
+/**
+ * This division's share of one company overhead category.
+ * division income / total division income × category overhead.
+ * Returns null when total income is zero so callers show nothing.
+ */
+export function companyOverheadShare(divisionIncome: number, divisionIncomes: number[], categoryOverhead: number): number | null {
+  const total = divisionIncomes.reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0);
+  if (!(total > 0)) return null;
+  const income = Math.max(0, Number(divisionIncome) || 0);
+  const overhead = Number(categoryOverhead) || 0;
+  return (income / total) * overhead;
 }
 
 export function customLineAmount(line: CustomOverheadLine): number {
@@ -410,6 +444,8 @@ function migrateFlatToDivision(raw: any, name = 'Main'): DivisionBudget {
     })
     : [];
   merged.overheadFrequency = normalizeFrequencyMap(raw.overheadFrequency);
+  merged.revenue = nonNegative(raw.revenue);
+  merged.income = nonNegative(raw.income);
   merged.floorPriceOverride = typeof raw.floorPriceOverride === 'number' && Number.isFinite(raw.floorPriceOverride) && raw.floorPriceOverride >= 0
     ? raw.floorPriceOverride : null;
   return merged;
@@ -427,6 +463,11 @@ export interface BudgetYear {
   companyMidYearCheckup: CheckupData;
   companyEndYearCheckup: CheckupData;
   savedAt?: string;
+  /** Annual company revenue entered on the checkup review. */
+  companyTotalRevenue?: number;
+  /** Company overhead entered per category on the checkup review. */
+  companyOverhead?: Partial<OverheadLineItems>;
+  companyOverheadFrequency?: Partial<Record<keyof OverheadLineItems, ExpenseFrequency>>;
   jobPricingFloor?: JobPricingFloorInputs;
   /** Company-wide stop floor scenario; undefined = follow budget-derived baseline. */
   companyJobPricingFloor?: JobPricingFloorInputs;
@@ -438,10 +479,35 @@ export function defaultBudgetYear(year = new Date().getFullYear()): BudgetYear {
     divisions: [defaultDivision('Main')],
     overheadOverrides: {},
     annualWorkingWeeks: 48,
+    companyTotalRevenue: 0,
+    companyOverhead: {},
+    companyOverheadFrequency: {},
     companyFloorPriceOverride: null,
     companyMidYearCheckup: defaultCheckup(),
     companyEndYearCheckup: defaultCheckup(),
   };
+}
+
+/** Copy a budget into another year without marking it saved. Later edits to the source stay there. */
+export function carryForwardBudgetYear(source: BudgetYear, year: number): BudgetYear {
+  const copy = structuredClone(source);
+  copy.year = year;
+  delete copy.savedAt;
+  return copy;
+}
+
+/**
+ * Use the year already stored when it exists.
+ * The first visit to a missing year copies the latest earlier year (or the only year on file)
+ * so its divisions, prices, and checkup review come along. A later visit returns the stored year.
+ */
+export function resolveBudgetYear(years: BudgetYear[], year: number): BudgetYear {
+  const existing = years.find(item => item.year === year);
+  if (existing) return existing;
+  const earlier = years.filter(item => item.year < year).sort((a, b) => b.year - a.year);
+  const source = earlier[0] ?? [...years].sort((a, b) => b.year - a.year)[0];
+  if (!source) return defaultBudgetYear(year);
+  return carryForwardBudgetYear(source, year);
 }
 
 // Accepts whatever shape was previously saved (flat single-budget object,
@@ -460,6 +526,9 @@ export function migrateBudgetPayload(saved: unknown): BudgetYear[] {
         overheadOverrides: (raw.overheadOverrides && typeof raw.overheadOverrides === 'object') ? raw.overheadOverrides : {},
         annualWorkingWeeks: Number.isFinite(Number(raw.annualWorkingWeeks)) && Number(raw.annualWorkingWeeks) > 0
           ? clampAnnualWorkingWeeks(String(raw.annualWorkingWeeks), 48) : 48,
+        companyTotalRevenue: nonNegative(raw.companyTotalRevenue),
+        companyOverhead: normalizeCompanyOverhead(raw.companyOverhead),
+        companyOverheadFrequency: normalizeFrequencyMap(raw.companyOverheadFrequency),
         companyFloorPriceOverride: typeof raw.companyFloorPriceOverride === 'number' && Number.isFinite(raw.companyFloorPriceOverride) && raw.companyFloorPriceOverride >= 0
           ? raw.companyFloorPriceOverride : null,
         companyMidYearCheckup: migrateCheckup(raw.companyMidYearCheckup),
@@ -475,6 +544,9 @@ export function migrateBudgetPayload(saved: unknown): BudgetYear[] {
       divisions: [migrateFlatToDivision(raw ?? {}, 'Main')],
       overheadOverrides: {},
       annualWorkingWeeks: 48,
+      companyTotalRevenue: nonNegative(raw?.companyTotalRevenue),
+      companyOverhead: normalizeCompanyOverhead(raw?.companyOverhead),
+      companyOverheadFrequency: normalizeFrequencyMap(raw?.companyOverheadFrequency),
       companyFloorPriceOverride: null,
       companyMidYearCheckup: defaultCheckup(),
       companyEndYearCheckup: defaultCheckup(),

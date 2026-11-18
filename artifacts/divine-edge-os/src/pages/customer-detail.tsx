@@ -1749,7 +1749,8 @@ export default function CustomerDetailPage() {
                     <TableHead>Status</TableHead>
                     <TableHead>Scheduled</TableHead>
                     <TableHead>Property</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>Invoice</TableHead>
+                    <TableHead className="text-right">Price</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1765,12 +1766,13 @@ export default function CustomerDetailPage() {
                         {new Date(job.scheduledAt).toLocaleDateString()}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground" title={job.propertyAddress ?? undefined}>{job.propertyAddress ?? '-'}</TableCell>
-                      <TableCell className="text-right font-medium" title={`Job total: $${(job.totalAmount ?? 0).toLocaleString()}`}>${(job.totalAmount ?? 0).toLocaleString()}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{job.invoiceFrequency === 'weekly' ? 'Weekly' : job.invoiceFrequency === 'monthly' ? 'Monthly' : 'Each time'}</TableCell>
+                      <TableCell className="text-right font-medium" title={`Job price: $${(job.totalAmount ?? 0).toLocaleString()}`}>${(job.totalAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                     </TableRow>
                   ))}
                   {!jobs?.length && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
+                      <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                         <Briefcase className="w-8 h-8 mx-auto mb-2 opacity-30" />
                         No jobs found for this customer.
                       </TableCell>

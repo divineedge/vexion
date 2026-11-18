@@ -62,6 +62,7 @@ import { useMutation } from '@tanstack/react-query';
 import MediaGallery from '@/components/media/MediaGallery';
 import { StaffNotesPanel } from '@/components/StaffNotesPanel';
 import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '@/components/jobs/JobFormFields';
+import { invoiceFrequencyLabel, jobCreatePricing, normalizeInvoiceFrequency, type InvoiceFrequency } from '@/lib/jobServicePrice';
 import { useAuth } from '@/contexts/AuthContext';
 import { ScheduleWeather } from '@/components/schedule/ScheduleWeather';
 import { RainRiskBanner } from '@/components/schedule/RainRiskBanner';
@@ -550,13 +551,22 @@ export default function SchedulePage() {
   const [editingDuration, setEditingDuration] = useState(false);
   const [durationEditVal, setDurationEditVal] = useState('');
   const [durationEditUnit, setDurationEditUnit] = useState<'minutes' | 'hours'>('minutes');
+  const [priceDraft, setPriceDraft] = useState('');
+  const [frequencyDraft, setFrequencyDraft] = useState<InvoiceFrequency>('each_time');
   // Reset the editor whenever a different job is selected or the sheet closes,
   // so a draft from job A can never be saved onto job B.
   useEffect(() => {
     setEditingDuration(false);
     setDurationEditVal('');
     setDurationEditUnit('minutes');
+    setPriceDraft('');
+    setFrequencyDraft('each_time');
   }, [selectedJobId]);
+  useEffect(() => {
+    if (!selectedJob || selectedJob.id !== selectedJobId) return;
+    setPriceDraft(selectedJob.totalAmount != null ? Number(selectedJob.totalAmount).toFixed(2) : '');
+    setFrequencyDraft(normalizeInvoiceFrequency(selectedJob.invoiceFrequency));
+  }, [selectedJobId, selectedJob?.id, selectedJob?.totalAmount, selectedJob?.invoiceFrequency]);
   const [cancelApproveReply, setCancelApproveReply] = useState('');
   const approveReschedule = useMutation({
     mutationFn: ({ id, ...data }: { id: number; approvedDate?: string; reply?: string; estimatedDuration?: number; capacityOverrideReason?: string } & RescheduleFeeChoice) =>
@@ -1008,6 +1018,7 @@ export default function SchedulePage() {
         crewId: draft.crewId ? parseInt(draft.crewId, 10) : undefined,
         recurrenceRule,
         smsReminderEnabled: draft.smsReminderEnabled,
+        ...jobCreatePricing(draft),
         tags: draft.tags.length ? draft.tags : undefined,
         ...(draft.offSeasonEnabled ? { offSeasonStart: draft.offSeasonStart, offSeasonEnd: draft.offSeasonEnd } : {}),
         ...(capacityOverrideReason ? { capacityOverrideReason } : {}),
@@ -1459,6 +1470,7 @@ export default function SchedulePage() {
                       )}
                     </div>
                     <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground flex-wrap">
+                      <span title={`Price, invoiced ${invoiceFrequencyLabel(s.invoiceFrequency).toLowerCase()}`}>${Number(s.totalAmount ?? 0).toFixed(2)} · {invoiceFrequencyLabel(s.invoiceFrequency)}</span>
                       {s.customerName && <span className="flex items-center gap-1" title={s.customerName}><User className="w-3 h-3" />{s.customerName}</span>}
                       {(s.crewName || s.assigneeName) && <span className="flex items-center gap-1" title={s.crewName ?? s.assigneeName ?? undefined}><Users className="w-3 h-3" />{s.crewName ?? s.assigneeName}</span>}
                       <span title={`${s.completedCount} job occurrences have been created for this series`}>{s.completedCount} occurrences generated</span>
@@ -1657,6 +1669,12 @@ export default function SchedulePage() {
                           className={`p-2 rounded border text-xs cursor-pointer hover:shadow-md hover:brightness-95 transition-all ${STATUS_COLORS[job.status] ?? STATUS_COLORS.scheduled}`}
                         >
                           <div className="font-semibold truncate" title={job.title}>{job.title}</div>
+                          {!isTechnician && (
+                            <div className="mt-0.5 font-medium" data-testid={`job-price-${job.id}`} title={`Price, invoiced ${invoiceFrequencyLabel(job.invoiceFrequency).toLowerCase()}`}>
+                              ${Number(job.totalAmount ?? 0).toFixed(2)}
+                              <span className="font-normal opacity-70"> · {invoiceFrequencyLabel(job.invoiceFrequency)}</span>
+                            </div>
+                          )}
                           {!isTechnician && (job.assigneeName || job.crewName) && (
                             <div className="mt-1 flex items-center gap-1 opacity-80" title={job.crewName ?? job.assigneeName ?? undefined}>
                               {job.crewName ? <Users className="w-3 h-3" /> : <div className="w-1.5 h-1.5 rounded-full bg-current" />}
@@ -2581,13 +2599,74 @@ export default function SchedulePage() {
                       </div>
                     )}
                   </div>
-                  {selectedJob.totalAmount != null && selectedJob.totalAmount > 0 && (
-                    <div className="space-y-1">
-                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Total</p>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Price</p>
+                    {canManageJobs ? (
+                      <div className="flex items-center gap-1.5">
+                        <DollarSign className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <Input
+                          data-testid="input-job-detail-price"
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          title="Customer price for this job"
+                          className="h-7 w-28 text-sm"
+                          value={priceDraft}
+                          onChange={e => setPriceDraft(e.target.value)}
+                        />
+                      </div>
+                    ) : (
                       <div className="flex items-center gap-2 font-semibold">
                         <DollarSign className="w-4 h-4 text-muted-foreground" />
-                        <span>${selectedJob.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        <span>${Number(selectedJob.totalAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                       </div>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Invoice</p>
+                    {canManageJobs ? (
+                      <Select value={frequencyDraft} onValueChange={value => setFrequencyDraft(normalizeInvoiceFrequency(value))}>
+                        <SelectTrigger data-testid="select-job-detail-invoice-frequency" className="h-7 text-xs" title="How often this job is invoiced"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="each_time">Each time</SelectItem>
+                          <SelectItem value="weekly">Weekly</SelectItem>
+                          <SelectItem value="monthly">Monthly</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <span className="text-sm">{invoiceFrequencyLabel(selectedJob.invoiceFrequency)}</span>
+                    )}
+                  </div>
+                  {canManageJobs && (
+                    <div className="col-span-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        data-testid="button-save-job-price"
+                        disabled={updateJob.isPending}
+                        title="Save the price and invoice frequency on this job"
+                        onClick={() => {
+                          const amount = Number(priceDraft);
+                          if (priceDraft.trim() !== '' && !Number.isFinite(amount)) { toast.error('Enter a price'); return; }
+                          updateJob.mutate({
+                            id: selectedJobId!,
+                            data: {
+                              totalAmount: priceDraft.trim() === '' ? 0 : amount,
+                              invoiceFrequency: frequencyDraft,
+                            },
+                          }, {
+                            onSuccess: () => {
+                              toast.success('Price saved');
+                              qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId!) });
+                              qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                            },
+                            onError: () => toast.error('Failed to save price'),
+                          });
+                        }}
+                      >
+                        Save price
+                      </Button>
                     </div>
                   )}
                   {(selectedJob as any).completedAt && (

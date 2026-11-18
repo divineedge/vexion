@@ -37,6 +37,8 @@ export const jobsTable = pgTable("jobs", {
   estimatedDuration: integer("estimated_duration"),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   totalAmount: real("total_amount").notNull().default(0),
+  /** How often this job is invoiced: 'each_time' | 'weekly' | 'monthly'. */
+  invoiceFrequency: text("invoice_frequency").notNull().default("each_time"),
   /**
    * Line items array — same shape as estimates.lineItems (see JSDoc there):
    * [{id, serviceId?, description, qty, unitPrice, markup, discount, isOptional, optionalPitchLine?, acceptedByCustomer}]

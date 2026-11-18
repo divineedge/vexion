@@ -12554,6 +12554,12 @@ components:
           type: ["string", "null"]
         completedCount:
           type: integer
+        totalAmount:
+          type: number
+        invoiceFrequency:
+          type: string
+          enum: [each_time, weekly, monthly]
+          description: How often jobs in this series are invoiced.
         customerName:
           type: ["string", "null"]
         assigneeName:
@@ -12612,6 +12618,10 @@ components:
           type: ["string", "null"]
         totalAmount:
           type: number
+        invoiceFrequency:
+          type: string
+          enum: [each_time, weekly, monthly]
+          description: How often this job is invoiced. Each time, weekly, and monthly match the service rates.
         invoiceId:
           type: ["integer", "null"]
         serviceId:
@@ -12739,7 +12749,9 @@ components:
         name: { type: string }
         description: { type: ["string", "null"] }
         category: { type: ["string", "null"] }
-        basePrice: { type: number }
+        basePrice: { type: number, description: "Each-time (per visit) price. Also the per-unit rate for measured pricing modes." }
+        weeklyRate: { type: number, description: "Flat rate used when a job for this service is invoiced weekly." }
+        monthlyRate: { type: number, description: "Flat rate used when a job for this service is invoiced monthly." }
         estimatedDuration: { type: ["integer", "null"], description: "Default estimated duration in minutes" }
         pricingMode: { type: string, enum: [flat, per_sqft, per_linear_ft, matrix] }
         pricingMatrix:
@@ -13041,6 +13053,10 @@ components:
           items: { $ref: "#/components/schemas/JobLineItem" }
         totalAmount:
           type: number
+        invoiceFrequency:
+          type: string
+          enum: [each_time, weekly, monthly]
+          description: How often this job is invoiced.
         blueprintId:
           type: integer
         recurrenceRule:
@@ -13091,6 +13107,13 @@ components:
           type: string
         estimatedDuration:
           type: integer
+        totalAmount:
+          type: number
+          description: "Customer price for this job. An edited price is kept."
+        invoiceFrequency:
+          type: string
+          enum: [each_time, weekly, monthly]
+          description: How often this job is invoiced.
         recurrenceRule:
           $ref: "#/components/schemas/RecurrenceRule"
         offSeasonStart:

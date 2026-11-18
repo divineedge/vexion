@@ -45,6 +45,7 @@ import RoutingSettings from '@/components/settings/RoutingSettings';
 import { useListCrews, getListCrewsQueryKey } from '@workspace/api-client-react';
 import { startOfWeek, addWeeks, subWeeks, format, addDays } from 'date-fns';
 import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '@/components/jobs/JobFormFields';
+import { jobCreatePricing } from '@/lib/jobServicePrice';
 import { BulkJobScheduler } from '@/components/jobs/BulkJobScheduler';
 
 const FREQUENCY_LABEL: Record<string, string> = {
@@ -318,6 +319,7 @@ export default function RoutesDashboardPage() {
         crewId: newJob.crewId ? parseInt(newJob.crewId, 10) : undefined,
         recurrenceRule,
         smsReminderEnabled: newJob.smsReminderEnabled,
+        ...jobCreatePricing(newJob),
         ...(newJob.offSeasonEnabled ? { offSeasonStart: newJob.offSeasonStart, offSeasonEnd: newJob.offSeasonEnd } : {}),
       },
     }, {

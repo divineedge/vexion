@@ -10,6 +10,12 @@ import { readPricingTiers, type PriceRounding, type PricingTier } from "../lib/p
 
 const PRICE_ROUNDING = new Set<PriceRounding>(["none", "nearest_1", "nearest_5", "nearest_10"]);
 
+function moneyField(value: unknown, fallback = 0): number {
+  if (value === undefined || value === null || value === "") return fallback;
+  const amount = typeof value === "number" ? value : parseFloat(String(value));
+  return Number.isFinite(amount) ? amount : fallback;
+}
+
 function storedPricingMatrix(pricingMode: string, pricingMatrix: unknown, priceRounding: unknown): PricingTier[] | null {
   if (pricingMode !== "matrix") return null;
   const tiers = readPricingTiers(pricingMatrix);
@@ -136,6 +142,8 @@ router.post("/services", async (req, res): Promise<void> => {
       description: description || null,
       category: category || null,
       basePrice: resolvedMode === "hourly" ? (hourlyRate ?? 0) : parseFloat(basePrice) || 0,
+      weeklyRate: moneyField(req.body.weeklyRate),
+      monthlyRate: moneyField(req.body.monthlyRate),
       hourlyRate: resolvedMode === "hourly" ? hourlyRate : null,
       minimumBillableMinutes: resolvedMode === "hourly" && minimumHours != null && minimumHours > 0 ? Math.round(minimumHours * 60) : null,
       linearRate: parseFloat(req.body.linearRate) || 0,
@@ -184,6 +192,8 @@ router.patch("/services/:id", async (req, res): Promise<void> => {
   if (description !== undefined) updates.description = description || null;
   if (category !== undefined) updates.category = category || null;
   if (basePrice !== undefined) updates.basePrice = parseFloat(basePrice) || 0;
+  if (req.body.weeklyRate !== undefined) updates.weeklyRate = moneyField(req.body.weeklyRate);
+  if (req.body.monthlyRate !== undefined) updates.monthlyRate = moneyField(req.body.monthlyRate);
   if (req.body.linearRate !== undefined) updates.linearRate = parseFloat(req.body.linearRate) || 0;
   if (estimatedDuration !== undefined) {
     const minutes = parseInt(estimatedDuration, 10);
@@ -192,10 +202,11 @@ router.patch("/services/:id", async (req, res): Promise<void> => {
   if (p4pPercentage !== undefined) updates.p4pPercentage = p4pPercentage !== "" && p4pPercentage != null ? parseFloat(p4pPercentage) : null;
   if (isActive !== undefined) updates.isActive = Boolean(isActive);
   if (pricingMode !== undefined) {
-    updates.pricingMode = ["flat", "per_sqft", "per_linear_ft", "area_and_linear", "matrix", "hourly"].includes(pricingMode)
+    const resolvedMode = ["flat", "per_sqft", "per_linear_ft", "area_and_linear", "matrix", "hourly"].includes(pricingMode)
       ? pricingMode
       : "flat";
-    updates.pricingMatrix = storedPricingMatrix(updates.pricingMode, pricingMatrix, priceRounding);
+    updates.pricingMode = resolvedMode;
+    updates.pricingMatrix = storedPricingMatrix(resolvedMode, pricingMatrix, priceRounding);
   } else if (pricingMatrix !== undefined) {
     updates.pricingMatrix = storedPricingMatrix("matrix", pricingMatrix, priceRounding);
   }

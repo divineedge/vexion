@@ -47,6 +47,7 @@ import { chemicalCompletionError, normalizeFieldRequirements } from "../lib/serv
 import { resolveJobAssignmentRecipientIds, sendStaffPush } from "../lib/pushNotifications";
 import { canAccessJobMessages } from "../lib/jobMessageAccess";
 import { measurementChargeLines, resolveServicePrice, type PricingTier } from "../lib/pricingMatrix";
+import { chooseJobPrice, lineItemsForJobPrice, normalizeInvoiceFrequency, parseCallerJobPrice } from "../lib/jobServicePrice";
 import {
   importUpload,
   handleExportRequest,
@@ -693,6 +694,8 @@ router.get("/jobs/series", async (req, res): Promise<void> => {
       id: r.job.id,
       title: r.job.title,
       status: r.job.status,
+      totalAmount: r.job.totalAmount,
+      invoiceFrequency: r.job.invoiceFrequency ?? "each_time",
       recurrenceRule: rule,
       recurrenceDescription: rule ? describeRule(rule) : "",
       isRecurrencePaused: r.job.isRecurrencePaused,
@@ -720,7 +723,7 @@ router.post("/jobs", requireVerifiedStaff, async (req, res): Promise<void> => {
     res.status(403).json({ error: "Manager role required to create jobs directly" });
     return;
   }
-  const { title, description, status, priority, customerId, propertyId, assigneeId, crewId, scheduledAt, estimatedDuration, blueprintId, recurrenceRule, smsReminderEnabled, suppliesNeeded, offSeasonStart, offSeasonEnd, serviceId, lineItems, totalAmount } = req.body;
+  const { title, description, status, priority, customerId, propertyId, assigneeId, crewId, scheduledAt, estimatedDuration, blueprintId, recurrenceRule, smsReminderEnabled, suppliesNeeded, offSeasonStart, offSeasonEnd, serviceId, lineItems, totalAmount, invoiceFrequency } = req.body;
 
   if (!title || !scheduledAt) {
     res.status(400).json({ error: "title and scheduledAt are required" });
@@ -746,7 +749,23 @@ router.post("/jobs", requireVerifiedStaff, async (req, res): Promise<void> => {
     return;
   }
   const callerSuppliedLineItems = Array.isArray(lineItems);
-  const callerSuppliedTotal = totalAmount !== undefined && totalAmount !== null && totalAmount !== "";
+  const callerTotal = parseCallerJobPrice(totalAmount);
+  const frequency = normalizeInvoiceFrequency(invoiceFrequency);
+  const chosenPrice = chooseJobPrice({
+    callerTotal,
+    frequency,
+    eachTimePrice: serviceSnapshot?.totalAmount,
+    weeklyRate: serviceSnapshot?.service.weeklyRate,
+    monthlyRate: serviceSnapshot?.service.monthlyRate,
+  });
+  const pricedLines = chosenPrice == null
+    ? (callerSuppliedLineItems ? lineItems : serviceSnapshot?.lineItems)
+    : lineItemsForJobPrice(
+      callerSuppliedLineItems ? lineItems : serviceSnapshot?.lineItems,
+      chosenPrice,
+      serviceSnapshot?.totalAmount,
+      serviceSnapshot?.service.name ?? title,
+    );
 
   const [job] = await paymentGuardedJobInsert(db,{actorId:getUserId(req),reason:req.body.capacityOverrideReason}).values({
     tenantId,
@@ -762,8 +781,9 @@ router.post("/jobs", requireVerifiedStaff, async (req, res): Promise<void> => {
     scheduledAt: new Date(scheduledAt),
     serviceId: serviceSnapshot?.service.id ?? null,
     estimatedDuration: estimatedDuration !== undefined ? estimatedDuration : (serviceSnapshot?.estimatedDuration ?? null),
-    ...(callerSuppliedLineItems ? { lineItems } : serviceSnapshot?.lineItems ? { lineItems: serviceSnapshot.lineItems } : {}),
-    ...(callerSuppliedTotal ? { totalAmount: Number(totalAmount) } : serviceSnapshot?.totalAmount !== undefined ? { totalAmount: serviceSnapshot.totalAmount } : {}),
+    ...(pricedLines ? { lineItems: pricedLines } : {}),
+    ...(chosenPrice != null ? { totalAmount: chosenPrice } : {}),
+    invoiceFrequency: frequency,
     recurrenceRule: recurrenceRule ?? null,
     smsReminderEnabled: smsReminderEnabled === true || smsReminderEnabled === "true",
     suppliesNeeded: normaliseSupplies(suppliesNeeded),
@@ -881,7 +901,7 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { title, description, status, priority, assigneeId, crewId, scheduledAt, estimatedDuration, recurrenceRule, editScope, smsReminderEnabled, holdFromBilling, planId, tags, suppliesNeeded, offSeasonStart, offSeasonEnd, serviceId } = req.body;
+  const { title, description, status, priority, assigneeId, crewId, scheduledAt, estimatedDuration, recurrenceRule, editScope, smsReminderEnabled, holdFromBilling, planId, tags, suppliesNeeded, offSeasonStart, offSeasonEnd, serviceId, totalAmount, invoiceFrequency } = req.body;
 
   // Fetch current job to check if it's a recurring instance
   const [currentJob] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
@@ -991,8 +1011,6 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     ...(scheduledAt !== undefined && { scheduledAt: new Date(scheduledAt) }),
     ...(serviceSnapshot !== undefined && {
       serviceId: serviceSnapshot?.service.id ?? null,
-      lineItems: serviceSnapshot?.lineItems ?? [],
-      totalAmount: serviceSnapshot?.totalAmount ?? 0,
       estimatedDuration: serviceSnapshot?.estimatedDuration ?? null,
     }),
     ...(estimatedDuration !== undefined && { estimatedDuration }),
@@ -1004,6 +1022,28 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     ...(offSeasonWindow === null && { offSeasonStart: null, offSeasonEnd: null }),
     ...(offSeasonWindow && { ...offSeasonWindow }),
   };
+  if (invoiceFrequency !== undefined) baseUpdate.invoiceFrequency = normalizeInvoiceFrequency(invoiceFrequency);
+  const callerTotal = parseCallerJobPrice(totalAmount);
+  if (callerTotal != null) {
+    const description = serviceSnapshot?.service.name ?? currentJob.title;
+    const sourceLines = serviceSnapshot === undefined ? currentJob.lineItems : (serviceSnapshot?.lineItems ?? []);
+    const previousTotal = serviceSnapshot === undefined ? currentJob.totalAmount : serviceSnapshot?.totalAmount;
+    baseUpdate.totalAmount = callerTotal;
+    baseUpdate.lineItems = lineItemsForJobPrice(sourceLines, callerTotal, previousTotal, description);
+  } else if (serviceSnapshot !== undefined) {
+    const frequency = normalizeInvoiceFrequency(invoiceFrequency ?? currentJob.invoiceFrequency);
+    const chosen = chooseJobPrice({
+      callerTotal: null,
+      frequency,
+      eachTimePrice: serviceSnapshot?.totalAmount,
+      weeklyRate: serviceSnapshot?.service.weeklyRate,
+      monthlyRate: serviceSnapshot?.service.monthlyRate,
+    });
+    baseUpdate.totalAmount = chosen ?? 0;
+    baseUpdate.lineItems = chosen == null
+      ? []
+      : lineItemsForJobPrice(serviceSnapshot?.lineItems, chosen, serviceSnapshot?.totalAmount, serviceSnapshot?.service.name ?? currentJob.title);
+  }
   const nextAssignment = {
     assigneeId: nextAssigneeId,
     crewId: nextCrewId,

@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response, type NextFunction } 
 import { db, inventoryItemsTable, inventoryPartSizesTable, inventoryPartTypesTable, inventorySuppliersTable, tenantsTable, vendorsTable } from "@workspace/db";
 import { eq, and, or, ilike, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
-import { applyArrival, isPipeTypeName, parseOptionalAmount, sellUnitPrice } from "../lib/pipeStock";
+import { applyArrival, isPipeTypeName, parseOptionalAmount, priceWithMarkup, sellUnitPrice } from "../lib/pipeStock";
 import { inventoryImportFields, inventoryRecordFromImport, parseInventoryImportRow } from "../lib/inventoryImport";
 import { usersTable } from "@workspace/db";
 import {
@@ -197,7 +197,9 @@ function formatItem(
 ) {
   const costPrice = i.unitPrice;     // DB unitPrice = what we pay
   const sellPrice = sellUnitPrice(i.pricePerFoot, i.markedUpPrice);
-  const markup = storedMarkupPct(costPrice, sellPrice, tenantMarkupPct);
+  // Pipe markup is measured against the per-foot price. Other parts stay measured against cost.
+  const markupBase = i.pricePerFoot != null ? i.pricePerFoot : costPrice;
+  const markup = storedMarkupPct(markupBase, sellPrice, tenantMarkupPct);
   const resolvedVendor = vendorName ?? null;
   return {
     id: i.id,
@@ -543,6 +545,7 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
     lengthReceived: lengthRead.value ?? null,
     pricePerFoot: priceRead.value ?? null,
     pipe: isPipeTypeName(grouping.value.typeName),
+    markupPct: effectiveMarkupPct,
   });
 
   const [item] = await db.insert(inventoryItemsTable).values({
@@ -656,7 +659,7 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
     updates.vendorId = vendor.id;
   }
 
-  if (costPrice !== undefined || reqMarkupPct !== undefined) {
+  if (costPrice !== undefined || reqMarkupPct !== undefined || updates.pricePerFoot !== undefined) {
     const [existing] = await db
       .select()
       .from(inventoryItemsTable)
@@ -664,13 +667,20 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
     if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
     const tenantDefault = await getTenantMarkupPct(tenantId);
-    const existingMarkup = storedMarkupPct(existing.unitPrice, existing.markedUpPrice, tenantDefault);
+    const nextPerFoot = updates.pricePerFoot !== undefined ? updates.pricePerFoot : existing.pricePerFoot;
+    const existingMarkup = nextPerFoot != null
+      ? storedMarkupPct(nextPerFoot, existing.markedUpPrice, tenantDefault)
+      : storedMarkupPct(existing.unitPrice, existing.markedUpPrice, tenantDefault);
     const costVal = costPrice !== undefined ? parseSafeFloat(costPrice, existing.unitPrice) : existing.unitPrice;
     const effectiveMarkupPct = reqMarkupPct != null ? parseSafeFloat(reqMarkupPct, existingMarkup) : existingMarkup;
-    updates.unitPrice = costVal;
-    updates.markedUpPrice = costVal * (1 + effectiveMarkupPct / 100);
+    if (nextPerFoot != null) {
+      if (costPrice !== undefined || reqMarkupPct !== undefined) updates.unitPrice = costVal;
+      updates.markedUpPrice = priceWithMarkup(nextPerFoot, effectiveMarkupPct);
+    } else if (costPrice !== undefined || reqMarkupPct !== undefined) {
+      updates.unitPrice = costVal;
+      updates.markedUpPrice = costVal * (1 + effectiveMarkupPct / 100);
+    }
   }
-  if (updates.pricePerFoot != null) updates.markedUpPrice = updates.pricePerFoot;
   if ((updates.pricePerFoot != null || updates.lengthReceived != null) && (updates.unit === undefined || updates.unit === "each")) {
     updates.unit = "ft";
   }

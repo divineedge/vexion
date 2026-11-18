@@ -47,3 +47,18 @@ export function feetFromLength(length: number): number {
   if (!Number.isFinite(length) || length < 0) return 0;
   return Math.max(0, Math.round(length));
 }
+
+/** Same sell-price formula a normal part uses on its buy price: base × (1 + markup% / 100). */
+export function priceWithMarkup(base: number, markupPct: number): number {
+  const markup = Number.isFinite(markupPct) ? markupPct : 0;
+  return base * (1 + markup / 100);
+}
+
+/** Sell price per foot shown on the inventory form. A blank markup uses the company default. */
+export function pipeSellPerFoot(pricePerFoot: string, markupPct: string, defaultMarkupPct: number): number | null {
+  if (pricePerFoot.trim() === "") return null;
+  const base = Number(pricePerFoot);
+  const markup = parseFloat(markupPct || String(defaultMarkupPct));
+  if (!Number.isFinite(base) || !Number.isFinite(markup)) return null;
+  return priceWithMarkup(base, markup);
+}

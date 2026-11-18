@@ -16,9 +16,23 @@ export function feetFromLength(length: number): number {
   return Math.max(0, Math.round(length));
 }
 
-/** Per-foot price is what a sale charges when the part has one. */
+/**
+ * Same sell-price formula a normal part uses on its cost:
+ * base × (1 + markup% / 100). Pipe uses its per-foot price as that base.
+ */
+export function priceWithMarkup(base: number, markupPct: number): number {
+  const markup = Number.isFinite(markupPct) ? markupPct : 0;
+  return base * (1 + markup / 100);
+}
+
+/**
+ * Customer price for one unit. For pipe, markedUpPrice is the per-foot price
+ * after inventory markup. The raw per-foot amount is the base and is not charged
+ * by itself. A part with no per-foot price keeps its stored sell price.
+ */
 export function sellUnitPrice(pricePerFoot: number | null | undefined, markedUpPrice: number): number {
-  return pricePerFoot != null && Number.isFinite(pricePerFoot) ? pricePerFoot : markedUpPrice;
+  if (pricePerFoot != null && Number.isFinite(pricePerFoot) && !Number.isFinite(markedUpPrice)) return pricePerFoot;
+  return markedUpPrice;
 }
 
 /** A new pipe receipt with no separate count uses the length as feet on hand. */
@@ -40,11 +54,13 @@ export function applyArrival(input: {
   lengthReceived: number | null;
   pricePerFoot: number | null;
   pipe: boolean;
+  /** Markup percent already chosen for this part. Omitted means the per-foot price is used as entered. */
+  markupPct?: number;
 }): { quantity: number; unit: string; sellPrice: number } {
   const trackFeet = input.pipe || input.pricePerFoot != null || input.lengthReceived != null;
   return {
     quantity: stockQuantityForReceipt(input.quantity, input.lengthReceived, trackFeet),
     unit: unitForPipe(input.unit, trackFeet),
-    sellPrice: input.pricePerFoot != null ? input.pricePerFoot : input.sellPrice,
+    sellPrice: input.pricePerFoot != null ? priceWithMarkup(input.pricePerFoot, input.markupPct ?? 0) : input.sellPrice,
   };
 }

@@ -2171,7 +2171,7 @@ paths:
     get:
       operationId: listInventoryItems
       tags: [inventory]
-      summary: List all inventory items
+      summary: List all inventory items. Search matches name, SKU, type, and size.
       parameters:
         - name: q
           in: query
@@ -2181,6 +2181,16 @@ paths:
           in: query
           schema:
             type: string
+        - name: typeId
+          in: query
+          description: "Only parts stored with this type."
+          schema:
+            type: integer
+        - name: sizeId
+          in: query
+          description: "Only parts stored with this size."
+          schema:
+            type: integer
         - name: lowStock
           in: query
           schema:
@@ -2216,6 +2226,152 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/InventoryItem"
+
+  /inventory/types:
+    get:
+      operationId: listInventoryTypes
+      tags: [inventory]
+      summary: List inventory types
+      responses:
+        "200":
+          description: Types for this business
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventoryType"
+    post:
+      operationId: createInventoryType
+      tags: [inventory]
+      summary: Add an inventory type (office only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryTypeInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryType"
+
+  /inventory/types/{id}:
+    patch:
+      operationId: updateInventoryType
+      tags: [inventory]
+      summary: Rename an inventory type (office only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryTypeInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryType"
+    delete:
+      operationId: deleteInventoryType
+      tags: [inventory]
+      summary: Remove an inventory type (office only). Parts keep their other details.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /inventory/sizes:
+    get:
+      operationId: listInventorySizes
+      tags: [inventory]
+      summary: List inventory sizes
+      parameters:
+        - name: typeId
+          in: query
+          description: "When set, only sizes that belong to this type."
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Sizes for this business
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventorySize"
+    post:
+      operationId: createInventorySize
+      tags: [inventory]
+      summary: Add a size under a type (office only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventorySizeInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventorySize"
+
+  /inventory/sizes/{id}:
+    patch:
+      operationId: updateInventorySize
+      tags: [inventory]
+      summary: Rename a size (office only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventorySizeUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventorySize"
+    delete:
+      operationId: deleteInventorySize
+      tags: [inventory]
+      summary: Remove a size (office only). Parts keep their type.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
 
   /inventory/{id}:
     get:
@@ -13278,6 +13434,18 @@ components:
           type: ["string", "null"]
         category:
           type: ["string", "null"]
+        typeId:
+          type: ["integer", "null"]
+          description: "Parent type, such as Pipe or Fitting. Null when the part has no type."
+        typeName:
+          type: ["string", "null"]
+          description: "Name of the stored type."
+        sizeId:
+          type: ["integer", "null"]
+          description: "Size under the part's type. Null when the part has no size."
+        sizeName:
+          type: ["string", "null"]
+          description: "Name of the stored size."
         costPrice:
           type: ["number", "null"]
           description: "What we pay for the item. Only returned for admin/manager roles (or when showCostPriceToTech is true)."
@@ -13324,6 +13492,12 @@ components:
           type: string
         category:
           type: string
+        typeId:
+          type: ["integer", "null"]
+          description: "Type to store on the part. Null leaves the part untyped."
+        sizeId:
+          type: ["integer", "null"]
+          description: "Size under typeId. Must belong to that type."
         costPrice:
           type: number
           description: "What we pay for the item (buy price)."
@@ -13355,6 +13529,12 @@ components:
           type: string
         category:
           type: string
+        typeId:
+          type: ["integer", "null"]
+          description: "Type to store. Null clears the type and its size."
+        sizeId:
+          type: ["integer", "null"]
+          description: "Size under the part's type. Null clears the size."
         costPrice:
           type: number
         markupPct:
@@ -13420,6 +13600,61 @@ components:
           type: ["string", "null"]
         notes:
           type: ["string", "null"]
+
+    InventoryType:
+      type: object
+      required: [id, tenantId, name, sortOrder, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        name:
+          type: string
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+
+    InventoryTypeInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    InventorySize:
+      type: object
+      required: [id, tenantId, typeId, name, sortOrder, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        typeId:
+          type: integer
+        name:
+          type: string
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+
+    InventorySizeInput:
+      type: object
+      required: [typeId, name]
+      properties:
+        typeId:
+          type: integer
+        name:
+          type: string
+
+    InventorySizeUpdate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
 
     ReorderListReport:
       type: object
@@ -14722,6 +14957,10 @@ components:
         showCostPriceToTech:
           type: boolean
           description: "When true, technicians can see the cost/buy price of inventory items."
+        inventoryGroupBy:
+          type: string
+          enum: [type, size]
+          description: "Whether the inventory list is organized by Type or by Size."
         ownersSchedulable:
           type: boolean
           description: "When true, company owners can be assigned jobs individually and added to crews."
@@ -15302,6 +15541,10 @@ components:
           type: number
         showCostPriceToTech:
           type: boolean
+        inventoryGroupBy:
+          type: string
+          enum: [type, size]
+          description: "Organize the inventory list by Type or by Size."
         ownersSchedulable:
           type: boolean
         durationUnit:

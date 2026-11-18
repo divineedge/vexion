@@ -15,6 +15,9 @@ import {
   useGetInventoryItemByLocation, getGetInventoryItemByLocationQueryKey,
   useListInventorySuppliers, getListInventorySuppliersQueryKey,
   useCreateInventorySupplier,
+  useListInventoryTypes, getListInventoryTypesQueryKey,
+  useListInventorySizes, getListInventorySizesQueryKey,
+  useUpdateTenantSettings,
 } from '@workspace/api-client-react';
 import type { InventoryLocation } from '@workspace/api-client-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -39,6 +42,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
 import { upsertInventoryLocation } from '@/lib/inventoryLocations';
+import { groupInventoryItems, sizeIdForType, sizesForType, type InventoryGroupBy } from '@/lib/inventoryGrouping';
 import { ShrinkageReport } from '@/components/inventory/ShrinkageReport';
 
 function ItemLocationSection({ inventoryItemId }: { inventoryItemId: number }) {
@@ -189,6 +193,8 @@ type ItemForm = {
   sku: string;
   description: string;
   categories: string[]; // stored as comma-joined in the category text column
+  typeId: string;
+  sizeId: string;
   costPrice: string;
   markupPct: string;
   quantity: string;
@@ -200,7 +206,7 @@ type ItemForm = {
 };
 
 const EMPTY_FORM: ItemForm = {
-  name: '', sku: '', description: '', categories: [],
+  name: '', sku: '', description: '', categories: [], typeId: '', sizeId: '',
   costPrice: '', markupPct: '', quantity: '0', reorderPoint: '5', unit: 'each',
   availableForBlueprint: false, commissionPct: '', supplierId: '',
 };
@@ -214,6 +220,8 @@ export default function InventoryPage() {
 
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
+  const [typeFilter, setTypeFilter] = useState('');
+  const [sizeFilter, setSizeFilter] = useState('');
   const [sheetMode, setSheetMode] = useState<'create' | 'edit' | 'view' | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [form, setForm] = useState<ItemForm>(EMPTY_FORM);
@@ -384,10 +392,21 @@ export default function InventoryPage() {
   };
 
   const { data: summary } = useGetInventorySummary({ query: { queryKey: getGetInventorySummaryQueryKey() } });
+  const listParams = {
+    q: debouncedSearch || undefined,
+    typeId: typeFilter ? Number(typeFilter) : undefined,
+    sizeId: sizeFilter ? Number(sizeFilter) : undefined,
+  };
   const { data: items, isLoading } = useListInventoryItems(
-    { q: debouncedSearch || undefined },
-    { query: { queryKey: getListInventoryItemsQueryKey({ q: debouncedSearch || undefined }) } },
+    listParams,
+    { query: { queryKey: getListInventoryItemsQueryKey(listParams) } },
   );
+  const { data: partTypes = [] } = useListInventoryTypes({ query: { queryKey: getListInventoryTypesQueryKey() } });
+  const { data: partSizes = [] } = useListInventorySizes(undefined, { query: { queryKey: getListInventorySizesQueryKey() } });
+  const updateSettings = useUpdateTenantSettings();
+  const groupBy: InventoryGroupBy = settings?.inventoryGroupBy === 'size' ? 'size' : 'type';
+  const groupedItems = useMemo(() => groupInventoryItems(items ?? [], groupBy), [items, groupBy]);
+  const filteredSizes = typeFilter ? sizesForType(partSizes, Number(typeFilter)) : partSizes;
   const { data: selectedItem } = useGetInventoryItem(selectedId!, {
     query: { enabled: selectedId != null, queryKey: getGetInventoryItemQueryKey(selectedId!) },
   });
@@ -442,6 +461,8 @@ export default function InventoryPage() {
       categories: item.category
         ? item.category.split(',').map((s: string) => s.trim()).filter(Boolean)
         : [],
+      typeId: item.typeId != null ? String(item.typeId) : '',
+      sizeId: item.sizeId != null ? String(item.sizeId) : '',
       costPrice: costVal,
       markupPct: mPct,
       quantity: String(item.quantity),
@@ -463,6 +484,8 @@ export default function InventoryPage() {
       sku: form.sku,
       description: form.description || undefined,
       category: form.categories.length ? form.categories.join(', ') : undefined,
+      typeId: form.typeId ? parseInt(form.typeId, 10) : null,
+      sizeId: form.sizeId ? parseInt(form.sizeId, 10) : null,
       costPrice: parseFloat(form.costPrice) || 0,
       markupPct: form.markupPct ? parseFloat(form.markupPct) : undefined,
       quantity: parseInt(form.quantity, 10) || 0,
@@ -533,7 +556,7 @@ export default function InventoryPage() {
             </Button>
           )}
           {canManage && (
-            <Button title="Add a new inventory item" className="gap-2" onClick={openCreate}>
+            <Button title="Add a new inventory item" className="gap-2" data-testid="button-add-inventory-item" onClick={openCreate}>
               <Plus className="w-4 h-4" /> Add Item
             </Button>
           )}
@@ -758,17 +781,81 @@ export default function InventoryPage() {
       {/* All Items Table */}
       {activeTab === 'all' && <Card>
         <CardContent className="p-0">
-          <div className="p-4 border-b flex items-center gap-4">
-            <div className="relative flex-1 max-w-md">
+          <div className="p-4 border-b flex items-center gap-3 flex-wrap">
+            <div className="relative flex-1 min-w-[220px] max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                title="Search inventory by SKU or item name"
-                placeholder="Search by SKU or name..."
+                title="Search inventory by SKU, name, type, or size"
+                placeholder="Search by SKU, name, type, or size..."
                 className="pl-9"
+                data-testid="input-inventory-search"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
+            <Select
+              value={typeFilter || '__all__'}
+              onValueChange={value => {
+                const next = value === '__all__' ? '' : value;
+                setTypeFilter(next);
+                if (!next) return;
+                setSizeFilter(current => {
+                  const kept = sizeIdForType(current ? Number(current) : null, Number(next), partSizes);
+                  return kept ? String(kept) : '';
+                });
+              }}
+            >
+              <SelectTrigger className="w-[160px]" title="Filter the list by type" data-testid="select-filter-type">
+                <SelectValue placeholder="All types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All types</SelectItem>
+                {partTypes.map(type => <SelectItem key={type.id} value={String(type.id)}>{type.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select
+              value={sizeFilter || '__all__'}
+              onValueChange={value => setSizeFilter(value === '__all__' ? '' : value)}
+            >
+              <SelectTrigger className="w-[180px]" title="Filter the list by size" data-testid="select-filter-size">
+                <SelectValue placeholder="All sizes" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All sizes</SelectItem>
+                {filteredSizes.map(size => {
+                  const typeName = partTypes.find(type => type.id === size.typeId)?.name;
+                  return <SelectItem key={size.id} value={String(size.id)}>{typeName && !typeFilter ? `${size.name} · ${typeName}` : size.name}</SelectItem>;
+                })}
+              </SelectContent>
+            </Select>
+            {canManageOffice && (
+              <div className="flex items-center rounded-md border p-1 bg-muted/50 gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={groupBy === 'type' ? 'secondary' : 'ghost'}
+                  className="h-8 px-3 text-xs"
+                  data-testid="button-organize-by-type"
+                  title="Organize this list by type"
+                  onClick={() => updateSettings.mutate({ data: { inventoryGroupBy: 'type' } }, {
+                    onSuccess: () => qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }),
+                    onError: () => toast.error('Could not save the organize-by setting'),
+                  })}
+                >By type</Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={groupBy === 'size' ? 'secondary' : 'ghost'}
+                  className="h-8 px-3 text-xs"
+                  data-testid="button-organize-by-size"
+                  title="Organize this list by size"
+                  onClick={() => updateSettings.mutate({ data: { inventoryGroupBy: 'size' } }, {
+                    onSuccess: () => qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }),
+                    onError: () => toast.error('Could not save the organize-by setting'),
+                  })}
+                >By size</Button>
+              </div>
+            )}
             {!canSeeCost && (
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <EyeOff className="w-3.5 h-3.5" /> Buy price hidden
@@ -780,6 +867,8 @@ export default function InventoryPage() {
               <TableRow>
                 <TableHead>Item</TableHead>
                 <TableHead>SKU</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Size</TableHead>
                 <TableHead>Category</TableHead>
                 {canSeeCost && <TableHead className="text-right">Buy Price</TableHead>}
                 <TableHead className="text-right">
@@ -794,18 +883,29 @@ export default function InventoryPage() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading inventory...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={canSeeCost ? 10 : 9} className="text-center py-8 text-muted-foreground">Loading inventory...</TableCell></TableRow>
               ) : items?.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No items found.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={canSeeCost ? 10 : 9} className="text-center py-8 text-muted-foreground">No items found.</TableCell></TableRow>
               ) : (
-                items?.map(item => (
+                groupedItems.map(group => (
+                  <React.Fragment key={group.key}>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40" data-testid={`inventory-group-${group.key}`}>
+                      <TableCell colSpan={canSeeCost ? 10 : 9} className="py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {groupBy === 'type' ? 'Type' : 'Size'}: {group.label}
+                        <span className="ml-2 font-normal normal-case">{group.items.length} item{group.items.length === 1 ? '' : 's'}</span>
+                      </TableCell>
+                    </TableRow>
+                    {group.items.map(item => (
                   <TableRow
                     key={item.id}
                     className={`cursor-pointer ${item.isLowStock ? 'bg-destructive/5 hover:bg-destructive/10' : 'hover:bg-muted/50'}`}
                     onClick={() => openView(item.id)}
+                    data-testid={`inventory-item-${item.id}`}
                   >
                     <TableCell className="font-medium" title={item.name}>{item.name}</TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground" title={item.sku ? `SKU: ${item.sku}` : undefined}>{item.sku}</TableCell>
+                    <TableCell>{item.typeName ? <Badge variant="outline" title={`Type: ${item.typeName}`}>{item.typeName}</Badge> : <span className="text-xs text-muted-foreground">—</span>}</TableCell>
+                    <TableCell>{item.sizeName ? <Badge variant="secondary" title={`Size: ${item.sizeName}`}>{item.sizeName}</Badge> : <span className="text-xs text-muted-foreground">—</span>}</TableCell>
                     <TableCell>
                       {item.category && <Badge variant="outline" title={`Category: ${item.category}`}>{item.category}</Badge>}
                     </TableCell>
@@ -833,6 +933,8 @@ export default function InventoryPage() {
                       )}
                     </TableCell>
                   </TableRow>
+                    ))}
+                  </React.Fragment>
                 ))
               )}
             </TableBody>
@@ -917,6 +1019,14 @@ export default function InventoryPage() {
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Reorder At</p>
                     <p className="text-2xl font-bold" title={`Reorder when stock falls below ${selectedItem.reorderPoint} ${selectedItem.unit ?? 'units'}`}>{selectedItem.reorderPoint} <span className="text-sm font-normal text-muted-foreground">{selectedItem.unit}</span></p>
                   </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Type</p>
+                    <p className="text-sm font-medium">{selectedItem.typeName || 'None'}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Size</p>
+                    <p className="text-sm font-medium">{selectedItem.sizeName || 'None'}</p>
+                  </div>
                   {selectedItem.category && (
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Category</p>
@@ -993,11 +1103,44 @@ export default function InventoryPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5 col-span-2">
                 <label className="text-sm font-medium">Name <span className="text-destructive">*</span></label>
-                <Input title="Item name as it appears in inventory and on invoices" placeholder="e.g. Brass Gate Valve 1in" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+                <Input title="Item name as it appears in inventory and on invoices" placeholder="e.g. Brass Gate Valve 1in" data-testid="input-inventory-name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5 col-span-2">
+                <label className="text-sm font-medium">SKU <span className="text-destructive">*</span></label>
+                <Input title="Unique stock-keeping unit identifier for this item" placeholder="BGV-1IN" className="font-mono" data-testid="input-inventory-sku" value={form.sku} onChange={e => setForm(f => ({ ...f, sku: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">SKU <span className="text-destructive">*</span></label>
-                <Input title="Unique stock-keeping unit identifier for this item" placeholder="BGV-1IN" className="font-mono" value={form.sku} onChange={e => setForm(f => ({ ...f, sku: e.target.value }))} />
+                <label className="text-sm font-medium">Type</label>
+                <Select
+                  value={form.typeId || '__none__'}
+                  onValueChange={value => {
+                    const typeId = value === '__none__' ? '' : value;
+                    const kept = sizeIdForType(form.sizeId ? Number(form.sizeId) : null, typeId ? Number(typeId) : null, partSizes);
+                    setForm(current => ({ ...current, typeId, sizeId: kept ? String(kept) : '' }));
+                  }}
+                >
+                  <SelectTrigger title="Type for this part" data-testid="select-part-type"><SelectValue placeholder="No type" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No type</SelectItem>
+                    {partTypes.map(type => <SelectItem key={type.id} value={String(type.id)}>{type.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Size</label>
+                <Select
+                  value={form.sizeId || '__none__'}
+                  onValueChange={value => setForm(current => ({ ...current, sizeId: value === '__none__' ? '' : value }))}
+                  disabled={!form.typeId}
+                >
+                  <SelectTrigger title={form.typeId ? 'Size under the selected type' : 'Choose a type first'} data-testid="select-part-size"><SelectValue placeholder={form.typeId ? 'No size' : 'Choose a type'} /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No size</SelectItem>
+                    {sizesForType(partSizes, form.typeId ? Number(form.typeId) : null).map(size => (
+                      <SelectItem key={size.id} value={String(size.id)}>{size.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5 col-span-2">
                 <label className="text-sm font-medium">Categories</label>
@@ -1202,7 +1345,7 @@ export default function InventoryPage() {
             <Separator />
             <div className="flex gap-3 justify-end">
               <Button variant="outline" onClick={() => setSheetMode(null)}>Cancel</Button>
-              <Button title={sheetMode === 'create' ? 'Add this item to inventory' : 'Save changes to this inventory item'} onClick={handleSave} disabled={createItem.isPending || updateItem.isPending}>
+              <Button title={sheetMode === 'create' ? 'Add this item to inventory' : 'Save changes to this inventory item'} data-testid="button-save-inventory-item" onClick={handleSave} disabled={createItem.isPending || updateItem.isPending}>
                 {createItem.isPending || updateItem.isPending ? 'Saving...' : sheetMode === 'create' ? 'Add Item' : 'Save Changes'}
               </Button>
             </div>

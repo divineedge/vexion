@@ -1,4 +1,5 @@
-import { pgTable, text, serial, timestamp, integer, real, boolean, jsonb, unique } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { pgTable, text, serial, timestamp, integer, real, boolean, unique, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -76,6 +77,40 @@ export const insertInventoryTransferSchema = createInsertSchema(inventoryTransfe
 export type InsertInventoryTransfer = z.infer<typeof insertInventoryTransferSchema>;
 export type InventoryTransfer = typeof inventoryTransfersTable.$inferSelect;
 
+// ─── Inventory part types and sizes ───────────────────────────────────────────
+// Type is the parent (Pipe, Fitting). Size is a child of one type (1", elbow).
+
+export const inventoryPartTypesTable = pgTable("inventory_part_types", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => [
+  uniqueIndex("inventory_part_types_tenant_name").on(t.tenantId, sql`lower(${t.name})`),
+]);
+
+export const insertInventoryPartTypeSchema = createInsertSchema(inventoryPartTypesTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertInventoryPartType = z.infer<typeof insertInventoryPartTypeSchema>;
+export type InventoryPartType = typeof inventoryPartTypesTable.$inferSelect;
+
+export const inventoryPartSizesTable = pgTable("inventory_part_sizes", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  typeId: integer("type_id").notNull().references(() => inventoryPartTypesTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => [
+  uniqueIndex("inventory_part_sizes_type_name").on(t.typeId, sql`lower(${t.name})`),
+]);
+
+export const insertInventoryPartSizeSchema = createInsertSchema(inventoryPartSizesTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertInventoryPartSize = z.infer<typeof insertInventoryPartSizeSchema>;
+export type InventoryPartSize = typeof inventoryPartSizesTable.$inferSelect;
+
 // ─── Inventory Items ──────────────────────────────────────────────────────────
 
 export const inventoryItemsTable = pgTable("inventory_items", {
@@ -85,6 +120,10 @@ export const inventoryItemsTable = pgTable("inventory_items", {
   sku: text("sku").notNull(),
   description: text("description"),
   category: text("category"),
+  /** Parent grouping. Null on parts created before types existed. */
+  typeId: integer("type_id").references(() => inventoryPartTypesTable.id, { onDelete: "set null" }),
+  /** Size under typeId. Null when the part has no size. */
+  sizeId: integer("size_id").references(() => inventoryPartSizesTable.id, { onDelete: "set null" }),
   unitPrice: real("unit_price").notNull().default(0),
   markedUpPrice: real("marked_up_price").notNull().default(0),
   quantity: integer("quantity").notNull().default(0),

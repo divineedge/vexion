@@ -12,6 +12,8 @@ const state = vi.hoisted(() => ({
   calls: [] as string[],
   lines: [] as Record<string, unknown>[],
   forceSchemaError: false,
+  vendors: [] as { id: number; name: string }[],
+  vendorInserts: [] as string[],
 }));
 
 function stringsOf(value: unknown, found: string[] = [], seen = new Set<unknown>()): string[] {
@@ -72,7 +74,11 @@ vi.mock("@workspace/db", () => ({
           { id: 10, name: "Unrelated hose", sku: "H-1", quantity: 1, unit: "each", unitPrice: 6 },
         ] };
       }
-      if (text.includes("INSERT INTO vendors")) return { rows: [{ id: 4 }] };
+      if (text.includes("INSERT INTO vendors")) {
+        state.vendorInserts.push(text);
+        return { rows: [{ id: 4 }] };
+      }
+      if (text.includes("FROM vendors")) return { rows: state.vendors };
       if (text.includes('AS "fileUrl"')) {
         const id = strings.find(item => /^[0-9a-f]{8}-/i.test(item)) ?? "11111111-1111-4111-8111-111111111111";
         return { rows: [{
@@ -111,6 +117,8 @@ describe("vendor invoice upload", () => {
     state.calls = [];
     state.lines = [];
     state.forceSchemaError = false;
+    state.vendors = [];
+    state.vendorInserts = [];
   });
 
   it("accepts a PDF larger than the JSON body limit and serves the stored bytes", async () => {
@@ -204,6 +212,59 @@ describe("vendor invoice upload", () => {
     expect(response.headers["content-type"]).toMatch(/json/);
     expect(response.body.error).toMatch(/not ready/);
     expect(response.text).not.toContain("<title>Error</title>");
+  });
+
+  it("keeps the typed vendor, selects a close match, and does not create a vendor from the customer", async () => {
+    state.vendors = [{ id: 7, name: "Great Basin Turf Products" }];
+    const ocr = [
+      "Some Random Supply",
+      "Divine Edge Property Management, LLC",
+      "Sold to:\tShip to:",
+      "P O Box\t400",
+      "Invoice # 480584",
+      "Total $8,261.04",
+    ].join("\n");
+    const created = await request(app)
+      .post("/api/vendor-documents")
+      .field("vendorName", "Great Basin Turf")
+      .field("ocrText", ocr)
+      .attach("file", pdfBytes(), { filename: "great-basin.pdf", contentType: "application/pdf" });
+    expect(created.status, created.body.error).toBe(201);
+    expect(created.body.enteredVendorName).toBe("Great Basin Turf");
+    expect(created.body.vendorId).toBe(7);
+    expect(created.body.draftVendorName).toBeNull();
+    expect(JSON.stringify(created.body)).not.toMatch(/divine edge|some random supply/i);
+    expect(state.vendorInserts).toEqual([]);
+
+    state.vendors = [{ id: 8, name: "Horizon Fuel Co." }];
+    state.vendorInserts = [];
+    const named = await request(app)
+      .post("/api/vendor-documents")
+      .field("vendorName", "Horizon Fuel")
+      .field("ocrText", "Invoice # A-14\nTotal $10.00")
+      .attach("file", pdfBytes(), { filename: "horizon.pdf", contentType: "application/pdf" });
+    expect(named.status, named.body.error).toBe(201);
+    expect(named.body.enteredVendorName).toBe("Horizon Fuel");
+    expect(named.body.vendorId).toBe(8);
+    expect(state.vendorInserts).toEqual([]);
+
+    state.vendors = [];
+    const customerOnly = [
+      "Divine Edge Property Management, LLC",
+      "Sold to:\tShip to:",
+      "Divine Edge Property Management, LLC",
+      "Invoice # 480584",
+      "Total $8,261.04",
+    ].join("\n");
+    const customer = await request(app)
+      .post("/api/vendor-documents")
+      .field("ocrText", customerOnly)
+      .attach("file", pdfBytes(), { filename: "customer.pdf", contentType: "application/pdf" });
+    expect(customer.status, customer.body.error).toBe(201);
+    expect(customer.body.vendorId).toBeNull();
+    expect(String(customer.body.enteredVendorName ?? "")).not.toMatch(/divine edge/i);
+    expect(String(customer.body.draftVendorName ?? "")).not.toMatch(/divine edge/i);
+    expect(state.vendorInserts).toEqual([]);
   });
 
   it("rejects an invoice over 12 MB", async () => {

@@ -42,6 +42,15 @@ const receiptsOf = (e: ExpenseEntry | null): SavedReceipt[] =>
   ((e as unknown as { inventoryReceipts?: SavedReceipt[] | null } | null)?.inventoryReceipts ?? []);
 const newDraft = (): ReceiptDraft => ({ key: crypto.randomUUID(), itemId: '', locationId: '', quantity: '1', costPrice: '', updatePrice: false, markupPct: '' });
 
+function vendorDeleteMessage(error: unknown): string {
+  const data = (error as { data?: { error?: string; message?: string } } | null)?.data;
+  const message = data?.error || data?.message || (error instanceof Error ? error.message : "");
+  if (!message || /failed query|violates foreign key|update or delete on table|sqlstate/i.test(message)) {
+    return "This vendor is still referenced by an invoice, so it was not deleted.";
+  }
+  return message.replace(/^HTTP \d+\s+\w+:\s*/i, "");
+}
+
 function currentMonthRange() {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
@@ -79,6 +88,7 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
   const [createRequestId, setCreateRequestId] = useState<string>(() => crypto.randomUUID());
   const { data: inventoryItems = [] } = useListInventoryItems(undefined, { query: { queryKey: getListInventoryItemsQueryKey(), enabled: canEdit } });
   const { data: inventoryLocations = [] } = useListInventoryLocations({ query: { queryKey: getListInventoryLocationsQueryKey(), enabled: canEdit } });
+  const [vendorNotice, setVendorNotice] = useState('');
   const [expenseSearch, setExpenseSearch] = useState('');
   const [expenseDateFrom, setExpenseDateFrom] = useState('');
   const [expenseDateTo, setExpenseDateTo] = useState('');
@@ -106,11 +116,18 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
   const monthTotal = thisMonthExpenses.reduce((s, e) => s + e.amount, 0);
 
   const handleDeleteVendor = async (id: number) => {
-    if (!confirm('Delete this vendor? Existing expense entries will keep their history but lose the vendor link.')) return;
-    await deleteVendor.mutateAsync({ id });
-    invalidateVendors();
-    invalidateExpenses();
-    toast.success('Vendor deleted');
+    if (!confirm('Delete this vendor? Expense history stays, without this vendor. Posted invoices still need their vendor, so that vendor is kept.')) return;
+    setVendorNotice('');
+    try {
+      await deleteVendor.mutateAsync({ id });
+      invalidateVendors();
+      invalidateExpenses();
+      toast.success('Vendor deleted');
+    } catch (err) {
+      const message = vendorDeleteMessage(err);
+      setVendorNotice(message);
+      toast.error(message);
+    }
   };
 
   const handleDeleteExpense = async (id: number) => {
@@ -176,6 +193,7 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
           )}
         </CardHeader>
         <CardContent className="p-0">
+          {vendorNotice && <div role="alert" className="px-6 py-3 text-sm text-destructive">{vendorNotice}</div>}
           <Table>
             <TableHeader>
               <TableRow>
@@ -198,7 +216,7 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
                       <Button variant="ghost" size="icon" title="Edit this vendor" className="h-8 w-8" onClick={() => { setEditingVendor(v); setVendorSheetOpen(true); }}>
                         <Pencil className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" title="Delete this vendor" className="h-8 w-8 text-destructive" onClick={() => handleDeleteVendor(v.id)}>
+                      <Button variant="ghost" size="icon" title="Delete this vendor" aria-label={`Delete vendor ${v.name}`} className="h-8 w-8 text-destructive" onClick={() => handleDeleteVendor(v.id)}>
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </TableCell>

@@ -36,6 +36,7 @@ type Invoice = {
   fileName: string;
   fileType: string;
   vendorWarning: string | null;
+  enteredVendorName?: string | null;
   lines: Line[];
   vendors: Choice[];
   tanks: Choice[];
@@ -75,8 +76,10 @@ export default function VendorDocumentsPage() {
     try {
       if (!file.size) throw new Error('That file is empty.');
       if (file.size > MAX_VENDOR_INVOICE_BYTES) throw new Error('That file is too large to review here. Use a PDF or image under 12 MB.');
+      const typedVendor = vendorName.trim();
       const body = new FormData();
       body.append('file', file);
+      if (typedVendor) body.append('vendorName', typedVendor);
       const pasted = ocrText.trim();
       const extracted = pasted || (isPdf(file) ? await readPdfText(file).catch(() => '') : '');
       if (extracted) body.append('ocrText', extracted.slice(0, 200_000));
@@ -88,7 +91,7 @@ export default function VendorDocumentsPage() {
       });
       setSourceFile(file);
       setVendorId(created.vendorId);
-      setVendorName(created.draftVendorName ?? '');
+      setVendorName(typedVendor || created.enteredVendorName?.trim() || created.draftVendorName?.trim() || '');
       setConfirmed(false);
       await loadReservations();
     } catch (cause) {
@@ -230,6 +233,7 @@ export default function VendorDocumentsPage() {
           <p className="text-muted-foreground mt-1">Review an invoice beside the file, match the vendor, and send fuel or job materials to the right place.</p>
         </div>
         <div className="flex gap-2 items-end">
+          <label className="block text-sm">Vendor name<Input data-testid="upload-vendor-name" value={vendorName} onChange={event => setVendorName(event.target.value)} placeholder="Vendor you are uploading" /></label>
           <textarea className="min-h-16 w-64 rounded-md border bg-background p-2 text-sm" placeholder="Paste invoice text when the file is a photo" value={ocrText} onChange={event => setOcrText(event.target.value)} />
           <Button disabled={busy} onClick={() => fileRef.current?.click()}>Upload PDF or image</Button>
           <input ref={fileRef} hidden type="file" accept="application/pdf,image/*" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void upload(file); }} />
@@ -243,7 +247,7 @@ export default function VendorDocumentsPage() {
             {invoice.vendorWarning && <div className="rounded-md border border-amber-500 bg-amber-50 p-3 text-sm text-amber-950">New vendor detected: '{invoice.draftVendorName}'. Create a new profile or pick an existing vendor below.</div>}
             <label className="block text-sm">Vendor<select className="mt-1 w-full rounded border p-2" data-testid="vendor-select" value={vendorId ?? ''} onChange={event => setVendorId(event.target.value ? Number(event.target.value) : null)}><option value="">Choose a vendor</option>{invoice.vendors.map(vendor => <option key={vendor.id} value={vendor.id}>{vendor.name}{vendor.isDraft ? ' (new)' : ''}</option>)}</select></label>
             <div className="flex items-end gap-2">
-              <label className="block flex-1 text-sm">Vendor name<Input data-testid="vendor-name" value={vendorName} onChange={event => setVendorName(event.target.value)} placeholder="Name from the document, or a new vendor" /></label>
+              <label className="block flex-1 text-sm">Vendor name<Input data-testid="vendor-name" value={vendorName} onChange={event => setVendorName(event.target.value)} placeholder="Name you entered for this vendor" /></label>
               <Button type="button" variant="outline" data-testid="add-vendor" disabled={busy} onClick={() => void addVendor()}>Add vendor</Button>
             </div>
             <div className="grid grid-cols-2 gap-2">

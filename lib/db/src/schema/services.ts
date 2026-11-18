@@ -10,8 +10,12 @@ export const servicesTable = pgTable("services", {
   name: text("name").notNull(),
   description: text("description"),
   category: text("category"),
-  /** Standard base price charged to customer. Also the per-sqft rate for area_and_linear. */
+  /** Each-time (per visit) price. Also the per-unit rate for measured pricing modes. */
   basePrice: real("base_price").notNull().default(0),
+  /** Flat rate used when a job for this service is invoiced weekly. */
+  weeklyRate: real("weekly_rate").notNull().default(0),
+  /** Flat rate used when a job for this service is invoiced monthly. */
+  monthlyRate: real("monthly_rate").notNull().default(0),
   /** Per-linear-foot rate used when pricingMode is area_and_linear. */
   linearRate: real("linear_rate").notNull().default(0),
   /** Estimated job duration in minutes */

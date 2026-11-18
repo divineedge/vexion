@@ -36,6 +36,8 @@ interface Service {
   description: string | null;
   category: string | null;
   basePrice: number;
+  weeklyRate?: number | null;
+  monthlyRate?: number | null;
   estimatedDuration: number | null;
   p4pPercentage: number | null;
   isActive: boolean;
@@ -57,6 +59,8 @@ type ServiceForm = {
   description: string;
   category: string;
   basePrice: string;
+  weeklyRate: string;
+  monthlyRate: string;
   estimatedDuration: string;
   p4pPercentage: string;
   isActive: boolean;
@@ -83,6 +87,8 @@ const EMPTY_FORM: ServiceForm = {
   description: '',
   category: '',
   basePrice: '',
+  weeklyRate: '',
+  monthlyRate: '',
   estimatedDuration: '',
   p4pPercentage: '',
   isActive: true,
@@ -477,6 +483,8 @@ export default function ServicesPage() {
       description: s.description ?? '',
       category: s.category ?? '',
       basePrice: String(s.basePrice),
+      weeklyRate: s.weeklyRate != null ? String(s.weeklyRate) : '',
+      monthlyRate: s.monthlyRate != null ? String(s.monthlyRate) : '',
       estimatedDuration: s.estimatedDuration != null ? String(s.estimatedDuration) : '',
       p4pPercentage: s.p4pPercentage != null ? String(s.p4pPercentage) : '',
       isActive: s.isActive,
@@ -530,6 +538,8 @@ export default function ServicesPage() {
       description: form.description,
       category: form.category,
       basePrice: form.pricingMode === 'hourly' ? form.hourlyRate : form.basePrice,
+      weeklyRate: form.weeklyRate,
+      monthlyRate: form.monthlyRate,
       hourlyRate: form.pricingMode === 'hourly' ? form.hourlyRate : null,
       minimumBillableHours: form.pricingMode === 'hourly' ? form.minimumBillableHours : null,
       estimatedDuration: form.estimatedDuration,
@@ -762,7 +772,11 @@ export default function ServicesPage() {
                       ) : s.pricingMode === 'per_sqft' ? (
                         <span title={`Rate: $${s.basePrice.toFixed(2)} per square foot`}>${s.basePrice.toFixed(2)}/sqft</span>
                       ) : (
-                        <span title={`Base price: $${s.basePrice.toFixed(2)}`}>${s.basePrice.toFixed(2)}</span>
+                        <span className="inline-flex flex-col items-end gap-0.5 text-xs font-medium" title="Each time, weekly, and monthly flat rates">
+                          <span>Each time ${s.basePrice.toFixed(2)}</span>
+                          <span className="text-muted-foreground font-normal">Weekly ${(s.weeklyRate ?? 0).toFixed(2)}</span>
+                          <span className="text-muted-foreground font-normal">Monthly ${(s.monthlyRate ?? 0).toFixed(2)}</span>
+                        </span>
                       )}
                     </TableCell>
                     <TableCell className="text-right text-sm text-muted-foreground">
@@ -951,21 +965,77 @@ export default function ServicesPage() {
                 </div>
               ) : form.pricingMode !== 'matrix' ? (
                 <div className="space-y-3">
+                  {form.pricingMode === 'flat' ? (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium" htmlFor="service-rate-each-time">Each time ($)</label>
+                          <Input
+                            id="service-rate-each-time"
+                            data-testid="input-service-rate-each-time"
+                            type="number"
+                            step="0.01"
+                            min={0}
+                            title="Price charged each time this service is performed"
+                            placeholder="0.00"
+                            value={form.basePrice}
+                            onChange={e => setForm(f => ({ ...f, basePrice: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium" htmlFor="service-rate-weekly">Weekly ($)</label>
+                          <Input
+                            id="service-rate-weekly"
+                            data-testid="input-service-rate-weekly"
+                            type="number"
+                            step="0.01"
+                            min={0}
+                            title="Price charged when this service is invoiced weekly"
+                            placeholder="0.00"
+                            value={form.weeklyRate}
+                            onChange={e => setForm(f => ({ ...f, weeklyRate: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium" htmlFor="service-rate-monthly">Monthly ($)</label>
+                          <Input
+                            id="service-rate-monthly"
+                            data-testid="input-service-rate-monthly"
+                            type="number"
+                            step="0.01"
+                            min={0}
+                            title="Price charged when this service is invoiced monthly"
+                            placeholder="0.00"
+                            value={form.monthlyRate}
+                            onChange={e => setForm(f => ({ ...f, monthlyRate: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Each time is the per-visit price. Weekly and monthly are used when a job is invoiced on that schedule.</p>
+                      <div className="space-y-1.5 max-w-xs">
+                        <label className="text-sm font-medium">Est. Duration (min)</label>
+                        <Input
+                          type="number"
+                          min={0}
+                          title="Estimated duration for this service in minutes"
+                          placeholder="e.g. 60"
+                          value={form.estimatedDuration}
+                          onChange={e => setForm(f => ({ ...f, estimatedDuration: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  ) : (
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                     <label className="text-sm font-medium">
-                      {form.pricingMode === 'flat'
-                        ? 'Base Price ($)'
-                        : form.pricingMode === 'per_linear_ft'
+                      {form.pricingMode === 'per_linear_ft'
                           ? 'Rate per linear ft ($)'
                           : 'Rate per sqft ($)'}
                     </label>
                     <Input
                       type="number"
                       step="0.01"
-                      title={form.pricingMode === 'flat'
-                        ? 'Base price charged for this service'
-                        : form.pricingMode === 'per_sqft'
+                      title={form.pricingMode === 'per_sqft'
                           ? 'Amount charged for each square foot'
                           : 'Amount charged for each linear foot'}
                       placeholder="0.00"
@@ -985,6 +1055,7 @@ export default function ServicesPage() {
                     />
                   </div>
                   </div>
+                  )}
                   {form.pricingMode === 'area_and_linear' && (
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium">Rate per linear ft ($)</label>

@@ -11,6 +11,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import { Check, ChevronsUpDown, RefreshCw, MessageSquare, Tag, X, Snowflake } from 'lucide-react';
+import { applyServiceToJobPrice, editJobPrice, normalizeInvoiceFrequency, type InvoiceFrequency, type ServiceRateSource } from '@/lib/jobServicePrice';
+import type { MeasuredProperty } from '@/lib/pricingMatrix';
 
 export type NewJobForm = {
   title: string;
@@ -25,6 +27,11 @@ export type NewJobForm = {
   assigneeId: string;
   crewId: string;
   serviceId: string;
+  /** Customer price for this job. Filled from the service, then kept if edited. */
+  price: string;
+  /** True after the office types a price, so a later frequency change does not overwrite it. */
+  priceEdited: boolean;
+  invoiceFrequency: InvoiceFrequency;
   tags: string[];
   recurring: boolean;
   recurrencePattern: string;
@@ -54,6 +61,9 @@ export const EMPTY_JOB: NewJobForm = {
   assigneeId: '',
   crewId: '',
   serviceId: '',
+  price: '',
+  priceEdited: false,
+  invoiceFrequency: 'each_time',
   tags: [],
   recurring: false,
   recurrencePattern: 'weekly',
@@ -151,7 +161,7 @@ export interface JobFormFieldsProps {
   setForm: React.Dispatch<React.SetStateAction<NewJobForm>>;
   customers: { id: number; name: string; physicalAddress?: string | null; primaryPropertyAddress?: string | null }[];
   /** Properties for the selected customer. Pass an empty array when none are loaded yet. */
-  properties: { id: number; address: string }[];
+  properties: ({ id: number; address: string } & MeasuredProperty)[];
   users: { id: number; name: string; role: string }[];
   crews?: { id: number; name: string }[];
   ownersSchedulable?: boolean;
@@ -184,6 +194,21 @@ export function JobFormFields({ form, setForm, customers, properties, users, cre
     if (!form.customerId) setSelectedCustomerName('');
   }, [customers, form.customerId]);
 
+  const propertyForPrice = properties.find(property => String(property.id) === form.propertyId) ?? null;
+  const serviceForPrice = services.find(service => service.id === Number(form.serviceId));
+
+  React.useEffect(() => {
+    if (!serviceForPrice || form.priceEdited) return;
+    const next = applyServiceToJobPrice(
+      { price: form.price, priceEdited: false },
+      serviceForPrice as ServiceRateSource,
+      form.invoiceFrequency,
+      propertyForPrice,
+    );
+    if (next.price === form.price) return;
+    setForm(current => current.priceEdited || current.serviceId !== form.serviceId ? current : { ...current, price: next.price, priceEdited: false });
+  }, [serviceForPrice, form.invoiceFrequency, form.priceEdited, form.price, form.serviceId, propertyForPrice, setForm]);
+
   return (
     <>
       <div className="space-y-1.5">
@@ -191,17 +216,32 @@ export function JobFormFields({ form, setForm, customers, properties, users, cre
         <Select
           value={form.serviceId || 'none'}
           onValueChange={value => {
-            if (value === 'none') { setForm(current => ({ ...current, serviceId: '' })); return; }
+            if (value === 'none') {
+              setForm(current => ({ ...current, serviceId: '', price: current.priceEdited ? current.price : '', priceEdited: current.priceEdited }));
+              return;
+            }
             const service = services.find(item => item.id === Number(value));
             if (!service) return;
-            setForm(current => ({
-              ...current,
-              serviceId: value,
-              title: service.name,
-              estimatedDuration: service.estimatedDuration != null
-                ? String(current.estimatedDurationUnit === 'hours' ? service.estimatedDuration / 60 : service.estimatedDuration)
-                : current.estimatedDuration,
-            }));
+            setForm(current => {
+              const property = properties.find(item => String(item.id) === current.propertyId) ?? null;
+              const priced = applyServiceToJobPrice(
+                { price: current.price, priceEdited: current.priceEdited },
+                service as ServiceRateSource,
+                current.invoiceFrequency,
+                property,
+                { serviceChanged: true },
+              );
+              return {
+                ...current,
+                serviceId: value,
+                title: service.name,
+                price: priced.price,
+                priceEdited: false,
+                estimatedDuration: service.estimatedDuration != null
+                  ? String(current.estimatedDurationUnit === 'hours' ? service.estimatedDuration / 60 : service.estimatedDuration)
+                  : current.estimatedDuration,
+              };
+            });
           }}
         >
           <SelectTrigger title="Select a catalog service to link and price this job"><SelectValue placeholder="Optional service..." /></SelectTrigger>
@@ -210,8 +250,52 @@ export function JobFormFields({ form, setForm, customers, properties, users, cre
             {services.map(service => <SelectItem key={service.id} value={String(service.id)}>{service.name}</SelectItem>)}
           </SelectContent>
         </Select>
-        <p className="text-xs text-muted-foreground">Selecting a service fills its title and default duration. You can edit the duration.</p>
+        <p className="text-xs text-muted-foreground">Selecting a service fills its title, price, and default duration. You can edit the price and duration.</p>
       </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium" htmlFor="job-price">Price ($)</label>
+          <Input
+            id="job-price"
+            data-testid="input-job-price"
+            type="number"
+            min={0}
+            step="0.01"
+            title="Customer price for this job. Filled from the service. You can change it."
+            placeholder="0.00"
+            value={form.price}
+            onChange={e => setForm(current => ({ ...current, ...editJobPrice(e.target.value) }))}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Invoice</label>
+          <Select
+            value={form.invoiceFrequency}
+            onValueChange={value => {
+              const invoiceFrequency = normalizeInvoiceFrequency(value);
+              setForm(current => {
+                const service = services.find(item => item.id === Number(current.serviceId));
+                const property = properties.find(item => String(item.id) === current.propertyId) ?? null;
+                const priced = applyServiceToJobPrice(
+                  { price: current.price, priceEdited: current.priceEdited },
+                  service as ServiceRateSource | undefined,
+                  invoiceFrequency,
+                  property,
+                );
+                return { ...current, invoiceFrequency, price: priced.price, priceEdited: priced.priceEdited };
+              });
+            }}
+          >
+            <SelectTrigger data-testid="select-job-invoice-frequency" title="How often this job is invoiced"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="each_time">Each time</SelectItem>
+              <SelectItem value="weekly">Weekly</SelectItem>
+              <SelectItem value="monthly">Monthly</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground -mt-2">Each time, weekly, and monthly use that service rate. An edited price stays when you change how often the job is invoiced.</p>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Title <span className="text-destructive">*</span></label>
         <Input title="Enter a descriptive job title" placeholder="e.g. Irrigation system repair" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />

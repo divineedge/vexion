@@ -2886,6 +2886,8 @@ export interface RecurringSeries {
   /** @nullable */
   nextScheduledAt: string | null;
   completedCount: number;
+  totalAmount?: number;
+  invoiceFrequency?: RecurringSeriesInvoiceFrequency;
   /** @nullable */
   customerName?: string | null;
   /** @nullable */
@@ -2907,6 +2909,38 @@ export const JobStatus = {
   completed: 'completed',
   cancelled: 'cancelled',
   on_hold: 'on_hold',
+} as const;
+
+export type RecurringSeriesInvoiceFrequency = typeof RecurringSeriesInvoiceFrequency[keyof typeof RecurringSeriesInvoiceFrequency];
+
+export const RecurringSeriesInvoiceFrequency = {
+  each_time: 'each_time',
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
+
+export type JobInvoiceFrequency = typeof JobInvoiceFrequency[keyof typeof JobInvoiceFrequency];
+
+export const JobInvoiceFrequency = {
+  each_time: 'each_time',
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
+
+export type JobInputInvoiceFrequency = typeof JobInputInvoiceFrequency[keyof typeof JobInputInvoiceFrequency];
+
+export const JobInputInvoiceFrequency = {
+  each_time: 'each_time',
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
+
+export type JobUpdateInvoiceFrequency = typeof JobUpdateInvoiceFrequency[keyof typeof JobUpdateInvoiceFrequency];
+
+export const JobUpdateInvoiceFrequency = {
+  each_time: 'each_time',
+  weekly: 'weekly',
+  monthly: 'monthly',
 } as const;
 
 export type JobPriority = typeof JobPriority[keyof typeof JobPriority];
@@ -2996,6 +3030,8 @@ export interface Job {
   /** @nullable */
   completedAt?: string | null;
   totalAmount?: number;
+  /** How often this job is invoiced. Each time, weekly, and monthly match the service rates. */
+  invoiceFrequency?: JobInvoiceFrequency;
   /** @nullable */
   invoiceId?: number | null;
   /** @nullable */
@@ -3132,7 +3168,16 @@ export interface Service {
   description?: string | null;
   /** @nullable */
   category?: string | null;
+  /** Each-time (per visit) price. Also the per-unit rate for measured pricing modes. */
   basePrice: number;
+  /** Flat rate used when a job for this service is invoiced weekly. */
+  weeklyRate?: number;
+  /** Flat rate used when a job for this service is invoiced monthly. */
+  monthlyRate?: number;
+  /** @nullable */
+  linearRate?: number | null;
+  /** @nullable */
+  hourlyRate?: number | null;
   /**
      * Default estimated duration in minutes
      * @nullable
@@ -3354,6 +3399,7 @@ export interface JobInput {
   estimatedDuration?: number;
   lineItems?: JobLineItem[];
   totalAmount?: number;
+  invoiceFrequency?: JobInputInvoiceFrequency;
   blueprintId?: number;
   recurrenceRule?: RecurrenceRule;
   /**
@@ -3420,6 +3466,9 @@ export interface JobUpdate {
   serviceId?: number | null;
   scheduledAt?: string;
   estimatedDuration?: number;
+  /** Customer price for this job. An edited price is kept. */
+  totalAmount?: number;
+  invoiceFrequency?: JobUpdateInvoiceFrequency;
   recurrenceRule?: RecurrenceRule;
   /**
      * Annual pause start. Set both pause fields to null to clear the window.

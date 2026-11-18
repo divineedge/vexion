@@ -1,7 +1,8 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, inventoryItemsTable, inventoryPartSizesTable, inventoryPartTypesTable, inventorySuppliersTable, tenantsTable } from "@workspace/db";
+import { db, inventoryItemsTable, inventoryPartSizesTable, inventoryPartTypesTable, inventorySuppliersTable, tenantsTable, vendorsTable } from "@workspace/db";
 import { eq, and, or, ilike, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { applyArrival, isPipeTypeName, parseOptionalAmount, sellUnitPrice } from "../lib/pipeStock";
 import { usersTable } from "@workspace/db";
 import {
   importUpload,
@@ -196,10 +197,12 @@ function formatItem(
   includeCostPrice: boolean,
   supplierName?: string | null,
   grouping?: { typeName: string | null; sizeName: string | null },
+  vendorName?: string | null,
 ) {
   const costPrice = i.unitPrice;     // DB unitPrice = what we pay
-  const sellPrice = i.markedUpPrice; // DB markedUpPrice = what we charge
+  const sellPrice = sellUnitPrice(i.pricePerFoot, i.markedUpPrice);
   const markup = storedMarkupPct(costPrice, sellPrice, tenantMarkupPct);
+  const resolvedVendor = vendorName ?? null;
   return {
     id: i.id,
     tenantId: i.tenantId,
@@ -211,18 +214,22 @@ function formatItem(
     typeName: grouping?.typeName ?? null,
     sizeId: i.sizeId ?? null,
     sizeName: grouping?.sizeName ?? null,
+    lengthReceived: i.lengthReceived ?? null,
+    pricePerFoot: i.pricePerFoot ?? null,
+    vendorId: i.vendorId ?? null,
+    vendorName: resolvedVendor,
     costPrice: includeCostPrice ? costPrice : null,
     unitPrice: sellPrice,
     markupPct: markup,
     markedUpPrice: sellPrice,
     quantity: i.quantity,
     reorderPoint: i.reorderPoint,
-    unit: i.unit,
+    unit: i.pricePerFoot != null && (!i.unit || i.unit === "each") ? "ft" : i.unit,
     isLowStock: i.quantity <= i.reorderPoint,
     availableForBlueprint: i.availableForBlueprint,
     commissionPct: i.commissionPct ?? null,
     supplierId: i.supplierId ?? null,
-    supplierName: supplierName ?? null,
+    supplierName: resolvedVendor ?? supplierName ?? null,
     createdAt: i.createdAt.toISOString(),
   };
 }
@@ -297,6 +304,41 @@ async function resolveGrouping(
   return { ok: true, value: { typeId: type.id, sizeId: size.id, typeName: type.name, sizeName: size.name } };
 }
 
+async function partyNames(tenantId: number, item: { supplierId: number | null; vendorId: number | null }) {
+  let supplierName: string | null = null;
+  let vendorName: string | null = null;
+  if (item.supplierId) {
+    const [supplier] = await db.select({ name: inventorySuppliersTable.name })
+      .from(inventorySuppliersTable)
+      .where(and(eq(inventorySuppliersTable.id, item.supplierId), eq(inventorySuppliersTable.tenantId, tenantId)));
+    supplierName = supplier?.name ?? null;
+  }
+  if (item.vendorId) {
+    const [vendor] = await db.select({ name: vendorsTable.name })
+      .from(vendorsTable)
+      .where(and(eq(vendorsTable.id, item.vendorId), eq(vendorsTable.tenantId, tenantId)));
+    vendorName = vendor?.name ?? null;
+  }
+  return { supplierName, vendorName };
+}
+
+async function resolveVendor(tenantId: number, raw: unknown): Promise<{ ok: true; id: number | null; name: string | null } | { ok: false; error: string }> {
+  if (raw === undefined || raw === null || raw === "") return { ok: true, id: null, name: null };
+  const id = parseSafeInt(raw, NaN);
+  if (Number.isNaN(id)) return { ok: false, error: "Choose a vendor from the list" };
+  const [vendor] = await db.select({ id: vendorsTable.id, name: vendorsTable.name })
+    .from(vendorsTable)
+    .where(and(eq(vendorsTable.id, id), eq(vendorsTable.tenantId, tenantId)));
+  if (!vendor) return { ok: false, error: "Vendor not found" };
+  return { ok: true, id: vendor.id, name: vendor.name };
+}
+
+function readAmount(value: unknown, label: string): { ok: true; value: number | null | undefined } | { ok: false; error: string } {
+  const parsed = parseOptionalAmount(value);
+  if (parsed === "invalid") return { ok: false, error: `${label} must be a non-negative number` };
+  return { ok: true, value: parsed };
+}
+
 async function groupingForItem(tenantId: number, typeId: number | null, sizeId: number | null) {
   const resolved = await resolveGrouping(tenantId, typeId, sizeId);
   return resolved.ok ? resolved.value : { typeId, sizeId, typeName: null, sizeName: null };
@@ -312,7 +354,7 @@ router.get("/inventory/summary", async (req, res): Promise<void> => {
     .where(eq(inventoryItemsTable.tenantId, tenantId));
 
   const totalItems = items.length;
-  const totalValue = items.reduce((sum, i) => sum + i.markedUpPrice * i.quantity, 0);
+  const totalValue = items.reduce((sum, i) => sum + sellUnitPrice(i.pricePerFoot, i.markedUpPrice) * i.quantity, 0);
   const lowStockCount = items.filter(i => i.quantity <= i.reorderPoint).length;
 
   const catMap: Record<string, number> = {};
@@ -417,7 +459,7 @@ router.get("/inventory", async (req, res): Promise<void> => {
   }
   if (availableForBlueprint === "true") where = and(where, eq(inventoryItemsTable.availableForBlueprint, true)) as typeof where;
 
-  const [items, markupPct, showCost, suppliers] = await Promise.all([
+  const [items, markupPct, showCost, suppliers, vendors] = await Promise.all([
     db.select({
       item: inventoryItemsTable,
       typeName: inventoryPartTypesTable.name,
@@ -432,15 +474,20 @@ router.get("/inventory", async (req, res): Promise<void> => {
     db.select({ id: inventorySuppliersTable.id, name: inventorySuppliersTable.name })
       .from(inventorySuppliersTable)
       .where(eq(inventorySuppliersTable.tenantId, tenantId)),
+    db.select({ id: vendorsTable.id, name: vendorsTable.name })
+      .from(vendorsTable)
+      .where(eq(vendorsTable.tenantId, tenantId)),
   ]);
 
   const supplierMap = new Map(suppliers.map(s => [s.id, s.name]));
+  const vendorMap = new Map(vendors.map(vendor => [vendor.id, vendor.name]));
   const formatted = items.map(({ item, typeName, sizeName }) => formatItem(
     item,
     markupPct,
     showCost,
     item.supplierId ? supplierMap.get(item.supplierId) : null,
     { typeName: typeName ?? null, sizeName: sizeName ?? null },
+    item.vendorId ? vendorMap.get(item.vendorId) ?? null : null,
   ));
 
   if (lowStock === "true") {
@@ -465,8 +512,14 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
   const costVal = parseSafeFloat(costPrice, 0);
   if (costVal < 0) { res.status(400).json({ error: "costPrice must be >= 0" }); return; }
   if (effectiveMarkupPct < 0) { res.status(400).json({ error: "markupPct must be >= 0" }); return; }
-  const sellPrice = costVal * (1 + effectiveMarkupPct / 100);
-  const qty = parseSafeInt(quantity, 0);
+  const markupSell = costVal * (1 + effectiveMarkupPct / 100);
+  const lengthRead = readAmount(req.body.lengthReceived, "Length received");
+  if (!lengthRead.ok) { res.status(400).json({ error: lengthRead.error }); return; }
+  const priceRead = readAmount(req.body.pricePerFoot, "Price per foot");
+  if (!priceRead.ok) { res.status(400).json({ error: priceRead.error }); return; }
+  const vendor = req.body.vendorId !== undefined ? await resolveVendor(tenantId, req.body.vendorId) : { ok: true as const, id: null, name: null };
+  if (!vendor.ok) { res.status(400).json({ error: vendor.error }); return; }
+  const qtyInput = parseSafeInt(quantity, 0);
   const reorder = parseSafeInt(reorderPoint, 5);
   const commissionPctVal = reqCommissionPct != null ? parseSafeFloat(reqCommissionPct, 0) : null;
 
@@ -488,6 +541,15 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
   const grouping = await resolveGrouping(tenantId, reqTypeId ?? null, reqSizeId ?? null);
   if (!grouping.ok) { res.status(400).json({ error: grouping.error }); return; }
 
+  const arrival = applyArrival({
+    quantity: qtyInput,
+    unit: unit ? String(unit) : "each",
+    sellPrice: markupSell,
+    lengthReceived: lengthRead.value ?? null,
+    pricePerFoot: priceRead.value ?? null,
+    pipe: isPipeTypeName(grouping.value.typeName),
+  });
+
   const [item] = await db.insert(inventoryItemsTable).values({
     tenantId,
     name: String(name),
@@ -497,18 +559,21 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
     typeId: grouping.value.typeId,
     sizeId: grouping.value.sizeId,
     unitPrice: costVal,
-    markedUpPrice: sellPrice,
-    quantity: qty,
+    markedUpPrice: arrival.sellPrice,
+    quantity: arrival.quantity,
     reorderPoint: reorder,
-    unit: unit ? String(unit) : "each",
-    isLowStock: qty <= reorder,
+    unit: arrival.unit,
+    isLowStock: arrival.quantity <= reorder,
     availableForBlueprint: availableForBlueprint === true || availableForBlueprint === "true",
     commissionPct: commissionPctVal,
     supplierId: resolvedSupplierId,
+    lengthReceived: lengthRead.value ?? null,
+    pricePerFoot: priceRead.value ?? null,
+    vendorId: vendor.id,
   }).returning();
 
   const showCost = await canSeeCostPrice(tenantId, userId);
-  res.status(201).json(formatItem(item, tenantMarkupPct, showCost, supplierName, grouping.value));
+  res.status(201).json(formatItem(item, tenantMarkupPct, showCost, supplierName, grouping.value, vendor.name));
 });
 
 router.get("/inventory/:id", async (req, res): Promise<void> => {
@@ -527,15 +592,9 @@ router.get("/inventory/:id", async (req, res): Promise<void> => {
   ]);
   if (!item) { res.status(404).json({ error: "Not found" }); return; }
 
-  let supplierName: string | null = null;
-  if (item.supplierId) {
-    const [sup] = await db.select({ name: inventorySuppliersTable.name })
-      .from(inventorySuppliersTable)
-      .where(and(eq(inventorySuppliersTable.id, item.supplierId), eq(inventorySuppliersTable.tenantId, tenantId)));
-    supplierName = sup?.name ?? null;
-  }
+  const names = await partyNames(tenantId, item);
   const grouping = await groupingForItem(tenantId, item.typeId, item.sizeId);
-  res.json(formatItem(item, markupPct, showCost, supplierName, grouping));
+  res.json(formatItem(item, markupPct, showCost, names.supplierName, grouping, names.vendorName));
 });
 
 router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise<void> => {
@@ -576,22 +635,30 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
     updates.sizeId = grouping.value.sizeId;
   }
 
-  // Validate supplierId belongs to this tenant before accepting it
-  let patchedSupplierName: string | null | undefined = undefined; // undefined = not changing
   if (reqSupplierId !== undefined) {
     if (reqSupplierId == null) {
       updates.supplierId = null;
-      patchedSupplierName = null;
     } else {
       const sid = parseSafeInt(reqSupplierId, NaN);
       if (isNaN(sid)) { res.status(400).json({ error: "Invalid supplierId" }); return; }
-      const [sup] = await db.select({ id: inventorySuppliersTable.id, name: inventorySuppliersTable.name })
+      const [sup] = await db.select({ id: inventorySuppliersTable.id })
         .from(inventorySuppliersTable)
         .where(and(eq(inventorySuppliersTable.id, sid), eq(inventorySuppliersTable.tenantId, tenantId)));
       if (!sup) { res.status(400).json({ error: "Supplier not found" }); return; }
       updates.supplierId = sup.id;
-      patchedSupplierName = sup.name;
     }
+  }
+
+  const lengthRead = readAmount(req.body.lengthReceived, "Length received");
+  if (!lengthRead.ok) { res.status(400).json({ error: lengthRead.error }); return; }
+  if (lengthRead.value !== undefined) updates.lengthReceived = lengthRead.value;
+  const priceRead = readAmount(req.body.pricePerFoot, "Price per foot");
+  if (!priceRead.ok) { res.status(400).json({ error: priceRead.error }); return; }
+  if (priceRead.value !== undefined) updates.pricePerFoot = priceRead.value;
+  if (req.body.vendorId !== undefined) {
+    const vendor = await resolveVendor(tenantId, req.body.vendorId);
+    if (!vendor.ok) { res.status(400).json({ error: vendor.error }); return; }
+    updates.vendorId = vendor.id;
   }
 
   if (costPrice !== undefined || reqMarkupPct !== undefined) {
@@ -607,6 +674,10 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
     const effectiveMarkupPct = reqMarkupPct != null ? parseSafeFloat(reqMarkupPct, existingMarkup) : existingMarkup;
     updates.unitPrice = costVal;
     updates.markedUpPrice = costVal * (1 + effectiveMarkupPct / 100);
+  }
+  if (updates.pricePerFoot != null) updates.markedUpPrice = updates.pricePerFoot;
+  if ((updates.pricePerFoot != null || updates.lengthReceived != null) && (updates.unit === undefined || updates.unit === "each")) {
+    updates.unit = "ft";
   }
 
   if (updates.quantity !== undefined || updates.reorderPoint !== undefined) {
@@ -637,19 +708,9 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
     canSeeCostPrice(tenantId, userId),
   ]);
 
-  // Resolve supplier name: use already-validated name if supplierId was changed,
-  // otherwise look up existing supplierId (tenant-scoped).
-  let supplierName: string | null = null;
-  if (patchedSupplierName !== undefined) {
-    supplierName = patchedSupplierName;
-  } else if (updated.supplierId) {
-    const [sup] = await db.select({ name: inventorySuppliersTable.name })
-      .from(inventorySuppliersTable)
-      .where(and(eq(inventorySuppliersTable.id, updated.supplierId), eq(inventorySuppliersTable.tenantId, tenantId)));
-    supplierName = sup?.name ?? null;
-  }
+  const names = await partyNames(tenantId, updated);
   const grouping = await groupingForItem(tenantId, updated.typeId, updated.sizeId);
-  res.json(formatItem(updated, markupPct, showCost, supplierName, grouping));
+  res.json(formatItem(updated, markupPct, showCost, names.supplierName, grouping, names.vendorName));
 });
 
 // ── Stock adjustment ──────────────────────────────────────────────────────────
@@ -688,8 +749,9 @@ router.post("/inventory/:id/adjust-stock", requireInventoryMutate, async (req, r
     getTenantMarkupPct(tenantId),
     canSeeCostPrice(tenantId, userId),
   ]);
+  const names = await partyNames(tenantId, updated);
   const grouping = await groupingForItem(tenantId, updated.typeId, updated.sizeId);
-  res.json(formatItem(updated, markupPct, showCost, null, grouping));
+  res.json(formatItem(updated, markupPct, showCost, names.supplierName, grouping, names.vendorName));
 });
 
 router.delete("/inventory/:id", requireInventoryMutate, async (req, res): Promise<void> => {

@@ -1,6 +1,7 @@
 import {db,inventoryItemsTable,inventoryCostLotsTable,inventoryLocationStockTable,inventoryLocationsTable,inventoryTransfersTable,jobsTable} from '@workspace/db';
 import {and,eq,sql,desc,asc} from 'drizzle-orm';
 import type {HrDb} from './hrAccess';
+import {sellUnitPrice} from './pipeStock';
 const fail=(message:string,status=400):never=>{throw Object.assign(new Error(message),{status});};
 type Item=typeof inventoryItemsTable.$inferSelect;
 type Allocation={lotId:number;quantity:number;unitCost:number};
@@ -120,7 +121,8 @@ export async function setJobPart(tenantId:number,jobId:number,itemId:number,quan
    await tx.update(inventoryItemsTable).set({quantity:item.quantity-delta,isLowStock:item.quantity-delta<=item.reorderPoint}).where(eq(inventoryItemsTable.id,itemId));
    await tx.insert(inventoryTransfersTable).values({tenantId,inventoryItemId:itemId,quantity:Math.abs(delta),reason:`Job #${jobId} supplies ${delta>0?'used':'returned'}`});
   }
-  const part={inventoryItemId:item.id,name:old?.name??item.name,quantity,unitPrice:old?.unitPrice??item.markedUpPrice,total:(old?.unitPrice??item.markedUpPrice)*quantity,_stockUsage:usage};
+  const charged=old?.unitPrice??sellUnitPrice(item.pricePerFoot,item.markedUpPrice);
+  const part={inventoryItemId:item.id,name:old?.name??item.name,quantity,unitPrice:charged,unit:item.pricePerFoot!=null?'ft':(typeof old?.unit==='string'&&old.unit?old.unit:item.unit),total:charged*quantity,_stockUsage:usage};
   return(await tx.update(jobsTable).set({jobParts:[...parts.filter(p=>p.inventoryItemId!==itemId),...(quantity?[part]:[])]}).where(eq(jobsTable.id,jobId)).returning())[0];
  });
 }

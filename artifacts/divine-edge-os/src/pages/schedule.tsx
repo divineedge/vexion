@@ -2869,7 +2869,7 @@ export default function SchedulePage() {
                                 <input
                                   type="number"
                                   min={1}
-                                  title="Quantity to add"
+                                  title={item.unit === 'ft' ? 'Feet to sell' : 'Quantity to add'}
                                   className="w-14 text-xs border rounded px-1.5 py-1 text-right"
                                   value={partQtys[item.id] ?? '1'}
                                   onChange={e => setPartQtys(prev => ({ ...prev, [item.id]: e.target.value }))}
@@ -2913,11 +2913,11 @@ export default function SchedulePage() {
                   {/* Parts list */}
                   {Array.isArray(selectedJob.jobParts) && selectedJob.jobParts.length > 0 ? (
                     <div className="rounded-lg border divide-y text-sm">
-                      {(selectedJob.jobParts as { inventoryItemId: number; name: string; quantity: number; unitPrice: number; total: number }[]).map((part, i) => (
+                      {(selectedJob.jobParts as { inventoryItemId: number; name: string; quantity: number; unitPrice: number; total: number; unit?: string }[]).map((part, i) => (
                         <div key={i} className="flex items-center justify-between px-3 py-2">
                           <div className="flex-1 min-w-0">
                             <span className="font-medium truncate block" title={part.name}>{part.name}</span>
-                            <span className="text-xs text-muted-foreground" title={`${part.quantity} × $${part.unitPrice.toFixed(2)} each`}>{part.quantity} × ${part.unitPrice.toFixed(2)}</span>
+                            <span className="text-xs text-muted-foreground" title={`${part.quantity} ${part.unit || 'each'} × $${part.unitPrice.toFixed(2)}`}>{part.quantity} {part.unit || 'each'} × ${part.unitPrice.toFixed(2)}</span>
                             <PartLocationBadges inventoryItemId={part.inventoryItemId} />
                           </div>
                           <div className="flex items-center gap-2">

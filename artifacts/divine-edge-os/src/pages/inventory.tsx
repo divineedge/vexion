@@ -13,13 +13,14 @@ import {
   useTransferInventoryStock,
   useAdjustLocationStock,
   useGetInventoryItemByLocation, getGetInventoryItemByLocationQueryKey,
-  useListInventorySuppliers, getListInventorySuppliersQueryKey,
-  useCreateInventorySupplier,
-  useListInventoryTypes, getListInventoryTypesQueryKey,
-  useListInventorySizes, getListInventorySizesQueryKey,
+  useListInventoryTypes, getListInventoryTypesQueryKey, getListInventoryTypesQueryOptions,
+  useListInventorySizes, getListInventorySizesQueryKey, getListInventorySizesQueryOptions,
+  useCreateInventoryType,
+  useCreateInventorySize,
+  useListVendors, getListVendorsQueryKey,
   useUpdateTenantSettings,
 } from '@workspace/api-client-react';
-import type { InventoryLocation } from '@workspace/api-client-react';
+import type { InventoryLocation, InventorySize, InventoryType } from '@workspace/api-client-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -27,6 +28,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { isFromPickerPortal } from '@/components/shared/SearchableCombobox';
+import { CreatableOptionMenu } from '@/components/inventory/CreatableOptionMenu';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -43,6 +46,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useDebounce } from '@/hooks/use-debounce';
 import { upsertInventoryLocation } from '@/lib/inventoryLocations';
 import { groupInventoryItems, sizeIdForType, sizesForType, type InventoryGroupBy } from '@/lib/inventoryGrouping';
+import { categoryChoices, feetFromLength, isPipeTypeName, namedId } from '@/lib/inventoryPartForm';
 import { ShrinkageReport } from '@/components/inventory/ShrinkageReport';
 
 function ItemLocationSection({ inventoryItemId }: { inventoryItemId: number }) {
@@ -192,7 +196,7 @@ type ItemForm = {
   name: string;
   sku: string;
   description: string;
-  categories: string[]; // stored as comma-joined in the category text column
+  category: string;
   typeId: string;
   sizeId: string;
   costPrice: string;
@@ -200,15 +204,18 @@ type ItemForm = {
   quantity: string;
   reorderPoint: string;
   unit: string;
+  lengthReceived: string;
+  pricePerFoot: string;
   availableForBlueprint: boolean;
   commissionPct: string;
-  supplierId: string; // '' means none
+  vendorId: string;
 };
 
 const EMPTY_FORM: ItemForm = {
-  name: '', sku: '', description: '', categories: [], typeId: '', sizeId: '',
+  name: '', sku: '', description: '', category: '', typeId: '', sizeId: '',
   costPrice: '', markupPct: '', quantity: '0', reorderPoint: '5', unit: 'each',
-  availableForBlueprint: false, commissionPct: '', supplierId: '',
+  lengthReceived: '', pricePerFoot: '',
+  availableForBlueprint: false, commissionPct: '', vendorId: '',
 };
 
 export default function InventoryPage() {
@@ -255,13 +262,7 @@ export default function InventoryPage() {
   const [locAdjustDelta, setLocAdjustDelta] = useState('');
   const [locAdjustReason, setLocAdjustReason] = useState('');
 
-  // Supplier inline-create dialog
-  const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
-  const [supplierForm, setSupplierForm] = useState({ name: '', contact: '', accountNumber: '', notes: '' });
-
-  // Suppliers
-  const { data: suppliers } = useListInventorySuppliers({ query: { queryKey: getListInventorySuppliersQueryKey() } });
-  const createSupplier = useCreateInventorySupplier();
+  const [draftCategories, setDraftCategories] = useState<string[]>([]);
 
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
   const defaultMarkupPct = settings?.defaultMarkupPct ?? 20;
@@ -414,18 +415,99 @@ export default function InventoryPage() {
   const createItem = useCreateInventoryItem();
   const updateItem = useUpdateInventoryItem();
   const deleteItem = useDeleteInventoryItem();
+  const createType = useCreateInventoryType();
+  const createSize = useCreateInventorySize();
+  const { data: vendors = [] } = useListVendors({ query: { queryKey: getListVendorsQueryKey() } });
 
-  // Derive unique categories from all loaded items for the category picker
-  const allCategories = useMemo(() => {
-    const cats = new Set<string>();
-    (items ?? []).forEach((item: any) => {
-      if (item.category) {
-        item.category.split(',').map((s: string) => s.trim()).filter(Boolean).forEach((c: string) => cats.add(c));
-      }
+  const categoryOptions = useMemo(
+    () => categoryChoices((items ?? []).map(item => item.category ?? ''), draftCategories, form.category),
+    [items, draftCategories, form.category],
+  );
+  const selectedTypeName = partTypes.find(type => String(type.id) === form.typeId)?.name ?? '';
+  const pipePart = isPipeTypeName(selectedTypeName);
+
+  const rememberType = (created: InventoryType) => {
+    qc.setQueryData(getListInventoryTypesQueryKey(), (current: InventoryType[] | undefined) => {
+      const list = current ?? [];
+      if (list.some(type => type.id === created.id)) return list;
+      return [...list, created].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
     });
-    return Array.from(cats).sort();
-  }, [items]);
-  const [newCategoryInput, setNewCategoryInput] = useState('');
+  };
+
+  const rememberSize = (created: InventorySize) => {
+    qc.setQueryData(getListInventorySizesQueryKey(), (current: InventorySize[] | undefined) => {
+      const list = current ?? [];
+      if (list.some(size => size.id === created.id)) return list;
+      return [...list, created];
+    });
+  };
+
+  const errorStatus = (err: unknown) => (
+    err && typeof err === 'object' && 'status' in err && typeof err.status === 'number' ? err.status : undefined
+  );
+
+  const addType = async (name: string) => {
+    const existingId = namedId(partTypes, name);
+    if (existingId != null) {
+      const existingName = partTypes.find(type => type.id === existingId)?.name ?? name;
+      setForm(current => ({ ...current, typeId: String(existingId), sizeId: '', unit: isPipeTypeName(existingName) ? 'ft' : current.unit }));
+      return;
+    }
+    try {
+      const created = await createType.mutateAsync({ data: { name } });
+      rememberType(created);
+      setForm(current => ({ ...current, typeId: String(created.id), sizeId: '', unit: isPipeTypeName(created.name) ? 'ft' : current.unit }));
+      toast.success(`Added type ${created.name}`);
+    } catch (err) {
+      if (errorStatus(err) === 409) {
+        const fresh = await qc.fetchQuery(getListInventoryTypesQueryOptions()) as InventoryType[];
+        const id = namedId(fresh, name);
+        if (id != null) {
+          rememberType(fresh.find(type => type.id === id)!);
+          setForm(current => ({ ...current, typeId: String(id), sizeId: '' }));
+          return;
+        }
+      }
+      toast.error('Could not add that type');
+      throw err;
+    }
+  };
+
+  const addSize = async (name: string) => {
+    const typeId = Number(form.typeId);
+    if (!typeId) { toast.error('Choose a type before adding a size'); throw new Error('Choose a type first'); }
+    const existingId = namedId(sizesForType(partSizes, typeId), name);
+    if (existingId != null) {
+      setForm(current => ({ ...current, sizeId: String(existingId) }));
+      return;
+    }
+    try {
+      const created = await createSize.mutateAsync({ data: { typeId, name } });
+      rememberSize(created);
+      setForm(current => ({ ...current, sizeId: String(created.id) }));
+      toast.success(`Added size ${created.name}`);
+    } catch (err) {
+      if (errorStatus(err) === 409) {
+        const fresh = await qc.fetchQuery(getListInventorySizesQueryOptions()) as InventorySize[];
+        const id = namedId(sizesForType(fresh, typeId), name);
+        if (id != null) {
+          const match = fresh.find(size => size.id === id);
+          if (match) rememberSize(match);
+          setForm(current => ({ ...current, sizeId: String(id) }));
+          return;
+        }
+      }
+      toast.error('Could not add that size');
+      throw err;
+    }
+  };
+
+  const addCategory = (name: string) => {
+    const match = categoryOptions.find(option => option.toLowerCase() === name.trim().toLowerCase());
+    const chosen = match ?? name.trim();
+    if (!match) setDraftCategories(current => current.some(option => option.toLowerCase() === chosen.toLowerCase()) ? current : [...current, chosen]);
+    setForm(current => ({ ...current, category: chosen }));
+  };
 
   // Recompute sell preview whenever cost or markup changes in the form
   const updateSellPreview = (cost: string, markup: string) => {
@@ -439,6 +521,7 @@ export default function InventoryPage() {
     // Do NOT pre-fill markupPct — leave it blank so the placeholder shows the current
     // default and the server uses the live tenant default (avoids stale frontend value).
     setForm({ ...EMPTY_FORM });
+    setDraftCategories([]);
     setSellPreview(null);
     setSelectedId(null);
     setSheetMode('create');
@@ -458,9 +541,7 @@ export default function InventoryPage() {
       name: item.name,
       sku: item.sku,
       description: item.description ?? '',
-      categories: item.category
-        ? item.category.split(',').map((s: string) => s.trim()).filter(Boolean)
-        : [],
+      category: item.category ?? '',
       typeId: item.typeId != null ? String(item.typeId) : '',
       sizeId: item.sizeId != null ? String(item.sizeId) : '',
       costPrice: costVal,
@@ -468,10 +549,13 @@ export default function InventoryPage() {
       quantity: String(item.quantity),
       reorderPoint: String(item.reorderPoint),
       unit: item.unit ?? 'each',
+      lengthReceived: item.lengthReceived != null ? String(item.lengthReceived) : '',
+      pricePerFoot: item.pricePerFoot != null ? String(item.pricePerFoot) : '',
       availableForBlueprint: item.availableForBlueprint ?? false,
       commissionPct: item.commissionPct != null ? String(item.commissionPct) : '',
-      supplierId: item.supplierId != null ? String(item.supplierId) : '',
+      vendorId: item.vendorId != null ? String(item.vendorId) : '',
     });
+    setDraftCategories([]);
     updateSellPreview(costVal, mPct);
     setSelectedId(id);
     setSheetMode('edit');
@@ -479,21 +563,27 @@ export default function InventoryPage() {
 
   const handleSave = () => {
     if (!form.name || !form.sku) { toast.error('Name and SKU are required'); return; }
+    const length = form.lengthReceived.trim();
+    const perFoot = form.pricePerFoot.trim();
+    if (length && (!Number.isFinite(Number(length)) || Number(length) < 0)) { toast.error('Length received must be a non-negative number'); return; }
+    if (perFoot && (!Number.isFinite(Number(perFoot)) || Number(perFoot) < 0)) { toast.error('Price per foot must be a non-negative number'); return; }
     const data = {
       name: form.name,
       sku: form.sku,
       description: form.description || undefined,
-      category: form.categories.length ? form.categories.join(', ') : undefined,
+      category: form.category.trim(),
       typeId: form.typeId ? parseInt(form.typeId, 10) : null,
       sizeId: form.sizeId ? parseInt(form.sizeId, 10) : null,
       costPrice: parseFloat(form.costPrice) || 0,
       markupPct: form.markupPct ? parseFloat(form.markupPct) : undefined,
       quantity: parseInt(form.quantity, 10) || 0,
       reorderPoint: parseInt(form.reorderPoint, 10) || 5,
-      unit: form.unit || 'each',
+      unit: pipePart ? 'ft' : (form.unit || 'each'),
+      lengthReceived: length ? Number(length) : null,
+      pricePerFoot: perFoot ? Number(perFoot) : null,
       availableForBlueprint: form.availableForBlueprint,
       commissionPct: form.commissionPct ? parseFloat(form.commissionPct) : undefined,
-      supplierId: form.supplierId ? parseInt(form.supplierId, 10) : undefined,
+      vendorId: form.vendorId ? parseInt(form.vendorId, 10) : null,
     };
 
     if (sheetMode === 'create') {
@@ -919,7 +1009,9 @@ export default function InventoryPage() {
                         {(item.markupPct ?? defaultMarkupPct).toFixed(0)}%
                       </span>
                     </TableCell>
-                    <TableCell className="text-right font-medium" title={`Sell price: $${item.unitPrice.toFixed(2)}`}>${item.unitPrice.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-medium" title={item.pricePerFoot != null ? `$${item.unitPrice.toFixed(2)} per foot` : `Sell price: $${item.unitPrice.toFixed(2)}`}>
+                      ${item.unitPrice.toFixed(2)}{item.pricePerFoot != null ? '/ft' : ''}
+                    </TableCell>
                     <TableCell className="text-right" title={`${item.quantity} ${item.unit || 'units'} in stock`}>
                       <span className={`font-medium ${item.isLowStock ? 'text-destructive' : ''}`}>
                         {item.quantity} {item.unit || ''}
@@ -1033,6 +1125,18 @@ export default function InventoryPage() {
                       <Badge variant="outline" title={`Category: ${selectedItem.category}`}>{selectedItem.category}</Badge>
                     </div>
                   )}
+                  {selectedItem.lengthReceived != null && (
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Length received</p>
+                      <p className="text-sm font-medium">{selectedItem.lengthReceived} ft</p>
+                    </div>
+                  )}
+                  {selectedItem.pricePerFoot != null && (
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Price per foot</p>
+                      <p className="text-sm font-medium">${selectedItem.pricePerFoot.toFixed(2)}</p>
+                    </div>
+                  )}
                 </div>
 
                 {canManage && (
@@ -1092,7 +1196,12 @@ export default function InventoryPage() {
 
       {/* Create / Edit Sheet */}
       <Sheet open={sheetMode === 'create' || sheetMode === 'edit'} onOpenChange={open => { if (!open) setSheetMode(null); }}>
-        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+        <SheetContent
+          className="w-full sm:max-w-md overflow-y-auto"
+          onInteractOutside={event => { isFromPickerPortal(event); }}
+          onPointerDownOutside={event => { isFromPickerPortal(event); }}
+          onFocusOutside={event => { isFromPickerPortal(event); }}
+        >
           <SheetHeader className="pb-4">
             <SheetTitle>{sheetMode === 'create' ? 'Add Inventory Item' : 'Edit Item'}</SheetTitle>
             <SheetDescription>
@@ -1111,105 +1220,66 @@ export default function InventoryPage() {
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Type</label>
-                <Select
-                  value={form.typeId || '__none__'}
-                  onValueChange={value => {
-                    const typeId = value === '__none__' ? '' : value;
+                <CreatableOptionMenu
+                  testId="select-part-type"
+                  title="Type for this part"
+                  placeholder="No type"
+                  noneLabel="No type"
+                  value={form.typeId}
+                  options={partTypes.map(type => ({ value: String(type.id), label: type.name }))}
+                  emptyText="No types yet. Add one below."
+                  addPlaceholder="New type, such as Pipe"
+                  addLabel="Type"
+                  adding={createType.isPending}
+                  onChange={typeId => {
                     const kept = sizeIdForType(form.sizeId ? Number(form.sizeId) : null, typeId ? Number(typeId) : null, partSizes);
-                    setForm(current => ({ ...current, typeId, sizeId: kept ? String(kept) : '' }));
+                    const nextName = partTypes.find(type => String(type.id) === typeId)?.name ?? '';
+                    const nextPipe = isPipeTypeName(nextName);
+                    setForm(current => ({
+                      ...current,
+                      typeId,
+                      sizeId: kept ? String(kept) : '',
+                      unit: nextPipe ? 'ft' : (current.unit === 'ft' ? 'each' : current.unit),
+                      lengthReceived: nextPipe ? current.lengthReceived : '',
+                      pricePerFoot: nextPipe ? current.pricePerFoot : '',
+                    }));
                   }}
-                >
-                  <SelectTrigger title="Type for this part" data-testid="select-part-type"><SelectValue placeholder="No type" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">No type</SelectItem>
-                    {partTypes.map(type => <SelectItem key={type.id} value={String(type.id)}>{type.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                  onAdd={addType}
+                />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Size</label>
-                <Select
-                  value={form.sizeId || '__none__'}
-                  onValueChange={value => setForm(current => ({ ...current, sizeId: value === '__none__' ? '' : value }))}
+                <CreatableOptionMenu
+                  testId="select-part-size"
+                  title={form.typeId ? 'Size under the selected type' : 'Choose a type first'}
+                  placeholder={form.typeId ? 'No size' : 'Choose a type'}
+                  noneLabel={form.typeId ? 'No size' : undefined}
+                  value={form.sizeId}
                   disabled={!form.typeId}
-                >
-                  <SelectTrigger title={form.typeId ? 'Size under the selected type' : 'Choose a type first'} data-testid="select-part-size"><SelectValue placeholder={form.typeId ? 'No size' : 'Choose a type'} /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">No size</SelectItem>
-                    {sizesForType(partSizes, form.typeId ? Number(form.typeId) : null).map(size => (
-                      <SelectItem key={size.id} value={String(size.id)}>{size.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={sizesForType(partSizes, form.typeId ? Number(form.typeId) : null).map(size => ({ value: String(size.id), label: size.name }))}
+                  emptyText="No sizes for this type yet."
+                  addPlaceholder="New size, such as 1&quot;"
+                  addLabel="Size"
+                  adding={createSize.isPending}
+                  onChange={sizeId => setForm(current => ({ ...current, sizeId }))}
+                  onAdd={form.typeId ? addSize : undefined}
+                />
               </div>
               <div className="space-y-1.5 col-span-2">
-                <label className="text-sm font-medium">Categories</label>
-                {/* Canonical categories as toggleable chips */}
-                {allCategories.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-1.5">
-                    {allCategories.map(cat => {
-                      const selected = form.categories.includes(cat);
-                      return (
-                        <button
-                          key={cat}
-                          type="button"
-                          onClick={() => setForm(f => ({
-                            ...f,
-                            categories: selected
-                              ? f.categories.filter(c => c !== cat)
-                              : [...f.categories, cat],
-                          }))}
-                          className={`px-2.5 py-0.5 rounded-full text-xs font-medium border transition-all ${
-                            selected
-                              ? 'bg-primary text-white border-transparent'
-                              : 'bg-transparent text-muted-foreground border-border hover:border-primary/50'
-                          }`}
-                        >
-                          {cat}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                {/* Selected categories display */}
-                {form.categories.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mb-1.5">
-                    {form.categories.map(cat => (
-                      <Badge key={cat} variant="secondary" className="gap-1 pr-1 text-xs">
-                        {cat}
-                        <button type="button" onClick={() => setForm(f => ({ ...f, categories: f.categories.filter(c => c !== cat) }))} className="ml-0.5 hover:opacity-70"><span className="text-xs">×</span></button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-                {/* Add new category */}
-                <div className="flex gap-2">
-                  <Input
-                    title="Type a new category and press Enter or click Add"
-                    placeholder="New category…"
-                    value={newCategoryInput}
-                    onChange={e => setNewCategoryInput(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        const t = newCategoryInput.trim();
-                        if (t && !form.categories.includes(t)) setForm(f => ({ ...f, categories: [...f.categories, t] }));
-                        setNewCategoryInput('');
-                      }
-                    }}
-                    className="h-8 text-sm flex-1"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const t = newCategoryInput.trim();
-                      if (t && !form.categories.includes(t)) setForm(f => ({ ...f, categories: [...f.categories, t] }));
-                      setNewCategoryInput('');
-                    }}
-                  >Add</Button>
-                </div>
+                <label className="text-sm font-medium">Category</label>
+                <CreatableOptionMenu
+                  testId="select-part-category"
+                  title="Category for this part"
+                  placeholder="No category"
+                  noneLabel="No category"
+                  value={form.category}
+                  options={categoryOptions.map(name => ({ value: name, label: name }))}
+                  emptyText="No categories yet. Add one below."
+                  addPlaceholder="New category"
+                  addLabel="Category"
+                  onChange={category => setForm(current => ({ ...current, category }))}
+                  onAdd={addCategory}
+                />
               </div>
             </div>
 
@@ -1249,14 +1319,58 @@ export default function InventoryPage() {
                 </div>
               </div>
 
+              {pipePart && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Length received (ft)</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.1"
+                      title="Feet of pipe that arrived with this stock"
+                      placeholder="0"
+                      data-testid="input-length-received"
+                      value={form.lengthReceived}
+                      onChange={e => {
+                        const lengthReceived = e.target.value;
+                        setForm(current => {
+                          const next = { ...current, lengthReceived, unit: 'ft' };
+                          if (sheetMode === 'create') {
+                            const parsed = Number(lengthReceived);
+                            if (lengthReceived.trim() !== '' && Number.isFinite(parsed)) next.quantity = String(feetFromLength(parsed));
+                          }
+                          return next;
+                        });
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Price per foot ($)</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      title="Price charged for each foot when this pipe is sold"
+                      placeholder="0.00"
+                      data-testid="input-price-per-foot"
+                      value={form.pricePerFoot}
+                      onChange={e => setForm(current => ({ ...current, pricePerFoot: e.target.value, unit: 'ft' }))}
+                    />
+                  </div>
+                  <p className="col-span-2 text-xs text-muted-foreground">Pipe is stocked in feet. The per-foot price is what a sale charges.</p>
+                </div>
+              )}
+
               {/* Sell price preview */}
-              <div className={`flex items-center justify-between rounded-lg border px-4 py-3 ${sellPreview != null ? 'border-primary/30 bg-primary/5' : 'border-dashed'}`}>
+              <div className={`flex items-center justify-between rounded-lg border px-4 py-3 ${(pipePart && form.pricePerFoot.trim() !== '') || sellPreview != null ? 'border-primary/30 bg-primary/5' : 'border-dashed'}`}>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <ArrowRight className="w-4 h-4 text-primary" />
-                  <span>Sell Price</span>
+                  <span>{pipePart && form.pricePerFoot.trim() !== '' ? 'Sell price per foot' : 'Sell Price'}</span>
                 </div>
-                <span className={`text-lg font-bold ${sellPreview != null ? 'text-primary' : 'text-muted-foreground'}`}>
-                  {sellPreview != null ? `$${sellPreview.toFixed(2)}` : '—'}
+                <span className={`text-lg font-bold ${(pipePart && form.pricePerFoot.trim() !== '') || sellPreview != null ? 'text-primary' : 'text-muted-foreground'}`}>
+                  {pipePart && form.pricePerFoot.trim() !== '' && Number.isFinite(Number(form.pricePerFoot))
+                    ? `$${Number(form.pricePerFoot).toFixed(2)}/ft`
+                    : sellPreview != null ? `$${sellPreview.toFixed(2)}` : '—'}
                 </span>
               </div>
             </div>
@@ -1265,8 +1379,8 @@ export default function InventoryPage() {
 
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Quantity</label>
-                <Input type="number" min={0} title="Current stock quantity on hand" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
+                <label className="text-sm font-medium">{pipePart ? 'Feet on hand' : 'Quantity'}</label>
+                <Input type="number" min={0} title={pipePart ? 'Feet of this pipe currently in stock' : 'Current stock quantity on hand'} value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Reorder At</label>
@@ -1300,32 +1414,17 @@ export default function InventoryPage() {
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Supplier</label>
-              <div className="flex gap-2">
-                <Select
-                  value={form.supplierId || '__none__'}
-                  onValueChange={v => setForm(f => ({ ...f, supplierId: v === '__none__' ? '' : v }))}
-                >
-                  <SelectTrigger className="flex-1" title="Assign a supplier for this item">
-                    <SelectValue placeholder="No supplier" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">No supplier</SelectItem>
-                    {suppliers?.map(s => (
-                      <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  title="Add a new supplier"
-                  onClick={() => { setSupplierForm({ name: '', contact: '', accountNumber: '', notes: '' }); setSupplierDialogOpen(true); }}
-                >
-                  <Plus className="w-4 h-4" />
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">Link to a shared supplier for the reorder list report.</p>
+              <CreatableOptionMenu
+                testId="select-part-supplier"
+                title="Supplier from the vendor list"
+                placeholder="No supplier"
+                noneLabel="No supplier"
+                value={form.vendorId}
+                options={vendors.map(vendor => ({ value: String(vendor.id), label: vendor.name }))}
+                emptyText="No vendors yet. Add vendors on the Vendors page."
+                onChange={vendorId => setForm(current => ({ ...current, vendorId }))}
+              />
+              <p className="text-xs text-muted-foreground">Choose a vendor that already exists. This list does not take a typed supplier name.</p>
             </div>
 
             <Separator />
@@ -1498,61 +1597,6 @@ export default function InventoryPage() {
               <Button variant="outline" onClick={() => setLocAdjustDialogOpen(false)}>Cancel</Button>
               <Button onClick={handleLocAdjustStock} disabled={adjustLocationStockMutation.isPending || !locAdjustDelta}>
                 {adjustLocationStockMutation.isPending ? 'Saving...' : 'Apply Adjustment'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Supplier Inline-Create Dialog */}
-      <Dialog open={supplierDialogOpen} onOpenChange={open => { if (!open) setSupplierDialogOpen(false); }}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>New Supplier</DialogTitle>
-            <DialogDescription>Add a supplier that can be shared across inventory items.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 pt-1">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Name <span className="text-destructive">*</span></label>
-              <Input placeholder="e.g. Ewing Irrigation" value={supplierForm.name} onChange={e => setSupplierForm(f => ({ ...f, name: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Contact</label>
-              <Input placeholder="Phone, email, or rep name" value={supplierForm.contact} onChange={e => setSupplierForm(f => ({ ...f, contact: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Account #</label>
-              <Input placeholder="Our account number with this supplier" value={supplierForm.accountNumber} onChange={e => setSupplierForm(f => ({ ...f, accountNumber: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Notes</label>
-              <Input placeholder="Optional notes" value={supplierForm.notes} onChange={e => setSupplierForm(f => ({ ...f, notes: e.target.value }))} />
-            </div>
-            <div className="flex gap-2 justify-end pt-2">
-              <Button variant="outline" onClick={() => setSupplierDialogOpen(false)}>Cancel</Button>
-              <Button
-                disabled={createSupplier.isPending || !supplierForm.name}
-                onClick={() => {
-                  if (!supplierForm.name) return;
-                  createSupplier.mutate({
-                    data: {
-                      name: supplierForm.name,
-                      contact: supplierForm.contact || undefined,
-                      accountNumber: supplierForm.accountNumber || undefined,
-                      notes: supplierForm.notes || undefined,
-                    }
-                  }, {
-                    onSuccess: (newSupplier) => {
-                      toast.success('Supplier added');
-                      qc.invalidateQueries({ queryKey: getListInventorySuppliersQueryKey() });
-                      setForm(f => ({ ...f, supplierId: String(newSupplier.id) }));
-                      setSupplierDialogOpen(false);
-                    },
-                    onError: () => toast.error('Failed to add supplier'),
-                  });
-                }}
-              >
-                {createSupplier.isPending ? 'Saving...' : 'Add Supplier'}
               </Button>
             </div>
           </div>

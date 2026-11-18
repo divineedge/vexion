@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import multer from "multer";
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
+import { logger } from "../lib/logger";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { isMissingColumnError } from "../lib/settingsFallback";
@@ -201,12 +202,16 @@ router.post("/vendor-documents/:invoiceId/commit", async (req, res): Promise<voi
       if (current.rows[0].vendor_confirmed === true) throw new IntakeError(409, "This invoice is already posted.");
       const stored = await tx.execute(sql`SELECT id FROM vendor_invoice_line_items WHERE invoice_id=${invoiceId}`);
       if (lines.length !== stored.rows.length) throw new IntakeError(400, "Assign every line before posting.");
-      const vendor = await tx.execute(sql`SELECT id, is_draft FROM vendors WHERE id=${vendorId} AND tenant_id=${companyId}`);
+      const hasDraftColumn = await vendorsDraftColumn(tx);
+      const vendor = hasDraftColumn
+        ? await tx.execute(sql`SELECT id, is_draft FROM vendors WHERE id=${vendorId} AND tenant_id=${companyId}`)
+        : await tx.execute(sql`SELECT id FROM vendors WHERE id=${vendorId} AND tenant_id=${companyId}`);
       if (!vendor.rows.length) throw new IntakeError(400, "Choose a vendor from this company.");
       const draftId = current.rows[0].vendor_id == null ? null : Number(current.rows[0].vendor_id);
       const vendorName = typeof req.body?.vendorName === "string" ? req.body.vendorName.trim().slice(0, 200) : "";
-      if (vendor.rows[0].is_draft === true && vendorName) await tx.execute(sql`UPDATE vendors SET name=${vendorName} WHERE id=${vendorId} AND tenant_id=${companyId} AND is_draft=true`);
-      if (vendor.rows[0].is_draft === true) await tx.execute(sql`UPDATE vendors SET is_draft=false WHERE id=${vendorId} AND tenant_id=${companyId}`);
+      const confirmedIsDraft = hasDraftColumn && vendor.rows[0].is_draft === true;
+      if (confirmedIsDraft && vendorName) await tx.execute(sql`UPDATE vendors SET name=${vendorName} WHERE id=${vendorId} AND tenant_id=${companyId} AND is_draft=true`);
+      if (confirmedIsDraft) await tx.execute(sql`UPDATE vendors SET is_draft=false WHERE id=${vendorId} AND tenant_id=${companyId}`);
       const invoiceDate = typeof req.body?.invoiceDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.body.invoiceDate) ? req.body.invoiceDate : String(current.rows[0].invoice_date ?? "").slice(0, 10);
       for (const line of lines) {
         const lineId = String(line.id ?? "");
@@ -220,12 +225,12 @@ router.post("/vendor-documents/:invoiceId/commit", async (req, res): Promise<voi
         if (destinationType === "inventory" || destinationType === "job_direct_expense") await receiveStock(tx, companyId, destinationType, destinationId, lineId, priced);
         await tx.execute(sql`UPDATE vendor_invoice_line_items SET description=${priced.description}, quantity=${priced.quantity}, unit_price=${priced.unit_price}, total_price=${priced.total_price}, bbox=${JSON.stringify(priced.bbox)}::jsonb, destination_type=${destinationType}, destination_id=${destinationId}, fill_date=${fillDate} WHERE id=${lineId}`);
       }
-      if (draftId && draftId !== vendorId) await tx.execute(sql`DELETE FROM vendors WHERE id=${draftId} AND tenant_id=${companyId} AND is_draft=true`);
       const total = Number(req.body?.totalAmount ?? current.rows[0].total_amount);
       const paymentStatus = req.body?.paymentStatus === "paid" || req.body?.paymentStatus === "partially_paid" ? req.body.paymentStatus : "unpaid";
       await tx.execute(sql`UPDATE vendor_invoice_records SET vendor_id=${vendorId}, vendor_confirmed=true, draft_vendor_name=NULL, invoice_number=${String(req.body?.invoiceNumber ?? current.rows[0].invoice_number ?? "")}, invoice_date=${invoiceDate}, total_amount=${total}, tax_amount=${Number(req.body?.taxAmount ?? current.rows[0].tax_amount ?? 0)}, shipping_amount=${Number(req.body?.shippingAmount ?? current.rows[0].shipping_amount ?? 0)}, payment_status=${paymentStatus} WHERE id=${invoiceId}`);
       await tx.execute(sql`UPDATE document_uploads SET processed_status='processed' WHERE id=${current.rows[0].document_id} AND company_id=${companyId}`);
       await tx.execute(sql`INSERT INTO expense_entries (tenant_id, vendor_id, date, amount, category, description) VALUES (${companyId}, ${vendorId}, ${invoiceDate}, ${total}, 'materials', ${`Vendor invoice ${String(req.body?.invoiceNumber ?? current.rows[0].invoice_number ?? "")}`})`);
+      await removeOrphanDraft(tx, companyId, draftId, vendorId, hasDraftColumn);
     });
     res.json(await loadInvoice(companyId, invoiceId));
   } catch (error) {
@@ -351,6 +356,36 @@ async function reservationsFor(companyId: number, jobId: number) {
   return rows.rows;
 }
 
+type Queryable = { execute: typeof db.execute };
+
+/** True when this database has vendors.is_draft. Older production databases do not. */
+async function vendorsDraftColumn(tx: Queryable): Promise<boolean> {
+  const found = await tx.execute(sql`SELECT 1 AS present FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'vendors' AND column_name = 'is_draft'`);
+  return found.rows.length > 0;
+}
+
+/**
+ * Drop an upload draft only after the invoice points at the confirmed vendor.
+ * vendor_invoice_records.vendor_id references vendors, so deleting first raises
+ * Failed query: DELETE FROM vendors ... is_draft=true. A real vendor is never deleted.
+ * If cleanup itself hits a constraint, the posted invoice still commits.
+ */
+async function removeOrphanDraft(tx: Queryable, companyId: number, draftId: number | null, vendorId: number, hasDraftColumn: boolean): Promise<void> {
+  if (!hasDraftColumn || draftId == null || draftId === vendorId) return;
+  const draft = await tx.execute(sql`SELECT is_draft FROM vendors WHERE id=${draftId} AND tenant_id=${companyId}`);
+  if (draft.rows[0]?.is_draft !== true) return;
+  const referenced = await tx.execute(sql`SELECT 1 AS referenced FROM vendor_invoice_records WHERE company_id=${companyId} AND vendor_id=${draftId} LIMIT 1`);
+  if (referenced.rows.length) return;
+  await tx.execute(sql`SAVEPOINT draft_vendor_cleanup`);
+  try {
+    await tx.execute(sql`DELETE FROM vendors WHERE id=${draftId} AND tenant_id=${companyId} AND is_draft=true`);
+    await tx.execute(sql`RELEASE SAVEPOINT draft_vendor_cleanup`);
+  } catch (error) {
+    await tx.execute(sql`ROLLBACK TO SAVEPOINT draft_vendor_cleanup`);
+    logger.error({ err: error, draftId, companyId }, "Draft vendor cleanup was skipped so the confirmed invoice could post");
+  }
+}
+
 async function loadInvoice(companyId: number, invoiceId: string) {
   const invoice = await db.execute(sql`SELECT r.id, r.document_id AS "documentId", r.vendor_id AS "vendorId", r.draft_vendor_name AS "draftVendorName", r.invoice_number AS "invoiceNumber", r.invoice_date AS "invoiceDate", r.total_amount AS "totalAmount", r.tax_amount AS "taxAmount", r.shipping_amount AS "shippingAmount", r.payment_status AS "paymentStatus", r.vendor_confirmed AS "vendorConfirmed", d.file_url AS "fileUrl", d.file_name AS "fileName", d.file_type AS "fileType", d.processed_status AS "processedStatus"
     FROM vendor_invoice_records r JOIN document_uploads d ON d.id=r.document_id WHERE r.id=${invoiceId} AND r.company_id=${companyId}`);
@@ -360,7 +395,10 @@ async function loadInvoice(companyId: number, invoiceId: string) {
     const bbox = row.bbox && typeof row.bbox === "object" ? row.bbox as { sku?: unknown; unit?: unknown } : {};
     return { ...row, sku: typeof bbox.sku === "string" ? bbox.sku : "", unit: typeof bbox.unit === "string" ? bbox.unit : "" };
   });
-  const vendors = await db.execute(sql`SELECT id, name, is_draft AS "isDraft" FROM vendors WHERE tenant_id=${companyId} ORDER BY is_draft, name`);
+  const hasDraftColumn = await vendorsDraftColumn(db);
+  const vendors = hasDraftColumn
+    ? await db.execute(sql`SELECT id, name, is_draft AS "isDraft" FROM vendors WHERE tenant_id=${companyId} ORDER BY is_draft, name`)
+    : await db.execute(sql`SELECT id, name, false AS "isDraft" FROM vendors WHERE tenant_id=${companyId} ORDER BY name`);
   const tanks = await db.execute(sql`SELECT id, name, COALESCE(current_gallons, available_thousandths / 1000.0) AS "currentGallons", COALESCE(max_capacity, capacity_thousandths / 1000.0) AS "maxCapacity" FROM bulk_fuel_tanks WHERE tenant_id=${companyId} AND is_active=true ORDER BY name`);
   const jobs = await db.execute(sql`SELECT id, title, status FROM jobs WHERE tenant_id=${companyId} AND status IN ('scheduled', 'in_progress', 'pending', 'on_hold') ORDER BY scheduled_at LIMIT 100`);
   const items = await db.execute(sql`SELECT id, name, sku, quantity, unit, unit_price AS "unitPrice" FROM inventory_items WHERE tenant_id=${companyId} ORDER BY name`);

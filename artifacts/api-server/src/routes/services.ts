@@ -285,10 +285,50 @@ router.delete("/services/:id", async (req, res): Promise<void> => {
   res.status(204).send();
 });
 
+async function adoptServiceCategoryNames(tenantId: number): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO service_categories (tenant_id, name)
+    SELECT ${tenantId}, incoming.name
+    FROM (
+      SELECT DISTINCT ON (lower(btrim(category))) btrim(category) AS name
+      FROM services
+      WHERE tenant_id = ${tenantId}
+        AND category IS NOT NULL
+        AND btrim(category) <> ''
+      ORDER BY lower(btrim(category)), btrim(category)
+    ) incoming
+    WHERE NOT EXISTS (
+      SELECT 1 FROM service_categories existing
+      WHERE existing.tenant_id = ${tenantId}
+        AND lower(existing.name) = lower(incoming.name)
+    )
+  `);
+}
+
+function categoryStorageError(error: unknown, res: import("express").Response): boolean {
+  const code = (error as { code?: string })?.code;
+  if (isMissingColumnError(error) || code === "42P01") {
+    res.status(503).json({ error: "Service categories are not ready yet. Reload and try again." });
+    return true;
+  }
+  return false;
+}
+
 router.get("/settings/service-categories", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const rows = await db.execute(sql`SELECT id, name, created_at AS "createdAt" FROM service_categories WHERE tenant_id=${tenantId} ORDER BY name`);
-  res.json({ categories: rows.rows });
+  try {
+    try { await adoptServiceCategoryNames(tenantId); }
+    catch (error) {
+      const code = (error as { code?: string })?.code;
+      if (code !== "23505" && !categoryStorageError(error, res)) throw error;
+      if (code !== "23505") return;
+    }
+    const rows = await db.execute(sql`SELECT id, name, created_at AS "createdAt" FROM service_categories WHERE tenant_id=${tenantId} ORDER BY name`);
+    res.json({ categories: rows.rows });
+  } catch (error) {
+    if (categoryStorageError(error, res)) return;
+    throw error;
+  }
 });
 
 async function createServiceCategory(req: import("express").Request, res: import("express").Response): Promise<void> {
@@ -323,23 +363,40 @@ router.patch("/settings/service-categories/:id", async (req, res): Promise<void>
   if (!await requireOfficeRole(req, res, tenantId)) return;
   const id = parseInt(req.params.id, 10);
   const name = String(req.body?.name ?? "").trim();
+  if (!Number.isInteger(id)) { res.status(404).json({ error: "Category not found" }); return; }
   if (!name || name.length > 80) { res.status(400).json({ error: "Enter a category name up to 80 characters" }); return; }
-  const current = await db.execute(sql`SELECT name FROM service_categories WHERE id=${id} AND tenant_id=${tenantId}`);
-  if (!current.rows.length) { res.status(404).json({ error: "Category not found" }); return; }
-  const previous = String(current.rows[0].name);
-  await db.execute(sql`UPDATE service_categories SET name=${name} WHERE id=${id} AND tenant_id=${tenantId}`);
-  await db.execute(sql`UPDATE services SET category=${name} WHERE tenant_id=${tenantId} AND category=${previous}`);
-  res.json({ id, name });
+  try {
+    const current = await db.execute(sql`SELECT name FROM service_categories WHERE id=${id} AND tenant_id=${tenantId}`);
+    if (!current.rows.length) { res.status(404).json({ error: "Category not found" }); return; }
+    const previous = String(current.rows[0].name);
+    if (previous === name) { res.json({ id, name }); return; }
+    const duplicate = await db.execute(sql`SELECT id FROM service_categories WHERE tenant_id=${tenantId} AND lower(name)=lower(${name}) AND id<>${id} LIMIT 1`);
+    if (duplicate.rows.length) { res.status(409).json({ error: "A category with that name already exists" }); return; }
+    await db.transaction(async tx => {
+      await tx.execute(sql`UPDATE service_categories SET name=${name} WHERE id=${id} AND tenant_id=${tenantId}`);
+      await tx.execute(sql`UPDATE services SET category=${name} WHERE tenant_id=${tenantId} AND lower(btrim(category))=lower(${previous})`);
+    });
+    res.json({ id, name });
+  } catch (error) {
+    const code = (error as { code?: string })?.code;
+    if (code === "23505") { res.status(409).json({ error: "A category with that name already exists" }); return; }
+    if (categoryStorageError(error, res)) return;
+    throw error;
+  }
 });
 
 router.delete("/settings/service-categories/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   if (!await requireOfficeRole(req, res, tenantId)) return;
   const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id)) { res.status(404).json({ error: "Category not found" }); return; }
   const current = await db.execute(sql`SELECT name FROM service_categories WHERE id=${id} AND tenant_id=${tenantId}`);
   if (!current.rows.length) { res.status(404).json({ error: "Category not found" }); return; }
-  await db.execute(sql`UPDATE services SET category=NULL WHERE tenant_id=${tenantId} AND category=${String(current.rows[0].name)}`);
-  await db.execute(sql`DELETE FROM service_categories WHERE id=${id} AND tenant_id=${tenantId}`);
+  const previous = String(current.rows[0].name);
+  await db.transaction(async tx => {
+    await tx.execute(sql`UPDATE services SET category=NULL WHERE tenant_id=${tenantId} AND lower(btrim(category))=lower(${previous})`);
+    await tx.execute(sql`DELETE FROM service_categories WHERE id=${id} AND tenant_id=${tenantId}`);
+  });
   res.status(204).send();
 });
 

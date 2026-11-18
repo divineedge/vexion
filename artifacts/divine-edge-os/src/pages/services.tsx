@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
@@ -370,6 +370,37 @@ function MonthDayPicker({
   );
 }
 
+function ServiceCategoryRow({
+  category,
+  busy,
+  onRename,
+  onRemove,
+}: {
+  category: { id: number; name: string };
+  busy: boolean;
+  onRename: (name: string) => void;
+  onRemove: () => void;
+}) {
+  const [name, setName] = useState(category.name);
+  useEffect(() => { setName(category.name); }, [category.name]);
+  const trimmed = name.trim();
+  return (
+    <form className="flex items-center gap-2" onSubmit={event => { event.preventDefault(); if (trimmed && trimmed !== category.name) onRename(trimmed); }}>
+      <Input
+        aria-label={`Rename category ${category.name}`}
+        data-testid={`input-service-category-${category.id}`}
+        value={name}
+        maxLength={80}
+        onChange={event => setName(event.target.value)}
+      />
+      <Button type="submit" variant="outline" data-testid={`button-rename-service-category-${category.id}`} disabled={busy || !trimmed || trimmed === category.name}>Rename</Button>
+      <Button type="button" variant="ghost" size="icon" aria-label={`Remove category ${category.name}`} title="Remove category" data-testid={`button-remove-service-category-${category.id}`} onClick={onRemove}>
+        <Trash2 className="w-4 h-4" />
+      </Button>
+    </form>
+  );
+}
+
 export default function ServicesPage() {
   const { canManageOffice } = useAuth();
   const qc = useQueryClient();
@@ -386,13 +417,23 @@ export default function ServicesPage() {
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const saveCategory = useMutation({
-    mutationFn: (body: { id?: number; name: string; remove?: boolean }) => body.remove
+    mutationFn: (body: { id?: number; name: string; previousName?: string; remove?: boolean }) => body.remove
       ? customFetch(`/api/settings/service-categories/${body.id}`, { method: 'DELETE' })
       : body.id
         ? customFetch(`/api/settings/service-categories/${body.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: body.name }) })
         : customFetch('/api/settings/service-categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: body.name }) }),
-    onSuccess: () => { setCategoryName(''); qc.invalidateQueries({ queryKey: ['service-categories'] }); toast.success('Service categories updated'); },
-    onError: () => toast.error('Could not update that category'),
+    onSuccess: (_data, body) => {
+      setCategoryName('');
+      qc.invalidateQueries({ queryKey: ['service-categories'] });
+      if (body.id) qc.invalidateQueries({ queryKey: ['services'] });
+      if (body.remove) {
+        setForm(current => current.category === body.name ? { ...current, category: '' } : current);
+      } else if (body.previousName) {
+        setForm(current => current.category === body.previousName ? { ...current, category: body.name } : current);
+      }
+      toast.success(body.remove ? 'Category removed' : body.id ? 'Category renamed' : 'Category added');
+    },
+    onError: (error: unknown) => toast.error((error as { data?: { error?: string } })?.data?.error ?? 'Could not update that category'),
   });
   const createCategory = useMutation({
     mutationFn: (name: string) => customFetch<{ id: number; name: string }>('/api/service-categories', {
@@ -618,19 +659,31 @@ export default function ServicesPage() {
           <CardContent className="p-4 space-y-3">
             <div>
               <p className="font-medium">Service categories</p>
-              <p className="text-sm text-muted-foreground">Create the master categories used on services and in the category report. Examples: Mowing, Chemical Treatment, Irrigation, Landscaping.</p>
+              <p className="text-sm text-muted-foreground">Add, rename, or remove the categories office staff assign to services. Renaming updates every service that already uses that category. Examples: Mowing, Chemical Treatment, Irrigation, Landscaping.</p>
             </div>
-            <div className="flex gap-2">
-              <Input value={categoryName} placeholder="New category" onChange={event => setCategoryName(event.target.value)} />
-              <Button onClick={() => categoryName.trim() && saveCategory.mutate({ name: categoryName.trim() })}>Add</Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
+            <form className="flex gap-2" onSubmit={event => { event.preventDefault(); if (categoryName.trim()) saveCategory.mutate({ name: categoryName.trim() }); }}>
+              <Input data-testid="input-new-service-category" aria-label="New service category" value={categoryName} placeholder="New category" maxLength={80} onChange={event => setCategoryName(event.target.value)} />
+              <Button type="submit" data-testid="button-add-service-category" disabled={saveCategory.isPending || !categoryName.trim()}>Add</Button>
+            </form>
+            {categoriesQuery.isLoading && <p className="text-sm text-muted-foreground">Loading categories…</p>}
+            {categoriesQuery.isError && <Button type="button" variant="outline" onClick={() => categoriesQuery.refetch()}>Could not load categories. Retry</Button>}
+            <div className="space-y-2">
               {(categoriesQuery.data?.categories ?? []).map(category => (
-                <div key={category.id} className="flex items-center gap-1 rounded-full border px-2 py-1 text-sm">
-                  <span>{category.name}</span>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => saveCategory.mutate({ id: category.id, name: category.name, remove: true })}><Trash2 className="w-3 h-3" /></Button>
-                </div>
+                <ServiceCategoryRow
+                  key={category.id}
+                  category={category}
+                  busy={saveCategory.isPending}
+                  onRename={name => saveCategory.mutate({ id: category.id, name, previousName: category.name })}
+                  onRemove={() => {
+                    if (window.confirm(`Remove “${category.name}”? Services using it will have no category.`)) {
+                      saveCategory.mutate({ id: category.id, name: category.name, remove: true });
+                    }
+                  }}
+                />
               ))}
+              {!categoriesQuery.isLoading && (categoriesQuery.data?.categories ?? []).length === 0 && (
+                <p className="text-sm text-muted-foreground">No categories yet. Add one, then choose it when you create or edit a service.</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -854,7 +907,7 @@ export default function ServicesPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Category</label>
               <Select value={form.category || 'none'} onValueChange={value => setForm(f => ({ ...f, category: value === 'none' ? '' : value }))}>
-                <SelectTrigger><SelectValue placeholder="Choose a category" /></SelectTrigger>
+                <SelectTrigger data-testid="select-service-category"><SelectValue placeholder="Choose a category" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">No category</SelectItem>
                   {(categoriesQuery.data?.categories ?? []).map(category => (

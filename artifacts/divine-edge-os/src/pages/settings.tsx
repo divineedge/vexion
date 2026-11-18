@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { InventoryGroupingCard } from '@/components/inventory/InventoryGroupingCard';
 import { DefaultWordingCard } from '@/components/settings/DefaultWordingCard';
 import { DepositPrepaymentRules } from '@/components/billing/DepositPrepaymentRules';
 import { AchPaymentRules } from '@/components/billing/AchPaymentRules';
@@ -891,6 +892,8 @@ export default function SettingsPage() {
 
             </CardContent>
           </Card>
+
+          {canManageOffice && <InventoryGroupingCard />}
         </TabsContent>
 
         {/* ── Customer Fields ── */}

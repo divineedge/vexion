@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, inventoryItemsTable, inventorySuppliersTable, tenantsTable } from "@workspace/db";
+import { db, inventoryItemsTable, inventoryPartSizesTable, inventoryPartTypesTable, inventorySuppliersTable, tenantsTable } from "@workspace/db";
 import { eq, and, or, ilike, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { usersTable } from "@workspace/db";
@@ -195,6 +195,7 @@ function formatItem(
   tenantMarkupPct: number,
   includeCostPrice: boolean,
   supplierName?: string | null,
+  grouping?: { typeName: string | null; sizeName: string | null },
 ) {
   const costPrice = i.unitPrice;     // DB unitPrice = what we pay
   const sellPrice = i.markedUpPrice; // DB markedUpPrice = what we charge
@@ -206,6 +207,10 @@ function formatItem(
     sku: i.sku,
     description: i.description,
     category: i.category,
+    typeId: i.typeId ?? null,
+    typeName: grouping?.typeName ?? null,
+    sizeId: i.sizeId ?? null,
+    sizeName: grouping?.sizeName ?? null,
     costPrice: includeCostPrice ? costPrice : null,
     unitPrice: sellPrice,
     markupPct: markup,
@@ -230,6 +235,71 @@ function parseSafeFloat(val: unknown, fallback: number): number {
 function parseSafeInt(val: unknown, fallback: number): number {
   const n = parseInt(String(val), 10);
   return isNaN(n) ? fallback : n;
+}
+
+type ResolvedGrouping = {
+  typeId: number | null;
+  sizeId: number | null;
+  typeName: string | null;
+  sizeName: string | null;
+};
+
+function nullableId(value: unknown): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  const parsed = parseSafeInt(value, NaN);
+  return Number.isNaN(parsed) ? NaN : parsed;
+}
+
+/** Resolve a part's type and the size under that type. Both may be empty. */
+async function resolveGrouping(
+  tenantId: number,
+  typeIdRaw: unknown,
+  sizeIdRaw: unknown,
+  existing?: { typeId: number | null; sizeId: number | null },
+): Promise<{ ok: true; value: ResolvedGrouping } | { ok: false; error: string }> {
+  const typeParsed = nullableId(typeIdRaw);
+  const sizeParsed = nullableId(sizeIdRaw);
+  if (Number.isNaN(typeParsed)) return { ok: false, error: "Invalid typeId" };
+  if (Number.isNaN(sizeParsed)) return { ok: false, error: "Invalid sizeId" };
+
+  let typeId = typeParsed === undefined ? (existing?.typeId ?? null) : typeParsed;
+  let sizeId = sizeParsed === undefined ? (existing?.sizeId ?? null) : sizeParsed;
+
+  if (typeId == null) {
+    if (sizeId != null) return { ok: false, error: "Choose a type before choosing a size" };
+    return { ok: true, value: { typeId: null, sizeId: null, typeName: null, sizeName: null } };
+  }
+
+  const [type] = await db.select({ id: inventoryPartTypesTable.id, name: inventoryPartTypesTable.name })
+    .from(inventoryPartTypesTable)
+    .where(and(eq(inventoryPartTypesTable.id, typeId), eq(inventoryPartTypesTable.tenantId, tenantId)));
+  if (!type) return { ok: false, error: "Type not found" };
+
+  if (sizeId != null && sizeParsed === undefined && typeParsed !== undefined) {
+    const [current] = await db.select({ typeId: inventoryPartSizesTable.typeId })
+      .from(inventoryPartSizesTable)
+      .where(and(eq(inventoryPartSizesTable.id, sizeId), eq(inventoryPartSizesTable.tenantId, tenantId)));
+    if (!current || current.typeId !== type.id) sizeId = null;
+  }
+
+  if (sizeId == null) {
+    return { ok: true, value: { typeId: type.id, sizeId: null, typeName: type.name, sizeName: null } };
+  }
+
+  const [size] = await db.select({
+    id: inventoryPartSizesTable.id,
+    name: inventoryPartSizesTable.name,
+    typeId: inventoryPartSizesTable.typeId,
+  }).from(inventoryPartSizesTable)
+    .where(and(eq(inventoryPartSizesTable.id, sizeId), eq(inventoryPartSizesTable.tenantId, tenantId)));
+  if (!size || size.typeId !== type.id) return { ok: false, error: "Size does not belong to the selected type" };
+  return { ok: true, value: { typeId: type.id, sizeId: size.id, typeName: type.name, sizeName: size.name } };
+}
+
+async function groupingForItem(tenantId: number, typeId: number | null, sizeId: number | null) {
+  const resolved = await resolveGrouping(tenantId, typeId, sizeId);
+  return resolved.ok ? resolved.value : { typeId, sizeId, typeName: null, sizeName: null };
 }
 
 // ─── routes ───────────────────────────────────────────────────────────────────
@@ -323,15 +393,40 @@ router.delete("/inventory/suppliers/:id", requireInventoryMutate, async (req, re
 router.get("/inventory", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const { q, category, lowStock, availableForBlueprint } = req.query as Record<string, string>;
+  const { q, category, lowStock, availableForBlueprint, typeId: typeIdQuery, sizeId: sizeIdQuery } = req.query as Record<string, string>;
 
   let where = eq(inventoryItemsTable.tenantId, tenantId) as ReturnType<typeof eq>;
-  if (q) where = and(where, or(ilike(inventoryItemsTable.name, `%${q}%`),ilike(inventoryItemsTable.sku, `%${q}%`))) as typeof where;
+  if (q) {
+    where = and(where, or(
+      ilike(inventoryItemsTable.name, `%${q}%`),
+      ilike(inventoryItemsTable.sku, `%${q}%`),
+      ilike(inventoryPartTypesTable.name, `%${q}%`),
+      ilike(inventoryPartSizesTable.name, `%${q}%`),
+    )) as typeof where;
+  }
   if (category) where = and(where, eq(inventoryItemsTable.category, category)) as typeof where;
+  if (typeIdQuery) {
+    const typeId = parseSafeInt(typeIdQuery, NaN);
+    if (Number.isNaN(typeId)) { res.status(400).json({ error: "Invalid typeId" }); return; }
+    where = and(where, eq(inventoryItemsTable.typeId, typeId)) as typeof where;
+  }
+  if (sizeIdQuery) {
+    const sizeId = parseSafeInt(sizeIdQuery, NaN);
+    if (Number.isNaN(sizeId)) { res.status(400).json({ error: "Invalid sizeId" }); return; }
+    where = and(where, eq(inventoryItemsTable.sizeId, sizeId)) as typeof where;
+  }
   if (availableForBlueprint === "true") where = and(where, eq(inventoryItemsTable.availableForBlueprint, true)) as typeof where;
 
   const [items, markupPct, showCost, suppliers] = await Promise.all([
-    db.select().from(inventoryItemsTable).where(where).orderBy(inventoryItemsTable.name),
+    db.select({
+      item: inventoryItemsTable,
+      typeName: inventoryPartTypesTable.name,
+      sizeName: inventoryPartSizesTable.name,
+    }).from(inventoryItemsTable)
+      .leftJoin(inventoryPartTypesTable, eq(inventoryItemsTable.typeId, inventoryPartTypesTable.id))
+      .leftJoin(inventoryPartSizesTable, eq(inventoryItemsTable.sizeId, inventoryPartSizesTable.id))
+      .where(where)
+      .orderBy(inventoryItemsTable.name),
     getTenantMarkupPct(tenantId),
     canSeeCostPrice(tenantId, userId),
     db.select({ id: inventorySuppliersTable.id, name: inventorySuppliersTable.name })
@@ -340,7 +435,13 @@ router.get("/inventory", async (req, res): Promise<void> => {
   ]);
 
   const supplierMap = new Map(suppliers.map(s => [s.id, s.name]));
-  const formatted = items.map(i => formatItem(i, markupPct, showCost, i.supplierId ? supplierMap.get(i.supplierId) : null));
+  const formatted = items.map(({ item, typeName, sizeName }) => formatItem(
+    item,
+    markupPct,
+    showCost,
+    item.supplierId ? supplierMap.get(item.supplierId) : null,
+    { typeName: typeName ?? null, sizeName: sizeName ?? null },
+  ));
 
   if (lowStock === "true") {
     res.json(formatted.filter(i => i.isLowStock));
@@ -352,7 +453,7 @@ router.get("/inventory", async (req, res): Promise<void> => {
 router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const { name, sku, description, category, costPrice, markupPct: reqMarkupPct, quantity, reorderPoint, unit, availableForBlueprint, commissionPct: reqCommissionPct, supplierId: reqSupplierId } = req.body;
+  const { name, sku, description, category, costPrice, markupPct: reqMarkupPct, quantity, reorderPoint, unit, availableForBlueprint, commissionPct: reqCommissionPct, supplierId: reqSupplierId, typeId: reqTypeId, sizeId: reqSizeId } = req.body;
 
   if (!name || !sku) {
     res.status(400).json({ error: "name and sku are required" });
@@ -384,12 +485,17 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
     }
   }
 
+  const grouping = await resolveGrouping(tenantId, reqTypeId ?? null, reqSizeId ?? null);
+  if (!grouping.ok) { res.status(400).json({ error: grouping.error }); return; }
+
   const [item] = await db.insert(inventoryItemsTable).values({
     tenantId,
     name: String(name),
     sku: String(sku),
     description: description ? String(description) : null,
     category: category ? String(category) : null,
+    typeId: grouping.value.typeId,
+    sizeId: grouping.value.sizeId,
     unitPrice: costVal,
     markedUpPrice: sellPrice,
     quantity: qty,
@@ -402,7 +508,7 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
   }).returning();
 
   const showCost = await canSeeCostPrice(tenantId, userId);
-  res.status(201).json(formatItem(item, tenantMarkupPct, showCost, supplierName));
+  res.status(201).json(formatItem(item, tenantMarkupPct, showCost, supplierName, grouping.value));
 });
 
 router.get("/inventory/:id", async (req, res): Promise<void> => {
@@ -428,7 +534,8 @@ router.get("/inventory/:id", async (req, res): Promise<void> => {
       .where(and(eq(inventorySuppliersTable.id, item.supplierId), eq(inventorySuppliersTable.tenantId, tenantId)));
     supplierName = sup?.name ?? null;
   }
-  res.json(formatItem(item, markupPct, showCost, supplierName));
+  const grouping = await groupingForItem(tenantId, item.typeId, item.sizeId);
+  res.json(formatItem(item, markupPct, showCost, supplierName, grouping));
 });
 
 router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise<void> => {
@@ -447,7 +554,7 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
     if (isNaN(m) || m < 0) { res.status(400).json({ error: "markupPct must be a non-negative number" }); return; }
   }
 
-  const { name, description, category, costPrice, markupPct: reqMarkupPct, quantity, reorderPoint, unit, availableForBlueprint, commissionPct: reqCommissionPct, supplierId: reqSupplierId } = req.body;
+  const { name, description, category, costPrice, markupPct: reqMarkupPct, quantity, reorderPoint, unit, availableForBlueprint, commissionPct: reqCommissionPct, supplierId: reqSupplierId, typeId: reqTypeId, sizeId: reqSizeId } = req.body;
   const updates: Partial<typeof inventoryItemsTable.$inferInsert> = {};
   if (name !== undefined) updates.name = String(name);
   if (description !== undefined) updates.description = description ? String(description) : null;
@@ -457,6 +564,17 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
   if (unit !== undefined) updates.unit = String(unit) || "each";
   if (availableForBlueprint !== undefined) updates.availableForBlueprint = availableForBlueprint === true || availableForBlueprint === "true";
   if (reqCommissionPct !== undefined) updates.commissionPct = reqCommissionPct != null ? parseSafeFloat(reqCommissionPct, 0) : null;
+
+  if (reqTypeId !== undefined || reqSizeId !== undefined) {
+    const [existingGrouping] = await db.select({ typeId: inventoryItemsTable.typeId, sizeId: inventoryItemsTable.sizeId })
+      .from(inventoryItemsTable)
+      .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)));
+    if (!existingGrouping) { res.status(404).json({ error: "Not found" }); return; }
+    const grouping = await resolveGrouping(tenantId, reqTypeId, reqSizeId, existingGrouping);
+    if (!grouping.ok) { res.status(400).json({ error: grouping.error }); return; }
+    updates.typeId = grouping.value.typeId;
+    updates.sizeId = grouping.value.sizeId;
+  }
 
   // Validate supplierId belongs to this tenant before accepting it
   let patchedSupplierName: string | null | undefined = undefined; // undefined = not changing
@@ -530,7 +648,8 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
       .where(and(eq(inventorySuppliersTable.id, updated.supplierId), eq(inventorySuppliersTable.tenantId, tenantId)));
     supplierName = sup?.name ?? null;
   }
-  res.json(formatItem(updated, markupPct, showCost, supplierName));
+  const grouping = await groupingForItem(tenantId, updated.typeId, updated.sizeId);
+  res.json(formatItem(updated, markupPct, showCost, supplierName, grouping));
 });
 
 // ── Stock adjustment ──────────────────────────────────────────────────────────
@@ -569,7 +688,8 @@ router.post("/inventory/:id/adjust-stock", requireInventoryMutate, async (req, r
     getTenantMarkupPct(tenantId),
     canSeeCostPrice(tenantId, userId),
   ]);
-  res.json(formatItem(updated, markupPct, showCost));
+  const grouping = await groupingForItem(tenantId, updated.typeId, updated.sizeId);
+  res.json(formatItem(updated, markupPct, showCost, null, grouping));
 });
 
 router.delete("/inventory/:id", requireInventoryMutate, async (req, res): Promise<void> => {

@@ -67,6 +67,7 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     taxRate: tenant.taxRate,
     defaultMarkupPct: tenant.defaultMarkupPct,
     showCostPriceToTech: tenant.showCostPriceToTech,
+    inventoryGroupBy: tenant.inventoryGroupBy === "size" ? "size" : "type",
     ownersSchedulable: tenant.ownersSchedulable ?? false,
     durationUnit: (tenant.durationUnit ?? "minutes") as "minutes" | "hours",
     invoiceDeliveryMode: tenant.invoiceDeliveryMode,
@@ -290,7 +291,7 @@ router.patch("/settings", async (req, res): Promise<void> => {
   const {
     companyName, timezone, workdayCutoffTime, overageMaterialBuffer,
     stripeEnabled, quickbooksEnabled, taxRate,
-    defaultMarkupPct, showCostPriceToTech, ownersSchedulable,
+    defaultMarkupPct, showCostPriceToTech, inventoryGroupBy, ownersSchedulable,
     durationUnit, autoInvoiceFrequency, nonRecurringInvoiceCadence, maxClockInHours, p4pMasterPercentage,
     rolePermissions, customerFields, chemicalRecordRequirements,
     equipmentRepairThresholdPct, equipmentResaleThresholdPct,
@@ -368,6 +369,13 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (taxRate !== undefined) updates.taxRate = taxRate;
   if (defaultMarkupPct !== undefined) updates.defaultMarkupPct = parseFloat(defaultMarkupPct);
   if (showCostPriceToTech !== undefined) updates.showCostPriceToTech = showCostPriceToTech;
+  if (inventoryGroupBy !== undefined) {
+    if (inventoryGroupBy !== "type" && inventoryGroupBy !== "size") {
+      res.status(400).json({ error: "inventoryGroupBy must be type or size" });
+      return;
+    }
+    updates.inventoryGroupBy = inventoryGroupBy;
+  }
   if (ownersSchedulable !== undefined) updates.ownersSchedulable = ownersSchedulable;
   if (durationUnit !== undefined) updates.durationUnit = durationUnit;
   if (autoInvoiceFrequency !== undefined) updates.autoInvoiceFrequency = autoInvoiceFrequency;

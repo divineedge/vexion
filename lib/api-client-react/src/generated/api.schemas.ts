@@ -3592,6 +3592,26 @@ export interface InventoryItem {
   /** @nullable */
   category?: string | null;
   /**
+     * Parent type, such as Pipe or Fitting. Null when the part has no type.
+     * @nullable
+     */
+  typeId?: number | null;
+  /**
+     * Name of the stored type.
+     * @nullable
+     */
+  typeName?: string | null;
+  /**
+     * Size under the part's type. Null when the part has no size.
+     * @nullable
+     */
+  sizeId?: number | null;
+  /**
+     * Name of the stored size.
+     * @nullable
+     */
+  sizeName?: string | null;
+  /**
      * What we pay for the item. Only returned for admin/manager roles (or when showCostPriceToTech is true).
      * @nullable
      */
@@ -3630,6 +3650,16 @@ export interface InventoryItemInput {
   sku: string;
   description?: string;
   category?: string;
+  /**
+     * Type to store on the part. Null leaves the part untyped.
+     * @nullable
+     */
+  typeId?: number | null;
+  /**
+     * Size under typeId. Must belong to that type.
+     * @nullable
+     */
+  sizeId?: number | null;
   /** What we pay for the item (buy price). */
   costPrice: number;
   /** Override markup %. Defaults to tenant default if omitted. */
@@ -3649,6 +3679,16 @@ export interface InventoryItemUpdate {
   name?: string;
   description?: string;
   category?: string;
+  /**
+     * Type to store. Null clears the type and its size.
+     * @nullable
+     */
+  typeId?: number | null;
+  /**
+     * Size under the part's type. Null clears the size.
+     * @nullable
+     */
+  sizeId?: number | null;
   costPrice?: number;
   markupPct?: number;
   quantity?: number;
@@ -3663,6 +3703,36 @@ export interface InventoryItemUpdate {
      * @nullable
      */
   supplierId?: number | null;
+}
+
+export interface InventoryType {
+  id: number;
+  tenantId: number;
+  name: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface InventoryTypeInput {
+  name: string;
+}
+
+export interface InventorySize {
+  id: number;
+  tenantId: number;
+  typeId: number;
+  name: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface InventorySizeInput {
+  typeId: number;
+  name: string;
+}
+
+export interface InventorySizeUpdate {
+  name: string;
 }
 
 export interface InventorySupplier {
@@ -4668,6 +4738,26 @@ export const TenantSettingsDocumentLinkDestination = {
 } as const;
 
 /**
+ * Whether the inventory list is organized by Type or by Size.
+ */
+export type TenantSettingsInventoryGroupBy = typeof TenantSettingsInventoryGroupBy[keyof typeof TenantSettingsInventoryGroupBy];
+
+export const TenantSettingsInventoryGroupBy = {
+  type: 'type',
+  size: 'size',
+} as const;
+
+/**
+ * Organize the inventory list by Type or by Size.
+ */
+export type TenantSettingsUpdateInventoryGroupBy = typeof TenantSettingsUpdateInventoryGroupBy[keyof typeof TenantSettingsUpdateInventoryGroupBy];
+
+export const TenantSettingsUpdateInventoryGroupBy = {
+  type: 'type',
+  size: 'size',
+} as const;
+
+/**
  * Whether job duration is displayed/entered in minutes or hours
  */
 export type TenantSettingsDurationUnit = typeof TenantSettingsDurationUnit[keyof typeof TenantSettingsDurationUnit];
@@ -4884,6 +4974,8 @@ export interface TenantSettings {
   defaultMarkupPct?: number;
   /** When true, technicians can see the cost/buy price of inventory items. */
   showCostPriceToTech?: boolean;
+  /** Whether the inventory list is organized by Type or by Size. */
+  inventoryGroupBy?: TenantSettingsInventoryGroupBy;
   /** When true, company owners can be assigned jobs individually and added to crews. */
   ownersSchedulable?: boolean;
   /** Whether job duration is displayed/entered in minutes or hours */
@@ -5376,6 +5468,8 @@ export interface TenantSettingsUpdate {
   taxRate?: number;
   defaultMarkupPct?: number;
   showCostPriceToTech?: boolean;
+  /** Organize the inventory list by Type or by Size. */
+  inventoryGroupBy?: TenantSettingsUpdateInventoryGroupBy;
   ownersSchedulable?: boolean;
   durationUnit?: TenantSettingsUpdateDurationUnit;
   autoInvoiceFrequency?: TenantSettingsUpdateAutoInvoiceFrequency;
@@ -10030,11 +10124,26 @@ beforeId?: number;
 export type ListInventoryItemsParams = {
 q?: string;
 category?: string;
+/**
+ * Only parts stored with this type.
+ */
+typeId?: number;
+/**
+ * Only parts stored with this size.
+ */
+sizeId?: number;
 lowStock?: boolean;
 /**
  * When true, only return items flagged as usable in the Blueprint canvas palette.
  */
 availableForBlueprint?: boolean;
+};
+
+export type ListInventorySizesParams = {
+/**
+ * When set, only sizes that belong to this type.
+ */
+typeId?: number;
 };
 
 export type ListInvoicesParams = {

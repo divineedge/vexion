@@ -13446,12 +13446,24 @@ components:
         sizeName:
           type: ["string", "null"]
           description: "Name of the stored size."
+        lengthReceived:
+          type: ["number", "null"]
+          description: "Feet of pipe recorded when stock arrived. Null when length is not tracked."
+        pricePerFoot:
+          type: ["number", "null"]
+          description: "Sell price per foot. When set, this is the price used when the part is sold."
+        vendorId:
+          type: ["integer", "null"]
+          description: "Supplier chosen from existing vendors. Null when no vendor is assigned."
+        vendorName:
+          type: ["string", "null"]
+          description: "Name of the vendor chosen as this part's supplier."
         costPrice:
           type: ["number", "null"]
           description: "What we pay for the item. Only returned for admin/manager roles (or when showCostPriceToTech is true)."
         unitPrice:
           type: number
-          description: "Sell price — what we charge customers."
+          description: "Sell price charged to customers. For pipe, this is the per-foot price."
         markupPct:
           type: number
           description: "Markup percentage applied to cost price."
@@ -13519,6 +13531,15 @@ components:
         supplierId:
           type: integer
           description: "FK to inventory_suppliers."
+        lengthReceived:
+          type: ["number", "null"]
+          description: "Feet of pipe received with this stock. Null clears it."
+        pricePerFoot:
+          type: ["number", "null"]
+          description: "Per-foot sell price. Null clears it. When set, sales use this price."
+        vendorId:
+          type: ["integer", "null"]
+          description: "Existing vendor to store as this part's supplier. Null clears it."
 
     InventoryItemUpdate:
       type: object
@@ -13554,6 +13575,15 @@ components:
         supplierId:
           type: ["integer", "null"]
           description: "FK to inventory_suppliers. Pass null to unlink."
+        lengthReceived:
+          type: ["number", "null"]
+          description: "Feet of pipe received with this stock. Null clears it."
+        pricePerFoot:
+          type: ["number", "null"]
+          description: "Per-foot sell price. Null clears it. When set, sales use this price."
+        vendorId:
+          type: ["integer", "null"]
+          description: "Existing vendor to store as this part's supplier. Null clears it."
 
     InventorySupplier:
       type: object

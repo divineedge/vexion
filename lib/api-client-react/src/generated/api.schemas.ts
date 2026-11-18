@@ -3612,11 +3612,31 @@ export interface InventoryItem {
      */
   sizeName?: string | null;
   /**
+     * Feet of pipe recorded when stock arrived. Null when length is not tracked.
+     * @nullable
+     */
+  lengthReceived?: number | null;
+  /**
+     * Sell price per foot. When set, this is the price used when the part is sold.
+     * @nullable
+     */
+  pricePerFoot?: number | null;
+  /**
+     * Supplier chosen from existing vendors. Null when no vendor is assigned.
+     * @nullable
+     */
+  vendorId?: number | null;
+  /**
+     * Name of the vendor chosen as this part's supplier.
+     * @nullable
+     */
+  vendorName?: string | null;
+  /**
      * What we pay for the item. Only returned for admin/manager roles (or when showCostPriceToTech is true).
      * @nullable
      */
   costPrice?: number | null;
-  /** Sell price — what we charge customers. */
+  /** Sell price charged to customers. For pipe, this is the per-foot price. */
   unitPrice: number;
   /** Markup percentage applied to cost price. */
   markupPct?: number;
@@ -3660,6 +3680,21 @@ export interface InventoryItemInput {
      * @nullable
      */
   sizeId?: number | null;
+  /**
+     * Feet of pipe received with this stock. Null clears it.
+     * @nullable
+     */
+  lengthReceived?: number | null;
+  /**
+     * Per-foot sell price. Null clears it. When set, sales use this price.
+     * @nullable
+     */
+  pricePerFoot?: number | null;
+  /**
+     * Existing vendor to store as this part's supplier. Null clears it.
+     * @nullable
+     */
+  vendorId?: number | null;
   /** What we pay for the item (buy price). */
   costPrice: number;
   /** Override markup %. Defaults to tenant default if omitted. */
@@ -3689,6 +3724,21 @@ export interface InventoryItemUpdate {
      * @nullable
      */
   sizeId?: number | null;
+  /**
+     * Feet of pipe received with this stock. Null clears it.
+     * @nullable
+     */
+  lengthReceived?: number | null;
+  /**
+     * Per-foot sell price. Null clears it. When set, sales use this price.
+     * @nullable
+     */
+  pricePerFoot?: number | null;
+  /**
+     * Existing vendor to store as this part's supplier. Null clears it.
+     * @nullable
+     */
+  vendorId?: number | null;
   costPrice?: number;
   markupPct?: number;
   quantity?: number;

@@ -3,6 +3,7 @@ import { pgTable, text, serial, timestamp, integer, real, boolean, unique, uniqu
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
+import { vendorsTable } from "./vendors";
 
 // ─── Inventory Suppliers ──────────────────────────────────────────────────────
 // Shared supplier/vendor lookup scoped to a tenant. One supplier ties across many items.
@@ -136,6 +137,12 @@ export const inventoryItemsTable = pgTable("inventory_items", {
   commissionPct: real("commission_pct"),
   /** Optional FK to the shared inventory supplier lookup. */
   supplierId: integer("supplier_id").references(() => inventorySuppliersTable.id, { onDelete: "set null" }),
+  /** Feet of pipe recorded when this stock arrived. */
+  lengthReceived: real("length_received"),
+  /** Sell price charged for each foot when this part is sold. */
+  pricePerFoot: real("price_per_foot"),
+  /** Supplier chosen from the vendor list. */
+  vendorId: integer("vendor_id").references(() => vendorsTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -5,9 +5,10 @@ import type { JobPricingFloorInputs } from '@/lib/jobPricingFloor';
 import { companyFloorBaseline } from '@/lib/jobPricingFloorBaseline';
 import { ScopedJobPricingFloor } from './ScopedJobPricingFloor';
 import {
-  BudgetYear, computeCompanyTotal,
+  BudgetYear, OVERHEAD_CATEGORIES, computeCompanyTotal, expenseFrequency,
+  type ExpenseFrequency, type OverheadLineItems,
 } from '@/lib/budgetCalc';
-import { NumField, Section, ResultCard, $, pct } from './shared';
+import { NumField, Section, ResultCard, $, pct, ExpenseLineEditor, PriorYearPrice } from './shared';
 import { CheckupPanel } from './CheckupPanel';
 import {
   BudgetInfoButton, CompanyAnnualOverheadInfo, CompanyBreakEvenInfo, CompanyDivisionRateInfo,
@@ -16,14 +17,21 @@ import {
 } from './BudgetNumbersInfo';
 
 export function CompanyTotalPanel({
-  year, onCompanyFloorChange, onCompanyCheckupChange, onJobPricingFloorChange,
+  year, previousYear, onCompanyFloorChange, onCompanyCheckupChange, onJobPricingFloorChange,
+  onCompanyTotalRevenueChange, onCompanyOverheadChange, onCompanyOverheadFrequencyChange, onDivisionIncomeChange,
 }: {
   onJobPricingFloorChange: (next: JobPricingFloorInputs | undefined) => void;
   year: BudgetYear;
+  previousYear?: BudgetYear | null;
   onCompanyFloorChange: (override: number | null) => void;
   onCompanyCheckupChange: (which: 'companyMidYearCheckup' | 'companyEndYearCheckup', c: BudgetYear['companyMidYearCheckup']) => void;
+  onCompanyTotalRevenueChange: (revenue: number) => void;
+  onCompanyOverheadChange: (key: keyof OverheadLineItems, amount: number) => void;
+  onCompanyOverheadFrequencyChange: (key: keyof OverheadLineItems, frequency: ExpenseFrequency) => void;
+  onDivisionIncomeChange: (divisionId: string, income: number) => void;
 }) {
   const totals = useMemo(() => computeCompanyTotal(year), [year]);
+  const previousTotals = useMemo(() => previousYear ? computeCompanyTotal(previousYear) : null, [previousYear]);
 
   const jpfBaseline = useMemo(() => companyFloorBaseline(year), [year]);
 
@@ -41,6 +49,53 @@ export function CompanyTotalPanel({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2 space-y-4">
+        <Section title="Checkup review" icon={Timer}>
+          <div data-testid="checkup-review" className="space-y-4 pt-2">
+            <div className="max-w-xs">
+              <NumField
+                label="Company total revenue"
+                testId="input-company-total-revenue"
+                value={year.companyTotalRevenue ?? 0}
+                onChange={value => onCompanyTotalRevenueChange(Math.max(0, value))}
+                hint="Annual revenue for the whole company."
+              />
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-medium">Overhead expenses</p>
+              <p className="text-xs text-muted-foreground">Entered for the company, by category. Each division shows its income share of the annual amount.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {OVERHEAD_CATEGORIES.map(({ key, label }) => (
+                  <ExpenseLineEditor
+                    key={key}
+                    label={label}
+                    amount={Number(year.companyOverhead?.[key]) || 0}
+                    frequency={expenseFrequency(year.companyOverheadFrequency?.[key])}
+                    amountTestId={`input-company-overhead-${key}`}
+                    testId={`company-overhead-frequency-${key}`}
+                    onAmount={value => onCompanyOverheadChange(key, Math.max(0, value))}
+                    onFrequency={frequency => onCompanyOverheadFrequencyChange(key, frequency)}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-medium">Division income</p>
+              <p className="text-xs text-muted-foreground">Total income for each division. Company overhead is split by division income ÷ total division income.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {year.divisions.map(division => (
+                  <NumField
+                    key={division.id}
+                    label={`${division.name} total income`}
+                    testId={`input-division-income-${division.name}`}
+                    value={division.income ?? 0}
+                    onChange={value => onDivisionIncomeChange(division.id, Math.max(0, value))}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </Section>
+
         {/* Per-division rate comparison */}
         <Card>
           <CardHeader className="pb-2 pt-4">
@@ -166,6 +221,9 @@ export function CompanyTotalPanel({
                 <BudgetInfoButton id="company-break-even" label="company break-even rate" title="Company break-even rate" tone="inverse"><CompanyBreakEvenInfo /></BudgetInfoButton>
               </p>
             )}
+            {previousYear && previousTotals && (
+              <PriorYearPrice inverse year={previousYear.year} testId="prior-year-company-rate" text={`${$(previousTotals.combinedRequiredHourlyRate, 2)}/man-hr · break-even ${$(previousTotals.combinedBreakEvenRate, 2)}/man-hr`} />
+            )}
           </CardContent>
         </Card>
 
@@ -183,6 +241,9 @@ export function CompanyTotalPanel({
           <CardContent>
             <p className="text-xs text-muted-foreground">Calculated company floor</p>
             <p className="text-3xl font-bold" data-testid="company-job-floor">{totals.companyJobFloorCalculated > 0 ? $(totals.companyJobFloorCalculated, 2) : '—'}</p>
+            {previousYear && previousTotals && (
+              <PriorYearPrice year={previousYear.year} testId="prior-year-company-job-floor" text={$(previousTotals.companyJobFloorCalculated, 2)} />
+            )}
             <p className="text-xs text-muted-foreground mt-1">
               Live sum of division labor, materials, and overhead per billable hour, times the average minimum visit.
             </p>

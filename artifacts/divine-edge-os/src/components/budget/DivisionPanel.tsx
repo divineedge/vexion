@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import {
   DivisionBudget, BudgetYear, computeDivision, OVERHEAD_CATEGORIES, resolvedWeeklyBillableHours,
-  categoryAnnualAmount, expenseFrequency, customLineAmount, customLineFrequency, customLineWithAmount, customLineWithFrequency,
+  categoryAnnualAmount, companyCategoryOverheadAnnual, companyOverheadShare, expenseFrequency, customLineAmount, customLineFrequency, customLineWithAmount, customLineWithFrequency,
   overheadLaborAnnualCost, overheadLaborBasePay, newOverheadLaborRole, OVERHEAD_LABOR_PRESETS, proportionalOverheadLaborShares,
   type CustomOverheadLine, type OverheadLaborRole, type OverheadPayType, type OverheadLaborAllocation,
 } from '@/lib/budgetCalc';
@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Plus, Trash2 } from 'lucide-react';
-import { NumField, Section, ResultCard, $, pct, ExpenseLineEditor, FrequencySelect } from './shared';
+import { NumField, Section, ResultCard, $, pct, ExpenseLineEditor, FrequencySelect, PriorYearPrice } from './shared';
 import { CheckupPanel } from './CheckupPanel';
 import { ScopedJobPricingFloor } from './ScopedJobPricingFloor';
 import { divisionFloorBaseline } from '@/lib/jobPricingFloorBaseline';
@@ -67,6 +67,18 @@ export function DivisionPanel({
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* ── Left: Input Sections ── */}
       <div className="lg:col-span-2 space-y-4">
+
+        <Section title="Division revenue" icon={Target}>
+          <div className="max-w-xs pt-2">
+            <NumField
+              label="Division revenue"
+              testId="input-division-revenue"
+              value={division.revenue ?? 0}
+              onChange={v => set('revenue', Math.max(0, v))}
+              hint="Annual revenue for this division."
+            />
+          </div>
+        </Section>
 
         {/* Capacity */}
         <Section title="Company & Work Capacity" icon={Clock}>
@@ -148,17 +160,26 @@ export function DivisionPanel({
         <Section title="Overhead" icon={Building2}>
           <p className="text-xs text-muted-foreground pt-1 pb-3">Each line is monthly until you choose annual. Totals, man-hour rates, and the job floor use that choice immediately.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {OVERHEAD_CATEGORIES.map(({ key, label }) => (
-              <ExpenseLineEditor
-                key={key}
-                label={label}
-                amount={division[key] as number}
-                frequency={expenseFrequency(division.overheadFrequency?.[key])}
-                testId={`expense-frequency-${key}`}
-                onAmount={v => set(key, v)}
-                onFrequency={frequency => set('overheadFrequency', { ...division.overheadFrequency, [key]: frequency })}
-              />
-            ))}
+            {OVERHEAD_CATEGORIES.map(({ key, label }) => {
+              const share = companyOverheadShare(
+                division.income ?? 0,
+                year.divisions.map(item => item.income ?? 0),
+                companyCategoryOverheadAnnual(year, key),
+              );
+              return (
+                <ExpenseLineEditor
+                  key={key}
+                  label={label}
+                  amount={division[key] as number}
+                  frequency={expenseFrequency(division.overheadFrequency?.[key])}
+                  testId={`expense-frequency-${key}`}
+                  onAmount={v => set(key, v)}
+                  onFrequency={frequency => set('overheadFrequency', { ...division.overheadFrequency, [key]: frequency })}
+                  note={share == null ? null : `Share of company overhead: ${$(share)}/yr`}
+                  noteTestId={`company-overhead-share-${key}`}
+                />
+              );
+            })}
           </div>
           <div className="mt-4 space-y-2">
             <p className="text-xs font-medium">Custom overhead categories</p>
@@ -290,6 +311,9 @@ export function DivisionPanel({
                 <BudgetInfoButton id="division-break-even" label="break-even rate" title="Break-even rate" tone="inverse"><DivisionBreakEvenInfo /></BudgetInfoButton>
               </p>
             )}
+            {previousResults && previousYear != null && (
+              <PriorYearPrice inverse year={previousYear} testId="prior-year-target-rate" text={`${$(previousResults.requiredHourlyRate, 2)}/man-hr · break-even ${$(previousResults.breakEvenRate, 2)}/man-hr`} />
+            )}
             {(results.overheadLaborAnnual + results.allocatedCompanyLabor) > 0 && (
               <p className="text-xs text-primary-foreground/70 mt-1 inline-flex items-start gap-1" data-testid="division-overhead-labor-rate">
                 <span>Recovers {$(results.overheadLaborAnnual + results.allocatedCompanyLabor)} of non-billable salary across {results.manHoursYear.toLocaleString()} productive hours ({$((results.manHoursYear > 0 ? (results.overheadLaborAnnual + results.allocatedCompanyLabor) / results.manHoursYear : 0), 2)}/man-hr).</span>
@@ -350,6 +374,9 @@ export function DivisionPanel({
           <CardContent>
             <p className="text-xs text-muted-foreground">Calculated cost floor</p>
             <p className="text-3xl font-bold" data-testid="division-job-floor">{results.jobFloorCalculated > 0 ? $(results.jobFloorCalculated, 2) : '—'}</p>
+            {previousResults && previousYear != null && (
+              <PriorYearPrice year={previousYear} testId="prior-year-job-floor" text={$(previousResults.jobFloorCalculated, 2)} />
+            )}
             <p className="text-xs text-muted-foreground mt-1">
               Labor, materials, and overhead for {division.minimumVisitHours} hour{division.minimumVisitHours !== 1 ? 's' : ''}, using {results.capacityWeeks} working weeks.
             </p>
@@ -392,9 +419,12 @@ export function DivisionPanel({
             <CardTitle className="text-sm flex items-center gap-1">Recommended Material Markup <BudgetInfoButton id="division-material-markup" label="material markup" title="Material markup"><MaterialMarkupInfo /></BudgetInfoButton></CardTitle>
           </CardHeader>
           <CardContent>
-            {division.estimatedAnnualMaterialCost > 0 ? (
+                {division.estimatedAnnualMaterialCost > 0 ? (
               <>
                 <p className="text-3xl font-bold">{results.recommendedMarkup}%</p>
+                {previousResults && previousYear != null && (
+                  <PriorYearPrice year={previousYear} testId="prior-year-material-markup" text={`${previousResults.recommendedMarkup}%`} />
+                )}
                 <p className="text-xs text-muted-foreground mt-1">
                   Covers this division's share of overhead attributable to materials ({$(results.overheadAllocatedToMaterials)} of {$(results.annualOverhead)} total) plus your {division.targetNetMarginPct}% margin target — not the full overhead burden, since labor billing already covers most of it.
                 </p>
@@ -422,9 +452,10 @@ export function DivisionPanel({
                 const diff = curr - prev;
                 const pctDiff = prev > 0 ? diff / prev * 100 : 0;
                 return (
-                  <div key={label} className="flex items-center justify-between text-sm">
+                  <div key={label} className="flex items-center justify-between gap-3 text-sm">
                     <span className="text-muted-foreground">{label}</span>
                     <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] text-muted-foreground" data-testid={`prior-year-${label.toLowerCase().replace(/\s+/g, '-')}`}>{previousYear}: {fmt(prev)}</span>
                       <span className="font-medium">{fmt(curr)}</span>
                       <Badge
                         variant="outline"

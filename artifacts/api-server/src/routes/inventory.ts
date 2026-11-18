@@ -3,16 +3,13 @@ import { db, inventoryItemsTable, inventoryPartSizesTable, inventoryPartTypesTab
 import { eq, and, or, ilike, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { applyArrival, isPipeTypeName, parseOptionalAmount, sellUnitPrice } from "../lib/pipeStock";
+import { inventoryImportFields, inventoryRecordFromImport, parseInventoryImportRow } from "../lib/inventoryImport";
 import { usersTable } from "@workspace/db";
 import {
   importUpload,
   handleExportRequest,
   handleImportPreview,
   handleImportCommit,
-  requireString,
-  optionalString,
-  optionalNumber,
-  optionalBoolean,
   registerImportExportConfig,
   type ImportExportEntityConfig,
 } from "../lib/importExport";
@@ -25,27 +22,21 @@ const router: IRouter = Router();
 
 const inventoryImportExportConfig: ImportExportEntityConfig = {
   entityKey: "inventory",
-  fields: [
-    { key: "name", header: "Name", required: true },
-    { key: "sku", header: "SKU", required: true, hint: "Used to match an existing item" },
-    { key: "description", header: "Description" },
-    { key: "category", header: "Category" },
-    { key: "unitPrice", header: "Cost Price" },
-    { key: "markedUpPrice", header: "Sell Price" },
-    { key: "quantity", header: "Quantity" },
-    { key: "reorderPoint", header: "Reorder Point" },
-    { key: "unit", header: "Unit" },
-    { key: "availableForBlueprint", header: "Blueprint Ready" },
-  ],
+  fields: inventoryImportFields,
   exportColumns: [
     { key: "id", header: "ID" },
     { key: "name", header: "Name" },
     { key: "sku", header: "SKU" },
-    { key: "description", header: "Description" },
+    { key: "typeName", header: "Type" },
+    { key: "sizeName", header: "Size" },
     { key: "category", header: "Category" },
-    { key: "unitPrice", header: "Cost Price" },
-    { key: "markedUpPrice", header: "Sell Price" },
     { key: "quantity", header: "Quantity" },
+    { key: "unitPrice", header: "Cost" },
+    { key: "markedUpPrice", header: "Sell Price" },
+    { key: "supplierName", header: "Supplier" },
+    { key: "lengthReceived", header: "Pipe Feet" },
+    { key: "pricePerFoot", header: "Price Per Foot" },
+    { key: "description", header: "Description" },
     { key: "reorderPoint", header: "Reorder Point" },
     { key: "unit", header: "Unit" },
     { key: "availableForBlueprint", header: "Blueprint Ready" },
@@ -56,45 +47,38 @@ const inventoryImportExportConfig: ImportExportEntityConfig = {
     if (query.q) where = and(where, or(ilike(inventoryItemsTable.name, `%${query.q}%`),ilike(inventoryItemsTable.sku, `%${query.q}%`))) as typeof where;
     if (query.category) where = and(where, eq(inventoryItemsTable.category, query.category)) as typeof where;
 
-    const rows = await db.select().from(inventoryItemsTable).where(where).orderBy(inventoryItemsTable.name);
-    return rows.map((i) => ({
-      id: i.id,
-      name: i.name,
-      sku: i.sku,
-      description: i.description ?? "",
-      category: i.category ?? "",
-      unitPrice: i.unitPrice,
-      markedUpPrice: i.markedUpPrice,
-      quantity: i.quantity,
-      reorderPoint: i.reorderPoint,
-      unit: i.unit,
-      availableForBlueprint: i.availableForBlueprint,
-      createdAt: i.createdAt.toISOString(),
+    const rows = await db.select({
+      item: inventoryItemsTable,
+      typeName: inventoryPartTypesTable.name,
+      sizeName: inventoryPartSizesTable.name,
+      vendorName: vendorsTable.name,
+    }).from(inventoryItemsTable)
+      .leftJoin(inventoryPartTypesTable, eq(inventoryItemsTable.typeId, inventoryPartTypesTable.id))
+      .leftJoin(inventoryPartSizesTable, eq(inventoryItemsTable.sizeId, inventoryPartSizesTable.id))
+      .leftJoin(vendorsTable, eq(inventoryItemsTable.vendorId, vendorsTable.id))
+      .where(where)
+      .orderBy(inventoryItemsTable.name);
+    return rows.map(({ item, typeName, sizeName, vendorName }) => ({
+      id: item.id,
+      name: item.name,
+      sku: item.sku,
+      typeName: typeName ?? "",
+      sizeName: sizeName ?? "",
+      description: item.description ?? "",
+      category: item.category ?? "",
+      unitPrice: item.unitPrice,
+      markedUpPrice: item.markedUpPrice,
+      quantity: item.quantity,
+      reorderPoint: item.reorderPoint,
+      unit: item.unit,
+      supplierName: vendorName ?? "",
+      lengthReceived: item.lengthReceived ?? "",
+      pricePerFoot: item.pricePerFoot ?? "",
+      availableForBlueprint: item.availableForBlueprint,
+      createdAt: item.createdAt.toISOString(),
     }));
   },
-  parseRow: async (_tenantId, raw) => {
-    const errors: string[] = [];
-    const name = requireString(raw.name, "Name", errors);
-    const sku = requireString(raw.sku, "SKU", errors);
-    if (errors.length > 0 || !name || !sku) return { ok: false, errors };
-
-    const unitPrice = optionalNumber(raw.unitPrice, "Cost Price", errors) ?? 0;
-    const markedUpPrice = optionalNumber(raw.markedUpPrice, "Sell Price", errors) ?? unitPrice;
-    const values = {
-      name,
-      sku,
-      description: optionalString(raw.description) ?? null,
-      category: optionalString(raw.category) ?? null,
-      unitPrice,
-      markedUpPrice,
-      quantity: optionalNumber(raw.quantity, "Quantity", errors) ?? 0,
-      reorderPoint: optionalNumber(raw.reorderPoint, "Reorder Point", errors) ?? 5,
-      unit: optionalString(raw.unit) ?? "each",
-      availableForBlueprint: optionalBoolean(raw.availableForBlueprint) ?? false,
-    };
-    if (errors.length > 0) return { ok: false, errors };
-    return { ok: true, values };
-  },
+  parseRow: async (_tenantId, raw) => parseInventoryImportRow(raw),
   findExisting: async (tenantId, values) => {
     const [existing] = await db
       .select({ id: inventoryItemsTable.id })
@@ -104,11 +88,23 @@ const inventoryImportExportConfig: ImportExportEntityConfig = {
     return existing?.id ?? null;
   },
   insert: async (tenantId, values) => {
-    const [row] = await db.insert(inventoryItemsTable).values({ tenantId, ...values } as typeof inventoryItemsTable.$inferInsert).returning({ id: inventoryItemsTable.id });
+    const record = await inventoryRecordFromImport(tenantId, values, "insert");
+    const [row] = await db.insert(inventoryItemsTable).values({ tenantId, ...record } as typeof inventoryItemsTable.$inferInsert).returning({ id: inventoryItemsTable.id });
     return row.id;
   },
   update: async (tenantId, id, values) => {
-    await db.update(inventoryItemsTable).set(values as Partial<typeof inventoryItemsTable.$inferInsert>)
+    const record = await inventoryRecordFromImport(tenantId, values, "update");
+    if (record.quantity !== undefined || record.reorderPoint !== undefined) {
+      const [existing] = await db.select({ quantity: inventoryItemsTable.quantity, reorderPoint: inventoryItemsTable.reorderPoint })
+        .from(inventoryItemsTable)
+        .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)));
+      if (existing) {
+        const quantity = record.quantity ?? existing.quantity;
+        const reorderPoint = record.reorderPoint ?? existing.reorderPoint;
+        record.isLowStock = quantity <= reorderPoint;
+      }
+    }
+    await db.update(inventoryItemsTable).set(record)
       .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)));
   },
   getById: async (tenantId, id) => {
@@ -258,7 +254,7 @@ function nullableId(value: unknown): number | null | undefined {
   return Number.isNaN(parsed) ? NaN : parsed;
 }
 
-/** Resolve a part's type and the size under that type. Both may be empty. */
+/** Resolve a part's type and a size from the shared catalog. Both may be empty. */
 async function resolveGrouping(
   tenantId: number,
   typeIdRaw: unknown,
@@ -284,10 +280,10 @@ async function resolveGrouping(
   if (!type) return { ok: false, error: "Type not found" };
 
   if (sizeId != null && sizeParsed === undefined && typeParsed !== undefined) {
-    const [current] = await db.select({ typeId: inventoryPartSizesTable.typeId })
+    const [current] = await db.select({ id: inventoryPartSizesTable.id })
       .from(inventoryPartSizesTable)
       .where(and(eq(inventoryPartSizesTable.id, sizeId), eq(inventoryPartSizesTable.tenantId, tenantId)));
-    if (!current || current.typeId !== type.id) sizeId = null;
+    if (!current) sizeId = null;
   }
 
   if (sizeId == null) {
@@ -297,10 +293,9 @@ async function resolveGrouping(
   const [size] = await db.select({
     id: inventoryPartSizesTable.id,
     name: inventoryPartSizesTable.name,
-    typeId: inventoryPartSizesTable.typeId,
   }).from(inventoryPartSizesTable)
     .where(and(eq(inventoryPartSizesTable.id, sizeId), eq(inventoryPartSizesTable.tenantId, tenantId)));
-  if (!size || size.typeId !== type.id) return { ok: false, error: "Size does not belong to the selected type" };
+  if (!size) return { ok: false, error: "Size not found" };
   return { ok: true, value: { typeId: type.id, sizeId: size.id, typeName: type.name, sizeName: size.name } };
 }
 

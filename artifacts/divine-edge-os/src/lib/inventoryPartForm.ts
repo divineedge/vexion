@@ -30,6 +30,19 @@ export function namedId(items: readonly { id: number; name: string }[], name: st
   return items.find(item => item.name.trim().toLowerCase() === key)?.id ?? null;
 }
 
+/** Every saved size, in name order. The menu does not depend on the selected type. */
+export function inventorySizeOptions(sizes: readonly { id: number; name: string }[]): { value: string; label: string }[] {
+  return [...sizes]
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }) || a.id - b.id)
+    .map(size => ({ value: String(size.id), label: size.name }));
+}
+
+/** Keep a selected size when the type changes, as long as that size still exists. */
+export function sizeIdAcrossTypes(sizeId: string, sizes: readonly { id: number }[]): string {
+  if (!sizeId) return "";
+  return sizes.some(size => String(size.id) === sizeId) ? sizeId : "";
+}
+
 export function feetFromLength(length: number): number {
   if (!Number.isFinite(length) || length < 0) return 0;
   return Math.max(0, Math.round(length));

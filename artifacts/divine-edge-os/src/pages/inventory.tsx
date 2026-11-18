@@ -45,8 +45,8 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
 import { upsertInventoryLocation } from '@/lib/inventoryLocations';
-import { groupInventoryItems, sizeIdForType, sizesForType, type InventoryGroupBy } from '@/lib/inventoryGrouping';
-import { categoryChoices, feetFromLength, isPipeTypeName, namedId } from '@/lib/inventoryPartForm';
+import { groupInventoryItems, type InventoryGroupBy } from '@/lib/inventoryGrouping';
+import { categoryChoices, feetFromLength, inventorySizeOptions, isPipeTypeName, namedId, sizeIdAcrossTypes } from '@/lib/inventoryPartForm';
 import { ShrinkageReport } from '@/components/inventory/ShrinkageReport';
 
 function ItemLocationSection({ inventoryItemId }: { inventoryItemId: number }) {
@@ -407,7 +407,7 @@ export default function InventoryPage() {
   const updateSettings = useUpdateTenantSettings();
   const groupBy: InventoryGroupBy = settings?.inventoryGroupBy === 'size' ? 'size' : 'type';
   const groupedItems = useMemo(() => groupInventoryItems(items ?? [], groupBy), [items, groupBy]);
-  const filteredSizes = typeFilter ? sizesForType(partSizes, Number(typeFilter)) : partSizes;
+  const sizeOptions = useMemo(() => inventorySizeOptions(partSizes), [partSizes]);
   const { data: selectedItem } = useGetInventoryItem(selectedId!, {
     query: { enabled: selectedId != null, queryKey: getGetInventoryItemQueryKey(selectedId!) },
   });
@@ -450,13 +450,13 @@ export default function InventoryPage() {
     const existingId = namedId(partTypes, name);
     if (existingId != null) {
       const existingName = partTypes.find(type => type.id === existingId)?.name ?? name;
-      setForm(current => ({ ...current, typeId: String(existingId), sizeId: '', unit: isPipeTypeName(existingName) ? 'ft' : current.unit }));
+      setForm(current => ({ ...current, typeId: String(existingId), unit: isPipeTypeName(existingName) ? 'ft' : current.unit }));
       return;
     }
     try {
       const created = await createType.mutateAsync({ data: { name } });
       rememberType(created);
-      setForm(current => ({ ...current, typeId: String(created.id), sizeId: '', unit: isPipeTypeName(created.name) ? 'ft' : current.unit }));
+      setForm(current => ({ ...current, typeId: String(created.id), unit: isPipeTypeName(created.name) ? 'ft' : current.unit }));
       toast.success(`Added type ${created.name}`);
     } catch (err) {
       if (errorStatus(err) === 409) {
@@ -464,7 +464,7 @@ export default function InventoryPage() {
         const id = namedId(fresh, name);
         if (id != null) {
           rememberType(fresh.find(type => type.id === id)!);
-          setForm(current => ({ ...current, typeId: String(id), sizeId: '' }));
+          setForm(current => ({ ...current, typeId: String(id) }));
           return;
         }
       }
@@ -476,7 +476,7 @@ export default function InventoryPage() {
   const addSize = async (name: string) => {
     const typeId = Number(form.typeId);
     if (!typeId) { toast.error('Choose a type before adding a size'); throw new Error('Choose a type first'); }
-    const existingId = namedId(sizesForType(partSizes, typeId), name);
+    const existingId = namedId(partSizes, name);
     if (existingId != null) {
       setForm(current => ({ ...current, sizeId: String(existingId) }));
       return;
@@ -489,7 +489,7 @@ export default function InventoryPage() {
     } catch (err) {
       if (errorStatus(err) === 409) {
         const fresh = await qc.fetchQuery(getListInventorySizesQueryOptions()) as InventorySize[];
-        const id = namedId(sizesForType(fresh, typeId), name);
+        const id = namedId(fresh, name);
         if (id != null) {
           const match = fresh.find(size => size.id === id);
           if (match) rememberSize(match);
@@ -563,6 +563,7 @@ export default function InventoryPage() {
 
   const handleSave = () => {
     if (!form.name || !form.sku) { toast.error('Name and SKU are required'); return; }
+    if (form.sizeId && !form.typeId) { toast.error('Choose a type before choosing a size'); return; }
     const length = form.lengthReceived.trim();
     const perFoot = form.pricePerFoot.trim();
     if (length && (!Number.isFinite(Number(length)) || Number(length) < 0)) { toast.error('Length received must be a non-negative number'); return; }
@@ -638,6 +639,8 @@ export default function InventoryPage() {
             onImportComplete={() => {
               qc.invalidateQueries({ queryKey: getListInventoryItemsQueryKey() });
               qc.invalidateQueries({ queryKey: getGetInventorySummaryQueryKey() });
+              qc.invalidateQueries({ queryKey: getListInventoryTypesQueryKey() });
+              qc.invalidateQueries({ queryKey: getListInventorySizesQueryKey() });
             }}
           />
           {canManage && (
@@ -885,15 +888,7 @@ export default function InventoryPage() {
             </div>
             <Select
               value={typeFilter || '__all__'}
-              onValueChange={value => {
-                const next = value === '__all__' ? '' : value;
-                setTypeFilter(next);
-                if (!next) return;
-                setSizeFilter(current => {
-                  const kept = sizeIdForType(current ? Number(current) : null, Number(next), partSizes);
-                  return kept ? String(kept) : '';
-                });
-              }}
+              onValueChange={value => setTypeFilter(value === '__all__' ? '' : value)}
             >
               <SelectTrigger className="w-[160px]" title="Filter the list by type" data-testid="select-filter-type">
                 <SelectValue placeholder="All types" />
@@ -912,10 +907,9 @@ export default function InventoryPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">All sizes</SelectItem>
-                {filteredSizes.map(size => {
-                  const typeName = partTypes.find(type => type.id === size.typeId)?.name;
-                  return <SelectItem key={size.id} value={String(size.id)}>{typeName && !typeFilter ? `${size.name} · ${typeName}` : size.name}</SelectItem>;
-                })}
+                {sizeOptions.map(size => (
+                  <SelectItem key={size.value} value={size.value}>{size.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             {canManageOffice && (
@@ -1232,13 +1226,12 @@ export default function InventoryPage() {
                   addLabel="Type"
                   adding={createType.isPending}
                   onChange={typeId => {
-                    const kept = sizeIdForType(form.sizeId ? Number(form.sizeId) : null, typeId ? Number(typeId) : null, partSizes);
                     const nextName = partTypes.find(type => String(type.id) === typeId)?.name ?? '';
                     const nextPipe = isPipeTypeName(nextName);
                     setForm(current => ({
                       ...current,
                       typeId,
-                      sizeId: kept ? String(kept) : '',
+                      sizeId: typeId ? sizeIdAcrossTypes(current.sizeId, partSizes) : '',
                       unit: nextPipe ? 'ft' : (current.unit === 'ft' ? 'each' : current.unit),
                       lengthReceived: nextPipe ? current.lengthReceived : '',
                       pricePerFoot: nextPipe ? current.pricePerFoot : '',
@@ -1251,18 +1244,17 @@ export default function InventoryPage() {
                 <label className="text-sm font-medium">Size</label>
                 <CreatableOptionMenu
                   testId="select-part-size"
-                  title={form.typeId ? 'Size under the selected type' : 'Choose a type first'}
-                  placeholder={form.typeId ? 'No size' : 'Choose a type'}
-                  noneLabel={form.typeId ? 'No size' : undefined}
+                  title="Size. The same list is available for every type and category."
+                  placeholder="No size"
+                  noneLabel="No size"
                   value={form.sizeId}
-                  disabled={!form.typeId}
-                  options={sizesForType(partSizes, form.typeId ? Number(form.typeId) : null).map(size => ({ value: String(size.id), label: size.name }))}
-                  emptyText="No sizes for this type yet."
+                  options={sizeOptions}
+                  emptyText="No sizes yet. Add one below."
                   addPlaceholder="New size, such as 1&quot;"
                   addLabel="Size"
                   adding={createSize.isPending}
                   onChange={sizeId => setForm(current => ({ ...current, sizeId }))}
-                  onAdd={form.typeId ? addSize : undefined}
+                  onAdd={addSize}
                 />
               </div>
               <div className="space-y-1.5 col-span-2">

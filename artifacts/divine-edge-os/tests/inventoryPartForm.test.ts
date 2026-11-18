@@ -3,8 +3,10 @@ import { readFileSync } from "node:fs";
 import {
   categoryChoices,
   feetFromLength,
+  inventorySizeOptions,
   isPipeTypeName,
   namedId,
+  sizeIdAcrossTypes,
 } from "../src/lib/inventoryPartForm";
 import {
   applyArrival,
@@ -51,6 +53,22 @@ describe("pipe arrival", () => {
   });
 });
 
+describe("shared inventory sizes", () => {
+  it("lists sizes from every type and keeps the selection when the type changes", () => {
+    expect(inventorySizeOptions([
+      { id: 3, name: "elbow" },
+      { id: 1, name: '1"' },
+      { id: 2, name: '2"' },
+    ])).toEqual([
+      { value: "1", label: '1"' },
+      { value: "2", label: '2"' },
+      { value: "3", label: "elbow" },
+    ]);
+    expect(sizeIdAcrossTypes("3", [{ id: 1 }, { id: 3 }])).toBe("3");
+    expect(sizeIdAcrossTypes("9", [{ id: 1 }])).toBe("");
+  });
+});
+
 describe("add inventory form", () => {
   it("uses sheet-safe menus for type, size, category, and vendors", () => {
     expect(inventoryPage).toContain("isFromPickerPortal");
@@ -59,6 +77,9 @@ describe("add inventory form", () => {
     expect(inventoryPage).toContain('testId="select-part-category"');
     expect(inventoryPage).toContain('testId="select-part-supplier"');
     expect(inventoryPage).toContain("useListVendors");
+    expect(inventoryPage).toContain("inventorySizeOptions(partSizes)");
+    expect(inventoryPage).not.toContain("sizesForType(partSizes");
+    expect(inventoryPage).not.toContain("sizeIdForType");
     expect(inventoryPage).toContain('data-testid="input-length-received"');
     expect(inventoryPage).toContain('data-testid="input-price-per-foot"');
     expect(inventoryPage).not.toContain("New Supplier");

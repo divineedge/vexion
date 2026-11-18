@@ -79,7 +79,7 @@ export type InsertInventoryTransfer = z.infer<typeof insertInventoryTransferSche
 export type InventoryTransfer = typeof inventoryTransfersTable.$inferSelect;
 
 // ─── Inventory part types and sizes ───────────────────────────────────────────
-// Type is the parent (Pipe, Fitting). Size is a child of one type (1", elbow).
+// Type is the parent (Pipe, Fitting). A size name is shared across types; type_id records where it was first added.
 
 export const inventoryPartTypesTable = pgTable("inventory_part_types", {
   id: serial("id").primaryKey(),
@@ -123,7 +123,7 @@ export const inventoryItemsTable = pgTable("inventory_items", {
   category: text("category"),
   /** Parent grouping. Null on parts created before types existed. */
   typeId: integer("type_id").references(() => inventoryPartTypesTable.id, { onDelete: "set null" }),
-  /** Size under typeId. Null when the part has no size. */
+  /** Shared size. Null when the part has no size. The size does not have to be the one first added under typeId. */
   sizeId: integer("size_id").references(() => inventoryPartSizesTable.id, { onDelete: "set null" }),
   unitPrice: real("unit_price").notNull().default(0),
   markedUpPrice: real("marked_up_price").notNull().default(0),

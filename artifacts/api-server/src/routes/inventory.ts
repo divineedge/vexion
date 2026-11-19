@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response, type NextFunction } 
 import { db, inventoryItemsTable, inventoryPartSizesTable, inventoryPartTypesTable, inventorySuppliersTable, tenantsTable, vendorsTable } from "@workspace/db";
 import { eq, and, or, ilike, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
-import { applyArrival, isPipeTypeName, parseOptionalAmount, priceWithMarkup, sellUnitPrice } from "../lib/pipeStock";
+import { applyArrival, isPipeTypeName, parseOptionalAmount, priceWithMarkup, resolveInventorySell } from "../lib/pipeStock";
 import { inventoryImportFields, inventoryRecordFromImport, parseInventoryImportRow } from "../lib/inventoryImport";
 import { usersTable } from "@workspace/db";
 import {
@@ -179,14 +179,6 @@ async function requireInventoryMutate(req: Request, res: Response, next: NextFun
   next();
 }
 
-/**
- * Compute the stored markup from DB values.
- */
-function storedMarkupPct(costPrice: number, sellPrice: number, tenantDefault: number): number {
-  if (costPrice === 0) return tenantDefault;
-  return Math.round(((sellPrice / costPrice) - 1) * 100 * 100) / 100;
-}
-
 function formatItem(
   i: typeof inventoryItemsTable.$inferSelect,
   tenantMarkupPct: number,
@@ -196,10 +188,14 @@ function formatItem(
   vendorName?: string | null,
 ) {
   const costPrice = i.unitPrice;     // DB unitPrice = what we pay
-  const sellPrice = sellUnitPrice(i.pricePerFoot, i.markedUpPrice);
-  // Pipe markup is measured against the per-foot price. Other parts stay measured against cost.
-  const markupBase = i.pricePerFoot != null ? i.pricePerFoot : costPrice;
-  const markup = storedMarkupPct(markupBase, sellPrice, tenantMarkupPct);
+  const priced = resolveInventorySell({
+    cost: costPrice,
+    pricePerFoot: i.pricePerFoot,
+    markedUpPrice: i.markedUpPrice,
+    defaultMarkupPct: tenantMarkupPct,
+  });
+  const sellPrice = priced.sellPrice;
+  const markup = priced.markupPct;
   const resolvedVendor = vendorName ?? null;
   return {
     id: i.id,
@@ -213,7 +209,7 @@ function formatItem(
     sizeId: i.sizeId ?? null,
     sizeName: grouping?.sizeName ?? null,
     lengthReceived: i.lengthReceived ?? null,
-    pricePerFoot: i.pricePerFoot ?? null,
+    pricePerFoot: priced.pricePerFoot,
     vendorId: i.vendorId ?? null,
     vendorName: resolvedVendor,
     costPrice: includeCostPrice ? costPrice : null,
@@ -350,8 +346,14 @@ router.get("/inventory/summary", async (req, res): Promise<void> => {
     .from(inventoryItemsTable)
     .where(eq(inventoryItemsTable.tenantId, tenantId));
 
+  const tenantMarkupPct = await getTenantMarkupPct(tenantId);
   const totalItems = items.length;
-  const totalValue = items.reduce((sum, i) => sum + sellUnitPrice(i.pricePerFoot, i.markedUpPrice) * i.quantity, 0);
+  const totalValue = items.reduce((sum, i) => sum + resolveInventorySell({
+    cost: i.unitPrice,
+    pricePerFoot: i.pricePerFoot,
+    markedUpPrice: i.markedUpPrice,
+    defaultMarkupPct: tenantMarkupPct,
+  }).sellPrice * i.quantity, 0);
   const lowStockCount = items.filter(i => i.quantity <= i.reorderPoint).length;
 
   const catMap: Record<string, number> = {};
@@ -505,11 +507,13 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
   }
 
   const tenantMarkupPct = await getTenantMarkupPct(tenantId);
-  const effectiveMarkupPct = reqMarkupPct != null ? parseSafeFloat(reqMarkupPct, tenantMarkupPct) : tenantMarkupPct;
+  const explicitMarkup = reqMarkupPct != null;
+  const effectiveMarkupPct = explicitMarkup ? parseSafeFloat(reqMarkupPct, tenantMarkupPct) : tenantMarkupPct;
   const costVal = parseSafeFloat(costPrice, 0);
   if (costVal < 0) { res.status(400).json({ error: "costPrice must be >= 0" }); return; }
   if (effectiveMarkupPct < 0) { res.status(400).json({ error: "markupPct must be >= 0" }); return; }
-  const markupSell = costVal * (1 + effectiveMarkupPct / 100);
+  // A blank markup stays unmarked in storage so the company standard applies live.
+  const markupSell = explicitMarkup ? priceWithMarkup(costVal, effectiveMarkupPct) : costVal;
   const lengthRead = readAmount(req.body.lengthReceived, "Length received");
   if (!lengthRead.ok) { res.status(400).json({ error: lengthRead.error }); return; }
   const priceRead = readAmount(req.body.pricePerFoot, "Price per foot");
@@ -545,7 +549,7 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
     lengthReceived: lengthRead.value ?? null,
     pricePerFoot: priceRead.value ?? null,
     pipe: isPipeTypeName(grouping.value.typeName),
-    markupPct: effectiveMarkupPct,
+    markupPct: explicitMarkup ? effectiveMarkupPct : 0,
   });
 
   const [item] = await db.insert(inventoryItemsTable).values({
@@ -606,7 +610,7 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
     const c = parseSafeFloat(req.body.costPrice, NaN);
     if (isNaN(c) || c < 0) { res.status(400).json({ error: "costPrice must be a non-negative number" }); return; }
   }
-  if (req.body.markupPct !== undefined) {
+  if (req.body.markupPct !== undefined && req.body.markupPct !== null) {
     const m = parseSafeFloat(req.body.markupPct, NaN);
     if (isNaN(m) || m < 0) { res.status(400).json({ error: "markupPct must be a non-negative number" }); return; }
   }
@@ -668,17 +672,26 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
 
     const tenantDefault = await getTenantMarkupPct(tenantId);
     const nextPerFoot = updates.pricePerFoot !== undefined ? updates.pricePerFoot : existing.pricePerFoot;
-    const existingMarkup = nextPerFoot != null
-      ? storedMarkupPct(nextPerFoot, existing.markedUpPrice, tenantDefault)
-      : storedMarkupPct(existing.unitPrice, existing.markedUpPrice, tenantDefault);
+    const priced = resolveInventorySell({
+      cost: existing.unitPrice,
+      pricePerFoot: nextPerFoot,
+      markedUpPrice: existing.markedUpPrice,
+      defaultMarkupPct: tenantDefault,
+    });
     const costVal = costPrice !== undefined ? parseSafeFloat(costPrice, existing.unitPrice) : existing.unitPrice;
-    const effectiveMarkupPct = reqMarkupPct != null ? parseSafeFloat(reqMarkupPct, existingMarkup) : existingMarkup;
+    const clearToStandard = reqMarkupPct === null;
+    const explicitMarkup = reqMarkupPct != null;
+    const effectiveMarkupPct = clearToStandard ? tenantDefault : explicitMarkup ? parseSafeFloat(reqMarkupPct, priced.markupPct) : priced.markupPct;
+    const storeStandard = clearToStandard || (!explicitMarkup && priced.usesDefaultMarkup);
     if (nextPerFoot != null) {
-      if (costPrice !== undefined || reqMarkupPct !== undefined) updates.unitPrice = costVal;
-      updates.markedUpPrice = priceWithMarkup(nextPerFoot, effectiveMarkupPct);
-    } else if (costPrice !== undefined || reqMarkupPct !== undefined) {
-      updates.unitPrice = costVal;
-      updates.markedUpPrice = costVal * (1 + effectiveMarkupPct / 100);
+      if (costPrice !== undefined || explicitMarkup || clearToStandard) updates.unitPrice = costVal;
+      if (explicitMarkup) updates.markedUpPrice = priceWithMarkup(nextPerFoot, effectiveMarkupPct);
+      else if (storeStandard) updates.markedUpPrice = nextPerFoot;
+    } else if (costPrice !== undefined || explicitMarkup || clearToStandard || priced.usesDefaultMarkup) {
+      if (costPrice !== undefined || explicitMarkup || clearToStandard) updates.unitPrice = costVal;
+      if (explicitMarkup) updates.markedUpPrice = priceWithMarkup(costVal, effectiveMarkupPct);
+      else if (storeStandard) updates.markedUpPrice = costVal;
+      else if (costPrice !== undefined) updates.markedUpPrice = priceWithMarkup(costVal, effectiveMarkupPct);
     }
   }
   if ((updates.pricePerFoot != null || updates.lengthReceived != null) && (updates.unit === undefined || updates.unit === "each")) {

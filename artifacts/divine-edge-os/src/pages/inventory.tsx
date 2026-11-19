@@ -46,7 +46,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useDebounce } from '@/hooks/use-debounce';
 import { upsertInventoryLocation } from '@/lib/inventoryLocations';
 import { groupInventoryItems, type InventoryGroupBy } from '@/lib/inventoryGrouping';
-import { categoryChoices, feetFromLength, inventorySizeOptions, isPipeTypeName, namedId, pipeSellPerFoot, sizeIdAcrossTypes } from '@/lib/inventoryPartForm';
+import { categoryChoices, feetFromLength, inventoryListFigures, inventorySizeOptions, isPipeTypeName, namedId, pipeSellPerFoot, sizeIdAcrossTypes } from '@/lib/inventoryPartForm';
 import { ShrinkageReport } from '@/components/inventory/ShrinkageReport';
 
 function ItemLocationSection({ inventoryItemId }: { inventoryItemId: number }) {
@@ -411,6 +411,13 @@ export default function InventoryPage() {
   const { data: selectedItem } = useGetInventoryItem(selectedId!, {
     query: { enabled: selectedId != null, queryKey: getGetInventoryItemQueryKey(selectedId!) },
   });
+  const selectedFigures = selectedItem ? inventoryListFigures({
+    costPrice: selectedItem.costPrice,
+    pricePerFoot: selectedItem.pricePerFoot,
+    unitPrice: selectedItem.unitPrice,
+    markupPct: selectedItem.markupPct,
+    defaultMarkupPct,
+  }) : null;
 
   const createItem = useCreateInventoryItem();
   const updateItem = useUpdateInventoryItem();
@@ -537,7 +544,14 @@ export default function InventoryPage() {
     const item = items?.find(i => i.id === id);
     if (!item) return;
     const costVal = item.costPrice != null ? String(item.costPrice) : '';
-    const mPct = String(item.markupPct ?? defaultMarkupPct);
+    const figures = inventoryListFigures({
+      costPrice: item.costPrice,
+      pricePerFoot: item.pricePerFoot,
+      unitPrice: item.unitPrice,
+      markupPct: item.markupPct,
+      defaultMarkupPct,
+    });
+    const mPct = Math.abs(figures.markupPct - defaultMarkupPct) < 0.001 ? '' : String(figures.markupPct);
     setForm({
       name: item.name,
       sku: item.sku,
@@ -577,7 +591,7 @@ export default function InventoryPage() {
       typeId: form.typeId ? parseInt(form.typeId, 10) : null,
       sizeId: form.sizeId ? parseInt(form.sizeId, 10) : null,
       costPrice: parseFloat(form.costPrice) || 0,
-      markupPct: form.markupPct ? parseFloat(form.markupPct) : undefined,
+      markupPct: form.markupPct.trim() === '' ? null : parseFloat(form.markupPct),
       quantity: parseInt(form.quantity, 10) || 0,
       reorderPoint: parseInt(form.reorderPoint, 10) || 5,
       unit: pipePart ? 'ft' : (form.unit || 'each'),
@@ -956,6 +970,7 @@ export default function InventoryPage() {
                 <TableHead>Size</TableHead>
                 <TableHead>Category</TableHead>
                 {canSeeCost && <TableHead className="text-right">Buy Price</TableHead>}
+                <TableHead className="text-right">Price / ft</TableHead>
                 <TableHead className="text-right">
                   <span className="flex items-center justify-end gap-1">
                     <TrendingUp className="w-3.5 h-3.5" /> Markup
@@ -968,19 +983,27 @@ export default function InventoryPage() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={canSeeCost ? 10 : 9} className="text-center py-8 text-muted-foreground">Loading inventory...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={canSeeCost ? 11 : 10} className="text-center py-8 text-muted-foreground">Loading inventory...</TableCell></TableRow>
               ) : items?.length === 0 ? (
-                <TableRow><TableCell colSpan={canSeeCost ? 10 : 9} className="text-center py-8 text-muted-foreground">No items found.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={canSeeCost ? 11 : 10} className="text-center py-8 text-muted-foreground">No items found.</TableCell></TableRow>
               ) : (
                 groupedItems.map(group => (
                   <React.Fragment key={group.key}>
                     <TableRow className="bg-muted/40 hover:bg-muted/40" data-testid={`inventory-group-${group.key}`}>
-                      <TableCell colSpan={canSeeCost ? 10 : 9} className="py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <TableCell colSpan={canSeeCost ? 11 : 10} className="py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                         {groupBy === 'type' ? 'Type' : 'Size'}: {group.label}
                         <span className="ml-2 font-normal normal-case">{group.items.length} item{group.items.length === 1 ? '' : 's'}</span>
                       </TableCell>
                     </TableRow>
-                    {group.items.map(item => (
+                    {group.items.map(item => {
+                      const figures = inventoryListFigures({
+                        costPrice: item.costPrice,
+                        pricePerFoot: item.pricePerFoot,
+                        unitPrice: item.unitPrice,
+                        markupPct: item.markupPct,
+                        defaultMarkupPct,
+                      });
+                      return (
                   <TableRow
                     key={item.id}
                     className={`cursor-pointer ${item.isLowStock ? 'bg-destructive/5 hover:bg-destructive/10' : 'hover:bg-muted/50'}`}
@@ -999,13 +1022,16 @@ export default function InventoryPage() {
                         {item.costPrice != null ? `$${item.costPrice.toFixed(2)}` : '—'}
                       </TableCell>
                     )}
+                    <TableCell className="text-right text-sm" data-testid={`list-price-per-foot-${item.id}`} title={figures.pricePerFoot != null ? `Price per foot: $${figures.pricePerFoot.toFixed(2)}` : 'No price per foot'}>
+                      {figures.pricePerFoot != null ? `$${figures.pricePerFoot.toFixed(2)}` : '—'}
+                    </TableCell>
                     <TableCell className="text-right">
-                      <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium" title={`Markup: ${(item.markupPct ?? defaultMarkupPct).toFixed(0)}%`}>
-                        {(item.markupPct ?? defaultMarkupPct).toFixed(0)}%
+                      <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium" data-testid={`list-markup-${item.id}`} title={`Markup: ${figures.markupPct.toFixed(0)}%`}>
+                        {figures.markupPct.toFixed(0)}%
                       </span>
                     </TableCell>
-                    <TableCell className="text-right font-medium" title={item.pricePerFoot != null ? `$${item.unitPrice.toFixed(2)} per foot` : `Sell price: $${item.unitPrice.toFixed(2)}`}>
-                      ${item.unitPrice.toFixed(2)}{item.pricePerFoot != null ? '/ft' : ''}
+                    <TableCell className="text-right font-medium" data-testid={`list-sell-price-${item.id}`} title={figures.pricePerFoot != null ? `Sell price: $${figures.sellPrice.toFixed(2)} per foot` : `Sell price: $${figures.sellPrice.toFixed(2)}`}>
+                      ${figures.sellPrice.toFixed(2)}{figures.pricePerFoot != null ? '/ft' : ''}
                     </TableCell>
                     <TableCell className="text-right" title={`${item.quantity} ${item.unit || 'units'} in stock`}>
                       <span className={`font-medium ${item.isLowStock ? 'text-destructive' : ''}`}>
@@ -1020,7 +1046,8 @@ export default function InventoryPage() {
                       )}
                     </TableCell>
                   </TableRow>
-                    ))}
+                      );
+                    })}
                   </React.Fragment>
                 ))
               )}
@@ -1080,14 +1107,14 @@ export default function InventoryPage() {
                         <TrendingUp className="w-4 h-4 text-primary" />
                         <span className="text-muted-foreground">Markup</span>
                       </div>
-                      <span className="font-medium text-primary" title={`Markup applied to cost price: +${(selectedItem.markupPct ?? defaultMarkupPct).toFixed(0)}%`}>+{(selectedItem.markupPct ?? defaultMarkupPct).toFixed(0)}%</span>
+                      <span className="font-medium text-primary" title={`Markup applied: +${(selectedFigures?.markupPct ?? defaultMarkupPct).toFixed(0)}%`}>+{(selectedFigures?.markupPct ?? defaultMarkupPct).toFixed(0)}%</span>
                     </div>
                     <div className="flex items-center justify-between px-4 py-3 bg-primary/5">
                       <div className="flex items-center gap-2 text-sm font-semibold">
                         <ArrowRight className="w-4 h-4 text-primary" />
                         <span>Sell Price</span>
                       </div>
-                      <span className="text-lg font-bold text-primary" data-testid="text-item-sell-price" title={`Sell price charged to customers: $${selectedItem.unitPrice.toFixed(2)}`}>${selectedItem.unitPrice.toFixed(2)}{selectedItem.pricePerFoot != null ? '/ft' : ''}</span>
+                      <span className="text-lg font-bold text-primary" data-testid="text-item-sell-price" title={`Sell price charged to customers: $${(selectedFigures?.sellPrice ?? selectedItem.unitPrice).toFixed(2)}`}>${(selectedFigures?.sellPrice ?? selectedItem.unitPrice).toFixed(2)}{selectedFigures?.pricePerFoot != null ? '/ft' : ''}</span>
                     </div>
                   </div>
                 </div>
@@ -1129,7 +1156,7 @@ export default function InventoryPage() {
                   {selectedItem.pricePerFoot != null && (
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Price per foot</p>
-                      <p className="text-sm font-medium" data-testid="text-price-per-foot" title="Sell price per foot, including inventory markup">${selectedItem.unitPrice.toFixed(2)}/ft</p>
+                      <p className="text-sm font-medium" data-testid="text-price-per-foot" title="Per-foot price before markup">${selectedItem.pricePerFoot.toFixed(2)}</p>
                     </div>
                   )}
                 </div>
@@ -1301,7 +1328,7 @@ export default function InventoryPage() {
                   <Input
                     type="number"
                     step="1"
-                    title="Markup percentage applied to buy price to calculate the sell price"
+                    title={`Leave blank to use the company standard of ${defaultMarkupPct}%. Type a percent to override it for this item.`}
                     placeholder={String(defaultMarkupPct)}
                     value={form.markupPct}
                     onChange={e => {
@@ -1309,6 +1336,7 @@ export default function InventoryPage() {
                       updateSellPreview(form.costPrice, e.target.value);
                     }}
                   />
+                  <p className="text-xs text-muted-foreground">Blank uses the company standard ({defaultMarkupPct}%).</p>
                 </div>
               </div>
 

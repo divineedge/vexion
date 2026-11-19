@@ -25,6 +25,76 @@ export function priceWithMarkup(base: number, markupPct: number): number {
   return base * (1 + markup / 100);
 }
 
+export function roundMoney(amount: number): number {
+  return Math.round(amount * 100) / 100;
+}
+
+function finiteAmount(value: number | null | undefined): number | null {
+  return value != null && Number.isFinite(value) ? value : null;
+}
+
+function moneyNear(left: number, right: number): boolean {
+  return Math.abs(left - right) < 0.005;
+}
+
+function roundPct(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * A stored sell price that still equals the buy price, or a pipe sell price
+ * that still equals the raw per-foot price, has no item markup of its own.
+ */
+function ownMarkupPct(cost: number, pricePerFoot: number | null, storedSell: number): number | null {
+  if (pricePerFoot != null) {
+    if (moneyNear(storedSell, pricePerFoot)) return null;
+    if (moneyNear(storedSell, cost) && !moneyNear(cost, pricePerFoot)) return null;
+    if (pricePerFoot === 0) return null;
+    return ((storedSell / pricePerFoot) - 1) * 100;
+  }
+  if (cost === 0 || moneyNear(storedSell, cost)) return null;
+  return ((storedSell / cost) - 1) * 100;
+}
+
+/**
+ * Customer sell price for one inventory row.
+ * Pipe: per-foot price × (1 + markup% / 100).
+ * Any other part: cost × (1 + markup% / 100), keeping a stored sell price when
+ * that part already has its own markup. A blank item markup uses the company standard.
+ */
+export function resolveInventorySell(input: {
+  cost: number;
+  pricePerFoot?: number | null;
+  markedUpPrice: number;
+  defaultMarkupPct: number;
+}): { sellPrice: number; markupPct: number; pricePerFoot: number | null; usesDefaultMarkup: boolean } {
+  const pricePerFoot = finiteAmount(input.pricePerFoot);
+  const cost = finiteAmount(input.cost) ?? 0;
+  const storedSell = finiteAmount(input.markedUpPrice) ?? 0;
+  const standard = finiteAmount(input.defaultMarkupPct) ?? 0;
+  // A zero cost cannot imply a markup. Keep a stored sell price and show the company standard.
+  if (pricePerFoot == null && cost === 0) {
+    return {
+      sellPrice: roundMoney(storedSell),
+      markupPct: roundPct(standard),
+      pricePerFoot: null,
+      usesDefaultMarkup: moneyNear(storedSell, 0),
+    };
+  }
+  const own = ownMarkupPct(cost, pricePerFoot, storedSell);
+  const markup = own ?? standard;
+  const base = pricePerFoot ?? cost;
+  const sellPrice = pricePerFoot != null || own == null
+    ? roundMoney(priceWithMarkup(base, markup))
+    : roundMoney(storedSell);
+  return {
+    sellPrice,
+    markupPct: roundPct(markup),
+    pricePerFoot,
+    usesDefaultMarkup: own == null,
+  };
+}
+
 /**
  * Customer price for one unit. For pipe, markedUpPrice is the per-foot price
  * after inventory markup. The raw per-foot amount is the base and is not charged

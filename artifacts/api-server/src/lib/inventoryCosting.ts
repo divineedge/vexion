@@ -1,7 +1,7 @@
-import {db,inventoryItemsTable,inventoryCostLotsTable,inventoryLocationStockTable,inventoryLocationsTable,inventoryTransfersTable,jobsTable} from '@workspace/db';
+import {db,inventoryItemsTable,inventoryCostLotsTable,inventoryLocationStockTable,inventoryLocationsTable,inventoryTransfersTable,jobsTable,tenantsTable} from '@workspace/db';
 import {and,eq,sql,desc,asc} from 'drizzle-orm';
 import type {HrDb} from './hrAccess';
-import {sellUnitPrice} from './pipeStock';
+import {resolveInventorySell} from './pipeStock';
 const fail=(message:string,status=400):never=>{throw Object.assign(new Error(message),{status});};
 type Item=typeof inventoryItemsTable.$inferSelect;
 type Allocation={lotId:number;quantity:number;unitCost:number};
@@ -121,7 +121,9 @@ export async function setJobPart(tenantId:number,jobId:number,itemId:number,quan
    await tx.update(inventoryItemsTable).set({quantity:item.quantity-delta,isLowStock:item.quantity-delta<=item.reorderPoint}).where(eq(inventoryItemsTable.id,itemId));
    await tx.insert(inventoryTransfersTable).values({tenantId,inventoryItemId:itemId,quantity:Math.abs(delta),reason:`Job #${jobId} supplies ${delta>0?'used':'returned'}`});
   }
-  const charged=old?.unitPrice??sellUnitPrice(item.pricePerFoot,item.markedUpPrice);
+  const [tenant]=await tx.select({defaultMarkupPct:tenantsTable.defaultMarkupPct}).from(tenantsTable).where(eq(tenantsTable.id,tenantId));
+  const priced=resolveInventorySell({cost:item.unitPrice,pricePerFoot:item.pricePerFoot,markedUpPrice:item.markedUpPrice,defaultMarkupPct:tenant?.defaultMarkupPct??20});
+  const charged=old?.unitPrice??priced.sellPrice;
   const part={inventoryItemId:item.id,name:old?.name??item.name,quantity,unitPrice:charged,unit:item.pricePerFoot!=null?'ft':(typeof old?.unit==='string'&&old.unit?old.unit:item.unit),total:charged*quantity,_stockUsage:usage};
   return(await tx.update(jobsTable).set({jobParts:[...parts.filter(p=>p.inventoryItemId!==itemId),...(quantity?[part]:[])]}).where(eq(jobsTable.id,jobId)).returning())[0];
  });

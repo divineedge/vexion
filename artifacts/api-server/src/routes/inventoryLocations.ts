@@ -1,7 +1,8 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, inventoryLocationsTable, inventoryLocationStockTable, inventoryTransfersTable, inventoryItemsTable, usersTable } from "@workspace/db";
+import { db, inventoryLocationsTable, inventoryLocationStockTable, inventoryTransfersTable, inventoryItemsTable, tenantsTable, usersTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { resolveInventorySell } from "../lib/pipeStock";
 
 const router: IRouter = Router();
 
@@ -35,6 +36,20 @@ function formatLocation(loc: typeof inventoryLocationsTable.$inferSelect) {
     createdAt: loc.createdAt.toISOString(),
     updatedAt: loc.updatedAt.toISOString(),
   };
+}
+
+async function companyMarkup(tenantId: number): Promise<number> {
+  const [row] = await db.select({ defaultMarkupPct: tenantsTable.defaultMarkupPct }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  return row?.defaultMarkupPct ?? 20;
+}
+
+function sellFor(item: { unitPrice: number; pricePerFoot?: number | null; markedUpPrice: number }, markup: number): number {
+  return resolveInventorySell({
+    cost: item.unitPrice,
+    pricePerFoot: item.pricePerFoot,
+    markedUpPrice: item.markedUpPrice,
+    defaultMarkupPct: markup,
+  }).sellPrice;
 }
 
 function formatStockEntry(
@@ -130,7 +145,9 @@ router.get("/inventory/locations/:id/stock", async (req, res): Promise<void> => 
       stock: inventoryLocationStockTable,
       itemName: inventoryItemsTable.name,
       itemSku: inventoryItemsTable.sku,
-      unitPrice: inventoryItemsTable.markedUpPrice,
+      costPrice: inventoryItemsTable.unitPrice,
+      pricePerFoot: inventoryItemsTable.pricePerFoot,
+      markedUpPrice: inventoryItemsTable.markedUpPrice,
       unit: inventoryItemsTable.unit,
       locationName: inventoryLocationsTable.name,
     })
@@ -139,11 +156,12 @@ router.get("/inventory/locations/:id/stock", async (req, res): Promise<void> => 
     .leftJoin(inventoryLocationsTable, eq(inventoryLocationStockTable.locationId, inventoryLocationsTable.id))
     .where(and(eq(inventoryLocationStockTable.locationId, locationId), eq(inventoryLocationStockTable.tenantId, tenantId)));
 
+  const markup = await companyMarkup(tenantId);
   res.json(rows.map(r => formatStockEntry(r.stock, {
     itemName: r.itemName ?? undefined,
     itemSku: r.itemSku ?? undefined,
     locationName: r.locationName ?? undefined,
-    unitPrice: r.unitPrice ?? undefined,
+    unitPrice: r.markedUpPrice == null || r.costPrice == null ? undefined : sellFor({ unitPrice: r.costPrice, pricePerFoot: r.pricePerFoot, markedUpPrice: r.markedUpPrice }, markup),
     unit: r.unit ?? undefined,
   })));
 });
@@ -217,7 +235,7 @@ router.post("/inventory/locations/:id/stock", requireAdmin, async (req, res): Pr
     itemName: item?.name,
     itemSku: item?.sku,
     locationName: loc?.name,
-    unitPrice: item?.markedUpPrice,
+    unitPrice: item ? sellFor(item, await companyMarkup(tenantId)) : undefined,
     unit: item?.unit,
   }));
 });
@@ -287,7 +305,7 @@ router.post("/inventory/locations/:id/stock/adjust", requireAdmin, async (req, r
     itemName: ownedItem.name,
     itemSku: ownedItem.sku,
     locationName: ownedLoc.name,
-    unitPrice: ownedItem.markedUpPrice,
+    unitPrice: sellFor(ownedItem, await companyMarkup(tenantId)),
     unit: ownedItem.unit,
   }));
 });
@@ -304,7 +322,9 @@ router.get("/inventory/:id/by-location", async (req, res): Promise<void> => {
       stock: inventoryLocationStockTable,
       itemName: inventoryItemsTable.name,
       itemSku: inventoryItemsTable.sku,
-      unitPrice: inventoryItemsTable.markedUpPrice,
+      costPrice: inventoryItemsTable.unitPrice,
+      pricePerFoot: inventoryItemsTable.pricePerFoot,
+      markedUpPrice: inventoryItemsTable.markedUpPrice,
       unit: inventoryItemsTable.unit,
       locationName: inventoryLocationsTable.name,
     })
@@ -316,11 +336,12 @@ router.get("/inventory/:id/by-location", async (req, res): Promise<void> => {
       eq(inventoryLocationStockTable.tenantId, tenantId)
     ));
 
+  const markup = await companyMarkup(tenantId);
   res.json(rows.map(r => formatStockEntry(r.stock, {
     itemName: r.itemName ?? undefined,
     itemSku: r.itemSku ?? undefined,
     locationName: r.locationName ?? undefined,
-    unitPrice: r.unitPrice ?? undefined,
+    unitPrice: r.markedUpPrice == null || r.costPrice == null ? undefined : sellFor({ unitPrice: r.costPrice, pricePerFoot: r.pricePerFoot, markedUpPrice: r.markedUpPrice }, markup),
     unit: r.unit ?? undefined,
   })));
 });
@@ -445,6 +466,7 @@ router.post("/inventory/transfer", requireAdmin, async (req, res): Promise<void>
     fromLocName = fromLoc?.name;
   }
 
+  const transferSell = refreshedItem ? sellFor(refreshedItem, await companyMarkup(tenantId)) : undefined;
   res.json({
     inventoryItemId: itemId,
     quantity: qty,
@@ -455,14 +477,14 @@ router.post("/inventory/transfer", requireAdmin, async (req, res): Promise<void>
       itemName: refreshedItem?.name,
       itemSku: refreshedItem?.sku,
       locationName: fromLocName,
-      unitPrice: refreshedItem?.markedUpPrice,
+      unitPrice: transferSell,
       unit: refreshedItem?.unit,
     }) : null,
     to: formatStockEntry(toStock, {
       itemName: refreshedItem?.name,
       itemSku: refreshedItem?.sku,
       locationName: ownedToLoc?.name,
-      unitPrice: refreshedItem?.markedUpPrice,
+      unitPrice: transferSell,
       unit: refreshedItem?.unit,
     }),
   });

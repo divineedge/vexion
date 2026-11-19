@@ -3662,6 +3662,11 @@ export interface InventoryItem {
      * @nullable
      */
   supplierName?: string | null;
+  /**
+   * Item that owns the on-hand quantity. Null when this row keeps its own stock.
+   * @nullable
+   */
+  stockItemId?: number | null;
   createdAt: string;
 }
 

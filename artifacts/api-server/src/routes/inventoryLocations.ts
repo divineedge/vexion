@@ -3,6 +3,7 @@ import { db, inventoryLocationsTable, inventoryLocationStockTable, inventoryTran
 import { eq, and, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { resolveInventorySell } from "../lib/pipeStock";
+import { stockOwnerId } from "../lib/inventoryDuplicate";
 
 const router: IRouter = Router();
 
@@ -188,29 +189,20 @@ router.post("/inventory/locations/:id/stock", requireAdmin, async (req, res): Pr
 
   // Verify item belongs to this tenant
   const [ownedItem] = await db
-    .select({ id: inventoryItemsTable.id })
+    .select({ id: inventoryItemsTable.id, stockItemId: inventoryItemsTable.stockItemId })
     .from(inventoryItemsTable)
     .where(and(eq(inventoryItemsTable.id, itemId), eq(inventoryItemsTable.tenantId, tenantId)));
   if (!ownedItem) { res.status(404).json({ error: "Inventory item not found" }); return; }
-
-  // Upsert: find existing or insert new
-  const [existing] = await db
-    .select()
-    .from(inventoryLocationStockTable)
-    .where(and(
-      eq(inventoryLocationStockTable.inventoryItemId, itemId),
-      eq(inventoryLocationStockTable.locationId, locationId),
-      eq(inventoryLocationStockTable.tenantId, tenantId)
-    ));
+  const stockId = stockOwnerId(ownedItem);
 
   // Conflict-safe upsert using the unique constraint (tenant+item+location)
   const [stock] = await db.transaction(async tx=>{
    await tx.execute(sql`SELECT pg_advisory_xact_lock(${tenantId},-19001)`);
-   const [lockedItem]=await tx.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.tenantId,tenantId),eq(inventoryItemsTable.id,itemId))).for('update');
-   const [prior]=await tx.select().from(inventoryLocationStockTable).where(and(eq(inventoryLocationStockTable.tenantId,tenantId),eq(inventoryLocationStockTable.inventoryItemId,itemId),eq(inventoryLocationStockTable.locationId,locationId))).for('update');
+   const [lockedItem]=await tx.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.tenantId,tenantId),eq(inventoryItemsTable.id,stockId))).for('update');
+   const [prior]=await tx.select().from(inventoryLocationStockTable).where(and(eq(inventoryLocationStockTable.tenantId,tenantId),eq(inventoryLocationStockTable.inventoryItemId,stockId),eq(inventoryLocationStockTable.locationId,locationId))).for('update');
    const saved = await tx
     .insert(inventoryLocationStockTable)
-    .values({ tenantId, inventoryItemId: itemId, locationId, quantity: qty, reorderPoint: reorder })
+    .values({ tenantId, inventoryItemId: stockId, locationId, quantity: qty, reorderPoint: reorder })
     .onConflictDoUpdate({
       target: [
         inventoryLocationStockTable.tenantId,
@@ -223,9 +215,9 @@ router.post("/inventory/locations/:id/stock", requireAdmin, async (req, res): Pr
       },
     })
     .returning();
-   const total=await tx.execute(sql`SELECT COALESCE(SUM(quantity),0) AS quantity FROM inventory_location_stock WHERE tenant_id=${tenantId} AND inventory_item_id=${itemId}`);
+   const total=await tx.execute(sql`SELECT COALESCE(SUM(quantity),0) AS quantity FROM inventory_location_stock WHERE tenant_id=${tenantId} AND inventory_item_id=${stockId}`);
    const next=Math.max(Number(total.rows[0].quantity),lockedItem.quantity+Math.min(0,qty-(prior?.quantity??0)));
-   await tx.update(inventoryItemsTable).set({quantity:next,isLowStock:next<=lockedItem.reorderPoint}).where(eq(inventoryItemsTable.id,itemId));
+   await tx.update(inventoryItemsTable).set({quantity:next,isLowStock:next<=lockedItem.reorderPoint}).where(eq(inventoryItemsTable.id,stockId));
    return saved;
   });
 
@@ -264,6 +256,7 @@ router.post("/inventory/locations/:id/stock/adjust", requireAdmin, async (req, r
   ]);
   if (!ownedLoc) { res.status(404).json({ error: "Location not found" }); return; }
   if (!ownedItem) { res.status(404).json({ error: "Inventory item not found" }); return; }
+  const stockId = stockOwnerId(ownedItem);
 
   // Atomic: lock the stock row, validate, then update — prevents concurrent adjustments
   // from bypassing the non-negative check or overwriting each other.
@@ -271,13 +264,13 @@ router.post("/inventory/locations/:id/stock/adjust", requireAdmin, async (req, r
   try {
     updated = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(${tenantId},-19001)`);
-      const [item]=await tx.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.tenantId,tenantId),eq(inventoryItemsTable.id,itemId))).for('update');
+      const [item]=await tx.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.tenantId,tenantId),eq(inventoryItemsTable.id,stockId))).for('update');
       if(item.quantity+d<0)throw Object.assign(new Error('Adjustment would result in negative total stock'),{statusCode:400});
       const [locked] = await tx
         .select()
         .from(inventoryLocationStockTable)
         .where(and(
-          eq(inventoryLocationStockTable.inventoryItemId, itemId),
+          eq(inventoryLocationStockTable.inventoryItemId, stockId),
           eq(inventoryLocationStockTable.locationId, locationId),
           eq(inventoryLocationStockTable.tenantId, tenantId),
         ))
@@ -293,7 +286,7 @@ router.post("/inventory/locations/:id/stock/adjust", requireAdmin, async (req, r
         .set({ quantity: newQty })
         .where(eq(inventoryLocationStockTable.id, locked.id))
         .returning();
-      await tx.update(inventoryItemsTable).set({quantity:item.quantity+d,isLowStock:item.quantity+d<=item.reorderPoint}).where(eq(inventoryItemsTable.id,itemId));
+      await tx.update(inventoryItemsTable).set({quantity:item.quantity+d,isLowStock:item.quantity+d<=item.reorderPoint}).where(eq(inventoryItemsTable.id,stockId));
       return row;
     });
   } catch (err: any) {
@@ -317,6 +310,16 @@ router.get("/inventory/:id/by-location", async (req, res): Promise<void> => {
   const inventoryItemId = parseInt(req.params.id, 10);
   if (isNaN(inventoryItemId)) { res.status(400).json({ error: "Invalid id" }); return; }
 
+  const [item] = await db.select({
+    id: inventoryItemsTable.id,
+    stockItemId: inventoryItemsTable.stockItemId,
+    name: inventoryItemsTable.name,
+    sku: inventoryItemsTable.sku,
+  }).from(inventoryItemsTable)
+    .where(and(eq(inventoryItemsTable.id, inventoryItemId), eq(inventoryItemsTable.tenantId, tenantId)));
+  if (!item) { res.json([]); return; }
+  const stockId = stockOwnerId(item);
+
   const rows = await db
     .select({
       stock: inventoryLocationStockTable,
@@ -332,14 +335,14 @@ router.get("/inventory/:id/by-location", async (req, res): Promise<void> => {
     .leftJoin(inventoryItemsTable, eq(inventoryLocationStockTable.inventoryItemId, inventoryItemsTable.id))
     .leftJoin(inventoryLocationsTable, eq(inventoryLocationStockTable.locationId, inventoryLocationsTable.id))
     .where(and(
-      eq(inventoryLocationStockTable.inventoryItemId, inventoryItemId),
+      eq(inventoryLocationStockTable.inventoryItemId, stockId),
       eq(inventoryLocationStockTable.tenantId, tenantId)
     ));
 
   const markup = await companyMarkup(tenantId);
   res.json(rows.map(r => formatStockEntry(r.stock, {
-    itemName: r.itemName ?? undefined,
-    itemSku: r.itemSku ?? undefined,
+    itemName: item.name,
+    itemSku: item.sku,
     locationName: r.locationName ?? undefined,
     unitPrice: r.markedUpPrice == null || r.costPrice == null ? undefined : sellFor({ unitPrice: r.costPrice, pricePerFoot: r.pricePerFoot, markedUpPrice: r.markedUpPrice }, markup),
     unit: r.unit ?? undefined,
@@ -357,7 +360,7 @@ router.post("/inventory/transfer", requireAdmin, async (req, res): Promise<void>
     return;
   }
 
-  const itemId = parseInt(String(inventoryItemId), 10);
+  let itemId = parseInt(String(inventoryItemId), 10);
   const toLocId = parseInt(String(toLocationId), 10);
   const qty = parseInt(String(quantity), 10);
   const fromLocId = fromLocationId ? parseInt(String(fromLocationId), 10) : null;
@@ -366,6 +369,7 @@ router.post("/inventory/transfer", requireAdmin, async (req, res): Promise<void>
   const [ownedItem] = await db.select().from(inventoryItemsTable)
     .where(and(eq(inventoryItemsTable.id, itemId), eq(inventoryItemsTable.tenantId, tenantId)));
   if (!ownedItem) { res.status(404).json({ error: "Inventory item not found" }); return; }
+  itemId = stockOwnerId(ownedItem);
 
   const [ownedToLoc] = await db.select().from(inventoryLocationsTable)
     .where(and(eq(inventoryLocationsTable.id, toLocId), eq(inventoryLocationsTable.tenantId, tenantId)));

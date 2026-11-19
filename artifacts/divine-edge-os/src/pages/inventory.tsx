@@ -19,6 +19,7 @@ import {
   useCreateInventorySize,
   useListVendors, getListVendorsQueryKey,
   useUpdateTenantSettings,
+  useDuplicateInventoryItems,
 } from '@workspace/api-client-react';
 import type { InventoryLocation, InventorySize, InventoryType } from '@workspace/api-client-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -33,6 +34,7 @@ import { CreatableOptionMenu } from '@/components/inventory/CreatableOptionMenu'
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
@@ -40,7 +42,7 @@ import {
   Search, Plus, AlertTriangle, Package, DollarSign, Edit, Trash2,
   TrendingUp, ArrowRight, Eye, EyeOff, PlusCircle, MinusCircle,
   Warehouse, Truck, ArrowLeftRight, MapPin, Building2,
-  PackageSearch,
+  PackageSearch, Copy,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -226,6 +228,7 @@ export default function InventoryPage() {
   const qc = useQueryClient();
 
   const [search, setSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const debouncedSearch = useDebounce(search, 300);
   const [typeFilter, setTypeFilter] = useState('');
   const [sizeFilter, setSizeFilter] = useState('');
@@ -407,6 +410,8 @@ export default function InventoryPage() {
   const updateSettings = useUpdateTenantSettings();
   const groupBy: InventoryGroupBy = settings?.inventoryGroupBy === 'size' ? 'size' : 'type';
   const groupedItems = useMemo(() => groupInventoryItems(items ?? [], groupBy), [items, groupBy]);
+  const visibleIds = (items ?? []).map(item => item.id);
+  const listColumnCount = (canSeeCost ? 11 : 10) + (canManage ? 1 : 0);
   const sizeOptions = useMemo(() => inventorySizeOptions(partSizes), [partSizes]);
   const { data: selectedItem } = useGetInventoryItem(selectedId!, {
     query: { enabled: selectedId != null, queryKey: getGetInventoryItemQueryKey(selectedId!) },
@@ -420,6 +425,7 @@ export default function InventoryPage() {
   }) : null;
 
   const createItem = useCreateInventoryItem();
+  const duplicateInventory = useDuplicateInventoryItems();
   const updateItem = useUpdateInventoryItem();
   const deleteItem = useDeleteInventoryItem();
   const createType = useCreateInventoryType();
@@ -624,6 +630,26 @@ export default function InventoryPage() {
         onError: () => toast.error('Failed to update item'),
       });
     }
+  };
+
+  const duplicateIds = (ids: number[]) => {
+    if (ids.length === 0) return;
+    duplicateInventory.mutate({ data: { ids } }, {
+      onSuccess: (result) => {
+        const count = result.items.length;
+        toast.success(count === 1 ? `Created ${result.items[0]?.name ?? 'a copy'}` : `Created ${count} copies`);
+        qc.invalidateQueries({ queryKey: getListInventoryItemsQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetInventorySummaryQueryKey() });
+        setSelectedIds(current => current.filter(id => !ids.includes(id)));
+        const created = result.items[0];
+        if (count === 1 && created) {
+          setSelectedId(created.id);
+          setSheetMode('view');
+          qc.invalidateQueries({ queryKey: getGetInventoryItemQueryKey(created.id) });
+        }
+      },
+      onError: () => toast.error('Could not duplicate inventory'),
+    });
   };
 
   const handleDelete = (id: number) => {
@@ -955,6 +981,18 @@ export default function InventoryPage() {
                 >By size</Button>
               </div>
             )}
+            {canManage && selectedIds.length > 0 && (
+              <Button
+                variant="outline"
+                className="gap-2"
+                title="Duplicate the selected items onto the same stock"
+                data-testid="button-duplicate-selected"
+                disabled={duplicateInventory.isPending}
+                onClick={() => duplicateIds(selectedIds)}
+              >
+                <Copy className="w-4 h-4" /> Duplicate {selectedIds.length} selected
+              </Button>
+            )}
             {!canSeeCost && (
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <EyeOff className="w-3.5 h-3.5" /> Buy price hidden
@@ -964,6 +1002,16 @@ export default function InventoryPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                {canManage && (
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={visibleIds.length > 0 && visibleIds.every(id => selectedIds.includes(id))}
+                      onCheckedChange={checked => setSelectedIds(checked === true ? visibleIds : [])}
+                      aria-label="Select all inventory items"
+                      data-testid="checkbox-inventory-all"
+                    />
+                  </TableHead>
+                )}
                 <TableHead>Item</TableHead>
                 <TableHead>SKU</TableHead>
                 <TableHead>Type</TableHead>
@@ -983,14 +1031,14 @@ export default function InventoryPage() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={canSeeCost ? 11 : 10} className="text-center py-8 text-muted-foreground">Loading inventory...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={listColumnCount} className="text-center py-8 text-muted-foreground">Loading inventory...</TableCell></TableRow>
               ) : items?.length === 0 ? (
-                <TableRow><TableCell colSpan={canSeeCost ? 11 : 10} className="text-center py-8 text-muted-foreground">No items found.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={listColumnCount} className="text-center py-8 text-muted-foreground">No items found.</TableCell></TableRow>
               ) : (
                 groupedItems.map(group => (
                   <React.Fragment key={group.key}>
                     <TableRow className="bg-muted/40 hover:bg-muted/40" data-testid={`inventory-group-${group.key}`}>
-                      <TableCell colSpan={canSeeCost ? 11 : 10} className="py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <TableCell colSpan={listColumnCount} className="py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                         {groupBy === 'type' ? 'Type' : 'Size'}: {group.label}
                         <span className="ml-2 font-normal normal-case">{group.items.length} item{group.items.length === 1 ? '' : 's'}</span>
                       </TableCell>
@@ -1010,6 +1058,18 @@ export default function InventoryPage() {
                     onClick={() => openView(item.id)}
                     data-testid={`inventory-item-${item.id}`}
                   >
+                    {canManage && (
+                      <TableCell onClick={event => event.stopPropagation()}>
+                        <Checkbox
+                          checked={selectedIds.includes(item.id)}
+                          onCheckedChange={checked => setSelectedIds(current => (
+                            checked === true ? [...current, item.id] : current.filter(id => id !== item.id)
+                          ))}
+                          aria-label={`Select ${item.name}`}
+                          data-testid={`checkbox-inventory-${item.id}`}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell className="font-medium" title={item.name}>{item.name}</TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground" title={item.sku ? `SKU: ${item.sku}` : undefined}>{item.sku}</TableCell>
                     <TableCell>{item.typeName ? <Badge variant="outline" title={`Type: ${item.typeName}`}>{item.typeName}</Badge> : <span className="text-xs text-muted-foreground">—</span>}</TableCell>
@@ -1033,17 +1093,32 @@ export default function InventoryPage() {
                     <TableCell className="text-right font-medium" data-testid={`list-sell-price-${item.id}`} title={figures.pricePerFoot != null ? `Sell price: $${figures.sellPrice.toFixed(2)} per foot` : `Sell price: $${figures.sellPrice.toFixed(2)}`}>
                       ${figures.sellPrice.toFixed(2)}{figures.pricePerFoot != null ? '/ft' : ''}
                     </TableCell>
-                    <TableCell className="text-right" title={`${item.quantity} ${item.unit || 'units'} in stock`}>
+                    <TableCell className="text-right" data-testid={`list-quantity-${item.id}`} title={`${item.quantity} ${item.unit || 'units'} in stock`}>
                       <span className={`font-medium ${item.isLowStock ? 'text-destructive' : ''}`}>
                         {item.quantity} {item.unit || ''}
                       </span>
                     </TableCell>
-                    <TableCell>
-                      {item.isLowStock && (
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive" title={`Low stock — reorder point is ${item.reorderPoint} ${item.unit || 'units'}`}>
-                          <AlertTriangle className="w-3.5 h-3.5" /> Low
-                        </span>
-                      )}
+                    <TableCell onClick={event => event.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1">
+                        {item.isLowStock && (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive" title={`Low stock — reorder point is ${item.reorderPoint} ${item.unit || 'units'}`}>
+                            <AlertTriangle className="w-3.5 h-3.5" /> Low
+                          </span>
+                        )}
+                        {canManage && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-xs gap-1"
+                            title="Duplicate this item onto the same stock"
+                            data-testid={`button-duplicate-item-${item.id}`}
+                            disabled={duplicateInventory.isPending}
+                            onClick={() => duplicateIds([item.id])}
+                          >
+                            <Copy className="w-3.5 h-3.5" /> Duplicate
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                       );
@@ -1079,6 +1154,18 @@ export default function InventoryPage() {
                       </>
                     )}
                     {selectedItem.availableForBlueprint && <Badge variant="outline" className="text-primary border-primary/40">Blueprint Ready</Badge>}
+                    {canManage && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5"
+                        data-testid="button-duplicate-open-item"
+                        disabled={duplicateInventory.isPending}
+                        onClick={() => duplicateIds([selectedItem.id])}
+                      >
+                        <Copy className="w-3.5 h-3.5" /> Duplicate
+                      </Button>
+                    )}
                     {canManage && (
                       <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setSheetMode(null); setTimeout(() => openEdit(selectedItem.id), 50); }}>
                         <Edit className="w-3.5 h-3.5" /> Edit
@@ -1125,9 +1212,14 @@ export default function InventoryPage() {
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">In Stock</p>
-                    <p className={`text-2xl font-bold ${selectedItem.isLowStock ? 'text-destructive' : ''}`} title={`${selectedItem.quantity} ${selectedItem.unit ?? 'units'} in stock${selectedItem.isLowStock ? ' — below reorder point' : ''}`}>
+                    <p className={`text-2xl font-bold ${selectedItem.isLowStock ? 'text-destructive' : ''}`} data-testid="text-item-quantity" title={`${selectedItem.quantity} ${selectedItem.unit ?? 'units'} in stock${selectedItem.isLowStock ? ' — below reorder point' : ''}`}>
                       {selectedItem.quantity} <span className="text-sm font-normal text-muted-foreground">{selectedItem.unit}</span>
                     </p>
+                    {selectedItem.stockItemId != null && (
+                      <p className="text-xs text-muted-foreground" data-testid="text-shared-stock">
+                        On-hand quantity is shared. Receiving, using, or adjusting it changes the same stock as the original item.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Reorder At</p>
@@ -1165,6 +1257,7 @@ export default function InventoryPage() {
                   <Button
                     variant="outline"
                     className="w-full gap-2"
+                    data-testid="button-adjust-stock"
                     onClick={() => openAdjustDialog(selectedItem.id, selectedItem.name)}
                   >
                     <PlusCircle className="w-4 h-4" /> Adjust Stock
@@ -1401,7 +1494,10 @@ export default function InventoryPage() {
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">{pipePart ? 'Feet on hand' : 'Quantity'}</label>
-                <Input type="number" min={0} title={pipePart ? 'Feet of this pipe currently in stock' : 'Current stock quantity on hand'} value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
+                <Input type="number" min={0} title={pipePart ? 'Feet of this pipe currently in stock' : 'Current stock quantity on hand'} data-testid="input-inventory-quantity" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
+                {sheetMode === 'edit' && selectedItem?.stockItemId != null && (
+                  <p className="text-xs text-muted-foreground">This quantity is shared. Saving it changes the original item's on-hand stock too.</p>
+                )}
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Reorder At</label>
@@ -1464,6 +1560,17 @@ export default function InventoryPage() {
 
             <Separator />
             <div className="flex gap-3 justify-end">
+              {sheetMode === 'edit' && selectedId != null && (
+                <Button
+                  variant="outline"
+                  className="mr-auto gap-1.5"
+                  data-testid="button-duplicate-editing-item"
+                  disabled={duplicateInventory.isPending}
+                  onClick={() => duplicateIds([selectedId])}
+                >
+                  <Copy className="w-3.5 h-3.5" /> Duplicate
+                </Button>
+              )}
               <Button variant="outline" onClick={() => setSheetMode(null)}>Cancel</Button>
               <Button title={sheetMode === 'create' ? 'Add this item to inventory' : 'Save changes to this inventory item'} data-testid="button-save-inventory-item" onClick={handleSave} disabled={createItem.isPending || updateItem.isPending}>
                 {createItem.isPending || updateItem.isPending ? 'Saving...' : sheetMode === 'create' ? 'Add Item' : 'Save Changes'}
@@ -1647,6 +1754,7 @@ export default function InventoryPage() {
                 <Input
                   type="number"
                   className="text-center font-bold text-lg"
+                  data-testid="input-adjust-delta"
                   value={adjustDelta}
                   onChange={e => setAdjustDelta(e.target.value)}
                   placeholder="0"
@@ -1675,7 +1783,7 @@ export default function InventoryPage() {
             </div>
             <div className="flex gap-3 justify-end pt-2">
               <Button variant="outline" onClick={() => setAdjustDialogOpen(false)}>Cancel</Button>
-              <Button onClick={handleAdjustStock} disabled={adjustStock.isPending || !adjustDelta}>
+              <Button data-testid="button-apply-stock-adjustment" onClick={handleAdjustStock} disabled={adjustStock.isPending || !adjustDelta}>
                 {adjustStock.isPending ? 'Saving...' : 'Apply Adjustment'}
               </Button>
             </div>

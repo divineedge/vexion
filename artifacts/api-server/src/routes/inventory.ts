@@ -1,8 +1,9 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db, inventoryItemsTable, inventoryPartSizesTable, inventoryPartTypesTable, inventorySuppliersTable, tenantsTable, vendorsTable } from "@workspace/db";
-import { eq, and, or, ilike, sql } from "drizzle-orm";
+import { eq, and, or, ilike, sql, inArray, ne } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { applyArrival, isPipeTypeName, parseOptionalAmount, priceWithMarkup, resolveInventorySell } from "../lib/pipeStock";
+import { applyQuantityDelta, planDuplicates, stockOwnerId, withSharedQuantity } from "../lib/inventoryDuplicate";
 import { inventoryImportFields, inventoryRecordFromImport, parseInventoryImportRow } from "../lib/inventoryImport";
 import { usersTable } from "@workspace/db";
 import {
@@ -58,6 +59,7 @@ const inventoryImportExportConfig: ImportExportEntityConfig = {
       .leftJoin(vendorsTable, eq(inventoryItemsTable.vendorId, vendorsTable.id))
       .where(where)
       .orderBy(inventoryItemsTable.name);
+    const quantities = await ownerQuantities(tenantId, rows.map(row => row.item));
     return rows.map(({ item, typeName, sizeName, vendorName }) => ({
       id: item.id,
       name: item.name,
@@ -68,7 +70,7 @@ const inventoryImportExportConfig: ImportExportEntityConfig = {
       category: item.category ?? "",
       unitPrice: item.unitPrice,
       markedUpPrice: item.markedUpPrice,
-      quantity: item.quantity,
+      quantity: withSharedQuantity(item, quantities.get(stockOwnerId(item))).quantity,
       reorderPoint: item.reorderPoint,
       unit: item.unit,
       supplierName: vendorName ?? "",
@@ -224,8 +226,37 @@ function formatItem(
     commissionPct: i.commissionPct ?? null,
     supplierId: i.supplierId ?? null,
     supplierName: resolvedVendor ?? supplierName ?? null,
+    stockItemId: i.stockItemId ?? null,
     createdAt: i.createdAt.toISOString(),
   };
+}
+
+async function ownerQuantities(
+  tenantId: number,
+  items: readonly { id: number; stockItemId: number | null; quantity: number }[],
+): Promise<Map<number, number>> {
+  const map = new Map<number, number>();
+  for (const item of items) {
+    if (item.stockItemId == null) map.set(item.id, item.quantity);
+  }
+  const missing = [...new Set(items.flatMap(item => (
+    item.stockItemId != null && !map.has(item.stockItemId) ? [item.stockItemId] : []
+  )))];
+  if (missing.length === 0) return map;
+  const owners = await db.select({ id: inventoryItemsTable.id, quantity: inventoryItemsTable.quantity })
+    .from(inventoryItemsTable)
+    .where(and(eq(inventoryItemsTable.tenantId, tenantId), inArray(inventoryItemsTable.id, missing)));
+  for (const owner of owners) map.set(owner.id, owner.quantity);
+  return map;
+}
+
+async function syncFamilyLowStock(tenantId: number, ownerId: number, quantity: number): Promise<void> {
+  await db.update(inventoryItemsTable).set({
+    isLowStock: sql`${quantity} <= ${inventoryItemsTable.reorderPoint}`,
+  }).where(and(
+    eq(inventoryItemsTable.tenantId, tenantId),
+    or(eq(inventoryItemsTable.id, ownerId), eq(inventoryItemsTable.stockItemId, ownerId)),
+  ));
 }
 
 function parseSafeFloat(val: unknown, fallback: number): number {
@@ -347,14 +378,20 @@ router.get("/inventory/summary", async (req, res): Promise<void> => {
     .where(eq(inventoryItemsTable.tenantId, tenantId));
 
   const tenantMarkupPct = await getTenantMarkupPct(tenantId);
+  const quantities = new Map(items.filter(item => item.stockItemId == null).map(item => [item.id, item.quantity]));
+  const shown = items.map(item => withSharedQuantity(item, quantities.get(stockOwnerId(item))));
   const totalItems = items.length;
-  const totalValue = items.reduce((sum, i) => sum + resolveInventorySell({
-    cost: i.unitPrice,
-    pricePerFoot: i.pricePerFoot,
-    markedUpPrice: i.markedUpPrice,
-    defaultMarkupPct: tenantMarkupPct,
-  }).sellPrice * i.quantity, 0);
-  const lowStockCount = items.filter(i => i.quantity <= i.reorderPoint).length;
+  // Value follows the one stored pile. A copy's quantity column stays 0, so stock is not counted twice.
+  const totalValue = items.reduce((sum, i) => {
+    if (i.stockItemId != null) return sum;
+    return sum + resolveInventorySell({
+      cost: i.unitPrice,
+      pricePerFoot: i.pricePerFoot,
+      markedUpPrice: i.markedUpPrice,
+      defaultMarkupPct: tenantMarkupPct,
+    }).sellPrice * i.quantity;
+  }, 0);
+  const lowStockCount = shown.filter(i => i.quantity <= i.reorderPoint).length;
 
   const catMap: Record<string, number> = {};
   for (const item of items) {
@@ -480,8 +517,9 @@ router.get("/inventory", async (req, res): Promise<void> => {
 
   const supplierMap = new Map(suppliers.map(s => [s.id, s.name]));
   const vendorMap = new Map(vendors.map(vendor => [vendor.id, vendor.name]));
+  const quantities = await ownerQuantities(tenantId, items.map(({ item }) => item));
   const formatted = items.map(({ item, typeName, sizeName }) => formatItem(
-    item,
+    withSharedQuantity(item, quantities.get(stockOwnerId(item))),
     markupPct,
     showCost,
     item.supplierId ? supplierMap.get(item.supplierId) : null,
@@ -578,6 +616,68 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
   res.status(201).json(formatItem(item, tenantMarkupPct, showCost, supplierName, grouping.value, vendor.name));
 });
 
+router.post("/inventory/duplicate", requireInventoryMutate, async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const rawIds: unknown[] = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  const ids: number[] = rawIds.map(value => parseInt(String(value), 10));
+  if (ids.length === 0 || ids.some((id: number) => !Number.isInteger(id) || id <= 0)) {
+    res.status(400).json({ error: "Choose at least one item" });
+    return;
+  }
+  if (ids.length > 100) {
+    res.status(400).json({ error: "Duplicate up to 100 items at a time" });
+    return;
+  }
+
+  const uniqueIds = [...new Set(ids)];
+  const [chosen, skuRows] = await Promise.all([
+    db.select().from(inventoryItemsTable)
+      .where(and(eq(inventoryItemsTable.tenantId, tenantId), inArray(inventoryItemsTable.id, uniqueIds))),
+    db.select({ sku: inventoryItemsTable.sku }).from(inventoryItemsTable)
+      .where(eq(inventoryItemsTable.tenantId, tenantId)),
+  ]);
+  if (chosen.length !== uniqueIds.length) {
+    res.status(404).json({ error: "Inventory item not found" });
+    return;
+  }
+
+  const planned = planDuplicates(chosen, ids, skuRows.map(row => row.sku));
+  if (!planned.ok) {
+    res.status(400).json({ error: planned.error });
+    return;
+  }
+
+  const inserted = await db.insert(inventoryItemsTable).values(
+    planned.copies.map(copy => ({ tenantId, ...copy })),
+  ).returning();
+
+  const ownerIds = [...new Set(inserted.map(item => item.stockItemId).filter((id): id is number => id != null))];
+  const owners = ownerIds.length === 0 ? [] : await db.select({ id: inventoryItemsTable.id, quantity: inventoryItemsTable.quantity })
+    .from(inventoryItemsTable)
+    .where(and(eq(inventoryItemsTable.tenantId, tenantId), inArray(inventoryItemsTable.id, ownerIds)));
+  const quantities = new Map(owners.map(owner => [owner.id, owner.quantity]));
+  const [markupPct, showCost] = await Promise.all([
+    getTenantMarkupPct(tenantId),
+    canSeeCostPrice(tenantId, userId),
+  ]);
+
+  const items = [];
+  for (const item of inserted) {
+    const names = await partyNames(tenantId, item);
+    const grouping = await groupingForItem(tenantId, item.typeId, item.sizeId);
+    items.push(formatItem(
+      withSharedQuantity(item, quantities.get(stockOwnerId(item))),
+      markupPct,
+      showCost,
+      names.supplierName,
+      grouping,
+      names.vendorName,
+    ));
+  }
+  res.status(201).json({ items });
+});
+
 router.get("/inventory/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
@@ -594,9 +694,17 @@ router.get("/inventory/:id", async (req, res): Promise<void> => {
   ]);
   if (!item) { res.status(404).json({ error: "Not found" }); return; }
 
+  const quantities = await ownerQuantities(tenantId, [item]);
   const names = await partyNames(tenantId, item);
   const grouping = await groupingForItem(tenantId, item.typeId, item.sizeId);
-  res.json(formatItem(item, markupPct, showCost, names.supplierName, grouping, names.vendorName));
+  res.json(formatItem(
+    withSharedQuantity(item, quantities.get(stockOwnerId(item))),
+    markupPct,
+    showCost,
+    names.supplierName,
+    grouping,
+    names.vendorName,
+  ));
 });
 
 router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise<void> => {
@@ -620,7 +728,36 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
   if (name !== undefined) updates.name = String(name);
   if (description !== undefined) updates.description = description ? String(description) : null;
   if (category !== undefined) updates.category = category ? String(category) : null;
-  if (quantity !== undefined) { updates.quantity = parseSafeInt(quantity, 0); }
+  let sharedQuantity: number | undefined;
+  if (req.body.sku !== undefined || quantity !== undefined) {
+    const [current] = await db.select().from(inventoryItemsTable)
+      .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)));
+    if (!current) { res.status(404).json({ error: "Not found" }); return; }
+    if (req.body.sku !== undefined) {
+      const sku = String(req.body.sku).trim();
+      if (!sku) { res.status(400).json({ error: "sku is required" }); return; }
+      const [clash] = await db.select({ id: inventoryItemsTable.id }).from(inventoryItemsTable)
+        .where(and(
+          eq(inventoryItemsTable.tenantId, tenantId),
+          ne(inventoryItemsTable.id, id),
+          sql`lower(${inventoryItemsTable.sku}) = lower(${sku})`,
+        ));
+      if (clash) { res.status(400).json({ error: "SKU is already in use" }); return; }
+      updates.sku = sku;
+    }
+    if (quantity !== undefined) {
+      const nextQty = parseSafeInt(quantity, 0);
+      if (nextQty < 0) { res.status(400).json({ error: "quantity must be >= 0" }); return; }
+      const ownerId = stockOwnerId(current);
+      if (ownerId === current.id) {
+        updates.quantity = nextQty;
+      } else {
+        await db.update(inventoryItemsTable).set({ quantity: nextQty })
+          .where(and(eq(inventoryItemsTable.id, ownerId), eq(inventoryItemsTable.tenantId, tenantId)));
+      }
+      sharedQuantity = nextQty;
+    }
+  }
   if (reorderPoint !== undefined) { updates.reorderPoint = parseSafeInt(reorderPoint, 5); }
   if (unit !== undefined) updates.unit = String(unit) || "each";
   if (availableForBlueprint !== undefined) updates.availableForBlueprint = availableForBlueprint === true || availableForBlueprint === "true";
@@ -714,21 +851,38 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
     }
   }
 
-  const [updated] = await db
-    .update(inventoryItemsTable)
-    .set(updates)
-    .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)))
-    .returning();
+  let updated: typeof inventoryItemsTable.$inferSelect | undefined;
+  if (Object.keys(updates).length === 0) {
+    const [current] = await db.select().from(inventoryItemsTable)
+      .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)));
+    updated = current;
+  } else {
+    const [row] = await db
+      .update(inventoryItemsTable)
+      .set(updates)
+      .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)))
+      .returning();
+    updated = row;
+  }
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  if (sharedQuantity !== undefined) await syncFamilyLowStock(tenantId, stockOwnerId(updated), sharedQuantity);
 
   const [markupPct, showCost] = await Promise.all([
     getTenantMarkupPct(tenantId),
     canSeeCostPrice(tenantId, userId),
   ]);
 
+  const quantities = await ownerQuantities(tenantId, [updated]);
   const names = await partyNames(tenantId, updated);
   const grouping = await groupingForItem(tenantId, updated.typeId, updated.sizeId);
-  res.json(formatItem(updated, markupPct, showCost, names.supplierName, grouping, names.vendorName));
+  res.json(formatItem(
+    withSharedQuantity(updated, quantities.get(stockOwnerId(updated))),
+    markupPct,
+    showCost,
+    names.supplierName,
+    grouping,
+    names.vendorName,
+  ));
 });
 
 // ── Stock adjustment ──────────────────────────────────────────────────────────
@@ -742,34 +896,38 @@ router.post("/inventory/:id/adjust-stock", requireInventoryMutate, async (req, r
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const delta = parseSafeInt(req.body.delta, NaN);
-  if (isNaN(delta) || delta === 0) {
-    res.status(400).json({ error: "delta must be a non-zero integer" });
-    return;
-  }
-
   const [existing] = await db.select().from(inventoryItemsTable)
     .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
-  const newQty = existing.quantity + delta;
-  if (newQty < 0) {
-    res.status(400).json({ error: "Stock adjustment would result in negative quantity" });
+  const ownerId = stockOwnerId(existing);
+  const [owner] = ownerId === existing.id
+    ? [existing]
+    : await db.select().from(inventoryItemsTable)
+      .where(and(eq(inventoryItemsTable.id, ownerId), eq(inventoryItemsTable.tenantId, tenantId)));
+  if (!owner) { res.status(404).json({ error: "Not found" }); return; }
+
+  const planned = applyQuantityDelta(owner.quantity, delta);
+  if (!planned.ok) {
+    res.status(400).json({ error: planned.error });
     return;
   }
 
-  const [updated] = await db.update(inventoryItemsTable)
+  const [updatedOwner] = await db.update(inventoryItemsTable)
     .set({ quantity: sql`${inventoryItemsTable.quantity}+${delta}`, isLowStock: sql`${inventoryItemsTable.quantity}+${delta}<=${inventoryItemsTable.reorderPoint}` })
-    .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId),sql`${inventoryItemsTable.quantity}+${delta}>=0`))
+    .where(and(eq(inventoryItemsTable.id, ownerId), eq(inventoryItemsTable.tenantId, tenantId), sql`${inventoryItemsTable.quantity}+${delta}>=0`))
     .returning();
-  if(!updated){res.status(409).json({error:'Stock changed. Refresh the item and try again.'});return;}
+  if (!updatedOwner) { res.status(409).json({ error: "Stock changed. Refresh the item and try again." }); return; }
+  await syncFamilyLowStock(tenantId, ownerId, updatedOwner.quantity);
 
   const [markupPct, showCost] = await Promise.all([
     getTenantMarkupPct(tenantId),
     canSeeCostPrice(tenantId, userId),
   ]);
-  const names = await partyNames(tenantId, updated);
-  const grouping = await groupingForItem(tenantId, updated.typeId, updated.sizeId);
-  res.json(formatItem(updated, markupPct, showCost, names.supplierName, grouping, names.vendorName));
+  const shown = withSharedQuantity(existing.id === ownerId ? updatedOwner : existing, updatedOwner.quantity);
+  const names = await partyNames(tenantId, shown);
+  const grouping = await groupingForItem(tenantId, shown.typeId, shown.sizeId);
+  res.json(formatItem(shown, markupPct, showCost, names.supplierName, grouping, names.vendorName));
 });
 
 router.delete("/inventory/:id", requireInventoryMutate, async (req, res): Promise<void> => {
@@ -777,6 +935,13 @@ router.delete("/inventory/:id", requireInventoryMutate, async (req, res): Promis
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [copy] = await db.select({ id: inventoryItemsTable.id }).from(inventoryItemsTable)
+    .where(and(eq(inventoryItemsTable.tenantId, tenantId), eq(inventoryItemsTable.stockItemId, id)))
+    .limit(1);
+  if (copy) {
+    res.status(409).json({ error: "Delete the copies that share this stock first." });
+    return;
+  }
   await db
     .delete(inventoryItemsTable)
     .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)));

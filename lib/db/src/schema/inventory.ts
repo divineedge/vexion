@@ -143,6 +143,11 @@ export const inventoryItemsTable = pgTable("inventory_items", {
   pricePerFoot: real("price_per_foot"),
   /** Supplier chosen from the vendor list. */
   vendorId: integer("vendor_id").references(() => vendorsTable.id, { onDelete: "set null" }),
+  /**
+   * When set, on-hand quantity lives on that item. Copies stay separate catalog
+   * rows and share one stock pile instead of keeping a second quantity.
+   */
+  stockItemId: integer("stock_item_id").references((): any => inventoryItemsTable.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

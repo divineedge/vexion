@@ -5,6 +5,7 @@ import { CreateExpenseBody } from "@workspace/api-zod";
 import type { z } from "zod";
 import {expenseTax} from './expenseTax';
 import {receiveCostLot,highestCost} from './inventoryCosting';
+import {stockOwnerId} from './inventoryDuplicate';
 import {inventoryCostLotsTable} from '@workspace/db';
 type CreateExpenseInput = z.infer<typeof CreateExpenseBody>;
 
@@ -51,8 +52,11 @@ export async function recordExpense(tenantId: number, input: CreateExpenseInput,
       const purchaseCostPrice=receipt.costPrice;
       const shippingAllocation=shippingShares.get(receipt)??0;
       const effectiveCost=purchaseCostPrice*(tax.capitalizeSalesTax?1+tax.salesTaxPct/100:1)+shippingAllocation/receipt.quantity;
-      const [item] = await tx.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.tenantId,tenantId),eq(inventoryItemsTable.id,receipt.inventoryItemId))).for("update");
-      if (!item) fail("Inventory item does not belong to this business");
+      const [selected] = await tx.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.tenantId,tenantId),eq(inventoryItemsTable.id,receipt.inventoryItemId))).for("update");
+      if (!selected) fail("Inventory item does not belong to this business");
+      const sharedId = stockOwnerId(selected);
+      const item = sharedId === selected.id ? selected : (await tx.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.tenantId,tenantId),eq(inventoryItemsTable.id,sharedId))).for("update"))[0];
+      if (!item) fail("Shared stock item not found");
       const location = receipt.locationId ? locations.find(l=>l.id===receipt.locationId) : locations.length===1 ? locations[0] : null;
       if (receipt.locationId && !location) fail("Choose an active receiving location in this business");
       if (!location && locations.length>1) fail("Choose the receiving location for each item");
@@ -79,7 +83,7 @@ export async function recordExpense(tenantId: number, input: CreateExpenseInput,
         quantity:item.quantity+receipt.quantity, isLowStock:item.quantity+receipt.quantity<=item.reorderPoint,
         unitPrice:stockCost,...(receipt.updatePrice ? {markedUpPrice:sell} : {}),
       }).where(and(eq(inventoryItemsTable.tenantId,tenantId),eq(inventoryItemsTable.id,item.id)));
-      snapshots.push({...receipt,purchaseCostPrice,costPrice:effectiveCost,landedUnitCost:effectiveCost,shippingAllocation,costLotId:lot.id,salesTaxPct:tax.salesTaxPct,capitalizeSalesTax:tax.capitalizeSalesTax,locationId:location?.id,locationName:location?.name ?? "Unallocated inventory",itemName:item.name,previousCostPrice:item.unitPrice,previousSellPrice:item.markedUpPrice,newSellPrice:receipt.updatePrice?sell:item.markedUpPrice});
+      snapshots.push({...receipt,purchaseCostPrice,costPrice:effectiveCost,landedUnitCost:effectiveCost,shippingAllocation,costLotId:lot.id,salesTaxPct:tax.salesTaxPct,capitalizeSalesTax:tax.capitalizeSalesTax,locationId:location?.id,locationName:location?.name ?? "Unallocated inventory",itemName:selected.name,previousCostPrice:selected.unitPrice,previousSellPrice:selected.markedUpPrice,newSellPrice:receipt.updatePrice?sell:selected.markedUpPrice});
     }
     const [expense] = await tx.insert(expenseEntriesTable).values({
       tenantId,...normal,...tax,category, requestId:input.requestId ?? null, requestFingerprint:fingerprint, inventoryReceipts:snapshots,

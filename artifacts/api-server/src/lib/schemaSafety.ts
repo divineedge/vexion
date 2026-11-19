@@ -48,6 +48,8 @@ const ADDITIVE_SETTINGS_SQL = [
   `ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS length_received real`,
   `ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS price_per_foot real`,
   `ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS vendor_id integer REFERENCES vendors(id) ON DELETE SET NULL`,
+  `ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS stock_item_id integer REFERENCES inventory_items(id)`,
+  `CREATE INDEX IF NOT EXISTS inventory_items_stock_item_idx ON inventory_items (stock_item_id)`,
   `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS inventory_group_by text NOT NULL DEFAULT 'type'`,
   `CREATE TABLE IF NOT EXISTS inventory_reservations (id uuid PRIMARY KEY, company_id integer NOT NULL REFERENCES tenants(id), inventory_item_id integer NOT NULL REFERENCES inventory_items(id), job_id integer NOT NULL REFERENCES jobs(id), invoice_line_id uuid, quantity numeric(12, 3) NOT NULL, consumed_quantity numeric(12, 3) NOT NULL DEFAULT 0, unit_cost numeric(12, 4) NOT NULL DEFAULT 0, status text NOT NULL DEFAULT 'reserved' CHECK (status IN ('reserved', 'reconciled')), created_at timestamptz NOT NULL DEFAULT now())`,
   `CREATE INDEX IF NOT EXISTS inventory_reservations_job_idx ON inventory_reservations (company_id, job_id, status)`,

@@ -2,6 +2,7 @@ import {db,inventoryItemsTable,inventoryCostLotsTable,inventoryLocationStockTabl
 import {and,eq,sql,desc,asc} from 'drizzle-orm';
 import type {HrDb} from './hrAccess';
 import {resolveInventorySell} from './pipeStock';
+import {stockOwnerId} from './inventoryDuplicate';
 const fail=(message:string,status=400):never=>{throw Object.assign(new Error(message),{status});};
 type Item=typeof inventoryItemsTable.$inferSelect;
 type Allocation={lotId:number;quantity:number;unitCost:number};
@@ -79,8 +80,12 @@ export async function setJobPart(tenantId:number,jobId:number,itemId:number,quan
   if(!job)fail('Job not found',404);
   const parts=(Array.isArray(job.jobParts)?job.jobParts:[]) as any[];
   const old=parts.find(p=>p.inventoryItemId===itemId);
-  const [item]=await tx.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.tenantId,tenantId),eq(inventoryItemsTable.id,itemId))).for('update');
-  if(!item){if(quantity===0&&old&&!old._stockUsage)return(await tx.update(jobsTable).set({jobParts:parts.filter(p=>p!==old)}).where(eq(jobsTable.id,jobId)).returning())[0];fail('Inventory item not found',404);}
+  const [requested]=await tx.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.tenantId,tenantId),eq(inventoryItemsTable.id,itemId))).for('update');
+  if(!requested){if(quantity===0&&old&&!old._stockUsage)return(await tx.update(jobsTable).set({jobParts:parts.filter(p=>p!==old)}).where(eq(jobsTable.id,jobId)).returning())[0];fail('Inventory item not found',404);}
+  const sharedId=stockOwnerId(requested);
+  const item=sharedId===requested.id?requested:(await tx.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.tenantId,tenantId),eq(inventoryItemsTable.id,sharedId))).for('update'))[0];
+  if(!item)fail('Shared stock item not found',409);
+  const stockId=item.id;
   await ensureOpeningCost(tx,item);
   const usage:StockUsage=old?structuredClone(old._stockUsage??{legacyQuantity:old.quantity,legacyUnitCost:item.unitPrice,allocations:[],locations:[],total:old.quantity*item.unitPrice}):{legacyQuantity:0,legacyUnitCost:0,allocations:[],locations:[],total:0};
   const desiredLegacy=Math.min(usage.legacyQuantity,quantity),tracked=usage.allocations.reduce((n,a)=>n+a.quantity,0);
@@ -88,13 +93,13 @@ export async function setJobPart(tenantId:number,jobId:number,itemId:number,quan
   if(delta>item.quantity)fail('Not enough stock. Receive or adjust inventory before recording these supplies.');
   if(delta>0){
    let remaining=delta;
-   const lots=await tx.select().from(inventoryCostLotsTable).where(and(eq(inventoryCostLotsTable.tenantId,tenantId),eq(inventoryCostLotsTable.inventoryItemId,itemId))).orderBy(desc(inventoryCostLotsTable.unitCost),asc(inventoryCostLotsTable.id)).for('update');
+   const lots=await tx.select().from(inventoryCostLotsTable).where(and(eq(inventoryCostLotsTable.tenantId,tenantId),eq(inventoryCostLotsTable.inventoryItemId,stockId))).orderBy(desc(inventoryCostLotsTable.unitCost),asc(inventoryCostLotsTable.id)).for('update');
    for(const lot of lots){const take=Math.min(remaining,lot.remainingQuantity);if(take<=0)continue;
     await tx.update(inventoryCostLotsTable).set({remainingQuantity:lot.remainingQuantity-take}).where(eq(inventoryCostLotsTable.id,lot.id));
     usage.allocations.push({lotId:lot.id,quantity:take,unitCost:lot.unitCost});remaining-=take;if(!remaining)break;
    }
    if(remaining)fail('Stock cost records do not match the available inventory',409);
-   const stocks=await tx.select().from(inventoryLocationStockTable).where(and(eq(inventoryLocationStockTable.tenantId,tenantId),eq(inventoryLocationStockTable.inventoryItemId,itemId))).orderBy(asc(inventoryLocationStockTable.id)).for('update');
+   const stocks=await tx.select().from(inventoryLocationStockTable).where(and(eq(inventoryLocationStockTable.tenantId,tenantId),eq(inventoryLocationStockTable.inventoryItemId,stockId))).orderBy(asc(inventoryLocationStockTable.id)).for('update');
    const unallocated=Math.min(delta,Math.max(0,item.quantity-stocks.reduce((n,s)=>n+s.quantity,0)));
    if(unallocated)usage.locations.push({locationId:null,quantity:unallocated});
    let toDeduct=delta-unallocated;
@@ -113,7 +118,7 @@ export async function setJobPart(tenantId:number,jobId:number,itemId:number,quan
    for(let i=usage.locations.length-1;i>=0&&remaining;i--){const location=usage.locations[i],put=Math.min(remaining,location.quantity);
     const stillExists=location.locationId===null?false:(await tx.select({id:inventoryLocationsTable.id}).from(inventoryLocationsTable).where(and(eq(inventoryLocationsTable.tenantId,tenantId),eq(inventoryLocationsTable.id,location.locationId))).limit(1)).length>0;
     // A removed location must not prevent a correction: restored units become unallocated.
-    if(location.locationId!==null&&stillExists)await tx.insert(inventoryLocationStockTable).values({tenantId,inventoryItemId:itemId,locationId:location.locationId,quantity:put}).onConflictDoUpdate({target:[inventoryLocationStockTable.tenantId,inventoryLocationStockTable.inventoryItemId,inventoryLocationStockTable.locationId],set:{quantity:sql`${inventoryLocationStockTable.quantity}+${put}`}});
+    if(location.locationId!==null&&stillExists)await tx.insert(inventoryLocationStockTable).values({tenantId,inventoryItemId:stockId,locationId:location.locationId,quantity:put}).onConflictDoUpdate({target:[inventoryLocationStockTable.tenantId,inventoryLocationStockTable.inventoryItemId,inventoryLocationStockTable.locationId],set:{quantity:sql`${inventoryLocationStockTable.quantity}+${put}`}});
     location.quantity-=put;remaining-=put;
    }
    usage.locations=usage.locations.filter(l=>l.quantity>0);
@@ -121,13 +126,13 @@ export async function setJobPart(tenantId:number,jobId:number,itemId:number,quan
   usage.legacyQuantity=desiredLegacy;
   usage.total=Math.round((desiredLegacy*usage.legacyUnitCost+usage.allocations.reduce((n,a)=>n+a.quantity*a.unitCost,0))*1e6)/1e6;
   if(delta){
-   await tx.update(inventoryItemsTable).set({quantity:item.quantity-delta,isLowStock:item.quantity-delta<=item.reorderPoint}).where(eq(inventoryItemsTable.id,itemId));
-   await tx.insert(inventoryTransfersTable).values({tenantId,inventoryItemId:itemId,quantity:Math.abs(delta),reason:`Job #${jobId} supplies ${delta>0?'used':'returned'}`});
+   await tx.update(inventoryItemsTable).set({quantity:item.quantity-delta,isLowStock:item.quantity-delta<=item.reorderPoint}).where(eq(inventoryItemsTable.id,stockId));
+   await tx.insert(inventoryTransfersTable).values({tenantId,inventoryItemId:stockId,quantity:Math.abs(delta),reason:`Job #${jobId} supplies ${delta>0?'used':'returned'}`});
   }
   const [tenant]=await tx.select({defaultMarkupPct:tenantsTable.defaultMarkupPct}).from(tenantsTable).where(eq(tenantsTable.id,tenantId));
-  const priced=resolveInventorySell({cost:item.unitPrice,pricePerFoot:item.pricePerFoot,markedUpPrice:item.markedUpPrice,defaultMarkupPct:tenant?.defaultMarkupPct??20});
+  const priced=resolveInventorySell({cost:requested.unitPrice,pricePerFoot:requested.pricePerFoot,markedUpPrice:requested.markedUpPrice,defaultMarkupPct:tenant?.defaultMarkupPct??20});
   const charged=old?.unitPrice??priced.sellPrice;
-  const part={inventoryItemId:item.id,name:old?.name??item.name,quantity,unitPrice:charged,unit:item.pricePerFoot!=null?'ft':(typeof old?.unit==='string'&&old.unit?old.unit:item.unit),total:charged*quantity,_stockUsage:usage};
-  return(await tx.update(jobsTable).set({jobParts:[...parts.filter(p=>p.inventoryItemId!==itemId),...(quantity?[part]:[])]}).where(eq(jobsTable.id,jobId)).returning())[0];
+  const part={inventoryItemId:requested.id,name:old?.name??requested.name,quantity,unitPrice:charged,unit:requested.pricePerFoot!=null?'ft':(typeof old?.unit==='string'&&old.unit?old.unit:requested.unit),total:charged*quantity,_stockUsage:usage};
+  return(await tx.update(jobsTable).set({jobParts:[...parts.filter(p=>p.inventoryItemId!==requested.id),...(quantity?[part]:[])]}).where(eq(jobsTable.id,jobId)).returning())[0];
  });
 }

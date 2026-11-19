@@ -48,7 +48,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useDebounce } from '@/hooks/use-debounce';
 import { upsertInventoryLocation } from '@/lib/inventoryLocations';
 import { groupInventoryItems, type InventoryGroupBy } from '@/lib/inventoryGrouping';
-import { categoryChoices, feetFromLength, formatInventoryQuantity, inventoryListFigures, inventorySizeOptions, isPipeTypeName, namedId, pipeSellPerFoot, sizeIdAcrossTypes, unitForChemicalSize } from '@/lib/inventoryPartForm';
+import { categoryChoices, feetFromLength, formatInventoryQuantity, inventoryListFigures, inventorySizeOptions, isPipeTypeName, namedId, parseLinkedPartsDraft, parseReorderPoint, pipeSellPerFoot, sizeIdAcrossTypes, unitForChemicalSize } from '@/lib/inventoryPartForm';
+import { LinkedPartsEditor, type LinkRow } from '@/components/inventory/LinkedPartsEditor';
 import { ShrinkageReport } from '@/components/inventory/ShrinkageReport';
 
 function ItemLocationSection({ inventoryItemId }: { inventoryItemId: number }) {
@@ -212,6 +213,8 @@ type ItemForm = {
   commissionPct: string;
   vendorId: string;
   sprayProductId: string;
+  linkQuantity: string;
+  links: LinkRow[];
 };
 
 const EMPTY_FORM: ItemForm = {
@@ -219,6 +222,7 @@ const EMPTY_FORM: ItemForm = {
   costPrice: '', markupPct: '', quantity: '0', reorderPoint: '5', unit: 'each',
   lengthReceived: '', pricePerFoot: '',
   availableForBlueprint: false, commissionPct: '', vendorId: '', sprayProductId: '',
+  linkQuantity: '', links: [],
 };
 
 export default function InventoryPage() {
@@ -580,6 +584,12 @@ export default function InventoryPage() {
       commissionPct: item.commissionPct != null ? String(item.commissionPct) : '',
       vendorId: item.vendorId != null ? String(item.vendorId) : '',
       sprayProductId: linkedSpray ? String(linkedSpray.id) : '',
+      linkQuantity: item.linkedParts ? String(item.linkedParts.quantity) : '',
+      links: item.linkedParts?.components.map(component => ({
+        key: `link-${component.inventoryItemId}`,
+        inventoryItemId: component.inventoryItemId,
+        quantity: String(component.quantity),
+      })) ?? [],
     });
     setDraftCategories([]);
     updateSellPreview(costVal, mPct);
@@ -596,6 +606,10 @@ export default function InventoryPage() {
     if (perFoot && (!Number.isFinite(Number(perFoot)) || Number(perFoot) < 0)) { toast.error('Price per foot must be a non-negative number'); return; }
     const quantity = Number(form.quantity);
     if (!Number.isFinite(quantity) || quantity < 0) { toast.error('Quantity must be a non-negative number'); return; }
+    const reorderPoint = parseReorderPoint(form.reorderPoint);
+    if (reorderPoint === 'invalid') { toast.error('Reorder point must be a whole number, 0 or more'); return; }
+    const linked = parseLinkedPartsDraft(form.linkQuantity, form.links);
+    if (!linked.ok) { toast.error(linked.error); return; }
     const data = {
       name: form.name,
       sku: form.sku,
@@ -606,13 +620,14 @@ export default function InventoryPage() {
       costPrice: parseFloat(form.costPrice) || 0,
       markupPct: form.markupPct.trim() === '' ? null : parseFloat(form.markupPct),
       quantity,
-      reorderPoint: parseInt(form.reorderPoint, 10) || 5,
+      reorderPoint,
       unit: pipePart ? 'ft' : (form.unit || 'each'),
       lengthReceived: length ? Number(length) : null,
       pricePerFoot: perFoot ? Number(perFoot) : null,
       availableForBlueprint: form.availableForBlueprint,
       commissionPct: form.commissionPct ? parseFloat(form.commissionPct) : undefined,
       vendorId: form.vendorId ? parseInt(form.vendorId, 10) : null,
+      linkedParts: linked.value,
     };
 
     const syncSprayLink = async (itemId: number) => {
@@ -1159,7 +1174,8 @@ export default function InventoryPage() {
                   </div>
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Reorder At</p>
-                    <p className="text-2xl font-bold" title={`Reorder when stock falls below ${selectedItem.reorderPoint} ${selectedItem.unit ?? 'units'}`}>{selectedItem.reorderPoint} <span className="text-sm font-normal text-muted-foreground">{selectedItem.unit}</span></p>
+                    <p className="text-2xl font-bold" data-testid="text-reorder-point" title={`Reorder when on hand is at or below ${selectedItem.reorderPoint} ${selectedItem.unit ?? 'units'}`}>{selectedItem.reorderPoint} <span className="text-sm font-normal text-muted-foreground">{selectedItem.unit}</span></p>
+                    {selectedItem.reorderPoint === 0 && <p className="text-xs text-muted-foreground">Only when out of stock.</p>}
                   </div>
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Type</p>
@@ -1188,6 +1204,15 @@ export default function InventoryPage() {
                     </div>
                   )}
                 </div>
+                {selectedItem.linkedParts && selectedItem.linkedParts.components.length > 0 && (
+                  <div className="space-y-2" data-testid="linked-parts">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Linked parts</p>
+                    <p className="text-sm" data-testid="text-link-ratio">
+                      {formatInventoryQuantity(selectedItem.linkedParts.quantity)} {selectedItem.unit || 'units'} uses {selectedItem.linkedParts.components.map(component => `${formatInventoryQuantity(component.quantity)} ${component.unit || 'units'} ${component.name}`).join(', ')}.
+                    </p>
+                    <p className="text-xs text-muted-foreground">Using this part also uses the linked parts at that ratio. The job shows one combined price, and each part's own count still goes down.</p>
+                  </div>
+                )}
 
                 {canManage && (
                   <Button
@@ -1448,7 +1473,8 @@ export default function InventoryPage() {
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Reorder At</label>
-                <Input type="number" min={0} title="Stock level that triggers a reorder alert" value={form.reorderPoint} onChange={e => setForm(f => ({ ...f, reorderPoint: e.target.value }))} />
+                <Input type="number" min={0} step={1} title="Reorder when on hand is at or below this number. 0 means only when out of stock." data-testid="input-reorder-point" value={form.reorderPoint} onChange={e => setForm(f => ({ ...f, reorderPoint: e.target.value }))} />
+                <p className="text-xs text-muted-foreground">0 is saved. Reorder only when on hand is at or below it.</p>
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Unit</label>
@@ -1519,6 +1545,16 @@ export default function InventoryPage() {
               </Select>
             </div>
 
+            <Separator />
+            <LinkedPartsEditor
+              items={items ?? []}
+              selfId={sheetMode === 'edit' ? selectedId : null}
+              unit={pipePart ? 'ft' : (form.unit || 'each')}
+              linkQuantity={form.linkQuantity}
+              links={form.links}
+              onLinkQuantity={linkQuantity => setForm(current => ({ ...current, linkQuantity }))}
+              onLinks={links => setForm(current => ({ ...current, links }))}
+            />
             <Separator />
             <div className="flex gap-3 justify-end">
               <Button variant="outline" onClick={() => setSheetMode(null)}>Cancel</Button>

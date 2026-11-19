@@ -1,13 +1,16 @@
 import {db,inventoryItemsTable,inventoryCostLotsTable,inventoryLocationStockTable,inventoryLocationsTable,inventoryTransfersTable,jobsTable,tenantsTable} from '@workspace/db';
 import {and,eq,sql,desc,asc} from 'drizzle-orm';
 import type {HrDb} from './hrAccess';
+import {installInventoryKitSchema} from './inventoryKitSchema';
+import {formatKitAmount,kitJobLine,onHandNeeded,planLinkedUse,roundKitQuantity} from './inventoryKits';
+import {readKitRatio} from './inventoryKitStore';
 import {resolveInventorySell} from './pipeStock';
 const fail=(message:string,status=400):never=>{throw Object.assign(new Error(message),{status});};
 type Item=typeof inventoryItemsTable.$inferSelect;
 type Allocation={lotId:number;quantity:number;unitCost:number};
 type LocationUse={locationId:number|null;quantity:number};
 export type StockUsage={legacyQuantity:number;legacyUnitCost:number;allocations:Allocation[];locations:LocationUse[];total:number};
-export function publicParts(parts:unknown){return(Array.isArray(parts)?parts:[]).filter(part=>part&&typeof part==='object').map(({_stockUsage,...part})=>part);}
+export function publicParts(parts:unknown){return(Array.isArray(parts)?parts:[]).filter(part=>part&&typeof part==='object').map(({_stockUsage,_kitUsage,...part})=>part);}
 
 export async function installInventoryCostSchema(){
  await db.execute(sql`CREATE TABLE IF NOT EXISTS inventory_cost_lots(
@@ -70,64 +73,149 @@ export async function highestCost(tx:HrDb,tenantId:number,itemId:number,fallback
  return r.rows[0]?.cost==null?fallback:Number(r.rows[0].cost);
 }
 
+function emptyUsage():StockUsage{return{legacyQuantity:0,legacyUnitCost:0,allocations:[],locations:[],total:0};}
+
+/** Move one inventory item to a desired used quantity. The quantity is in that item's own unit. */
+async function applyDesiredQuantity(tx:HrDb,tenantId:number,jobId:number,item:Item,desired:number,previous:StockUsage|null):Promise<StockUsage>{
+ await ensureOpeningCost(tx,item);
+ const usage:StockUsage=previous?structuredClone(previous):emptyUsage();
+ const desiredLegacy=Math.min(usage.legacyQuantity,desired);
+ const delta=onHandNeeded(desired,usage.legacyQuantity,usage.allocations.reduce((n,a)=>n+a.quantity,0));
+ if(delta>item.quantity)fail(`Not enough stock for ${item.name}: need ${formatKitAmount(delta)} more ${item.unit||'units'}, have ${formatKitAmount(item.quantity)} ${item.unit||'units'} on hand.`);
+ if(delta>0){
+  let remaining=delta;
+  const lots=await tx.select().from(inventoryCostLotsTable).where(and(eq(inventoryCostLotsTable.tenantId,tenantId),eq(inventoryCostLotsTable.inventoryItemId,item.id))).orderBy(desc(inventoryCostLotsTable.unitCost),asc(inventoryCostLotsTable.id)).for('update');
+  for(const lot of lots){const take=Math.min(remaining,lot.remainingQuantity);if(take<=0)continue;
+   await tx.update(inventoryCostLotsTable).set({remainingQuantity:lot.remainingQuantity-take}).where(eq(inventoryCostLotsTable.id,lot.id));
+   usage.allocations.push({lotId:lot.id,quantity:take,unitCost:lot.unitCost});remaining-=take;if(!remaining)break;
+  }
+  if(remaining)fail('Stock cost records do not match the available inventory',409);
+  const stocks=await tx.select().from(inventoryLocationStockTable).where(and(eq(inventoryLocationStockTable.tenantId,tenantId),eq(inventoryLocationStockTable.inventoryItemId,item.id))).orderBy(asc(inventoryLocationStockTable.id)).for('update');
+  const fraction=Number.isInteger(delta)?0:roundKitQuantity(delta-Math.floor(delta+1e-9));
+  const locationGap=Math.max(0,item.quantity-stocks.reduce((n,s)=>n+s.quantity,0));
+  const unallocated=Math.min(delta,Math.max(locationGap,fraction));
+  if(unallocated)usage.locations.push({locationId:null,quantity:unallocated});
+  let toDeduct=delta-unallocated;
+  for(const stock of stocks){const take=Math.min(toDeduct,stock.quantity);if(!take)continue;
+   await tx.update(inventoryLocationStockTable).set({quantity:stock.quantity-take}).where(eq(inventoryLocationStockTable.id,stock.id));
+   usage.locations.push({locationId:stock.locationId,quantity:take});toDeduct-=take;
+  }
+ }else if(delta<0){
+  let remaining=-delta;
+  for(let i=usage.allocations.length-1;i>=0&&remaining;i--){const a=usage.allocations[i],take=Math.min(remaining,a.quantity);
+   await tx.update(inventoryCostLotsTable).set({remainingQuantity:sql`${inventoryCostLotsTable.remainingQuantity}+${take}`}).where(and(eq(inventoryCostLotsTable.tenantId,tenantId),eq(inventoryCostLotsTable.id,a.lotId)));
+   a.quantity-=take;remaining-=take;
+  }
+  usage.allocations=usage.allocations.filter(a=>a.quantity>0);
+  remaining=-delta;
+  for(let i=usage.locations.length-1;i>=0&&remaining;i--){const location=usage.locations[i],put=Math.min(remaining,location.quantity);
+   const stillExists=location.locationId===null?false:(await tx.select({id:inventoryLocationsTable.id}).from(inventoryLocationsTable).where(and(eq(inventoryLocationsTable.tenantId,tenantId),eq(inventoryLocationsTable.id,location.locationId))).limit(1)).length>0;
+   // A removed location must not prevent a correction: restored units become unallocated.
+   if(location.locationId!==null&&stillExists)await tx.insert(inventoryLocationStockTable).values({tenantId,inventoryItemId:item.id,locationId:location.locationId,quantity:put}).onConflictDoUpdate({target:[inventoryLocationStockTable.tenantId,inventoryLocationStockTable.inventoryItemId,inventoryLocationStockTable.locationId],set:{quantity:sql`${inventoryLocationStockTable.quantity}+${put}`}});
+   location.quantity-=put;remaining-=put;
+  }
+  usage.locations=usage.locations.filter(l=>l.quantity>0);
+ }
+ usage.legacyQuantity=desiredLegacy;
+ usage.total=Math.round((desiredLegacy*usage.legacyUnitCost+usage.allocations.reduce((n,a)=>n+a.quantity*a.unitCost,0))*1e6)/1e6;
+ if(delta){
+  await tx.update(inventoryItemsTable).set({quantity:item.quantity-delta,isLowStock:item.quantity-delta<=item.reorderPoint}).where(eq(inventoryItemsTable.id,item.id));
+  await tx.insert(inventoryTransfersTable).values({tenantId,inventoryItemId:item.id,quantity:Math.abs(delta),reason:`Job #${jobId} supplies ${delta>0?'used':'returned'}`});
+ }
+ return usage;
+}
+
+type StoredKitUse={inventoryItemId:number;name:string;quantity:number;unit:string;_stockUsage:StockUsage};
+
 /** Replace the desired used quantity, not a delta; repeated submits cannot consume twice. */
 export async function setJobPart(tenantId:number,jobId:number,itemId:number,quantity:number){
  if(!Number.isSafeInteger(quantity)||quantity<0||quantity>1000000)fail('Enter a whole-number supply quantity from 0 to 1,000,000');
+ await installInventoryKitSchema();
  return db.transaction(async tx=>{
   await tx.execute(sql`SELECT pg_advisory_xact_lock(${tenantId},-19001)`);
   const [job]=await tx.select().from(jobsTable).where(and(eq(jobsTable.tenantId,tenantId),eq(jobsTable.id,jobId))).for('update');
   if(!job)fail('Job not found',404);
   const parts=(Array.isArray(job.jobParts)?job.jobParts:[]) as any[];
   const old=parts.find(p=>p.inventoryItemId===itemId);
-  const [item]=await tx.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.tenantId,tenantId),eq(inventoryItemsTable.id,itemId))).for('update');
-  if(!item){if(quantity===0&&old&&!old._stockUsage)return(await tx.update(jobsTable).set({jobParts:parts.filter(p=>p!==old)}).where(eq(jobsTable.id,jobId)).returning())[0];fail('Inventory item not found',404);}
-  await ensureOpeningCost(tx,item);
-  const usage:StockUsage=old?structuredClone(old._stockUsage??{legacyQuantity:old.quantity,legacyUnitCost:item.unitPrice,allocations:[],locations:[],total:old.quantity*item.unitPrice}):{legacyQuantity:0,legacyUnitCost:0,allocations:[],locations:[],total:0};
-  const desiredLegacy=Math.min(usage.legacyQuantity,quantity),tracked=usage.allocations.reduce((n,a)=>n+a.quantity,0);
-  const delta=quantity-desiredLegacy-tracked;
-  if(delta>item.quantity)fail('Not enough stock. Receive or adjust inventory before recording these supplies.');
-  if(delta>0){
-   let remaining=delta;
-   const lots=await tx.select().from(inventoryCostLotsTable).where(and(eq(inventoryCostLotsTable.tenantId,tenantId),eq(inventoryCostLotsTable.inventoryItemId,itemId))).orderBy(desc(inventoryCostLotsTable.unitCost),asc(inventoryCostLotsTable.id)).for('update');
-   for(const lot of lots){const take=Math.min(remaining,lot.remainingQuantity);if(take<=0)continue;
-    await tx.update(inventoryCostLotsTable).set({remainingQuantity:lot.remainingQuantity-take}).where(eq(inventoryCostLotsTable.id,lot.id));
-    usage.allocations.push({lotId:lot.id,quantity:take,unitCost:lot.unitCost});remaining-=take;if(!remaining)break;
-   }
-   if(remaining)fail('Stock cost records do not match the available inventory',409);
-   const stocks=await tx.select().from(inventoryLocationStockTable).where(and(eq(inventoryLocationStockTable.tenantId,tenantId),eq(inventoryLocationStockTable.inventoryItemId,itemId))).orderBy(asc(inventoryLocationStockTable.id)).for('update');
-   const unallocated=Math.min(delta,Math.max(0,item.quantity-stocks.reduce((n,s)=>n+s.quantity,0)));
-   if(unallocated)usage.locations.push({locationId:null,quantity:unallocated});
-   let toDeduct=delta-unallocated;
-   for(const stock of stocks){const take=Math.min(toDeduct,stock.quantity);if(!take)continue;
-    await tx.update(inventoryLocationStockTable).set({quantity:stock.quantity-take}).where(eq(inventoryLocationStockTable.id,stock.id));
-    usage.locations.push({locationId:stock.locationId,quantity:take});toDeduct-=take;
-   }
-  }else if(delta<0){
-   let remaining=-delta;
-   for(let i=usage.allocations.length-1;i>=0&&remaining;i--){const a=usage.allocations[i],take=Math.min(remaining,a.quantity);
-    await tx.update(inventoryCostLotsTable).set({remainingQuantity:sql`${inventoryCostLotsTable.remainingQuantity}+${take}`}).where(and(eq(inventoryCostLotsTable.tenantId,tenantId),eq(inventoryCostLotsTable.id,a.lotId)));
-    a.quantity-=take;remaining-=take;
-   }
-   usage.allocations=usage.allocations.filter(a=>a.quantity>0);
-   remaining=-delta;
-   for(let i=usage.locations.length-1;i>=0&&remaining;i--){const location=usage.locations[i],put=Math.min(remaining,location.quantity);
-    const stillExists=location.locationId===null?false:(await tx.select({id:inventoryLocationsTable.id}).from(inventoryLocationsTable).where(and(eq(inventoryLocationsTable.tenantId,tenantId),eq(inventoryLocationsTable.id,location.locationId))).limit(1)).length>0;
-    // A removed location must not prevent a correction: restored units become unallocated.
-    if(location.locationId!==null&&stillExists)await tx.insert(inventoryLocationStockTable).values({tenantId,inventoryItemId:itemId,locationId:location.locationId,quantity:put}).onConflictDoUpdate({target:[inventoryLocationStockTable.tenantId,inventoryLocationStockTable.inventoryItemId,inventoryLocationStockTable.locationId],set:{quantity:sql`${inventoryLocationStockTable.quantity}+${put}`}});
-    location.quantity-=put;remaining-=put;
-   }
-   usage.locations=usage.locations.filter(l=>l.quantity>0);
+  const previousKit:StoredKitUse[]=Array.isArray(old?._kitUsage)?old._kitUsage:[];
+  const kit=await readKitRatio(tx,tenantId,itemId);
+  const componentIds=new Set<number>();
+  for(const component of kit?.components??[])componentIds.add(component.inventoryItemId);
+  for(const previous of previousKit)componentIds.add(previous.inventoryItemId);
+  componentIds.delete(itemId);
+  const lockIds=[itemId,...componentIds].sort((a,b)=>a-b);
+  const locked=new Map<number,Item>();
+  for(const id of lockIds){
+   const [row]=await tx.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.tenantId,tenantId),eq(inventoryItemsTable.id,id))).for('update');
+   if(row)locked.set(id,row);
   }
-  usage.legacyQuantity=desiredLegacy;
-  usage.total=Math.round((desiredLegacy*usage.legacyUnitCost+usage.allocations.reduce((n,a)=>n+a.quantity*a.unitCost,0))*1e6)/1e6;
-  if(delta){
-   await tx.update(inventoryItemsTable).set({quantity:item.quantity-delta,isLowStock:item.quantity-delta<=item.reorderPoint}).where(eq(inventoryItemsTable.id,itemId));
-   await tx.insert(inventoryTransfersTable).values({tenantId,inventoryItemId:itemId,quantity:Math.abs(delta),reason:`Job #${jobId} supplies ${delta>0?'used':'returned'}`});
-  }
+  const found=locked.get(itemId);
+  if(!found){if(quantity===0&&old&&!old._stockUsage)return(await tx.update(jobsTable).set({jobParts:parts.filter(p=>p!==old)}).where(eq(jobsTable.id,jobId)).returning())[0];fail('Inventory item not found',404);}
+  const item=found as Item;
   const [tenant]=await tx.select({defaultMarkupPct:tenantsTable.defaultMarkupPct}).from(tenantsTable).where(eq(tenantsTable.id,tenantId));
-  const priced=resolveInventorySell({cost:item.unitPrice,pricePerFoot:item.pricePerFoot,markedUpPrice:item.markedUpPrice,defaultMarkupPct:tenant?.defaultMarkupPct??20});
-  const charged=old?.unitPrice??priced.sellPrice;
-  const part={inventoryItemId:item.id,name:old?.name??item.name,quantity,unitPrice:charged,unit:item.pricePerFoot!=null?'ft':(typeof old?.unit==='string'&&old.unit?old.unit:item.unit),total:charged*quantity,_stockUsage:usage};
+  const sellOf=(row:Item)=>resolveInventorySell({cost:row.unitPrice,pricePerFoot:row.pricePerFoot,markedUpPrice:row.markedUpPrice,defaultMarkupPct:tenant?.defaultMarkupPct??20}).sellPrice;
+  const starting:StockUsage=old?structuredClone(old._stockUsage??{legacyQuantity:old.quantity,legacyUnitCost:item.unitPrice,allocations:[],locations:[],total:old.quantity*item.unitPrice}):emptyUsage();
+  const componentRows= [...componentIds].flatMap(id=>{
+   const row=locked.get(id);
+   if(!row)return [];
+   const previous=previousKit.find(entry=>entry.inventoryItemId===id);
+   const usage=previous?._stockUsage??emptyUsage();
+   return [{
+    inventoryItemId:id,
+    name:row.name,
+    unit:row.unit,
+    onHand:row.quantity,
+    sellPrice:sellOf(row),
+    legacyQuantity:usage.legacyQuantity??0,
+    tracked:(usage.allocations??[]).reduce((n,a)=>n+a.quantity,0),
+   }];
+  });
+  const plan=planLinkedUse({
+   usedQuantity:quantity,
+   parent:{
+    inventoryItemId:item.id,
+    name:item.name,
+    unit:item.unit,
+    onHand:item.quantity,
+    sellPrice:sellOf(item),
+    legacyQuantity:starting.legacyQuantity,
+    tracked:starting.allocations.reduce((n,a)=>n+a.quantity,0),
+   },
+   kit,
+   components:componentRows,
+  });
+  if(plan.ok===false)fail(plan.message);
+  const plannedLines=plan.ok?plan.lines:[];
+  const combinedPrice=plan.ok?plan.combinedPrice:0;
+  const parentUsage=await applyDesiredQuantity(tx,tenantId,jobId,item,quantity,starting);
+  const storedKit:StoredKitUse[]=[];
+  for(const line of plannedLines){
+   if(line.inventoryItemId===item.id)continue;
+   const row=locked.get(line.inventoryItemId);
+   if(!row)continue;
+   const previous=previousKit.find(entry=>entry.inventoryItemId===line.inventoryItemId);
+   const usage=await applyDesiredQuantity(tx,tenantId,jobId,row,line.quantity,previous?._stockUsage??null);
+   if(line.quantity>0)storedKit.push({inventoryItemId:line.inventoryItemId,name:row.name,quantity:line.quantity,unit:row.unit,_stockUsage:usage});
+  }
+  if(storedKit.length)parentUsage.total=Math.round((parentUsage.total+storedKit.reduce((sum,component)=>sum+component._stockUsage.total,0))*1e6)/1e6;
+  const priced=sellOf(item);
+  const linked=storedKit.length>0;
+  const linePrice=linked?kitJobLine(quantity,combinedPrice):null;
+  const charged=linePrice?linePrice.unitPrice:(old?.unitPrice??priced);
+  const total=linePrice?linePrice.total:charged*quantity;
+  const part={
+   inventoryItemId:item.id,
+   name:old?.name??item.name,
+   quantity,
+   unitPrice:charged,
+   unit:item.pricePerFoot!=null?'ft':(typeof old?.unit==='string'&&old.unit?old.unit:item.unit),
+   total,
+   _stockUsage:parentUsage,
+   ...(storedKit.length?{
+    _kitUsage:storedKit,
+    kitComponents:storedKit.map(({_stockUsage,...component})=>component),
+   }:{}),
+  };
   return(await tx.update(jobsTable).set({jobParts:[...parts.filter(p=>p.inventoryItemId!==itemId),...(quantity?[part]:[])]}).where(eq(jobsTable.id,jobId)).returning())[0];
  });
 }

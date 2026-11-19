@@ -150,3 +150,37 @@ export const inventoryItemsTable = pgTable("inventory_items", {
 export const insertInventoryItemSchema = createInsertSchema(inventoryItemsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertInventoryItem = z.infer<typeof insertInventoryItemSchema>;
 export type InventoryItem = typeof inventoryItemsTable.$inferSelect;
+
+// ─── Linked parts ─────────────────────────────────────────────────────────────
+// Using parentQuantity of the parent item also uses each component's quantity, scaled.
+// 100 of the parent with 10 of a component means 50 uses 5. Components are inventory items.
+
+export const inventoryPartLinksTable = pgTable("inventory_part_links", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  parentItemId: integer("parent_item_id").notNull().references(() => inventoryItemsTable.id, { onDelete: "cascade" }),
+  parentQuantity: doublePrecision("parent_quantity").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => [
+  uniqueIndex("inventory_part_links_parent").on(t.tenantId, t.parentItemId),
+]);
+
+export const insertInventoryPartLinkSchema = createInsertSchema(inventoryPartLinksTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertInventoryPartLink = z.infer<typeof insertInventoryPartLinkSchema>;
+export type InventoryPartLink = typeof inventoryPartLinksTable.$inferSelect;
+
+export const inventoryPartLinkComponentsTable = pgTable("inventory_part_link_components", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  linkId: integer("link_id").notNull().references(() => inventoryPartLinksTable.id, { onDelete: "cascade" }),
+  inventoryItemId: integer("inventory_item_id").notNull().references(() => inventoryItemsTable.id, { onDelete: "cascade" }),
+  quantity: doublePrecision("quantity").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+}, (t) => [
+  uniqueIndex("inventory_part_link_components_item").on(t.linkId, t.inventoryItemId),
+]);
+
+export const insertInventoryPartLinkComponentSchema = createInsertSchema(inventoryPartLinkComponentsTable).omit({ id: true });
+export type InsertInventoryPartLinkComponent = z.infer<typeof insertInventoryPartLinkComponentSchema>;
+export type InventoryPartLinkComponent = typeof inventoryPartLinkComponentsTable.$inferSelect;

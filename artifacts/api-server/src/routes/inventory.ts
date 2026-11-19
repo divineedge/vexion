@@ -1,6 +1,9 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db, inventoryItemsTable, inventoryPartSizesTable, inventoryPartTypesTable, inventorySuppliersTable, tenantsTable, vendorsTable } from "@workspace/db";
 import { chemicalUnitCode } from "../lib/chemicalInventory";
+import { parseLinkedPartsBody } from "../lib/inventoryKits";
+import { linkedPartsByParent, saveLinkedPartsFromBody, type LinkedPartsView } from "../lib/inventoryKitStore";
+import { parseReorderPoint, stockNeedsReorder } from "../lib/reorderPoint";
 import { eq, and, or, ilike, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { applyArrival, isPipeTypeName, parseOptionalAmount, priceWithMarkup, resolveInventorySell } from "../lib/pipeStock";
@@ -187,6 +190,7 @@ function formatItem(
   supplierName?: string | null,
   grouping?: { typeName: string | null; sizeName: string | null },
   vendorName?: string | null,
+  linkedParts?: LinkedPartsView | null,
 ) {
   const costPrice = i.unitPrice;     // DB unitPrice = what we pay
   const priced = resolveInventorySell({
@@ -220,7 +224,8 @@ function formatItem(
     quantity: i.quantity,
     reorderPoint: i.reorderPoint,
     unit: i.pricePerFoot != null && (!i.unit || i.unit === "each") ? "ft" : (chemicalUnitCode(grouping?.sizeName) ?? i.unit),
-    isLowStock: i.quantity <= i.reorderPoint,
+    isLowStock: stockNeedsReorder(i.quantity, i.reorderPoint),
+    linkedParts: linkedParts ?? null,
     availableForBlueprint: i.availableForBlueprint,
     commissionPct: i.commissionPct ?? null,
     supplierId: i.supplierId ?? null,
@@ -489,6 +494,7 @@ router.get("/inventory", async (req, res): Promise<void> => {
 
   const supplierMap = new Map(suppliers.map(s => [s.id, s.name]));
   const vendorMap = new Map(vendors.map(vendor => [vendor.id, vendor.name]));
+  const links = await linkedPartsByParent(tenantId, items.map(({ item }) => item.id));
   const formatted = items.map(({ item, typeName, sizeName }) => formatItem(
     item,
     markupPct,
@@ -496,6 +502,7 @@ router.get("/inventory", async (req, res): Promise<void> => {
     item.supplierId ? supplierMap.get(item.supplierId) : null,
     { typeName: typeName ?? null, sizeName: sizeName ?? null },
     item.vendorId ? vendorMap.get(item.vendorId) ?? null : null,
+    links.get(item.id) ?? null,
   ));
 
   if (lowStock === "true") {
@@ -531,7 +538,13 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
   if (!vendor.ok) { res.status(400).json({ error: vendor.error }); return; }
   const qtyInput = quantity == null || quantity === "" ? 0 : parseStockQuantity(quantity);
   if (qtyInput == null) { res.status(400).json({ error: "quantity must be a non-negative number" }); return; }
-  const reorder = parseSafeInt(reorderPoint, 5);
+  const reorder = parseReorderPoint(reorderPoint, 5);
+  if (reorder === "invalid") { res.status(400).json({ error: "Reorder point must be a whole number, 0 or greater" }); return; }
+  const linkedBody = Object.prototype.hasOwnProperty.call(req.body, "linkedParts") ? req.body.linkedParts : undefined;
+  if (linkedBody !== undefined) {
+    const parsed = parseLinkedPartsBody(linkedBody);
+    if (!parsed.ok) { res.status(400).json({ error: parsed.error }); return; }
+  }
   const commissionPctVal = reqCommissionPct != null ? parseSafeFloat(reqCommissionPct, 0) : null;
 
   // Validate supplierId belongs to this tenant
@@ -575,7 +588,7 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
     quantity: arrival.quantity,
     reorderPoint: reorder,
     unit: arrival.unit,
-    isLowStock: arrival.quantity <= reorder,
+    isLowStock: stockNeedsReorder(arrival.quantity, reorder),
     availableForBlueprint: availableForBlueprint === true || availableForBlueprint === "true",
     commissionPct: commissionPctVal,
     supplierId: resolvedSupplierId,
@@ -584,8 +597,13 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
     vendorId: vendor.id,
   }).returning();
 
+  if (linkedBody !== undefined) {
+    const saved = await saveLinkedPartsFromBody(tenantId, item.id, linkedBody);
+    if (!saved.ok) { res.status(400).json({ error: saved.error }); return; }
+  }
+  const links = await linkedPartsByParent(tenantId, [item.id]);
   const showCost = await canSeeCostPrice(tenantId, userId);
-  res.status(201).json(formatItem(item, tenantMarkupPct, showCost, supplierName, grouping.value, vendor.name));
+  res.status(201).json(formatItem(item, tenantMarkupPct, showCost, supplierName, grouping.value, vendor.name, links.get(item.id) ?? null));
 });
 
 router.get("/inventory/:id", async (req, res): Promise<void> => {
@@ -606,7 +624,8 @@ router.get("/inventory/:id", async (req, res): Promise<void> => {
 
   const names = await partyNames(tenantId, item);
   const grouping = await groupingForItem(tenantId, item.typeId, item.sizeId);
-  res.json(formatItem(item, markupPct, showCost, names.supplierName, grouping, names.vendorName));
+  const links = await linkedPartsByParent(tenantId, [item.id]);
+  res.json(formatItem(item, markupPct, showCost, names.supplierName, grouping, names.vendorName, links.get(item.id) ?? null));
 });
 
 router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise<void> => {
@@ -635,7 +654,20 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
     if (parsedQuantity == null) { res.status(400).json({ error: "quantity must be a non-negative number" }); return; }
     updates.quantity = parsedQuantity;
   }
-  if (reorderPoint !== undefined) { updates.reorderPoint = parseSafeInt(reorderPoint, 5); }
+  if (reorderPoint !== undefined) {
+    const reorder = parseReorderPoint(reorderPoint, 5);
+    if (reorder === "invalid") { res.status(400).json({ error: "Reorder point must be a whole number, 0 or greater" }); return; }
+    updates.reorderPoint = reorder;
+  }
+  const linkedBody = Object.prototype.hasOwnProperty.call(req.body, "linkedParts") ? req.body.linkedParts : undefined;
+  if (linkedBody !== undefined) {
+    const parsed = parseLinkedPartsBody(linkedBody);
+    if (!parsed.ok) { res.status(400).json({ error: parsed.error }); return; }
+    if (parsed.value?.components.some(component => component.inventoryItemId === id)) {
+      res.status(400).json({ error: "A part cannot be linked to itself." });
+      return;
+    }
+  }
   if (unit !== undefined) updates.unit = String(unit) || "each";
   if (availableForBlueprint !== undefined) updates.availableForBlueprint = availableForBlueprint === true || availableForBlueprint === "true";
   if (reqCommissionPct !== undefined) updates.commissionPct = reqCommissionPct != null ? parseSafeFloat(reqCommissionPct, 0) : null;
@@ -721,18 +753,20 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
       if (existing) {
         const qty = updates.quantity ?? existing.quantity;
         const reorder = updates.reorderPoint ?? existing.reorderPoint;
-        updates.isLowStock = qty <= reorder;
+        updates.isLowStock = stockNeedsReorder(qty, reorder);
       }
     } else {
-      updates.isLowStock = (updates.quantity as number) <= (updates.reorderPoint as number);
+      updates.isLowStock = stockNeedsReorder(updates.quantity as number, updates.reorderPoint as number);
     }
   }
 
-  const [updated] = await db
-    .update(inventoryItemsTable)
-    .set(updates)
-    .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)))
-    .returning();
+  const [updated] = Object.keys(updates).length === 0
+    ? await db.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)))
+    : await db
+      .update(inventoryItemsTable)
+      .set(updates)
+      .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)))
+      .returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
 
   const [markupPct, showCost] = await Promise.all([
@@ -740,9 +774,14 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
     canSeeCostPrice(tenantId, userId),
   ]);
 
+  if (linkedBody !== undefined) {
+    const saved = await saveLinkedPartsFromBody(tenantId, updated.id, linkedBody);
+    if (!saved.ok) { res.status(400).json({ error: saved.error }); return; }
+  }
   const names = await partyNames(tenantId, updated);
   const grouping = await groupingForItem(tenantId, updated.typeId, updated.sizeId);
-  res.json(formatItem(updated, markupPct, showCost, names.supplierName, grouping, names.vendorName));
+  const links = await linkedPartsByParent(tenantId, [updated.id]);
+  res.json(formatItem(updated, markupPct, showCost, names.supplierName, grouping, names.vendorName, links.get(updated.id) ?? null));
 });
 
 // ── Stock adjustment ──────────────────────────────────────────────────────────
@@ -783,7 +822,8 @@ router.post("/inventory/:id/adjust-stock", requireInventoryMutate, async (req, r
   ]);
   const names = await partyNames(tenantId, updated);
   const grouping = await groupingForItem(tenantId, updated.typeId, updated.sizeId);
-  res.json(formatItem(updated, markupPct, showCost, names.supplierName, grouping, names.vendorName));
+  const links = await linkedPartsByParent(tenantId, [updated.id]);
+  res.json(formatItem(updated, markupPct, showCost, names.supplierName, grouping, names.vendorName, links.get(updated.id) ?? null));
 });
 
 router.delete("/inventory/:id", requireInventoryMutate, async (req, res): Promise<void> => {

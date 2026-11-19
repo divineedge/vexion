@@ -6,11 +6,14 @@ import {
   inventorySizeOptions,
   isPipeTypeName,
   namedId,
+  pipeSellPerFoot,
+  priceWithMarkup,
   sizeIdAcrossTypes,
 } from "../src/lib/inventoryPartForm";
 import {
   applyArrival,
   parseOptionalAmount,
+  priceWithMarkup as serverPriceWithMarkup,
   sellUnitPrice,
   stockQuantityForReceipt,
   unitForPipe,
@@ -37,7 +40,7 @@ describe("pipe arrival", () => {
     expect(stockQuantityForReceipt(0, 100.4, true)).toBe(100);
     expect(stockQuantityForReceipt(12, 100, true)).toBe(12);
     expect(unitForPipe("each", true)).toBe("ft");
-    expect(sellUnitPrice(2.5, 9)).toBe(2.5);
+    expect(sellUnitPrice(2.5, 9)).toBe(9);
     expect(sellUnitPrice(null, 9)).toBe(9);
     expect(applyArrival({
       quantity: 0,
@@ -50,6 +53,44 @@ describe("pipe arrival", () => {
     expect(parseOptionalAmount("")).toBeNull();
     expect(parseOptionalAmount(-1)).toBe("invalid");
     expect(namedId([{ id: 3, name: "Pipe" }], " pipe ")).toBe(3);
+  });
+});
+
+describe("pipe foot markup", () => {
+  it("adds the same markup a normal part adds to its cost, and charges that sell price", () => {
+    const markup = 20;
+    const normalSell = 10 * (1 + markup / 100);
+    expect(priceWithMarkup(10, markup)).toBe(normalSell);
+    expect(serverPriceWithMarkup(10, markup)).toBe(normalSell);
+    expect(priceWithMarkup(2.5, markup)).toBe(serverPriceWithMarkup(2.5, markup));
+    expect(priceWithMarkup(2.5, markup)).toBeCloseTo(3, 10);
+    expect(pipeSellPerFoot("2.50", "20", 35)).toBeCloseTo(3, 10);
+    expect(pipeSellPerFoot("2.50", "", 20)).toBeCloseTo(3, 10);
+    expect(pipeSellPerFoot("", "20", 20)).toBeNull();
+
+    const pipe = applyArrival({
+      quantity: 0,
+      unit: "each",
+      sellPrice: normalSell,
+      lengthReceived: 100,
+      pricePerFoot: 2.5,
+      pipe: true,
+      markupPct: markup,
+    });
+    expect(pipe).toEqual({ quantity: 100, unit: "ft", sellPrice: priceWithMarkup(2.5, markup) });
+    expect(sellUnitPrice(2.5, pipe.sellPrice)).toBe(pipe.sellPrice);
+
+    const fitting = applyArrival({
+      quantity: 4,
+      unit: "each",
+      sellPrice: normalSell,
+      lengthReceived: null,
+      pricePerFoot: null,
+      pipe: false,
+      markupPct: markup,
+    });
+    expect(fitting).toEqual({ quantity: 4, unit: "each", sellPrice: normalSell });
+    expect(sellUnitPrice(null, fitting.sellPrice)).toBe(normalSell);
   });
 });
 
@@ -82,6 +123,9 @@ describe("add inventory form", () => {
     expect(inventoryPage).not.toContain("sizeIdForType");
     expect(inventoryPage).toContain('data-testid="input-length-received"');
     expect(inventoryPage).toContain('data-testid="input-price-per-foot"');
+    expect(inventoryPage).toContain("pipeSellPerFoot(form.pricePerFoot, form.markupPct, defaultMarkupPct)");
+    expect(inventoryPage).toContain('data-testid="text-sell-price"');
+    expect(inventoryPage).toContain("c * (1 + m / 100)");
     expect(inventoryPage).not.toContain("New Supplier");
     expect(inventoryPage).not.toContain("e.g. Ewing Irrigation");
   });

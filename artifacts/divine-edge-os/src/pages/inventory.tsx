@@ -46,7 +46,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useDebounce } from '@/hooks/use-debounce';
 import { upsertInventoryLocation } from '@/lib/inventoryLocations';
 import { groupInventoryItems, type InventoryGroupBy } from '@/lib/inventoryGrouping';
-import { categoryChoices, feetFromLength, inventorySizeOptions, isPipeTypeName, namedId, sizeIdAcrossTypes } from '@/lib/inventoryPartForm';
+import { categoryChoices, feetFromLength, inventorySizeOptions, isPipeTypeName, namedId, pipeSellPerFoot, sizeIdAcrossTypes } from '@/lib/inventoryPartForm';
 import { ShrinkageReport } from '@/components/inventory/ShrinkageReport';
 
 function ItemLocationSection({ inventoryItemId }: { inventoryItemId: number }) {
@@ -425,6 +425,7 @@ export default function InventoryPage() {
   );
   const selectedTypeName = partTypes.find(type => String(type.id) === form.typeId)?.name ?? '';
   const pipePart = isPipeTypeName(selectedTypeName);
+  const pipeFootSell = pipePart ? pipeSellPerFoot(form.pricePerFoot, form.markupPct, defaultMarkupPct) : null;
 
   const rememberType = (created: InventoryType) => {
     qc.setQueryData(getListInventoryTypesQueryKey(), (current: InventoryType[] | undefined) => {
@@ -1086,7 +1087,7 @@ export default function InventoryPage() {
                         <ArrowRight className="w-4 h-4 text-primary" />
                         <span>Sell Price</span>
                       </div>
-                      <span className="text-lg font-bold text-primary" title={`Sell price charged to customers: $${selectedItem.unitPrice.toFixed(2)}`}>${selectedItem.unitPrice.toFixed(2)}</span>
+                      <span className="text-lg font-bold text-primary" data-testid="text-item-sell-price" title={`Sell price charged to customers: $${selectedItem.unitPrice.toFixed(2)}`}>${selectedItem.unitPrice.toFixed(2)}{selectedItem.pricePerFoot != null ? '/ft' : ''}</span>
                     </div>
                   </div>
                 </div>
@@ -1128,7 +1129,7 @@ export default function InventoryPage() {
                   {selectedItem.pricePerFoot != null && (
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Price per foot</p>
-                      <p className="text-sm font-medium">${selectedItem.pricePerFoot.toFixed(2)}</p>
+                      <p className="text-sm font-medium" data-testid="text-price-per-foot" title="Sell price per foot, including inventory markup">${selectedItem.unitPrice.toFixed(2)}/ft</p>
                     </div>
                   )}
                 </div>
@@ -1342,26 +1343,26 @@ export default function InventoryPage() {
                       type="number"
                       min={0}
                       step="0.01"
-                      title="Price charged for each foot when this pipe is sold"
+                      title="Per-foot price before markup. Inventory markup is added the same way it is added to a buy price."
                       placeholder="0.00"
                       data-testid="input-price-per-foot"
                       value={form.pricePerFoot}
                       onChange={e => setForm(current => ({ ...current, pricePerFoot: e.target.value, unit: 'ft' }))}
                     />
                   </div>
-                  <p className="col-span-2 text-xs text-muted-foreground">Pipe is stocked in feet. The per-foot price is what a sale charges.</p>
+                  <p className="col-span-2 text-xs text-muted-foreground">Pipe is stocked in feet. Markup is added to the per-foot price, and that sell price is what a sale charges.</p>
                 </div>
               )}
 
               {/* Sell price preview */}
-              <div className={`flex items-center justify-between rounded-lg border px-4 py-3 ${(pipePart && form.pricePerFoot.trim() !== '') || sellPreview != null ? 'border-primary/30 bg-primary/5' : 'border-dashed'}`}>
+              <div className={`flex items-center justify-between rounded-lg border px-4 py-3 ${pipeFootSell != null || sellPreview != null ? 'border-primary/30 bg-primary/5' : 'border-dashed'}`}>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <ArrowRight className="w-4 h-4 text-primary" />
-                  <span>{pipePart && form.pricePerFoot.trim() !== '' ? 'Sell price per foot' : 'Sell Price'}</span>
+                  <span>{pipeFootSell != null ? 'Sell price per foot' : 'Sell Price'}</span>
                 </div>
-                <span className={`text-lg font-bold ${(pipePart && form.pricePerFoot.trim() !== '') || sellPreview != null ? 'text-primary' : 'text-muted-foreground'}`}>
-                  {pipePart && form.pricePerFoot.trim() !== '' && Number.isFinite(Number(form.pricePerFoot))
-                    ? `$${Number(form.pricePerFoot).toFixed(2)}/ft`
+                <span data-testid="text-sell-price" className={`text-lg font-bold ${pipeFootSell != null || sellPreview != null ? 'text-primary' : 'text-muted-foreground'}`}>
+                  {pipeFootSell != null
+                    ? `$${pipeFootSell.toFixed(2)}/ft`
                     : sellPreview != null ? `$${sellPreview.toFixed(2)}` : '—'}
                 </span>
               </div>

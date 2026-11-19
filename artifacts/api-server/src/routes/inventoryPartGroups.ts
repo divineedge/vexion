@@ -3,6 +3,7 @@ import { and, asc, eq, ilike, sql } from "drizzle-orm";
 import { db, inventoryPartSizesTable, inventoryPartTypesTable } from "@workspace/db";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
+import { missingChemicalSizeNames } from "../lib/chemicalInventory";
 
 const router: IRouter = Router();
 
@@ -68,6 +69,7 @@ router.post("/inventory/types", requireOfficeRole, async (req, res): Promise<voi
     name,
     sortOrder: count?.n ?? 0,
   }).returning();
+  await ensureChemicalSizes(tenantId);
   res.status(201).json(formatType(row));
 });
 
@@ -99,8 +101,27 @@ router.delete("/inventory/types/:id", requireOfficeRole, async (req, res): Promi
   res.sendStatus(204);
 });
 
+async function ensureChemicalSizes(tenantId: number): Promise<void> {
+  const types = await db.select({ id: inventoryPartTypesTable.id }).from(inventoryPartTypesTable)
+    .where(eq(inventoryPartTypesTable.tenantId, tenantId))
+    .orderBy(asc(inventoryPartTypesTable.id));
+  if (!types.length) return;
+  const sizes = await db.select({ name: inventoryPartSizesTable.name }).from(inventoryPartSizesTable)
+    .where(eq(inventoryPartSizesTable.tenantId, tenantId));
+  const missing = missingChemicalSizeNames(sizes.map(size => size.name));
+  for (const name of missing) {
+    try {
+      await db.insert(inventoryPartSizesTable).values({ tenantId, typeId: types[0].id, name, sortOrder: 0 });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/duplicate|unique/i.test(message)) throw error;
+    }
+  }
+}
+
 router.get("/inventory/sizes", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  await ensureChemicalSizes(tenantId);
   const typeId = req.query.typeId != null && req.query.typeId !== "" ? pathId(String(req.query.typeId)) : null;
   if (req.query.typeId != null && req.query.typeId !== "" && !typeId) {
     res.status(400).json({ error: "Invalid typeId" });

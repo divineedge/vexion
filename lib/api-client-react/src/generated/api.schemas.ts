@@ -5861,6 +5861,14 @@ export interface ChemicalProduct {
   /** @nullable */
   labelSdsUrl?: string | null;
   unit: string;
+  /** Inventory item this spray product draws from. Null when applications do not change inventory. */
+  inventoryItemId?: number | null;
+  /** @nullable */
+  inventoryItemName?: string | null;
+  /** @nullable */
+  inventoryQuantity?: number | null;
+  /** @nullable */
+  inventoryUnit?: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -5885,6 +5893,8 @@ export interface ChemicalProductInput {
   labelSdsUrl?: string;
   unit?: string;
   isActive?: boolean;
+  /** Inventory item to draw from. Null clears the link. */
+  inventoryItemId?: number | null;
 }
 
 export interface ChemicalMixtureItem {

@@ -19,6 +19,8 @@ import {
   useCreateInventorySize,
   useListVendors, getListVendorsQueryKey,
   useUpdateTenantSettings,
+  useListChemicalProducts, getListChemicalProductsQueryKey,
+  useUpdateChemicalProduct,
 } from '@workspace/api-client-react';
 import type { InventoryLocation, InventorySize, InventoryType } from '@workspace/api-client-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -46,7 +48,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useDebounce } from '@/hooks/use-debounce';
 import { upsertInventoryLocation } from '@/lib/inventoryLocations';
 import { groupInventoryItems, type InventoryGroupBy } from '@/lib/inventoryGrouping';
-import { categoryChoices, feetFromLength, inventoryListFigures, inventorySizeOptions, isPipeTypeName, namedId, pipeSellPerFoot, sizeIdAcrossTypes } from '@/lib/inventoryPartForm';
+import { categoryChoices, feetFromLength, formatInventoryQuantity, inventoryListFigures, inventorySizeOptions, isPipeTypeName, namedId, pipeSellPerFoot, sizeIdAcrossTypes, unitForChemicalSize } from '@/lib/inventoryPartForm';
 import { ShrinkageReport } from '@/components/inventory/ShrinkageReport';
 
 function ItemLocationSection({ inventoryItemId }: { inventoryItemId: number }) {
@@ -209,13 +211,14 @@ type ItemForm = {
   availableForBlueprint: boolean;
   commissionPct: string;
   vendorId: string;
+  sprayProductId: string;
 };
 
 const EMPTY_FORM: ItemForm = {
   name: '', sku: '', description: '', category: '', typeId: '', sizeId: '',
   costPrice: '', markupPct: '', quantity: '0', reorderPoint: '5', unit: 'each',
   lengthReceived: '', pricePerFoot: '',
-  availableForBlueprint: false, commissionPct: '', vendorId: '',
+  availableForBlueprint: false, commissionPct: '', vendorId: '', sprayProductId: '',
 };
 
 export default function InventoryPage() {
@@ -425,6 +428,9 @@ export default function InventoryPage() {
   const createType = useCreateInventoryType();
   const createSize = useCreateInventorySize();
   const { data: vendors = [] } = useListVendors({ query: { queryKey: getListVendorsQueryKey() } });
+  const { data: sprayProducts = [] } = useListChemicalProducts({ query: { queryKey: getListChemicalProductsQueryKey(), enabled: canManage } });
+  const updateSprayProduct = useUpdateChemicalProduct();
+  const [sprayBaseline, setSprayBaseline] = useState<number | null>(null);
 
   const categoryOptions = useMemo(
     () => categoryChoices((items ?? []).map(item => item.category ?? ''), draftCategories, form.category),
@@ -466,6 +472,7 @@ export default function InventoryPage() {
       rememberType(created);
       setForm(current => ({ ...current, typeId: String(created.id), unit: isPipeTypeName(created.name) ? 'ft' : current.unit }));
       toast.success(`Added type ${created.name}`);
+      void qc.invalidateQueries({ queryKey: getListInventorySizesQueryKey() });
     } catch (err) {
       if (errorStatus(err) === 409) {
         const fresh = await qc.fetchQuery(getListInventoryTypesQueryOptions()) as InventoryType[];
@@ -528,6 +535,7 @@ export default function InventoryPage() {
   const openCreate = () => {
     // Do NOT pre-fill markupPct — leave it blank so the placeholder shows the current
     // default and the server uses the live tenant default (avoids stale frontend value).
+    setSprayBaseline(null);
     setForm({ ...EMPTY_FORM });
     setDraftCategories([]);
     setSellPreview(null);
@@ -552,6 +560,8 @@ export default function InventoryPage() {
       defaultMarkupPct,
     });
     const mPct = Math.abs(figures.markupPct - defaultMarkupPct) < 0.001 ? '' : String(figures.markupPct);
+    const linkedSpray = sprayProducts.find(product => product.inventoryItemId === id);
+    setSprayBaseline(linkedSpray?.id ?? null);
     setForm({
       name: item.name,
       sku: item.sku,
@@ -569,6 +579,7 @@ export default function InventoryPage() {
       availableForBlueprint: item.availableForBlueprint ?? false,
       commissionPct: item.commissionPct != null ? String(item.commissionPct) : '',
       vendorId: item.vendorId != null ? String(item.vendorId) : '',
+      sprayProductId: linkedSpray ? String(linkedSpray.id) : '',
     });
     setDraftCategories([]);
     updateSellPreview(costVal, mPct);
@@ -583,6 +594,8 @@ export default function InventoryPage() {
     const perFoot = form.pricePerFoot.trim();
     if (length && (!Number.isFinite(Number(length)) || Number(length) < 0)) { toast.error('Length received must be a non-negative number'); return; }
     if (perFoot && (!Number.isFinite(Number(perFoot)) || Number(perFoot) < 0)) { toast.error('Price per foot must be a non-negative number'); return; }
+    const quantity = Number(form.quantity);
+    if (!Number.isFinite(quantity) || quantity < 0) { toast.error('Quantity must be a non-negative number'); return; }
     const data = {
       name: form.name,
       sku: form.sku,
@@ -592,7 +605,7 @@ export default function InventoryPage() {
       sizeId: form.sizeId ? parseInt(form.sizeId, 10) : null,
       costPrice: parseFloat(form.costPrice) || 0,
       markupPct: form.markupPct.trim() === '' ? null : parseFloat(form.markupPct),
-      quantity: parseInt(form.quantity, 10) || 0,
+      quantity,
       reorderPoint: parseInt(form.reorderPoint, 10) || 5,
       unit: pipePart ? 'ft' : (form.unit || 'each'),
       lengthReceived: length ? Number(length) : null,
@@ -602,9 +615,23 @@ export default function InventoryPage() {
       vendorId: form.vendorId ? parseInt(form.vendorId, 10) : null,
     };
 
+    const syncSprayLink = async (itemId: number) => {
+      const nextId = form.sprayProductId ? Number(form.sprayProductId) : null;
+      if (sprayBaseline && sprayBaseline !== nextId) {
+        const previous = sprayProducts.find(product => product.id === sprayBaseline);
+        if (previous) await updateSprayProduct.mutateAsync({ id: previous.id, data: { name: previous.name, inventoryItemId: null } });
+      }
+      if (nextId && nextId !== sprayBaseline) {
+        const product = sprayProducts.find(product => product.id === nextId);
+        if (product) await updateSprayProduct.mutateAsync({ id: product.id, data: { name: product.name, inventoryItemId: itemId } });
+      }
+      qc.invalidateQueries({ queryKey: getListChemicalProductsQueryKey() });
+    };
+
     if (sheetMode === 'create') {
       createItem.mutate({ data }, {
-        onSuccess: () => {
+        onSuccess: item => {
+          void syncSprayLink(item.id).catch(() => toast.error('Item was saved, but the spray product link was not'));
           toast.success('Item added');
           qc.invalidateQueries({ queryKey: getListInventoryItemsQueryKey() });
           qc.invalidateQueries({ queryKey: getGetInventorySummaryQueryKey() });
@@ -615,6 +642,7 @@ export default function InventoryPage() {
     } else if (sheetMode === 'edit' && selectedId) {
       updateItem.mutate({ id: selectedId, data }, {
         onSuccess: () => {
+          void syncSprayLink(selectedId).catch(() => toast.error('Item was saved, but the spray product link was not'));
           toast.success('Item updated');
           qc.invalidateQueries({ queryKey: getListInventoryItemsQueryKey() });
           qc.invalidateQueries({ queryKey: getGetInventoryItemQueryKey(selectedId) });
@@ -1033,9 +1061,9 @@ export default function InventoryPage() {
                     <TableCell className="text-right font-medium" data-testid={`list-sell-price-${item.id}`} title={figures.pricePerFoot != null ? `Sell price: $${figures.sellPrice.toFixed(2)} per foot` : `Sell price: $${figures.sellPrice.toFixed(2)}`}>
                       ${figures.sellPrice.toFixed(2)}{figures.pricePerFoot != null ? '/ft' : ''}
                     </TableCell>
-                    <TableCell className="text-right" title={`${item.quantity} ${item.unit || 'units'} in stock`}>
+                    <TableCell className="text-right" title={`${formatInventoryQuantity(item.quantity)} ${item.unit || 'units'} in stock`} data-testid={`inventory-qty-${item.id}`}>
                       <span className={`font-medium ${item.isLowStock ? 'text-destructive' : ''}`}>
-                        {item.quantity} {item.unit || ''}
+                        {formatInventoryQuantity(item.quantity)} {item.unit || ''}
                       </span>
                     </TableCell>
                     <TableCell>
@@ -1126,7 +1154,7 @@ export default function InventoryPage() {
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">In Stock</p>
                     <p className={`text-2xl font-bold ${selectedItem.isLowStock ? 'text-destructive' : ''}`} title={`${selectedItem.quantity} ${selectedItem.unit ?? 'units'} in stock${selectedItem.isLowStock ? ' — below reorder point' : ''}`}>
-                      {selectedItem.quantity} <span className="text-sm font-normal text-muted-foreground">{selectedItem.unit}</span>
+                      {formatInventoryQuantity(selectedItem.quantity)} <span className="text-sm font-normal text-muted-foreground">{selectedItem.unit}</span>
                     </p>
                   </div>
                   <div className="space-y-1">
@@ -1181,6 +1209,18 @@ export default function InventoryPage() {
                         <Building2 className="w-3.5 h-3.5" /> Supplier
                       </p>
                       <p className="text-sm font-medium">{(selectedItem as any).supplierName}</p>
+                    </div>
+                  </>
+                )}
+
+                {sprayProducts.some(product => product.inventoryItemId === selectedItem.id) && (
+                  <>
+                    <Separator />
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Spray products</p>
+                      {sprayProducts.filter(product => product.inventoryItemId === selectedItem.id).map(product => (
+                        <p key={product.id} className="text-sm">{product.name}</p>
+                      ))}
                     </div>
                   </>
                 )}
@@ -1281,7 +1321,10 @@ export default function InventoryPage() {
                   addPlaceholder="New size, such as 1&quot;"
                   addLabel="Size"
                   adding={createSize.isPending}
-                  onChange={sizeId => setForm(current => ({ ...current, sizeId }))}
+                  onChange={sizeId => {
+                    const chemicalUnit = unitForChemicalSize(partSizes.find(size => String(size.id) === sizeId)?.name);
+                    setForm(current => ({ ...current, sizeId, unit: chemicalUnit ?? current.unit }));
+                  }}
                   onAdd={addSize}
                 />
               </div>
@@ -1401,7 +1444,7 @@ export default function InventoryPage() {
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">{pipePart ? 'Feet on hand' : 'Quantity'}</label>
-                <Input type="number" min={0} title={pipePart ? 'Feet of this pipe currently in stock' : 'Current stock quantity on hand'} value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
+                <Input type="number" min={0} step="any" title={pipePart ? 'Feet of this pipe currently in stock' : 'Current stock quantity on hand'} value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Reorder At</label>
@@ -1460,6 +1503,20 @@ export default function InventoryPage() {
                 checked={form.availableForBlueprint}
                 onCheckedChange={v => setForm(f => ({ ...f, availableForBlueprint: v }))}
               />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Spray product</label>
+              <p className="text-xs text-muted-foreground">Link the chemical used for spraying. Linked products draw from this quantity. Gallons and ounces convert. Pounds stay pounds.</p>
+              <Select value={form.sprayProductId || 'none'} onValueChange={value => setForm(current => ({ ...current, sprayProductId: value === 'none' ? '' : value }))}>
+                <SelectTrigger data-testid="select-spray-product" title="Chemical product that draws from this inventory item"><SelectValue placeholder="Not linked" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Not linked</SelectItem>
+                  {sprayProducts.map(product => (
+                    <SelectItem key={product.id} value={String(product.id)}>{product.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <Separator />

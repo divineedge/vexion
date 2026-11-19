@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db, inventoryItemsTable, inventoryPartSizesTable, inventoryPartTypesTable, inventorySuppliersTable, tenantsTable, vendorsTable } from "@workspace/db";
+import { chemicalUnitCode } from "../lib/chemicalInventory";
 import { eq, and, or, ilike, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { applyArrival, isPipeTypeName, parseOptionalAmount, priceWithMarkup, resolveInventorySell } from "../lib/pipeStock";
@@ -218,7 +219,7 @@ function formatItem(
     markedUpPrice: sellPrice,
     quantity: i.quantity,
     reorderPoint: i.reorderPoint,
-    unit: i.pricePerFoot != null && (!i.unit || i.unit === "each") ? "ft" : i.unit,
+    unit: i.pricePerFoot != null && (!i.unit || i.unit === "each") ? "ft" : (chemicalUnitCode(grouping?.sizeName) ?? i.unit),
     isLowStock: i.quantity <= i.reorderPoint,
     availableForBlueprint: i.availableForBlueprint,
     commissionPct: i.commissionPct ?? null,
@@ -236,6 +237,14 @@ function parseSafeFloat(val: unknown, fallback: number): number {
 function parseSafeInt(val: unknown, fallback: number): number {
   const n = parseInt(String(val), 10);
   return isNaN(n) ? fallback : n;
+}
+
+/** Inventory quantity may be fractional for gallons, ounces, and pounds. */
+function parseStockQuantity(val: unknown): number | null {
+  if (typeof val === "string" && val.trim() === "") return null;
+  const n = typeof val === "number" ? val : Number(val);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 1_000_000) / 1_000_000;
 }
 
 type ResolvedGrouping = {
@@ -520,7 +529,8 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
   if (!priceRead.ok) { res.status(400).json({ error: priceRead.error }); return; }
   const vendor = req.body.vendorId !== undefined ? await resolveVendor(tenantId, req.body.vendorId) : { ok: true as const, id: null, name: null };
   if (!vendor.ok) { res.status(400).json({ error: vendor.error }); return; }
-  const qtyInput = parseSafeInt(quantity, 0);
+  const qtyInput = quantity == null || quantity === "" ? 0 : parseStockQuantity(quantity);
+  if (qtyInput == null) { res.status(400).json({ error: "quantity must be a non-negative number" }); return; }
   const reorder = parseSafeInt(reorderPoint, 5);
   const commissionPctVal = reqCommissionPct != null ? parseSafeFloat(reqCommissionPct, 0) : null;
 
@@ -620,7 +630,11 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
   if (name !== undefined) updates.name = String(name);
   if (description !== undefined) updates.description = description ? String(description) : null;
   if (category !== undefined) updates.category = category ? String(category) : null;
-  if (quantity !== undefined) { updates.quantity = parseSafeInt(quantity, 0); }
+  if (quantity !== undefined) {
+    const parsedQuantity = parseStockQuantity(quantity);
+    if (parsedQuantity == null) { res.status(400).json({ error: "quantity must be a non-negative number" }); return; }
+    updates.quantity = parsedQuantity;
+  }
   if (reorderPoint !== undefined) { updates.reorderPoint = parseSafeInt(reorderPoint, 5); }
   if (unit !== undefined) updates.unit = String(unit) || "each";
   if (availableForBlueprint !== undefined) updates.availableForBlueprint = availableForBlueprint === true || availableForBlueprint === "true";

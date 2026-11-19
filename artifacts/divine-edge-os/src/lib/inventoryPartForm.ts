@@ -30,6 +30,21 @@ export function namedId(items: readonly { id: number; name: string }[], name: st
   return items.find(item => item.name.trim().toLowerCase() === key)?.id ?? null;
 }
 
+/** Gallons, ounces, and pounds are chemical stock sizes. Other sizes, including pipe, stay as they are. */
+export function unitForChemicalSize(name: string | null | undefined): "gal" | "oz" | "lb" | null {
+  const key = (name ?? "").trim().toLowerCase();
+  if (key === "gal" || key === "gallon" || key === "gallons") return "gal";
+  if (key === "oz" || key === "ounce" || key === "ounces" || key === "fl oz" || key === "fluid ounces") return "oz";
+  if (key === "lb" || key === "lbs" || key === "pound" || key === "pounds") return "lb";
+  return null;
+}
+
+export function formatInventoryQuantity(value: number): string {
+  if (!Number.isFinite(value)) return "0";
+  const rounded = Math.round(value * 1_000_000) / 1_000_000;
+  return rounded.toFixed(6).replace(/\.?0+$/, "");
+}
+
 /** Every saved size, in name order. The menu does not depend on the selected type. */
 export function inventorySizeOptions(sizes: readonly { id: number; name: string }[]): { value: string; label: string }[] {
   return [...sizes]

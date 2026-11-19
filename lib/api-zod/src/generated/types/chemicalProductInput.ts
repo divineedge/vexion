@@ -17,4 +17,6 @@ export interface ChemicalProductInput {
   labelSdsUrl?: string;
   unit?: string;
   isActive?: boolean;
+  /** Inventory item to draw from. Null clears the link. */
+  inventoryItemId?: number | null;
 }

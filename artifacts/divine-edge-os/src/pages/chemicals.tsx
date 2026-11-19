@@ -8,6 +8,7 @@ import {
   useGetTenantSettings, getGetTenantSettingsQueryKey, useUpdateTenantSettings,
   useListChemicalDocuments, getListChemicalDocumentsQueryKey,
   useUploadChemicalDocument, useDeleteChemicalDocument, useGetChemicalDocumentReadUrl,
+  useListInventoryItems, getListInventoryItemsQueryKey,
   customFetch,
 } from '@workspace/api-client-react';
 import type { ChemicalProduct, ChemicalMixture, ChemicalMixtureItem, ChemicalDocument } from '@workspace/api-client-react';
@@ -33,6 +34,7 @@ import {
   normalizeChemicalRecordRequirements,
   type ChemicalRequirementKey,
 } from '@/lib/chemicalRequirements';
+import { formatInventoryQuantity } from '@/lib/inventoryPartForm';
 
 const MAX_SAFETY_SHEET_BYTES = 20 * 1024 * 1024;
 
@@ -293,16 +295,17 @@ export default function ChemicalsPage() {
   const [prodFormOpen, setProdFormOpen] = useState(false);
   const [editingProd, setEditingProd] = useState<ChemicalProduct | null>(null);
   const [safetyProd, setSafetyProd] = useState<ChemicalProduct | null>(null);
-  const [prodForm, setProdForm] = useState({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz', rainfastHours: '', safetyNotes: '' });
+  const [prodForm, setProdForm] = useState({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz', rainfastHours: '', safetyNotes: '', inventoryItemId: '' });
+  const { data: inventoryItems = [] } = useListInventoryItems(undefined, { query: { queryKey: getListInventoryItemsQueryKey() } });
 
   const openAddProd = () => {
     setEditingProd(null);
-    setProdForm({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz', rainfastHours: '', safetyNotes: '' });
+    setProdForm({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz', rainfastHours: '', safetyNotes: '', inventoryItemId: '' });
     setProdFormOpen(true);
   };
   const openEditProd = (p: ChemicalProduct) => {
     setEditingProd(p);
-    setProdForm({ name: p.name, epaRegNumber: p.epaRegNumber ?? '', activeIngredients: p.activeIngredients ?? '', signalWord: p.signalWord ?? '', rei: p.rei != null ? String(p.rei) : '', phi: p.phi != null ? String(p.phi) : '', labelSdsUrl: p.labelSdsUrl ?? '', unit: p.unit, rainfastHours: (p as any).rainfastHours != null ? String((p as any).rainfastHours) : '', safetyNotes: (p as any).safetyNotes ?? '' });
+    setProdForm({ name: p.name, epaRegNumber: p.epaRegNumber ?? '', activeIngredients: p.activeIngredients ?? '', signalWord: p.signalWord ?? '', rei: p.rei != null ? String(p.rei) : '', phi: p.phi != null ? String(p.phi) : '', labelSdsUrl: p.labelSdsUrl ?? '', unit: p.unit, rainfastHours: (p as any).rainfastHours != null ? String((p as any).rainfastHours) : '', safetyNotes: (p as any).safetyNotes ?? '', inventoryItemId: p.inventoryItemId != null ? String(p.inventoryItemId) : '' });
     setProdFormOpen(true);
   };
   const saveProd = () => {
@@ -318,6 +321,7 @@ export default function ChemicalsPage() {
       unit: prodForm.unit,
       rainfastHours: prodForm.rainfastHours ? parseFloat(prodForm.rainfastHours) : undefined,
       safetyNotes: prodForm.safetyNotes,
+      inventoryItemId: prodForm.inventoryItemId ? Number(prodForm.inventoryItemId) : null,
     } as any;
     if (editingProd) {
       updateChemProduct.mutate({ id: editingProd.id, data }, {
@@ -652,6 +656,11 @@ export default function ChemicalsPage() {
                         {p.activeIngredients && <p className="text-xs text-muted-foreground">{p.activeIngredients}</p>}
                         <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
                           <span>Unit: {p.unit}</span>
+                          {p.inventoryItemName ? (
+                            <span data-testid={`chemical-inventory-link-${p.id}`}>Inventory: {p.inventoryItemName} ({formatInventoryQuantity(p.inventoryQuantity ?? 0)} {p.inventoryUnit ?? ''})</span>
+                          ) : (
+                            <span>Not linked to inventory</span>
+                          )}
                           {(p as any).rainfastHours != null && <span>Rainfast: {(p as any).rainfastHours}h</span>}
                           {p.rei != null && <span>REI: {p.rei}h</span>}
                           {p.phi != null && <span>PHI: {p.phi}d</span>}
@@ -714,6 +723,21 @@ export default function ChemicalsPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Inventory chemical</label>
+                  <p className="text-xs text-muted-foreground">Optional. A linked product draws from that inventory item when it is sprayed. Ounces and gallons convert (128 fl oz = 1 gallon). Pounds stay in pounds and are not converted to volume.</p>
+                  <Select value={prodForm.inventoryItemId || 'none'} onValueChange={value => setProdForm(current => ({ ...current, inventoryItemId: value === 'none' ? '' : value }))}>
+                    <SelectTrigger data-testid="select-inventory-chemical" title="Inventory item this spray product draws from"><SelectValue placeholder="Not linked" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Not linked</SelectItem>
+                      {inventoryItems.map(item => (
+                        <SelectItem key={item.id} value={String(item.id)}>
+                          {item.name} · {formatInventoryQuantity(item.quantity)} {item.unit || ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Active Ingredients</label>

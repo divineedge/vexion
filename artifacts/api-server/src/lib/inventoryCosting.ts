@@ -19,11 +19,14 @@ export async function installInventoryCostSchema(){
  expense_id integer REFERENCES expense_entries(id),received_quantity double precision NOT NULL,remaining_quantity double precision NOT NULL,
  unit_cost double precision NOT NULL,source text NOT NULL,created_at timestamptz NOT NULL DEFAULT now())`);
  await db.execute(sql`CREATE INDEX IF NOT EXISTS inventory_cost_lots_available ON inventory_cost_lots(tenant_id,inventory_item_id,unit_cost DESC,id) WHERE remaining_quantity>0`);
+ // The quantity trigger blocks ALTER TYPE. Drop it, widen the column, then put the trigger back.
+ await db.execute(sql`DROP TRIGGER IF EXISTS inventory_cost_opening ON inventory_items`);
+ await db.execute(sql`DROP TRIGGER IF EXISTS inventory_cost_changes ON inventory_items`);
  await db.execute(sql`ALTER TABLE inventory_items ALTER COLUMN quantity TYPE double precision USING quantity::double precision`);
  await db.execute(sql`ALTER TABLE inventory_cost_lots ALTER COLUMN received_quantity TYPE double precision USING received_quantity::double precision`);
  await db.execute(sql`ALTER TABLE inventory_cost_lots ALTER COLUMN remaining_quantity TYPE double precision USING remaining_quantity::double precision`);
  await db.execute(sql.raw(`CREATE OR REPLACE FUNCTION inventory_cost_layers() RETURNS trigger LANGUAGE plpgsql AS $$
- DECLARE balance numeric; delta numeric; remaining numeric; taking numeric; lot record; highest double precision; requested double precision; multiplier double precision;
+ DECLARE balance numeric; delta numeric; remaining numeric; taking numeric; lot record; highest double precision;
  BEGIN
   IF TG_OP='INSERT' THEN
    IF NEW.quantity>0 THEN INSERT INTO inventory_cost_lots(tenant_id,inventory_item_id,received_quantity,remaining_quantity,unit_cost,source) VALUES(NEW.tenant_id,NEW.id,NEW.quantity,NEW.quantity,NEW.unit_price,'opening'); END IF;
@@ -46,20 +49,17 @@ export async function installInventoryCostSchema(){
    END LOOP;
   END IF;
   SELECT MAX(unit_cost) INTO highest FROM inventory_cost_lots WHERE tenant_id=NEW.tenant_id AND inventory_item_id=NEW.id AND remaining_quantity>0;
-  IF highest IS NOT NULL THEN
-   requested=NEW.unit_price;
-   IF NEW.marked_up_price IS DISTINCT FROM OLD.marked_up_price THEN
-    multiplier=CASE WHEN requested>0 THEN NEW.marked_up_price/requested WHEN OLD.unit_price>0 THEN OLD.marked_up_price/OLD.unit_price ELSE 1 END;
-    NEW.marked_up_price=round((highest*multiplier)::numeric,2);
-   END IF;
+  -- A catalog edit sets the buy price or the sell price on purpose. Keep that price.
+  -- A quantity-only change still adopts the highest remaining lot cost.
+  IF highest IS NOT NULL
+     AND NEW.unit_price IS NOT DISTINCT FROM OLD.unit_price
+     AND NEW.marked_up_price IS NOT DISTINCT FROM OLD.marked_up_price THEN
    NEW.unit_price=highest;
   END IF;
   RETURN NEW;
  END $$`));
- await db.execute(sql`DO $$ BEGIN
- IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='inventory_cost_opening') THEN CREATE TRIGGER inventory_cost_opening AFTER INSERT ON inventory_items FOR EACH ROW EXECUTE FUNCTION inventory_cost_layers(); END IF;
- IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='inventory_cost_changes') THEN CREATE TRIGGER inventory_cost_changes BEFORE UPDATE OF quantity,unit_price,marked_up_price ON inventory_items FOR EACH ROW EXECUTE FUNCTION inventory_cost_layers(); END IF;
- END $$`);
+ await db.execute(sql`CREATE TRIGGER inventory_cost_opening AFTER INSERT ON inventory_items FOR EACH ROW EXECUTE FUNCTION inventory_cost_layers()`);
+ await db.execute(sql`CREATE TRIGGER inventory_cost_changes BEFORE UPDATE OF quantity,unit_price,marked_up_price ON inventory_items FOR EACH ROW EXECUTE FUNCTION inventory_cost_layers()`);
 }
 export async function ensureOpeningCost(tx:HrDb,item:Item){
  const [exists]=await tx.select({id:inventoryCostLotsTable.id}).from(inventoryCostLotsTable).where(and(eq(inventoryCostLotsTable.tenantId,item.tenantId),eq(inventoryCostLotsTable.inventoryItemId,item.id))).limit(1);

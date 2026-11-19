@@ -67,7 +67,7 @@ export function CreatableOptionMenu({
   };
 
   return (
-    <Popover open={open} onOpenChange={next => { if (!disabled) setOpen(next); }} modal>
+    <Popover open={open} onOpenChange={next => { if (!disabled) setOpen(next); }}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -90,6 +90,8 @@ export function CreatableOptionMenu({
         data-picker-portal=""
         align="start"
         className="z-[1300] w-[var(--radix-popover-trigger-width)] p-0 pointer-events-auto"
+        onOpenAutoFocus={event => event.preventDefault()}
+        onCloseAutoFocus={event => event.preventDefault()}
       >
         <div className="max-h-64 overflow-y-auto p-1" role="listbox" aria-label={title ?? placeholder}>
           {noneLabel && (

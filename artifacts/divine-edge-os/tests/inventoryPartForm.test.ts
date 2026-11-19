@@ -3,9 +3,11 @@ import { readFileSync } from "node:fs";
 import {
   categoryChoices,
   feetFromLength,
+  formatInventoryQuantity,
   inventorySizeOptions,
   isPipeTypeName,
   namedId,
+  unitForChemicalSize,
   inventoryListFigures,
   pipeSellPerFoot,
   priceWithMarkup,
@@ -22,6 +24,22 @@ import {
 } from "../../api-server/src/lib/pipeStock";
 
 const inventoryPage = readFileSync(new URL("../src/pages/inventory.tsx", import.meta.url), "utf8");
+
+describe("chemical stock sizes", () => {
+  it("keeps pipe sizes and recognizes gallons, ounces, and pounds", () => {
+    expect(unitForChemicalSize("Gallons")).toBe("gal");
+    expect(unitForChemicalSize("Ounces")).toBe("oz");
+    expect(unitForChemicalSize("Pounds")).toBe("lb");
+    expect(unitForChemicalSize('1/2"')).toBeNull();
+    expect(formatInventoryQuantity(0.875)).toBe("0.875");
+    expect(inventorySizeOptions([
+      { id: 1, name: '1/2"' },
+      { id: 2, name: "Gallons" },
+      { id: 3, name: "Ounces" },
+      { id: 4, name: "Pounds" },
+    ]).map(size => size.label)).toEqual(["1/2\"", "Gallons", "Ounces", "Pounds"]);
+  });
+});
 
 describe("categoryChoices", () => {
   it("lists stored categories, a new draft, and the current selection once", () => {

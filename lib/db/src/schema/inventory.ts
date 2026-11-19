@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, serial, timestamp, integer, real, boolean, unique, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, doublePrecision, boolean, unique, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -127,7 +127,7 @@ export const inventoryItemsTable = pgTable("inventory_items", {
   sizeId: integer("size_id").references(() => inventoryPartSizesTable.id, { onDelete: "set null" }),
   unitPrice: real("unit_price").notNull().default(0),
   markedUpPrice: real("marked_up_price").notNull().default(0),
-  quantity: integer("quantity").notNull().default(0),
+  quantity: doublePrecision("quantity").notNull().default(0),
   reorderPoint: integer("reorder_point").notNull().default(5),
   unit: text("unit").notNull().default("each"),
   isLowStock: boolean("is_low_stock").notNull().default(false),

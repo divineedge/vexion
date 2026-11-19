@@ -13,11 +13,14 @@ export function publicParts(parts:unknown){return(Array.isArray(parts)?parts:[])
 export async function installInventoryCostSchema(){
  await db.execute(sql`CREATE TABLE IF NOT EXISTS inventory_cost_lots(
  id serial PRIMARY KEY,tenant_id integer NOT NULL REFERENCES tenants(id),inventory_item_id integer NOT NULL REFERENCES inventory_items(id),
- expense_id integer REFERENCES expense_entries(id),received_quantity integer NOT NULL,remaining_quantity integer NOT NULL,
+ expense_id integer REFERENCES expense_entries(id),received_quantity double precision NOT NULL,remaining_quantity double precision NOT NULL,
  unit_cost double precision NOT NULL,source text NOT NULL,created_at timestamptz NOT NULL DEFAULT now())`);
  await db.execute(sql`CREATE INDEX IF NOT EXISTS inventory_cost_lots_available ON inventory_cost_lots(tenant_id,inventory_item_id,unit_cost DESC,id) WHERE remaining_quantity>0`);
+ await db.execute(sql`ALTER TABLE inventory_items ALTER COLUMN quantity TYPE double precision USING quantity::double precision`);
+ await db.execute(sql`ALTER TABLE inventory_cost_lots ALTER COLUMN received_quantity TYPE double precision USING received_quantity::double precision`);
+ await db.execute(sql`ALTER TABLE inventory_cost_lots ALTER COLUMN remaining_quantity TYPE double precision USING remaining_quantity::double precision`);
  await db.execute(sql.raw(`CREATE OR REPLACE FUNCTION inventory_cost_layers() RETURNS trigger LANGUAGE plpgsql AS $$
- DECLARE balance integer; delta integer; remaining integer; taking integer; lot record; highest double precision; requested double precision; multiplier double precision;
+ DECLARE balance numeric; delta numeric; remaining numeric; taking numeric; lot record; highest double precision; requested double precision; multiplier double precision;
  BEGIN
   IF TG_OP='INSERT' THEN
    IF NEW.quantity>0 THEN INSERT INTO inventory_cost_lots(tenant_id,inventory_item_id,received_quantity,remaining_quantity,unit_cost,source) VALUES(NEW.tenant_id,NEW.id,NEW.quantity,NEW.quantity,NEW.unit_price,'opening'); END IF;

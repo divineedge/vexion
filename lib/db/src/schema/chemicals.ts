@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { jobsTable } from "./jobs";
 import { usersTable } from "./users";
+import { inventoryItemsTable } from "./inventory";
 
 // ── Chemical Products library ─────────────────────────────────────────────────
 
@@ -22,6 +23,8 @@ export const chemicalProductsTable = pgTable("chemical_products", {
   labelPdfUrl: text("label_pdf_url"),
   quantityOnHand: real("quantity_on_hand").notNull().default(0),
   unit: text("unit").notNull().default("oz"), // oz, fl oz, lb, gal, etc.
+  /** Inventory item this spray product draws from. Null keeps the product usable without stock. */
+  inventoryItemId: integer("inventory_item_id").references(() => inventoryItemsTable.id, { onDelete: "set null" }),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
@@ -124,6 +127,9 @@ export const chemicalApplicationsTable = pgTable("chemical_applications", {
    * Computed server-side on save and stored for reporting.
    */
   breakdown: jsonb("breakdown").default("[]"),
+
+  /** Inventory amounts removed for this application, in the inventory unit. Restored on edit or delete. */
+  inventoryDeductions: jsonb("inventory_deductions").default("[]"),
 
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

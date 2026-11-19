@@ -2871,6 +2871,11 @@ export default function SchedulePage() {
                               <div className="flex-1 min-w-0">
                                 <div className="font-medium truncate" title={item.name}>{item.name}</div>
                                 <div className="text-xs text-muted-foreground" title={`$${item.unitPrice.toFixed(2)} per ${item.unit} · ${item.quantity} in stock`}>{item.sku ? `SKU ${item.sku} · ` : ''}${item.unitPrice.toFixed(2)}/{item.unit} · {item.quantity} in stock</div>
+                                {item.linkedParts && item.linkedParts.components.length > 0 && (
+                                  <div className="text-[10px] text-primary" title="Using this part also uses the linked parts at the saved ratio">
+                                    Also uses {item.linkedParts.components.map(component => `${formatInventoryQuantity(component.quantity)} ${component.unit || ''} ${component.name}`).join(', ')} per {formatInventoryQuantity(item.linkedParts.quantity)} {item.unit}
+                                  </div>
+                                )}
                               </div>
                               <div className="flex items-center gap-1">
                                 <input
@@ -2897,10 +2902,11 @@ export default function SchedulePage() {
                                         onSuccess: () => {
                                           toast.success(`${item.name} added`);
                                           qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId) });
+                                          qc.invalidateQueries({ queryKey: getListInventoryItemsQueryKey() });
                                           setAddingPart(false);
                                           setPartsSearch('');
                                         },
-                                        onError: () => toast.error('Failed to add part'),
+                                        onError: (error) => toast.error(serverErrorMessage(error, 'Failed to add part')),
                                       }
                                     );
                                   }}
@@ -2920,15 +2926,21 @@ export default function SchedulePage() {
                   {/* Parts list */}
                   {Array.isArray(selectedJob.jobParts) && selectedJob.jobParts.length > 0 ? (
                     <div className="rounded-lg border divide-y text-sm">
-                      {(selectedJob.jobParts as { inventoryItemId: number; name: string; quantity: number; unitPrice: number; total: number; unit?: string }[]).map((part, i) => (
-                        <div key={i} className="flex items-center justify-between px-3 py-2">
+                      {(selectedJob.jobParts as { inventoryItemId: number; name: string; quantity: number; unitPrice: number; total: number; unit?: string; kitComponents?: { inventoryItemId: number; name: string; quantity: number; unit?: string }[] }[]).map((part, i) => (
+                        <div key={i} className="flex items-center justify-between px-3 py-2" data-testid={`job-part-${part.inventoryItemId}`}>
                           <div className="flex-1 min-w-0">
                             <span className="font-medium truncate block" title={part.name}>{part.name}</span>
-                            <span className="text-xs text-muted-foreground" title={`${part.quantity} ${part.unit || 'each'} × $${part.unitPrice.toFixed(2)}`}>{part.quantity} {part.unit || 'each'} × ${part.unitPrice.toFixed(2)}</span>
+                            {part.kitComponents && part.kitComponents.length > 0 ? (
+                              <span className="text-xs text-muted-foreground" data-testid={`job-part-kit-${part.inventoryItemId}`}>
+                                {part.quantity} {part.unit || 'each'} · combined ${part.total.toFixed(2)} · also uses {part.kitComponents.map(component => `${formatInventoryQuantity(component.quantity)} ${component.unit || ''} ${component.name}`).join(', ')}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground" title={`${part.quantity} ${part.unit || 'each'} × $${part.unitPrice.toFixed(2)}`}>{part.quantity} {part.unit || 'each'} × ${part.unitPrice.toFixed(2)}</span>
+                            )}
                             <PartLocationBadges inventoryItemId={part.inventoryItemId} />
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="font-semibold" title={`Part total: $${part.total.toFixed(2)}`}>${part.total.toFixed(2)}</span>
+                            <span className="font-semibold" data-testid={`job-part-price-${part.inventoryItemId}`} title={`Part total: $${part.total.toFixed(2)}`}>${part.total.toFixed(2)}</span>
                             <button
                               className="text-muted-foreground/40 hover:text-destructive transition-colors disabled:opacity-30"
                               title="Remove this part from the job"
@@ -2941,8 +2953,9 @@ export default function SchedulePage() {
                                     onSuccess: () => {
                                       toast.success('Part removed');
                                       qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId) });
+                                      qc.invalidateQueries({ queryKey: getListInventoryItemsQueryKey() });
                                     },
-                                    onError: () => toast.error('Failed to remove part'),
+                                    onError: (error) => toast.error(serverErrorMessage(error, 'Failed to remove part')),
                                   }
                                 );
                               }}

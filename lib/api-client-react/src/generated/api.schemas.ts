@@ -2985,12 +2985,22 @@ export interface JobLineItem {
   total: number;
 }
 
+export interface JobPartKitComponent {
+  inventoryItemId: number;
+  name: string;
+  quantity: number;
+  unit?: string;
+}
+
 export interface JobPart {
   inventoryItemId: number;
   name: string;
   quantity: number;
+  unit?: string;
   unitPrice: number;
+  /** One combined price for a linked part. It is the sum of each component sell price for the quantity used. */
   total: number;
+  kitComponents?: JobPartKitComponent[];
 }
 
 export interface Job {
@@ -3582,6 +3592,20 @@ export interface EquipmentLinkedPart {
   checkLabels: string[];
 }
 
+export interface LinkedPartComponent {
+  inventoryItemId: number;
+  name?: string;
+  quantity: number;
+  unit?: string;
+  onHand?: number;
+}
+
+export interface LinkedParts {
+  /** This much of the parent part. Both sides of the ratio are set by the user. */
+  quantity: number;
+  components: LinkedPartComponent[];
+}
+
 export interface InventoryItem {
   id: number;
   tenantId: number;
@@ -3642,9 +3666,12 @@ export interface InventoryItem {
   markupPct?: number;
   markedUpPrice?: number;
   quantity: number;
+  /** Reorder when on hand is at or below this number. 0 is a real reorder point. */
   reorderPoint?: number;
   unit?: string;
   isLowStock?: boolean;
+  /** Other inventory items used with this one. Null when the part stands alone. */
+  linkedParts?: LinkedParts | null;
   /** When true, this item is offered as a pickable option in the Blueprint canvas palette. */
   availableForBlueprint?: boolean;
   /**
@@ -3705,6 +3732,7 @@ export interface InventoryItemInput {
   /** Override markup %. Defaults to tenant default if omitted. */
   markupPct?: number;
   quantity: number;
+  /** 0 is a real reorder point. A blank field is not sent as 0. */
   reorderPoint?: number;
   unit?: string;
   /** When true, this item is offered as a pickable option in the Blueprint canvas palette. */
@@ -3713,6 +3741,8 @@ export interface InventoryItemInput {
   commissionPct?: number;
   /** FK to inventory_suppliers. */
   supplierId?: number;
+  /** Null clears the link on update. Omit to leave an existing link unchanged. */
+  linkedParts?: LinkedParts | null;
 }
 
 export interface InventoryItemUpdate {
@@ -3747,6 +3777,7 @@ export interface InventoryItemUpdate {
   costPrice?: number;
   markupPct?: number;
   quantity?: number;
+  /** 0 is a real reorder point. A blank field is not sent as 0. */
   reorderPoint?: number;
   unit?: string;
   /** When true, this item is offered as a pickable option in the Blueprint canvas palette. */
@@ -3758,6 +3789,8 @@ export interface InventoryItemUpdate {
      * @nullable
      */
   supplierId?: number | null;
+  /** Null clears the link. Omit to leave an existing link unchanged. */
+  linkedParts?: LinkedParts | null;
 }
 
 export interface InventoryType {

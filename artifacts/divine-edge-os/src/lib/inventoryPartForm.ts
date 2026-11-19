@@ -121,3 +121,59 @@ export function inventoryListFigures(input: {
   }
   return { pricePerFoot: null, markupPct: markup, sellPrice: roundMoney(storedSell) };
 }
+
+/**
+ * A reorder point of 0 is saved. Reorder when on hand is at or below it,
+ * which means only when the part is out of stock. A blank value is missing.
+ */
+export function parseReorderPoint(value: unknown, fallback = 5): number | "invalid" {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value === "string" && value.trim() === "") return fallback;
+  const text = typeof value === "number" ? String(value) : String(value).trim();
+  if (!/^(?:0|[1-9]\d*)$/.test(text)) return "invalid";
+  const n = Number(text);
+  if (!Number.isSafeInteger(n) || n < 0) return "invalid";
+  return n;
+}
+
+export function stockNeedsReorder(onHand: number, reorderPoint: number): boolean {
+  return onHand <= reorderPoint;
+}
+
+/** 100 of the parent with 10 of a component means 50 uses 5 and 200 uses 20. */
+export function scaledComponentQuantity(parentRatio: number, used: number, componentRatio: number): number {
+  if (!(parentRatio > 0) || !(used > 0) || !(componentRatio > 0)) return 0;
+  return Math.round(componentRatio * (used / parentRatio) * 1_000_000) / 1_000_000;
+}
+
+export type LinkedPartDraft = {
+  inventoryItemId: number | null;
+  quantity: string;
+};
+
+export function parseLinkedPartsDraft(
+  parentQuantity: string,
+  links: readonly LinkedPartDraft[],
+): { ok: true; value: { quantity: number; components: { inventoryItemId: number; quantity: number }[] } | null } | { ok: false; error: string } {
+  const filled = links.filter(link => link.inventoryItemId != null || link.quantity.trim() !== "");
+  const parentText = parentQuantity.trim();
+  if (filled.length === 0 && parentText === "") return { ok: true, value: null };
+  if (filled.length === 0) return { ok: false, error: "Add the parts this one uses, or clear the ratio." };
+  const parent = Number(parentText);
+  if (!parentText || !Number.isFinite(parent) || parent <= 0) {
+    return { ok: false, error: "Enter how much of this part the ratio uses. For example, 100." };
+  }
+  const components: { inventoryItemId: number; quantity: number }[] = [];
+  const seen = new Set<number>();
+  for (const link of filled) {
+    if (link.inventoryItemId == null) return { ok: false, error: "Choose each linked part from inventory." };
+    if (seen.has(link.inventoryItemId)) return { ok: false, error: "Each linked part can only be listed once." };
+    const quantity = Number(link.quantity);
+    if (!link.quantity.trim() || !Number.isFinite(quantity) || quantity <= 0) {
+      return { ok: false, error: "Enter a quantity greater than 0 for each linked part." };
+    }
+    seen.add(link.inventoryItemId);
+    components.push({ inventoryItemId: link.inventoryItemId, quantity: Math.round(quantity * 1_000_000) / 1_000_000 });
+  }
+  return { ok: true, value: { quantity: Math.round(parent * 1_000_000) / 1_000_000, components } };
+}

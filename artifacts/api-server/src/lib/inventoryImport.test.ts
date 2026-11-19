@@ -62,6 +62,13 @@ describe("inventory CSV import", () => {
     expect(parsed.values).not.toHaveProperty("reorderPoint");
   });
 
+  it("keeps a reorder point of 0 instead of treating it as blank", () => {
+    const parsed = parseInventoryImportRow({ name: "Stakes", sku: "STK", quantity: "4", reorderPoint: "0" });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.values.reorderPoint).toBe(0);
+  });
+
   it("rejects a missing SKU and a negative pipe length", () => {
     expect(parseInventoryImportRow({ name: "Elbow", sku: "" }).ok).toBe(false);
     const feet = parseInventoryImportRow({ name: "Pipe", sku: "P-1", lengthReceived: "-3" });

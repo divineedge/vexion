@@ -1,6 +1,7 @@
 import { getTableColumns } from "drizzle-orm";
 import { eq } from "drizzle-orm";
 import { db, pool, tenantsTable } from "@workspace/db";
+import { INVENTORY_KIT_SQL } from "./inventoryKitSchema";
 import { logger } from "./logger";
 import { isMissingColumnError } from "./settingsFallback";
 
@@ -88,6 +89,7 @@ const ADDITIVE_SETTINGS_SQL = [
   `ALTER TABLE inventory_items ALTER COLUMN quantity TYPE double precision USING quantity::double precision`,
   `ALTER TABLE inventory_cost_lots ALTER COLUMN received_quantity TYPE double precision USING received_quantity::double precision`,
   `ALTER TABLE inventory_cost_lots ALTER COLUMN remaining_quantity TYPE double precision USING remaining_quantity::double precision`,
+  ...INVENTORY_KIT_SQL,
 ];
 
 export async function installAdditiveSettingsSchema(): Promise<void> {

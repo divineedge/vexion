@@ -13212,10 +13212,29 @@ components:
           type: string
         quantity:
           type: number
+        unit:
+          type: string
         unitPrice:
           type: number
+          description: "For a linked part, the combined price divided by the quantity used."
         total:
           type: number
+          description: "Customer price for this line. A linked part uses one combined total, the sum of each component's sell price for the quantity used."
+        kitComponents:
+          type: array
+          description: "Other inventory items deducted with this line. Each is counted once, in its own unit."
+          items:
+            type: object
+            required: [inventoryItemId, name, quantity]
+            properties:
+              inventoryItemId:
+                type: integer
+              name:
+                type: string
+              quantity:
+                type: number
+              unit:
+                type: string
 
     JobPartInput:
       type: object
@@ -13525,10 +13544,17 @@ components:
           description: "Quantity on hand. Chemical sizes can be fractional after gallon and ounce conversion."
         reorderPoint:
           type: integer
+          minimum: 0
+          description: "Reorder when on hand is at or below this number. 0 is a real reorder point and means only when the part is out of stock."
         unit:
           type: string
         isLowStock:
           type: boolean
+        linkedParts:
+          description: "Other inventory items used with this one, at a ratio. Null when this part stands alone."
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/LinkedParts"
         availableForBlueprint:
           type: boolean
           description: "When true, this item is offered as a pickable option in the Blueprint canvas palette."
@@ -13592,6 +13618,8 @@ components:
           description: "Quantity on hand. Chemical sizes can include a fraction of a gallon or ounce."
         reorderPoint:
           type: integer
+          minimum: 0
+          description: "Reorder when on hand is at or below this number. 0 is saved and is not the same as leaving the field blank."
         unit:
           type: string
         availableForBlueprint:
@@ -13603,6 +13631,11 @@ components:
         supplierId:
           type: integer
           description: "FK to inventory_suppliers."
+        linkedParts:
+          description: "Ratio of other inventory items used with this one. Null leaves the part unlinked."
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/LinkedParts"
         lengthReceived:
           type: ["number", "null"]
           description: "Feet of pipe received with this stock. Null clears it."
@@ -13637,6 +13670,8 @@ components:
           description: "Quantity on hand. Chemical sizes can include a fraction of a gallon or ounce."
         reorderPoint:
           type: integer
+          minimum: 0
+          description: "Reorder when on hand is at or below this number. 0 is saved and is not the same as leaving the field blank."
         unit:
           type: string
         availableForBlueprint:
@@ -13648,6 +13683,11 @@ components:
         supplierId:
           type: ["integer", "null"]
           description: "FK to inventory_suppliers. Pass null to unlink."
+        linkedParts:
+          description: "Ratio of other inventory items used with this one. Null clears the link."
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/LinkedParts"
         lengthReceived:
           type: ["number", "null"]
           description: "Feet of pipe received with this stock. Null clears it."
@@ -13657,6 +13697,35 @@ components:
         vendorId:
           type: ["integer", "null"]
           description: "Existing vendor to store as this part's supplier. Null clears it."
+
+    LinkedPartComponent:
+      type: object
+      required: [inventoryItemId, quantity]
+      properties:
+        inventoryItemId:
+          type: integer
+        name:
+          type: string
+        quantity:
+          type: number
+          description: "Amount of this part in the ratio. 10 stakes with a parent quantity of 100 means 50 of the parent uses 5 stakes."
+        unit:
+          type: string
+          description: "The component's own inventory unit. A pound component stays in pounds."
+        onHand:
+          type: number
+
+    LinkedParts:
+      type: object
+      required: [quantity, components]
+      properties:
+        quantity:
+          type: number
+          description: "This much of the parent part. Both sides of the ratio are set by the user."
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/LinkedPartComponent"
 
     InventorySupplier:
       type: object

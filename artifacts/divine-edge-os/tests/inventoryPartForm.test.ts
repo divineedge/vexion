@@ -9,10 +9,16 @@ import {
   namedId,
   unitForChemicalSize,
   inventoryListFigures,
+  parseLinkedPartsDraft,
+  parseReorderPoint,
   pipeSellPerFoot,
   priceWithMarkup,
+  scaledComponentQuantity,
   sizeIdAcrossTypes,
+  stockNeedsReorder,
 } from "../src/lib/inventoryPartForm";
+import { parseReorderPoint as apiReorderPoint, stockNeedsReorder as apiNeedsReorder } from "../../api-server/src/lib/reorderPoint";
+import { planLinkedUse, scaledComponentQuantity as apiScaledQuantity } from "../../api-server/src/lib/inventoryKits";
 import {
   applyArrival,
   parseOptionalAmount,
@@ -161,6 +167,49 @@ describe("shared inventory sizes", () => {
     ]);
     expect(sizeIdAcrossTypes("3", [{ id: 1 }, { id: 3 }])).toBe("3");
     expect(sizeIdAcrossTypes("9", [{ id: 1 }])).toBe("");
+  });
+});
+
+describe("reorder point of 0", () => {
+  it("keeps 0 and does not treat it as a blank", () => {
+    expect(parseReorderPoint(0)).toBe(0);
+    expect(parseReorderPoint("0")).toBe(0);
+    expect(parseReorderPoint("")).toBe(5);
+    expect(parseReorderPoint(0)).toBe(apiReorderPoint(0));
+    expect(parseReorderPoint("")).toBe(apiReorderPoint(""));
+    expect(stockNeedsReorder(0, 0)).toBe(true);
+    expect(stockNeedsReorder(1, 0)).toBe(false);
+    expect(stockNeedsReorder(0, 0)).toBe(apiNeedsReorder(0, 0));
+    expect(inventoryPage).toContain("parseReorderPoint(form.reorderPoint)");
+    expect(inventoryPage).not.toContain("parseInt(form.reorderPoint, 10) || 5");
+    expect(inventoryPage).toContain('data-testid="input-reorder-point"');
+    expect(inventoryPage).toContain('data-testid="text-reorder-point"');
+  });
+});
+
+describe("linked part ratio", () => {
+  it("scales 100 sq ft and 10 stakes down to 50 and 5", () => {
+    expect(scaledComponentQuantity(100, 100, 10)).toBe(10);
+    expect(scaledComponentQuantity(100, 50, 10)).toBe(5);
+    expect(scaledComponentQuantity(100, 200, 10)).toBe(20);
+    expect(scaledComponentQuantity(100, 50, 10)).toBe(apiScaledQuantity(100, 50, 10));
+    const fabric = { inventoryItemId: 1, name: "Weed barrier fabric", unit: "sq ft", onHand: 500, sellPrice: 1, legacyQuantity: 0, tracked: 0 };
+    const stakes = { inventoryItemId: 2, name: "Stakes", unit: "each", onHand: 40, sellPrice: 0.5, legacyQuantity: 0, tracked: 0 };
+    const plan = planLinkedUse({
+      usedQuantity: 50,
+      parent: fabric,
+      kit: { parentQuantity: 100, components: [{ inventoryItemId: 2, quantity: 10 }] },
+      components: [stakes],
+    });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.lines.find(entry => entry.name === "Stakes")?.quantity).toBe(5);
+    expect(plan.combinedPrice).toBe(50 * 1 + 5 * 0.5);
+    const draft = parseLinkedPartsDraft("100", [{ inventoryItemId: 2, quantity: "10" }]);
+    expect(draft).toEqual({ ok: true, value: { quantity: 100, components: [{ inventoryItemId: 2, quantity: 10 }] } });
+    expect(parseLinkedPartsDraft("", [])).toEqual({ ok: true, value: null });
+    expect(inventoryPage).toContain("Linked parts");
+    expect(inventoryPage).toContain("parseLinkedPartsDraft");
   });
 });
 

@@ -81,6 +81,11 @@ const ADDITIVE_SETTINGS_SQL = [
   `CREATE UNIQUE INDEX IF NOT EXISTS website_form_templates_slug ON website_form_templates (tenant_id, slug)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS website_form_templates_token ON website_form_templates (embed_token)`,
   `CREATE TABLE IF NOT EXISTS website_form_submissions (id serial PRIMARY KEY, tenant_id integer NOT NULL REFERENCES tenants(id), form_id integer NOT NULL REFERENCES website_form_templates(id), purpose text NOT NULL, answers jsonb NOT NULL DEFAULT '{}'::jsonb, customer_id integer, estimate_id integer, application_id integer, created_at timestamptz NOT NULL DEFAULT now())`,
+  `ALTER TABLE chemical_products ADD COLUMN IF NOT EXISTS inventory_item_id integer REFERENCES inventory_items(id) ON DELETE SET NULL`,
+  `ALTER TABLE chemical_applications ADD COLUMN IF NOT EXISTS inventory_deductions jsonb NOT NULL DEFAULT '[]'::jsonb`,
+  `ALTER TABLE inventory_items ALTER COLUMN quantity TYPE double precision USING quantity::double precision`,
+  `ALTER TABLE inventory_cost_lots ALTER COLUMN received_quantity TYPE double precision USING received_quantity::double precision`,
+  `ALTER TABLE inventory_cost_lots ALTER COLUMN remaining_quantity TYPE double precision USING remaining_quantity::double precision`,
 ];
 
 export async function installAdditiveSettingsSchema(): Promise<void> {

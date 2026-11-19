@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { JobFormPanel, useMissingRequiredForms } from '@/components/forms/JobFormPanel';
 import { directionsUrl } from '@/lib/directions';
+import { formatInventoryQuantity } from '@/lib/inventoryPartForm';
 import { serverErrorMessage } from '@/lib/serverError';
 import { CapacityOverrideDialog, isCapacityConflict, capacityConflictMessage, capacityConflictWarnings } from '@/components/schedule/CapacityOverrideDialog';
 import { RescheduleFeeDialog, defaultRescheduleFee, moveToDay, apiErrorMessage, type RescheduleFeeChoice } from '@/components/schedule/RescheduleFeeDialog';
@@ -81,7 +82,7 @@ import { customFetch } from '@workspace/api-client-react';
 import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, Clock, MapPin, User, Calendar,
-  DollarSign, ClipboardList, Plus, Users, FlaskConical, Trash2, AlertTriangle,
+  DollarSign, ClipboardList, Plus, Users, FlaskConical, Trash2, Pencil, AlertTriangle,
   Bell, BellOff, Send, Package, Search, Images, RefreshCw, Pause, Play, X,
   SkipForward, ListEnd, Square, Timer, Warehouse, Truck, Wrench,
   Route as RouteIcon, ExternalLink, PhoneCall, CheckCircle, FileText, Phone, Mail, Copy,
@@ -180,6 +181,11 @@ const EMPTY_CHEMICAL_FORM = {
   applicatorLicenseNumber: '',
   notes: '',
 };
+
+function localDateTimeInput(value: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}`;
+}
 
 function jobNeedsPricing(j: any): boolean {
   return j?.status === 'completed' && !j?.invoiceId && !j?.planId && !((j?.totalAmount ?? 0) > 0);
@@ -322,6 +328,7 @@ export default function SchedulePage() {
   const [addingSupply, setAddingSupply] = useState(false);
   const [supplyQtys, setSupplyQtys] = useState<Record<number, string>>({});
   const [chemFormOpen, setChemFormOpen] = useState(false);
+  const [editingChemAppId, setEditingChemAppId] = useState<number | null>(null);
   const [chemForm, setChemForm] = useState({ ...EMPTY_CHEMICAL_FORM });
   const [chemFormErrors, setChemFormErrors] = useState<Record<string, string>>({});
   const [chemServiceId, setChemServiceId] = useState('');
@@ -3221,15 +3228,13 @@ export default function SchedulePage() {
                       )}
                     </p>
                     <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => {
-                      // Default appliedAt to current local datetime
-                      const now = new Date();
-                      const pad = (n: number) => String(n).padStart(2, '0');
-                      const localDT = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+                      setEditingChemAppId(null);
+                      const localDT = localDateTimeInput(new Date());
                       // Auto-fill applicator license from current user's profile
                       const currentUser = (users ?? []).find((u: any) => u.id === user?.id);
                       const license = (currentUser as any)?.applicatorLicense ?? '';
                       setChemForm(f => ({
-                        ...f,
+                        ...EMPTY_CHEMICAL_FORM,
                         appliedAt: localDT,
                         applicatorName: currentUser?.name ?? user?.name ?? f.applicatorName,
                         applicatorLicenseNumber: license || f.applicatorLicenseNumber,
@@ -3268,13 +3273,64 @@ export default function SchedulePage() {
                               {app.serviceName && <span className="block text-xs text-muted-foreground" data-testid={`text-chem-service-${app.id}`}>For {app.serviceName}</span>}
                             </div>
                             {canManageJobs && (
-                              <button onClick={() => {
-                                deleteChemApp.mutate({ id: app.id }, {
-                                  onSuccess: () => { refetchChemApps(); toast.success('Application removed'); },
-                                });
-                              }} disabled={deleteChemApp.isPending} className="text-muted-foreground/40 hover:text-destructive transition-colors disabled:opacity-40">
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  title="Edit this application"
+                                  data-testid={`button-edit-chemical-${app.id}`}
+                                  onClick={() => {
+                                    setEditingChemAppId(app.id);
+                                    setChemServiceId(app.serviceId != null ? String(app.serviceId) : '');
+                                    const source = app as typeof app & {
+                                      treatedArea?: number | null;
+                                      areaUnit?: string | null;
+                                      humidity?: number | null;
+                                      precipitationChance?: number | null;
+                                      rainStatus?: string | null;
+                                      dilutionRate?: string | null;
+                                    };
+                                    setChemForm({
+                                      ...EMPTY_CHEMICAL_FORM,
+                                      mixtureId: source.mixtureId != null ? String(source.mixtureId) : '',
+                                      productId: source.productId != null ? String(source.productId) : '',
+                                      volumeApplied: String(source.volumeApplied),
+                                      volumeUnit: source.volumeUnit,
+                                      treatedArea: source.treatedArea != null ? String(source.treatedArea) : '',
+                                      areaUnit: source.areaUnit || 'sqft',
+                                      treatedZoneName: source.treatedZoneName ?? '',
+                                      targetPest: source.targetPest ?? '',
+                                      applicationMethod: source.applicationMethod ?? '',
+                                      windSpeed: source.windSpeed != null ? String(source.windSpeed) : '',
+                                      windDirection: source.windDirection ?? '',
+                                      temperature: source.temperature != null ? String(source.temperature) : '',
+                                      humidity: source.humidity != null ? String(source.humidity) : '',
+                                      precipitationChance: source.precipitationChance != null ? String(source.precipitationChance) : '',
+                                      rainStatus: source.rainStatus ?? '',
+                                      dilutionRate: source.dilutionRate ?? '',
+                                      appliedAt: localDateTimeInput(new Date(source.appliedAt)),
+                                      applicatorName: source.applicatorName ?? '',
+                                      applicatorLicenseNumber: source.applicatorLicenseNumber ?? '',
+                                      notes: source.notes ?? '',
+                                    });
+                                    setChemFormErrors({});
+                                    setChemFormOpen(true);
+                                  }}
+                                  className="text-muted-foreground/40 hover:text-foreground transition-colors"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={() => {
+                                  deleteChemApp.mutate({ id: app.id }, {
+                                    onSuccess: () => {
+                                      refetchChemApps();
+                                      qc.invalidateQueries({ queryKey: getListInventoryItemsQueryKey() });
+                                      toast.success('Application removed');
+                                    },
+                                    onError: (error: unknown) => toast.error(serverErrorMessage(error, 'Could not remove the application')),
+                                  });
+                                }} disabled={deleteChemApp.isPending} className="text-muted-foreground/40 hover:text-destructive transition-colors disabled:opacity-40">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             )}
                           </div>
                           {(app.breakdown as unknown[]).length > 0 && (
@@ -3541,7 +3597,7 @@ export default function SchedulePage() {
       </Sheet>
 
       {/* Chemical Application Log Sheet */}
-      <Sheet open={chemFormOpen} onOpenChange={open => { if (!open) { setChemFormOpen(false); setChemForm({ ...EMPTY_CHEMICAL_FORM }); setChemFormErrors({}); } }}>
+      <Sheet open={chemFormOpen} onOpenChange={open => { if (!open) { setChemFormOpen(false); setEditingChemAppId(null); setChemForm({ ...EMPTY_CHEMICAL_FORM }); setChemFormErrors({}); } }}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle>Log Chemical Application</SheetTitle>
@@ -3596,6 +3652,15 @@ export default function SchedulePage() {
                     ))}
                   </SelectContent>
                 </Select>
+                {(() => {
+                  const linked = (chemProducts ?? []).find(product => String(product.id) === chemForm.productId);
+                  if (!linked?.inventoryItemName) return null;
+                  return (
+                    <p className="text-xs text-muted-foreground" data-testid="text-linked-chemical-stock">
+                      Draws from {linked.inventoryItemName}: {formatInventoryQuantity(linked.inventoryQuantity ?? 0)} {linked.inventoryUnit ?? ''} on hand. Ounces and gallons convert. Pounds stay in pounds.
+                    </p>
+                  );
+                })()}
               </div>
             ) : null}
             {chemFormErrors.productOrMixture && <p className="text-xs text-destructive">{chemFormErrors.productOrMixture}</p>}
@@ -3774,51 +3839,56 @@ export default function SchedulePage() {
               <Button
                 onClick={() => {
                   if (!validateChemicalForm()) return;
-                  createChemApp.mutate({
-                    id: selectedJobId!,
-                    data: {
-                      ...(chemServiceChoice ? { serviceId: Number(chemServiceChoice) } : {}),
-                      mixtureId: chemForm.mixtureId && chemForm.mixtureId !== 'none' ? parseInt(chemForm.mixtureId, 10) : undefined,
-                      productId: chemForm.productId ? parseInt(chemForm.productId, 10) : undefined,
-                      volumeApplied: parseFloat(chemForm.volumeApplied),
-                      volumeUnit: chemForm.volumeUnit,
-                      targetPest: chemForm.targetPest || undefined,
-                      applicationMethod: chemForm.applicationMethod || undefined,
-                      windSpeed: chemForm.windSpeed ? parseFloat(chemForm.windSpeed) : undefined,
-                      windDirection: chemForm.windDirection || undefined,
-                      temperature: chemForm.temperature ? parseFloat(chemForm.temperature) : undefined,
-                      humidity: chemForm.humidity ? parseFloat(chemForm.humidity) : undefined,
-                      precipitationChance: chemForm.precipitationChance ? parseFloat(chemForm.precipitationChance) : undefined,
-                      rainStatus: chemForm.rainStatus || undefined,
-                      dilutionRate: chemForm.dilutionRate || undefined,
-                      customFieldValues: chemForm.customFieldValues,
-                      appliedAt: new Date(chemForm.appliedAt).toISOString(),
-                      applicatorName: chemForm.applicatorName.trim() || undefined,
-                      applicatorLicenseNumber: chemForm.applicatorLicenseNumber || undefined,
-                      notes: chemForm.notes || undefined,
-                      treatedArea: chemForm.treatedArea ? parseFloat(chemForm.treatedArea) : undefined,
-                      areaUnit: chemForm.areaUnit || undefined,
-                      treatedZoneName: chemForm.treatedZoneName.trim() || undefined,
-                    },
-                  }, {
-                    onSuccess: () => {
-                      toast.success('Application logged');
-                      setChemFormOpen(false);
-                      setChemForm({ ...EMPTY_CHEMICAL_FORM });
-                      setChemFormErrors({});
-                      setChemServiceId('');
-                      qc.invalidateQueries({ queryKey: getListJobChemicalApplicationsQueryKey(selectedJobId!) });
-                    },
-                    onError: (error: any) => {
-                      if (error?.data?.fields && typeof error.data.fields === 'object') setChemFormErrors(error.data.fields);
-                      toast.error(error?.data?.error ?? 'Failed to log application');
-                    },
-                  });
+                  const data = {
+                    ...(chemServiceChoice ? { serviceId: Number(chemServiceChoice) } : {}),
+                    mixtureId: chemForm.mixtureId && chemForm.mixtureId !== 'none' ? parseInt(chemForm.mixtureId, 10) : undefined,
+                    productId: chemForm.productId ? parseInt(chemForm.productId, 10) : undefined,
+                    volumeApplied: parseFloat(chemForm.volumeApplied),
+                    volumeUnit: chemForm.volumeUnit,
+                    targetPest: chemForm.targetPest || undefined,
+                    applicationMethod: chemForm.applicationMethod || undefined,
+                    windSpeed: chemForm.windSpeed ? parseFloat(chemForm.windSpeed) : undefined,
+                    windDirection: chemForm.windDirection || undefined,
+                    temperature: chemForm.temperature ? parseFloat(chemForm.temperature) : undefined,
+                    humidity: chemForm.humidity ? parseFloat(chemForm.humidity) : undefined,
+                    precipitationChance: chemForm.precipitationChance ? parseFloat(chemForm.precipitationChance) : undefined,
+                    rainStatus: chemForm.rainStatus || undefined,
+                    dilutionRate: chemForm.dilutionRate || undefined,
+                    customFieldValues: chemForm.customFieldValues,
+                    appliedAt: new Date(chemForm.appliedAt).toISOString(),
+                    applicatorName: chemForm.applicatorName.trim() || undefined,
+                    applicatorLicenseNumber: chemForm.applicatorLicenseNumber || undefined,
+                    notes: chemForm.notes || undefined,
+                    treatedArea: chemForm.treatedArea ? parseFloat(chemForm.treatedArea) : undefined,
+                    areaUnit: chemForm.areaUnit || undefined,
+                    treatedZoneName: chemForm.treatedZoneName.trim() || undefined,
+                  };
+                  const onSuccess = () => {
+                    toast.success(editingChemAppId ? 'Application updated' : 'Application logged');
+                    setChemFormOpen(false);
+                    setEditingChemAppId(null);
+                    setChemForm({ ...EMPTY_CHEMICAL_FORM });
+                    setChemFormErrors({});
+                    setChemServiceId('');
+                    qc.invalidateQueries({ queryKey: getListJobChemicalApplicationsQueryKey(selectedJobId!) });
+                    qc.invalidateQueries({ queryKey: getListInventoryItemsQueryKey() });
+                    qc.invalidateQueries({ queryKey: getListChemicalProductsQueryKey() });
+                  };
+                  const onError = (error: unknown) => {
+                    const fields = (error as { data?: { fields?: Record<string, string> } })?.data?.fields;
+                    if (fields && typeof fields === 'object') setChemFormErrors(fields);
+                    toast.error(serverErrorMessage(error, editingChemAppId ? 'Failed to update application' : 'Failed to log application'));
+                  };
+                  if (editingChemAppId) {
+                    customFetch(`/api/chemical-applications/${editingChemAppId}`, { method: 'PATCH', body: JSON.stringify(data) }).then(onSuccess).catch(onError);
+                    return;
+                  }
+                  createChemApp.mutate({ id: selectedJobId!, data }, { onSuccess, onError });
                 }}
                 title="Save this chemical application log entry"
                 disabled={createChemApp.isPending}
               >
-                {createChemApp.isPending ? 'Saving…' : 'Log Application'}
+                {createChemApp.isPending ? 'Saving…' : editingChemAppId ? 'Save Changes' : 'Log Application'}
               </Button>
             </div>
           </div>

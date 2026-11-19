@@ -4173,6 +4173,31 @@ paths:
                 $ref: "#/components/schemas/ChemicalApplication"
 
   /chemical-applications/{id}:
+    patch:
+      operationId: updateChemicalApplication
+      tags: [chemicals]
+      summary: Update a chemical application and adjust linked inventory once
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChemicalApplicationInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChemicalApplication"
+        "400":
+          description: Units do not match or there is not enough inventory
     delete:
       operationId: deleteChemicalApplication
       tags: [chemicals]
@@ -13470,7 +13495,8 @@ components:
         markedUpPrice:
           type: number
         quantity:
-          type: integer
+          type: number
+          description: "Quantity on hand. Chemical sizes can be fractional after gallon and ounce conversion."
         reorderPoint:
           type: integer
         unit:
@@ -13517,7 +13543,8 @@ components:
           type: number
           description: "Override markup %. Defaults to tenant default if omitted."
         quantity:
-          type: integer
+          type: number
+          description: "Quantity on hand. Chemical sizes can include a fraction of a gallon or ounce."
         reorderPoint:
           type: integer
         unit:
@@ -13561,7 +13588,8 @@ components:
         markupPct:
           type: number
         quantity:
-          type: integer
+          type: number
+          description: "Quantity on hand. Chemical sizes can include a fraction of a gallon or ounce."
         reorderPoint:
           type: integer
         unit:
@@ -16070,6 +16098,17 @@ components:
           type: ["string", "null"]
         unit:
           type: string
+        inventoryItemId:
+          type: ["integer", "null"]
+          description: "Inventory item this spray product draws from. Null when the product is not linked and applications do not change inventory."
+        inventoryItemName:
+          type: ["string", "null"]
+        inventoryQuantity:
+          type: ["number", "null"]
+          description: "Current quantity of the linked inventory item, in its stock unit."
+        inventoryUnit:
+          type: ["string", "null"]
+          description: "Stock unit of the linked inventory item. Gallons and ounces convert; pounds do not."
         isActive:
           type: boolean
         createdAt:
@@ -16100,6 +16139,9 @@ components:
           type: string
         isActive:
           type: boolean
+        inventoryItemId:
+          type: ["integer", "null"]
+          description: "Inventory item to draw from when this product is sprayed. Null clears the link."
 
     ChemicalMixtureItem:
       type: object

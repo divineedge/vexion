@@ -1,7 +1,9 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, chemicalProductsTable, chemicalMixturesTable, chemicalMixtureItemsTable, chemicalApplicationsTable, jobsTable, propertiesTable, tenantsTable, usersTable, mediaAttachmentsTable,servicesTable } from "@workspace/db";
+import { db, chemicalProductsTable, chemicalMixturesTable, chemicalMixtureItemsTable, chemicalApplicationsTable, jobsTable, propertiesTable, tenantsTable, usersTable, mediaAttachmentsTable, servicesTable, inventoryItemsTable, inventoryPartSizesTable } from "@workspace/db";
+import { chemicalUnitCode, inventoryStockUnit } from "../lib/chemicalInventory";
+import { ChemicalStockError, commitChemicalUse, deleteChemicalUse } from "../lib/chemicalUse";
 import { ObjectStorageService } from "../lib/objectStorage";
-import { eq, and, gte, lte, desc, inArray, sql } from "drizzle-orm";
+import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
 import { productConsumed } from "../lib/tankMix";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { normalizeChemicalRecordRequirements, parseStrictChemicalAppliedAt, validateChemicalRecordRequirements, validateSuppliedChemicalApplicationFields } from "../lib/chemicalRequirements";
@@ -84,6 +86,66 @@ async function requireOfficeRole(req: Request, res: Response, next: NextFunction
  * Compute application rate per acre and per 1000 sqft from volume applied and property size.
  * propertySizeSqft = null means rates cannot be calculated.
  */
+async function readInventoryLink(tenantId: number, raw: unknown): Promise<{ ok: true; id: number | null | undefined } | { ok: false; error: string }> {
+  if (raw === undefined) return { ok: true, id: undefined };
+  if (raw === null || raw === "") return { ok: true, id: null };
+  const id = Number(raw);
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, error: "Choose an inventory chemical" };
+  const [item] = await db.select({ id: inventoryItemsTable.id }).from(inventoryItemsTable)
+    .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)));
+  if (!item) return { ok: false, error: "Inventory item not found" };
+  return { ok: true, id: item.id };
+}
+
+async function inventoryLinkMap(tenantId: number, ids: Array<number | null | undefined>) {
+  const unique = [...new Set(ids.filter((id): id is number => typeof id === "number" && Number.isInteger(id) && id > 0))];
+  const rows = unique.length
+    ? await db.select({
+      id: inventoryItemsTable.id,
+      name: inventoryItemsTable.name,
+      quantity: inventoryItemsTable.quantity,
+      unit: inventoryItemsTable.unit,
+      sizeName: inventoryPartSizesTable.name,
+    }).from(inventoryItemsTable)
+      .leftJoin(inventoryPartSizesTable, eq(inventoryItemsTable.sizeId, inventoryPartSizesTable.id))
+      .where(and(eq(inventoryItemsTable.tenantId, tenantId), inArray(inventoryItemsTable.id, unique)))
+    : [];
+  return new Map(rows.map(row => [row.id, {
+    name: row.name,
+    quantity: row.quantity,
+    unit: chemicalUnitCode(row.sizeName) ?? inventoryStockUnit(row.sizeName, row.unit) ?? row.unit,
+  }]));
+}
+
+function presentProduct(
+  row: typeof chemicalProductsTable.$inferSelect,
+  link?: { name: string; quantity: number; unit: string },
+) {
+  return {
+    ...row,
+    inventoryItemId: row.inventoryItemId ?? null,
+    inventoryItemName: link?.name ?? null,
+    inventoryQuantity: link?.quantity ?? null,
+    inventoryUnit: link?.unit ?? null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function presentApplication(app: typeof chemicalApplicationsTable.$inferSelect) {
+  return {
+    ...app,
+    appliedAt: app.appliedAt.toISOString(),
+    createdAt: app.createdAt.toISOString(),
+    updatedAt: app.updatedAt.toISOString(),
+    clockInAt: app.clockInAt ? app.clockInAt.toISOString() : null,
+    clockOutAt: app.clockOutAt ? app.clockOutAt.toISOString() : null,
+    rainfastUntil: app.rainfastUntil ? app.rainfastUntil.toISOString() : null,
+    reentryUntil: app.reentryUntil ? app.reentryUntil.toISOString() : null,
+    breakdown: (app.breakdown as unknown[]) ?? [],
+  };
+}
+
 function computeRates(volumeApplied: number, propertySizeSqft: number | null) {
   if (!propertySizeSqft || propertySizeSqft <= 0) return { ratePerAcre: null, ratePer1000Sqft: null };
   const ratePer1000Sqft = (volumeApplied / propertySizeSqft) * 1000;
@@ -100,13 +162,16 @@ router.get("/chemical-products", async (req, res): Promise<void> => {
     .from(chemicalProductsTable)
     .where(eq(chemicalProductsTable.tenantId, tenantId))
     .orderBy(chemicalProductsTable.name);
-  res.json(rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() })));
+  const links = await inventoryLinkMap(tenantId, rows.map(row => row.inventoryItemId));
+  res.json(rows.map(row => presentProduct(row, row.inventoryItemId ? links.get(row.inventoryItemId) : undefined)));
 });
 
 router.post("/chemical-products", requireOfficeRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const { name, epaRegNumber, activeIngredients, signalWord, rei, phi, labelSdsUrl, unit, rainfastHours, safetyNotes } = req.body;
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
+  const link = await readInventoryLink(tenantId, req.body.inventoryItemId);
+  if (!link.ok) { res.status(400).json({ error: link.error }); return; }
   const [row] = await db.insert(chemicalProductsTable).values({
     tenantId,
     name,
@@ -119,14 +184,18 @@ router.post("/chemical-products", requireOfficeRole, async (req, res): Promise<v
     unit: unit ?? "oz",
     rainfastHours: rainfastHours != null ? parseFloat(rainfastHours) : null,
     safetyNotes: typeof safetyNotes === "string" ? safetyNotes.trim() || null : null,
+    inventoryItemId: link.id ?? null,
   }).returning();
-  res.status(201).json({ ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() });
+  const links = await inventoryLinkMap(tenantId, [row.inventoryItemId]);
+  res.status(201).json(presentProduct(row, row.inventoryItemId ? links.get(row.inventoryItemId) : undefined));
 });
 
 router.patch("/chemical-products/:id", requireOfficeRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const { name, epaRegNumber, activeIngredients, signalWord, rei, phi, labelSdsUrl, unit, isActive, rainfastHours, safetyNotes } = req.body;
+  const link = await readInventoryLink(tenantId, req.body.inventoryItemId);
+  if (!link.ok) { res.status(400).json({ error: link.error }); return; }
   const [row] = await db.update(chemicalProductsTable).set({
     ...(name && { name }),
     ...(epaRegNumber !== undefined && { epaRegNumber }),
@@ -139,9 +208,11 @@ router.patch("/chemical-products/:id", requireOfficeRole, async (req, res): Prom
     ...(isActive !== undefined && { isActive }),
     ...(rainfastHours !== undefined && { rainfastHours: rainfastHours != null ? parseFloat(rainfastHours) : null }),
     ...(safetyNotes !== undefined && { safetyNotes: typeof safetyNotes === "string" ? safetyNotes.trim() || null : null }),
+    ...(link.id !== undefined && { inventoryItemId: link.id }),
   }).where(and(eq(chemicalProductsTable.id, id), eq(chemicalProductsTable.tenantId, tenantId))).returning();
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
-  res.json({ ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() });
+  const links = await inventoryLinkMap(tenantId, [row.inventoryItemId]);
+  res.json(presentProduct(row, row.inventoryItemId ? links.get(row.inventoryItemId) : undefined));
 });
 
 router.delete("/chemical-products/:id", requireOfficeRole, async (req, res): Promise<void> => {
@@ -409,10 +480,9 @@ router.get("/jobs/:id/chemical-applications", async (req, res): Promise<void> =>
   })));
 });
 
-router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> => {
+async function writeJobChemicalApplication(req: Request, res: Response, jobId: number, existingId: number | null): Promise<void> {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const jobId = parseInt(req.params.id, 10);
 
   // Verify job belongs to tenant and fetch property size
   const [jobRow] = await db
@@ -569,7 +639,7 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
     }];
   }
 
-  const [app] = await db.insert(chemicalApplicationsTable).values({
+  const draft = {
     tenantId,
     serviceId:applicationServiceId,
     serviceName:applicationService?.name??null,
@@ -601,24 +671,22 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
     appliedAt: parsedAppliedAt,
     breakdown,
     notes: typeof notes === "string" ? notes.trim() : null,
-  }).returning();
-
-  for (const line of breakdown as { productId?: number; amountApplied?: number }[]) {
-    if (!line.productId || !(Number(line.amountApplied) > 0)) continue;
-    try {
-      await db.execute(sql`UPDATE chemical_products SET quantity_on_hand = GREATEST(0, COALESCE(quantity_on_hand, 0) - ${Number(line.amountApplied)}) WHERE id = ${line.productId} AND tenant_id = ${tenantId}`);
-    } catch (error) {
-      req.log?.error?.({ err: error, productId: line.productId }, "Chemical stock was not reduced");
+  };
+  try {
+    const app = await commitChemicalUse(tenantId, draft, existingId);
+    res.status(existingId == null ? 201 : 200).json(presentApplication(app));
+  } catch (error) {
+    if (error instanceof ChemicalStockError) {
+      res.status(error.status).json({ error: error.message });
+      return;
     }
+    throw error;
   }
+}
 
-  res.status(201).json({
-    ...app,
-    appliedAt: app.appliedAt.toISOString(),
-    createdAt: app.createdAt.toISOString(),
-    updatedAt: app.updatedAt.toISOString(),
-    breakdown: (app.breakdown as unknown[]) ?? [],
-  });
+router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> => {
+  const jobId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  await writeJobChemicalApplication(req, res, jobId, null);
 });
 
 // ─── Chemical Applications CSV Export ─────────────────────────────────────────
@@ -718,10 +786,21 @@ router.get("/chemical-applications/export", async (req, res): Promise<void> => {
   res.send('\uFEFF' + csv); // BOM for Excel compatibility
 });
 
+router.patch("/chemical-applications/:id", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  const [existing] = await db.select({ id: chemicalApplicationsTable.id, jobId: chemicalApplicationsTable.jobId })
+    .from(chemicalApplicationsTable)
+    .where(and(eq(chemicalApplicationsTable.id, id), eq(chemicalApplicationsTable.tenantId, tenantId)));
+  if (!existing?.jobId) { res.status(404).json({ error: "Application not found" }); return; }
+  await writeJobChemicalApplication(req, res, existing.jobId, id);
+});
+
 router.delete("/chemical-applications/:id", requireOfficeRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-  await db.delete(chemicalApplicationsTable).where(and(eq(chemicalApplicationsTable.id, id), eq(chemicalApplicationsTable.tenantId, tenantId)));
+  const removed = await deleteChemicalUse(tenantId, id);
+  if (!removed) { res.status(404).json({ error: "Application not found" }); return; }
   res.sendStatus(204);
 });
 

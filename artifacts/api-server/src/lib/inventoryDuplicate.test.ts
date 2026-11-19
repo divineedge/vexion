@@ -42,8 +42,8 @@ function shown(rows: readonly Row[], id: number): number {
   return presentQuantity(row, owner?.quantity);
 }
 
-function duplicate(rows: Row[], ids: number[]): Row[] {
-  const planned = planDuplicates(rows, ids, rows.map(row => row.sku));
+function duplicate(rows: Row[], ids: number[], mode: "separate" | "shared" = "separate"): Row[] {
+  const planned = planDuplicates(rows, ids, rows.map(row => row.sku), mode);
   if (!planned.ok) throw new Error(planned.error);
   let nextId = Math.max(...rows.map(row => row.id)) + 1;
   const created = planned.copies.map(copy => {
@@ -99,7 +99,7 @@ describe("inventory duplicate", () => {
   it("copies catalog fields onto a new item with a unique SKU and the same stock pile", () => {
     const rows = [pipe, fitting];
     const before = storedOnHand(rows);
-    const [copy] = duplicate(rows, [pipe.id]);
+    const [copy] = duplicate(rows, [pipe.id], "shared");
 
     expect(copy.id).not.toBe(pipe.id);
     expect(copy.sku).not.toBe(pipe.sku);
@@ -127,7 +127,7 @@ describe("inventory duplicate", () => {
 
   it("keeps one quantity when the copy or the original is adjusted", () => {
     const rows = [structuredClone(pipe), structuredClone(fitting)];
-    const [copy] = duplicate(rows, [pipe.id]);
+    const [copy] = duplicate(rows, [pipe.id], "shared");
 
     adjust(rows, copy.id, -5);
     expect(shown(rows, pipe.id)).toBe(35);
@@ -143,7 +143,7 @@ describe("inventory duplicate", () => {
   it("mass-duplicates each item onto that item's stock, and a copy of a copy stays on the same pile", () => {
     const rows = [structuredClone(pipe), structuredClone(fitting)];
     const before = storedOnHand(rows);
-    const created = duplicate(rows, [pipe.id, fitting.id]);
+    const created = duplicate(rows, [pipe.id, fitting.id], "shared");
 
     expect(created).toHaveLength(2);
     expect(new Set(created.map(row => row.sku)).size).toBe(2);
@@ -152,7 +152,7 @@ describe("inventory duplicate", () => {
     expect(shown(rows, created[1].id)).toBe(fitting.quantity);
     expect(storedOnHand(rows)).toBe(before);
 
-    const [again] = duplicate(rows, [created[0].id]);
+    const [again] = duplicate(rows, [created[0].id], "shared");
     expect(again.stockItemId).toBe(pipe.id);
     expect(again.sku).toBe("PVC-1-COPY-COPY");
     expect(again.name).toBe("PVC pipe copy copy");
@@ -161,5 +161,71 @@ describe("inventory duplicate", () => {
     expect(shown(rows, created[0].id)).toBe(pipe.quantity - 1);
     expect(shown(rows, again.id)).toBe(pipe.quantity - 1);
     expect(shown(rows, fitting.id)).toBe(fitting.quantity);
+  });
+
+  it("defaults to a separate item whose quantity does not follow the original", () => {
+    const rows = [structuredClone(pipe), structuredClone(fitting)];
+    const before = storedOnHand(rows);
+    const [copy] = duplicate(rows, [pipe.id]);
+
+    expect(copy.stockItemId).toBeNull();
+    expect(copy.quantity).toBe(0);
+    expect(copy).toMatchObject({
+      typeId: pipe.typeId,
+      sizeId: pipe.sizeId,
+      unitPrice: pipe.unitPrice,
+      markedUpPrice: pipe.markedUpPrice,
+      pricePerFoot: pipe.pricePerFoot,
+    });
+    expect(shown(rows, copy.id)).toBe(0);
+    expect(shown(rows, pipe.id)).toBe(pipe.quantity);
+    expect(storedOnHand(rows)).toBe(before + 0);
+
+    adjust(rows, pipe.id, -5);
+    expect(shown(rows, pipe.id)).toBe(35);
+    expect(shown(rows, copy.id)).toBe(0);
+
+    adjust(rows, copy.id, 3);
+    expect(shown(rows, copy.id)).toBe(3);
+    expect(shown(rows, pipe.id)).toBe(35);
+    expect(storedOnHand(rows)).toBe(35 + 3 + fitting.quantity);
+  });
+
+  it("mass-duplicates separate items unless shared stock is chosen", () => {
+    const rows = [structuredClone(pipe), structuredClone(fitting)];
+    const created = duplicate(rows, [pipe.id, fitting.id]);
+
+    expect(created.map(row => row.stockItemId)).toEqual([null, null]);
+    expect(shown(rows, created[0].id)).toBe(0);
+    expect(shown(rows, created[1].id)).toBe(0);
+    expect(shown(rows, pipe.id)).toBe(pipe.quantity);
+    expect(shown(rows, fitting.id)).toBe(fitting.quantity);
+
+    adjust(rows, pipe.id, -2);
+    expect(shown(rows, created[0].id)).toBe(0);
+    expect(shown(rows, fitting.id)).toBe(fitting.quantity);
+  });
+
+  it("lets a shared copy use a different markup while a separate copy keeps its own quantity", () => {
+    const rows = [structuredClone(pipe), structuredClone(fitting)];
+    const [shared] = duplicate(rows, [pipe.id], "shared");
+    const [separate] = duplicate(rows, [pipe.id]);
+
+    shared.markedUpPrice = 3.75;
+    expect(shared.markedUpPrice).not.toBe(pipe.markedUpPrice);
+    expect(pipe.markedUpPrice).toBe(2.5);
+    expect(separate.markedUpPrice).toBe(pipe.markedUpPrice);
+    expect(separate.stockItemId).toBeNull();
+
+    adjust(rows, shared.id, -4);
+    expect(shown(rows, pipe.id)).toBe(36);
+    expect(shown(rows, shared.id)).toBe(36);
+    expect(shown(rows, separate.id)).toBe(0);
+    expect(rows.find(row => row.id === shared.id)?.quantity).toBe(0);
+
+    adjust(rows, separate.id, 2);
+    expect(shown(rows, separate.id)).toBe(2);
+    expect(shown(rows, pipe.id)).toBe(36);
+    expect(shown(rows, shared.id)).toBe(36);
   });
 });

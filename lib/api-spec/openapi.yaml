@@ -2231,8 +2231,8 @@ paths:
     post:
       operationId: duplicateInventoryItems
       tags: [inventory]
-      summary: Duplicate inventory items onto the same stock
-      description: Each copy is a separate catalog item with a new SKU and a name ending in " copy". Quantity stays on the original pile, including when the source is already a copy.
+      summary: Duplicate inventory items
+      description: Each copy is its own catalog item with a new SKU and a name ending in " copy". By default the copy has its own stock, starting at 0. Set shareStock to keep the copy on the source pile, including when the source is already a shared copy.
       requestBody:
         required: true
         content:
@@ -13531,7 +13531,11 @@ components:
           maxItems: 100
           items:
             type: integer
-          description: "Inventory items to copy. Each becomes its own item and shares the source stock pile."
+          description: "Inventory items to copy. Each becomes its own catalog item."
+        shareStock:
+          type: boolean
+          default: false
+          description: "When true, each copy uses the source on-hand pile. When false or omitted, each copy has its own stock starting at 0."
 
     InventoryItemInput:
       type: object

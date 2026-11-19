@@ -21,8 +21,10 @@ export type DuplicableItem = {
   vendorId: number | null;
 };
 
+export type DuplicateMode = "separate" | "shared";
+
 export type DuplicateInsert = {
-  stockItemId: number;
+  stockItemId: number | null;
   name: string;
   sku: string;
   description: string | null;
@@ -34,7 +36,7 @@ export type DuplicateInsert = {
   quantity: 0;
   reorderPoint: number;
   unit: string;
-  isLowStock: false;
+  isLowStock: boolean;
   availableForBlueprint: boolean;
   commissionPct: number | null;
   supplierId: number | null;
@@ -91,8 +93,10 @@ export function planDuplicates(
   sources: readonly DuplicableItem[],
   ids: readonly number[],
   takenSkus: Iterable<string>,
+  mode: DuplicateMode = "separate",
 ): { ok: true; copies: DuplicateInsert[] } | { ok: false; error: string } {
   if (ids.length === 0) return { ok: false, error: "Choose at least one item" };
+  const shareStock = mode === "shared";
   const byId = new Map(sources.map(item => [item.id, item]));
   const taken = new Set([...takenSkus].map(sku => sku.trim().toLowerCase()).filter(Boolean));
   const copies: DuplicateInsert[] = [];
@@ -100,7 +104,7 @@ export function planDuplicates(
     const source = byId.get(id);
     if (!source) return { ok: false, error: "Inventory item not found" };
     copies.push({
-      stockItemId: stockOwnerId(source),
+      stockItemId: shareStock ? stockOwnerId(source) : null,
       name: `${source.name} copy`,
       sku: uniqueCopySku(source.sku, taken),
       description: source.description,
@@ -112,7 +116,7 @@ export function planDuplicates(
       quantity: 0,
       reorderPoint: source.reorderPoint,
       unit: source.unit,
-      isLowStock: false,
+      isLowStock: shareStock ? false : source.reorderPoint >= 0,
       availableForBlueprint: source.availableForBlueprint,
       commissionPct: source.commissionPct,
       supplierId: source.supplierId,

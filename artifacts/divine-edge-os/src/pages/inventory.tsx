@@ -266,6 +266,7 @@ export default function InventoryPage() {
   const [locAdjustReason, setLocAdjustReason] = useState('');
 
   const [draftCategories, setDraftCategories] = useState<string[]>([]);
+  const [duplicateChoice, setDuplicateChoice] = useState<{ ids: number[]; shareStock: boolean } | null>(null);
 
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
   const defaultMarkupPct = settings?.defaultMarkupPct ?? 20;
@@ -632,12 +633,18 @@ export default function InventoryPage() {
     }
   };
 
-  const duplicateIds = (ids: number[]) => {
+  const askDuplicate = (ids: number[]) => {
     if (ids.length === 0) return;
-    duplicateInventory.mutate({ data: { ids } }, {
+    setDuplicateChoice({ ids, shareStock: false });
+  };
+
+  const duplicateIds = (ids: number[], shareStock: boolean) => {
+    if (ids.length === 0) return;
+    duplicateInventory.mutate({ data: { ids, shareStock } }, {
       onSuccess: (result) => {
         const count = result.items.length;
-        toast.success(count === 1 ? `Created ${result.items[0]?.name ?? 'a copy'}` : `Created ${count} copies`);
+        const kind = shareStock ? 'shared-stock' : 'separate';
+        toast.success(count === 1 ? `Created ${result.items[0]?.name ?? 'a copy'} as a ${kind} copy` : `Created ${count} ${kind} copies`);
         qc.invalidateQueries({ queryKey: getListInventoryItemsQueryKey() });
         qc.invalidateQueries({ queryKey: getGetInventorySummaryQueryKey() });
         setSelectedIds(current => current.filter(id => !ids.includes(id)));
@@ -985,10 +992,10 @@ export default function InventoryPage() {
               <Button
                 variant="outline"
                 className="gap-2"
-                title="Duplicate the selected items onto the same stock"
+                title="Duplicate the selected items"
                 data-testid="button-duplicate-selected"
                 disabled={duplicateInventory.isPending}
-                onClick={() => duplicateIds(selectedIds)}
+                onClick={() => askDuplicate(selectedIds)}
               >
                 <Copy className="w-4 h-4" /> Duplicate {selectedIds.length} selected
               </Button>
@@ -1110,10 +1117,10 @@ export default function InventoryPage() {
                             size="sm"
                             variant="ghost"
                             className="h-7 px-2 text-xs gap-1"
-                            title="Duplicate this item onto the same stock"
+                            title="Duplicate this item"
                             data-testid={`button-duplicate-item-${item.id}`}
                             disabled={duplicateInventory.isPending}
-                            onClick={() => duplicateIds([item.id])}
+                            onClick={() => askDuplicate([item.id])}
                           >
                             <Copy className="w-3.5 h-3.5" /> Duplicate
                           </Button>
@@ -1161,13 +1168,13 @@ export default function InventoryPage() {
                         className="gap-1.5"
                         data-testid="button-duplicate-open-item"
                         disabled={duplicateInventory.isPending}
-                        onClick={() => duplicateIds([selectedItem.id])}
+                        onClick={() => askDuplicate([selectedItem.id])}
                       >
                         <Copy className="w-3.5 h-3.5" /> Duplicate
                       </Button>
                     )}
                     {canManage && (
-                      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setSheetMode(null); setTimeout(() => openEdit(selectedItem.id), 50); }}>
+                      <Button size="sm" variant="outline" className="gap-1.5" data-testid="button-edit-inventory-item" onClick={() => { setSheetMode(null); setTimeout(() => openEdit(selectedItem.id), 50); }}>
                         <Edit className="w-3.5 h-3.5" /> Edit
                       </Button>
                     )}
@@ -1423,6 +1430,7 @@ export default function InventoryPage() {
                     step="1"
                     title={`Leave blank to use the company standard of ${defaultMarkupPct}%. Type a percent to override it for this item.`}
                     placeholder={String(defaultMarkupPct)}
+                    data-testid="input-inventory-markup"
                     value={form.markupPct}
                     onChange={e => {
                       setForm(f => ({ ...f, markupPct: e.target.value }));
@@ -1566,7 +1574,7 @@ export default function InventoryPage() {
                   className="mr-auto gap-1.5"
                   data-testid="button-duplicate-editing-item"
                   disabled={duplicateInventory.isPending}
-                  onClick={() => duplicateIds([selectedId])}
+                  onClick={() => askDuplicate([selectedId])}
                 >
                   <Copy className="w-3.5 h-3.5" /> Duplicate
                 </Button>
@@ -1727,6 +1735,63 @@ export default function InventoryPage() {
                 {adjustLocationStockMutation.isPending ? 'Saving...' : 'Apply Adjustment'}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={duplicateChoice != null} onOpenChange={open => { if (!open) setDuplicateChoice(null); }}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-duplicate-choice">
+          <DialogHeader>
+            <DialogTitle>{(duplicateChoice?.ids.length ?? 0) > 1 ? `Duplicate ${duplicateChoice?.ids.length} items` : 'Duplicate item'}</DialogTitle>
+            <DialogDescription>
+              Each copy is a new item with its own name and SKU. Choose whether it keeps its own stock.
+            </DialogDescription>
+          </DialogHeader>
+          <fieldset className="space-y-2 pt-2">
+            <legend className="sr-only">How the copy handles stock</legend>
+            <label className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${duplicateChoice?.shareStock ? '' : 'border-primary bg-primary/5'}`}>
+              <input
+                type="radio"
+                name="duplicate-stock"
+                className="mt-1"
+                data-testid="radio-duplicate-separate"
+                checked={duplicateChoice?.shareStock !== true}
+                onChange={() => setDuplicateChoice(current => current ? { ...current, shareStock: false } : current)}
+              />
+              <span>
+                <span className="block text-sm font-medium">Separate item</span>
+                <span className="block text-xs text-muted-foreground">Copy the catalog so you can change the size or other details. This copy has its own stock, starting at 0. Using it does not change the original quantity.</span>
+              </span>
+            </label>
+            <label className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${duplicateChoice?.shareStock ? 'border-primary bg-primary/5' : ''}`}>
+              <input
+                type="radio"
+                name="duplicate-stock"
+                className="mt-1"
+                data-testid="radio-duplicate-shared"
+                checked={duplicateChoice?.shareStock === true}
+                onChange={() => setDuplicateChoice(current => current ? { ...current, shareStock: true } : current)}
+              />
+              <span>
+                <span className="block text-sm font-medium">Shared stock</span>
+                <span className="block text-xs text-muted-foreground">Same physical inventory, with its own markup and sell price. Using either one changes the same quantity.</span>
+              </span>
+            </label>
+          </fieldset>
+          <div className="flex gap-3 justify-end pt-2">
+            <Button variant="outline" onClick={() => setDuplicateChoice(null)}>Cancel</Button>
+            <Button
+              data-testid="button-confirm-duplicate"
+              disabled={duplicateInventory.isPending || duplicateChoice == null}
+              onClick={() => {
+                if (!duplicateChoice) return;
+                const { ids, shareStock } = duplicateChoice;
+                setDuplicateChoice(null);
+                duplicateIds(ids, shareStock);
+              }}
+            >
+              Duplicate
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

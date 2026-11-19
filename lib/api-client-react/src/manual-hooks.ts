@@ -689,6 +689,8 @@ export const usePortalGetJobDetail = <TData = PortalJobDetail, TError = ErrorTyp
 
 export interface DuplicateInventoryBody {
   ids: number[];
+  /** True shares the source on-hand pile. Omitted or false gives the copy its own stock. */
+  shareStock?: boolean;
 }
 
 export interface DuplicateInventoryResult {

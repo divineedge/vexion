@@ -642,7 +642,12 @@ router.post("/inventory/duplicate", requireInventoryMutate, async (req, res): Pr
     return;
   }
 
-  const planned = planDuplicates(chosen, ids, skuRows.map(row => row.sku));
+  const shareStock = req.body?.shareStock;
+  if (shareStock !== undefined && typeof shareStock !== "boolean") {
+    res.status(400).json({ error: "shareStock must be true or false" });
+    return;
+  }
+  const planned = planDuplicates(chosen, ids, skuRows.map(row => row.sku), shareStock === true ? "shared" : "separate");
   if (!planned.ok) {
     res.status(400).json({ error: planned.error });
     return;

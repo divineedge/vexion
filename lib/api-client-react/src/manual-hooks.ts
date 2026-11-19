@@ -5,6 +5,7 @@
  */
 import { useMutation, useQuery, type UseMutationOptions, type UseMutationResult, type UseQueryOptions, type UseQueryResult } from "@tanstack/react-query";
 import { customFetch, type ErrorType, type BodyType } from "./custom-fetch";
+import type { InventoryItem } from "./generated/api.schemas";
 
 // ---------------------------------------------------------------------------
 // Staff notification devices
@@ -679,5 +680,40 @@ export const usePortalGetJobDetail = <TData = PortalJobDetail, TError = ErrorTyp
     queryFn: ({ signal }) => portalGetJobDetail(id, { signal }),
     enabled: id > 0,
     ...queryOptions,
+  });
+};
+
+// ---------------------------------------------------------------------------
+// Inventory duplicate — POST /inventory/duplicate
+// ---------------------------------------------------------------------------
+
+export interface DuplicateInventoryBody {
+  ids: number[];
+  /** True shares the source on-hand pile. Omitted or false gives the copy its own stock. */
+  shareStock?: boolean;
+}
+
+export interface DuplicateInventoryResult {
+  items: InventoryItem[];
+}
+
+export const duplicateInventoryItems = async (
+  data: DuplicateInventoryBody,
+  options?: RequestInit,
+): Promise<DuplicateInventoryResult> =>
+  customFetch<DuplicateInventoryResult>("/api/inventory/duplicate", {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(data),
+  });
+
+export const useDuplicateInventoryItems = <TError = ErrorType<unknown>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<DuplicateInventoryResult, TError, { data: DuplicateInventoryBody }, TContext>;
+}): UseMutationResult<DuplicateInventoryResult, TError, { data: DuplicateInventoryBody }, TContext> => {
+  const { mutation: mutationOptions } = options ?? {};
+  return useMutation({
+    mutationFn: ({ data }) => duplicateInventoryItems(data),
+    ...mutationOptions,
   });
 };

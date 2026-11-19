@@ -13,6 +13,7 @@ import { db, jobsTable, inventoryItemsTable, internalTasksTable, usersTable, ten
 import { eq, and, sql, gte, lte, inArray } from "drizzle-orm";
 import { logger } from "./logger";
 import { ADMIN_ROLES } from "./roles";
+import { stockOwnerId } from "./inventoryDuplicate";
 
 interface SupplyItem {
   inventoryItemId: number;
@@ -102,6 +103,7 @@ async function checkTenant(tenantId: number, now: Date, cutoff: Date): Promise<v
     .select({
       id: inventoryItemsTable.id,
       name: inventoryItemsTable.name,
+      stockItemId: inventoryItemsTable.stockItemId,
       quantity: inventoryItemsTable.quantity,
       reorderPoint: inventoryItemsTable.reorderPoint,
       unit: inventoryItemsTable.unit,
@@ -129,9 +131,19 @@ async function checkTenant(tenantId: number, now: Date, cutoff: Date): Promise<v
 
   if (!systemUser) return;
 
+  const ownerIds = [...new Set(items.flatMap(item => item.stockItemId != null ? [item.stockItemId] : []))];
+  const owners = ownerIds.length === 0 ? [] : await db.select({ id: inventoryItemsTable.id, quantity: inventoryItemsTable.quantity })
+    .from(inventoryItemsTable)
+    .where(and(eq(inventoryItemsTable.tenantId, tenantId), inArray(inventoryItemsTable.id, ownerIds)));
+  const ownerQuantity = new Map(owners.map(owner => [owner.id, owner.quantity]));
+  const stocked = items.map(item => ({
+    ...item,
+    quantity: item.stockItemId == null ? item.quantity : (ownerQuantity.get(stockOwnerId(item)) ?? 0),
+  }));
+
   const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-  for (const item of items) {
+  for (const item of stocked) {
     const needed = totals.get(item.id);
     if (!needed) continue;
 

@@ -281,7 +281,7 @@ router.post("/jobs/:id/inventory-reconciliation", async (req, res): Promise<void
       const itemId = Number(reservation.rows[0].inventory_item_id);
       const cost = Math.round(consumed * Number(reservation.rows[0].unit_cost) * 100) / 100;
       await tx.execute(sql`UPDATE inventory_reservations SET consumed_quantity=${consumed}, status='reconciled' WHERE id=${String(line.reservationId)}`);
-      await tx.execute(sql`UPDATE inventory_items SET quantity=GREATEST(0, quantity-${Math.round(consumed)}), reserved_for_job_id=CASE WHEN EXISTS (SELECT 1 FROM inventory_reservations WHERE inventory_item_id=${itemId} AND status='reserved') THEN reserved_for_job_id ELSE NULL END WHERE id=${itemId} AND tenant_id=${companyId}`);
+      await tx.execute(sql`UPDATE inventory_items AS stock SET quantity=GREATEST(0, stock.quantity-${Math.round(consumed)}), reserved_for_job_id=CASE WHEN EXISTS (SELECT 1 FROM inventory_reservations WHERE inventory_item_id=stock.id AND status='reserved') THEN stock.reserved_for_job_id ELSE NULL END FROM inventory_items AS chosen WHERE chosen.id=${itemId} AND chosen.tenant_id=${companyId} AND stock.id=COALESCE(chosen.stock_item_id, chosen.id) AND stock.tenant_id=${companyId}`);
       parts = parts.map(part => String(part.inventoryItemId) === String(itemId) && part.staged === true ? { ...part, quantity: consumed, total: cost, staged: false, leftover } : part);
     }
     await tx.execute(sql`UPDATE jobs SET job_parts=${JSON.stringify(parts)}::jsonb WHERE id=${jobId} AND tenant_id=${companyId}`);
@@ -344,8 +344,8 @@ async function receiveStock(tx: { execute: typeof db.execute }, companyId: numbe
   }
   const owned = await tx.execute(sql`SELECT id FROM inventory_items WHERE id=${itemId} AND tenant_id=${companyId}`);
   if (!owned.rows.length) throw new IntakeError(400, "Choose an inventory item from this company.");
-  if (jobId) await tx.execute(sql`UPDATE inventory_items SET quantity=quantity+${quantity}, unit_price=${unitCost}, reserved_for_job_id=${jobId} WHERE id=${itemId} AND tenant_id=${companyId}`);
-  else await tx.execute(sql`UPDATE inventory_items SET quantity=quantity+${quantity}, unit_price=${unitCost} WHERE id=${itemId} AND tenant_id=${companyId}`);
+  if (jobId) await tx.execute(sql`UPDATE inventory_items AS stock SET quantity=stock.quantity+${quantity}, unit_price=${unitCost}, reserved_for_job_id=${jobId} FROM inventory_items AS chosen WHERE chosen.id=${itemId} AND chosen.tenant_id=${companyId} AND stock.id=COALESCE(chosen.stock_item_id, chosen.id) AND stock.tenant_id=${companyId}`);
+  else await tx.execute(sql`UPDATE inventory_items AS stock SET quantity=stock.quantity+${quantity}, unit_price=${unitCost} FROM inventory_items AS chosen WHERE chosen.id=${itemId} AND chosen.tenant_id=${companyId} AND stock.id=COALESCE(chosen.stock_item_id, chosen.id) AND stock.tenant_id=${companyId}`);
   if (!jobId) return;
   const job = await tx.execute(sql`SELECT id, job_parts FROM jobs WHERE id=${jobId} AND tenant_id=${companyId} FOR UPDATE`);
   if (!job.rows.length) throw new IntakeError(400, "Choose a job from this company.");

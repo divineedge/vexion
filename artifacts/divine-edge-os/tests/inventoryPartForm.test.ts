@@ -6,6 +6,7 @@ import {
   inventorySizeOptions,
   isPipeTypeName,
   namedId,
+  inventoryListFigures,
   pipeSellPerFoot,
   priceWithMarkup,
   sizeIdAcrossTypes,
@@ -14,6 +15,7 @@ import {
   applyArrival,
   parseOptionalAmount,
   priceWithMarkup as serverPriceWithMarkup,
+  resolveInventorySell,
   sellUnitPrice,
   stockQuantityForReceipt,
   unitForPipe,
@@ -94,6 +96,40 @@ describe("pipe foot markup", () => {
   });
 });
 
+describe("inventory list sell price and company markup", () => {
+  it("shows the per-foot price and marks it up, and uses the company standard when an item markup is blank", () => {
+    const standard = 25;
+    const pipeBlank = resolveInventorySell({ cost: 10, pricePerFoot: 2, markedUpPrice: 10, defaultMarkupPct: standard });
+    expect(pipeBlank).toMatchObject({ pricePerFoot: 2, markupPct: standard, sellPrice: 2.5, usesDefaultMarkup: true });
+    expect(inventoryListFigures({
+      costPrice: 10, pricePerFoot: 2, unitPrice: 10, markupPct: 0, defaultMarkupPct: standard,
+    })).toEqual({ pricePerFoot: 2, markupPct: standard, sellPrice: 2.5 });
+
+    const pipeOverride = resolveInventorySell({ cost: 10, pricePerFoot: 2.5, markedUpPrice: 3, defaultMarkupPct: standard });
+    expect(pipeOverride).toMatchObject({ pricePerFoot: 2.5, markupPct: 20, sellPrice: 3, usesDefaultMarkup: false });
+    expect(inventoryListFigures({
+      costPrice: 10, pricePerFoot: 2.5, unitPrice: 3, markupPct: 20, defaultMarkupPct: standard,
+    })).toEqual({ pricePerFoot: 2.5, markupPct: 20, sellPrice: 3 });
+
+    const supplyBlank = resolveInventorySell({ cost: 10, pricePerFoot: null, markedUpPrice: 10, defaultMarkupPct: standard });
+    expect(supplyBlank).toMatchObject({ pricePerFoot: null, markupPct: standard, sellPrice: 12.5, usesDefaultMarkup: true });
+    expect(inventoryListFigures({
+      costPrice: 10, pricePerFoot: null, unitPrice: 10, markupPct: 0, defaultMarkupPct: standard,
+    })).toEqual({ pricePerFoot: null, markupPct: standard, sellPrice: 12.5 });
+
+    const supplyOverride = resolveInventorySell({ cost: 10, pricePerFoot: null, markedUpPrice: 12, defaultMarkupPct: standard });
+    expect(supplyOverride).toMatchObject({ markupPct: 20, sellPrice: 12, usesDefaultMarkup: false });
+    expect(inventoryListFigures({
+      costPrice: 10, pricePerFoot: null, unitPrice: 12, markupPct: 20, defaultMarkupPct: standard,
+    })).toEqual({ pricePerFoot: null, markupPct: 20, sellPrice: 12 });
+
+    const resolvedPipe = inventoryListFigures({
+      costPrice: 10, pricePerFoot: 2, unitPrice: pipeBlank.sellPrice, markupPct: pipeBlank.markupPct, defaultMarkupPct: standard,
+    });
+    expect(resolvedPipe).toEqual({ pricePerFoot: 2, markupPct: standard, sellPrice: 2.5 });
+  });
+});
+
 describe("shared inventory sizes", () => {
   it("lists sizes from every type and keeps the selection when the type changes", () => {
     expect(inventorySizeOptions([
@@ -124,6 +160,11 @@ describe("add inventory form", () => {
     expect(inventoryPage).toContain('data-testid="input-length-received"');
     expect(inventoryPage).toContain('data-testid="input-price-per-foot"');
     expect(inventoryPage).toContain("pipeSellPerFoot(form.pricePerFoot, form.markupPct, defaultMarkupPct)");
+    expect(inventoryPage).toContain("inventoryListFigures");
+    expect(inventoryPage).toContain("Price / ft");
+    expect(inventoryPage).toContain("list-price-per-foot-");
+    expect(inventoryPage).toContain("list-sell-price-");
+    expect(inventoryPage).toContain("list-markup-");
     expect(inventoryPage).toContain('data-testid="text-sell-price"');
     expect(inventoryPage).toContain("c * (1 + m / 100)");
     expect(inventoryPage).not.toContain("New Supplier");

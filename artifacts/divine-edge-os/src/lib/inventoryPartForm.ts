@@ -62,3 +62,47 @@ export function pipeSellPerFoot(pricePerFoot: string, markupPct: string, default
   if (!Number.isFinite(base) || !Number.isFinite(markup)) return null;
   return priceWithMarkup(base, markup);
 }
+
+function moneyNear(left: number, right: number): boolean {
+  return Math.abs(left - right) < 0.005;
+}
+
+function roundMoney(amount: number): number {
+  return Math.round(amount * 100) / 100;
+}
+
+/**
+ * Prices for one row of the all-inventory list.
+ * A sell figure that is still the buy price, or a pipe sell figure that is still
+ * the raw per-foot price, has no item markup. Those rows use the company standard.
+ * Pipe sell price is the per-foot price times one plus that markup. Another part
+ * keeps its stored sell price when it already has its own markup.
+ */
+export function inventoryListFigures(input: {
+  costPrice?: number | null;
+  pricePerFoot?: number | null;
+  unitPrice: number;
+  markupPct?: number | null;
+  defaultMarkupPct: number;
+}): { pricePerFoot: number | null; markupPct: number; sellPrice: number } {
+  const pricePerFoot = input.pricePerFoot != null && Number.isFinite(input.pricePerFoot) ? input.pricePerFoot : null;
+  const cost = input.costPrice != null && Number.isFinite(input.costPrice) ? input.costPrice : null;
+  const storedSell = Number.isFinite(input.unitPrice) ? input.unitPrice : 0;
+  const standard = Number.isFinite(input.defaultMarkupPct) ? input.defaultMarkupPct : 0;
+  if (pricePerFoot == null && cost === 0) {
+    return { pricePerFoot: null, markupPct: standard, sellPrice: roundMoney(storedSell) };
+  }
+  const unmarked = pricePerFoot != null
+    ? moneyNear(storedSell, pricePerFoot) || (cost != null && moneyNear(storedSell, cost) && !moneyNear(cost, pricePerFoot))
+    : cost != null && moneyNear(storedSell, cost);
+  const markup = !unmarked && input.markupPct != null && Number.isFinite(input.markupPct)
+    ? input.markupPct
+    : standard;
+  if (pricePerFoot != null) {
+    return { pricePerFoot, markupPct: markup, sellPrice: roundMoney(priceWithMarkup(pricePerFoot, markup)) };
+  }
+  if (unmarked && cost != null) {
+    return { pricePerFoot: null, markupPct: markup, sellPrice: roundMoney(priceWithMarkup(cost, markup)) };
+  }
+  return { pricePerFoot: null, markupPct: markup, sellPrice: roundMoney(storedSell) };
+}

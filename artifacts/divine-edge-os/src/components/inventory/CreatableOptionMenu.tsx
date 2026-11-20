@@ -1,11 +1,27 @@
-import { useState } from "react";
-import { Check, ChevronDown, Plus } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Check, ChevronDown, GitMerge, Pencil, Plus, Trash2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-export type CreatableOption = { value: string; label: string };
+export type CreatableOption = {
+  value: string;
+  label: string;
+  detail?: string | null;
+  volumeAmount?: number | null;
+  volumeUnit?: string | null;
+};
+
+const VOLUME_UNITS = [
+  { value: "gal", label: "Gallons" },
+  { value: "fl oz", label: "Fluid ounces" },
+  { value: "oz", label: "Ounces" },
+  { value: "l", label: "Liters" },
+  { value: "lb", label: "Pounds" },
+];
+
+type CatalogEdit = { name: string; volumeAmount: number | null; volumeUnit: string | null };
 
 type Props = {
   value: string;
@@ -21,6 +37,13 @@ type Props = {
   addLabel?: string;
   onAdd?: (name: string) => Promise<void> | void;
   adding?: boolean;
+  manage?: {
+    noun: string;
+    volume?: boolean;
+    onRename: (value: string, next: CatalogEdit) => Promise<void>;
+    onMerge: (source: string, keep: string) => Promise<void>;
+    onDelete: (value: string) => Promise<void>;
+  };
 };
 
 /**
@@ -41,10 +64,18 @@ export function CreatableOptionMenu({
   addLabel = "Add",
   onAdd,
   adding,
+  manage,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [volumeAmount, setVolumeAmount] = useState("");
+  const [volumeUnit, setVolumeUnit] = useState("");
+  const [merging, setMerging] = useState<string | null>(null);
+  const [mergeInto, setMergeInto] = useState("");
+  const [confirming, setConfirming] = useState<string | null>(null);
   const selected = options.find(option => option.value === value);
   const label = selected?.label ?? (value ? value : noneLabel && !value ? noneLabel : placeholder);
 
@@ -61,6 +92,63 @@ export function CreatableOptionMenu({
       await onAdd(name);
       setDraft("");
       setOpen(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const beginEdit = (option: CreatableOption) => {
+    setEditing(option.value);
+    setEditName(option.label);
+    setVolumeAmount(option.volumeAmount != null ? String(option.volumeAmount) : "");
+    setVolumeUnit(option.volumeUnit ?? "");
+    setMerging(null);
+    setConfirming(null);
+  };
+
+  const saveEdit = async (option: CreatableOption) => {
+    if (!manage || busy) return;
+    const name = editName.trim();
+    if (!name) return;
+    let nextVolume: number | null = null;
+    let nextUnit: string | null = null;
+    if (manage.volume) {
+      const amountText = volumeAmount.trim();
+      const unitText = volumeUnit.trim();
+      if ((amountText && !unitText) || (!amountText && unitText)) return;
+      if (amountText) {
+        const amount = Number(amountText);
+        if (!Number.isFinite(amount) || amount <= 0) return;
+        nextVolume = amount;
+        nextUnit = unitText;
+      }
+    }
+    setBusy(true);
+    try {
+      await manage.onRename(option.value, { name, volumeAmount: nextVolume, volumeUnit: nextUnit });
+      setEditing(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveMerge = async (source: string) => {
+    if (!manage || busy || !mergeInto || mergeInto === source) return;
+    setBusy(true);
+    try {
+      await manage.onMerge(source, mergeInto);
+      setMerging(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveDelete = async (source: string) => {
+    if (!manage || busy) return;
+    setBusy(true);
+    try {
+      await manage.onDelete(source);
+      setConfirming(null);
     } finally {
       setBusy(false);
     }
@@ -93,7 +181,7 @@ export function CreatableOptionMenu({
         onOpenAutoFocus={event => event.preventDefault()}
         onCloseAutoFocus={event => event.preventDefault()}
       >
-        <div className="max-h-64 overflow-y-auto p-1" role="listbox" aria-label={title ?? placeholder}>
+        <div className="max-h-72 overflow-y-auto p-1" role="listbox" aria-label={title ?? placeholder}>
           {noneLabel && (
             <OptionRow
               testId={`${testId}-option-none`}
@@ -106,13 +194,112 @@ export function CreatableOptionMenu({
             <p className="px-2 py-1.5 text-xs text-muted-foreground">{emptyText}</p>
           )}
           {options.map(option => (
-            <OptionRow
-              key={option.value}
-              testId={`${testId}-option-${option.value}`}
-              label={option.label}
-              selected={option.value === value}
-              onChoose={() => choose(option.value)}
-            />
+            <div key={option.value} className="rounded-sm">
+              <div className="flex items-center">
+                <OptionRow
+                  testId={`${testId}-option-${option.value}`}
+                  label={option.label}
+                  detail={option.detail}
+                  selected={option.value === value}
+                  onChoose={() => choose(option.value)}
+                />
+                {manage && (
+                  <div className="flex shrink-0 pr-1">
+                    <IconButton
+                      label={`Edit ${option.label}`}
+                      testId={`${testId}-rename-${option.value}`}
+                      onClick={() => beginEdit(option)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </IconButton>
+                    <IconButton
+                      label={`Merge ${option.label}`}
+                      testId={`${testId}-merge-${option.value}`}
+                      onClick={() => { setMerging(option.value); setMergeInto(""); setEditing(null); setConfirming(null); }}
+                    >
+                      <GitMerge className="h-3.5 w-3.5" />
+                    </IconButton>
+                    <IconButton
+                      label={`Delete ${option.label}`}
+                      testId={`${testId}-delete-${option.value}`}
+                      onClick={() => { setConfirming(option.value); setEditing(null); setMerging(null); }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </IconButton>
+                  </div>
+                )}
+              </div>
+              {manage && editing === option.value && (
+                <div className="space-y-2 px-2 pb-2">
+                  <Input
+                    value={editName}
+                    data-testid={`${testId}-rename-name`}
+                    className="h-8 text-sm"
+                    aria-label={`New ${manage.noun} name`}
+                    onChange={event => setEditName(event.target.value)}
+                  />
+                  {manage.volume && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        step="any"
+                        value={volumeAmount}
+                        placeholder="Volume"
+                        data-testid={`${testId}-volume-amount`}
+                        className="h-8 text-sm"
+                        aria-label="Volume amount"
+                        onChange={event => setVolumeAmount(event.target.value)}
+                      />
+                      <select
+                        value={volumeUnit}
+                        data-testid={`${testId}-volume-unit`}
+                        aria-label="Volume unit"
+                        className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
+                        onChange={event => setVolumeUnit(event.target.value)}
+                      >
+                        <option value="">No unit</option>
+                        {VOLUME_UNITS.map(unit => (
+                          <option key={unit.value} value={unit.value}>{unit.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <Button type="button" size="sm" className="h-7" data-testid={`${testId}-save-edit`} disabled={busy || !editName.trim()} onClick={() => void saveEdit(option)}>
+                    Save {manage.noun}
+                  </Button>
+                </div>
+              )}
+              {manage && merging === option.value && (
+                <div className="space-y-2 px-2 pb-2">
+                  <select
+                    value={mergeInto}
+                    data-testid={`${testId}-merge-into`}
+                    aria-label={`Merge ${option.label} into`}
+                    className="h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+                    onChange={event => setMergeInto(event.target.value)}
+                  >
+                    <option value="">Keep this {manage.noun}</option>
+                    {options.filter(other => other.value !== option.value).map(other => (
+                      <option key={other.value} value={other.value}>{other.label}</option>
+                    ))}
+                  </select>
+                  <Button type="button" size="sm" className="h-7" data-testid={`${testId}-confirm-merge`} disabled={busy || !mergeInto} onClick={() => void saveMerge(option.value)}>
+                    Merge into kept {manage.noun}
+                  </Button>
+                </div>
+              )}
+              {manage && confirming === option.value && (
+                <div className="space-y-2 px-2 pb-2">
+                  <p className="text-xs text-muted-foreground">
+                    Delete {option.label}. Items that use it will have this {manage.noun} cleared.
+                  </p>
+                  <Button type="button" size="sm" variant="destructive" className="h-7" data-testid={`${testId}-confirm-delete`} disabled={busy} onClick={() => void saveDelete(option.value)}>
+                    Delete {manage.noun}
+                  </Button>
+                </div>
+              )}
+            </div>
           ))}
         </div>
         {onAdd && (
@@ -149,13 +336,44 @@ export function CreatableOptionMenu({
   );
 }
 
+function IconButton({
+  label,
+  testId,
+  onClick,
+  children,
+}: {
+  label: string;
+  testId: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      data-testid={testId}
+      className="rounded-sm p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+      onClick={event => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClick();
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 function OptionRow({
   label,
+  detail,
   selected,
   onChoose,
   testId,
 }: {
   label: string;
+  detail?: string | null;
   selected: boolean;
   onChoose: () => void;
   testId: string;
@@ -166,11 +384,15 @@ function OptionRow({
       role="option"
       aria-selected={selected}
       data-testid={testId}
-      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+      data-option-label={label}
+      className="flex min-w-0 flex-1 items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
       onClick={onChoose}
     >
       <Check className={cn("h-3.5 w-3.5 shrink-0", selected ? "opacity-100" : "opacity-0")} />
-      <span className="truncate">{label}</span>
+      <span className="min-w-0">
+        <span className="block truncate">{label}</span>
+        {detail && <span className="block truncate text-xs text-muted-foreground">{detail}</span>}
+      </span>
     </button>
   );
 }

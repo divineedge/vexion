@@ -40,6 +40,55 @@ describe("gallon and ounce conversion", () => {
   });
 });
 
+describe("size volume", () => {
+  it("deducts a 2.5 gallon jug as a fraction of one item when the record is in ounces", () => {
+    const plan = planInventoryDeductions([line({
+      amount: 128,
+      unit: "fl oz",
+      inventoryUnit: "each",
+      onHand: 4,
+      sizeVolume: { amount: 2.5, unit: "gal" },
+    })]);
+    expect(plan).toEqual({ ok: true, deductions: [{ inventoryItemId: 7, quantity: 0.4, unit: "each" }] });
+    expect(quantityAfterReplacement(4, 0, 0.4)).toBe(3.6);
+  });
+
+  it("keeps a gallon record in ounces when the item is already stocked in ounces", () => {
+    const plan = planInventoryDeductions([line({
+      amount: 1,
+      unit: "gal",
+      inventoryUnit: "oz",
+      onHand: 200,
+      sizeVolume: { amount: 2.5, unit: "gal" },
+    })]);
+    expect(plan).toEqual({ ok: true, deductions: [{ inventoryItemId: 7, quantity: 128, unit: "oz" }] });
+  });
+
+  it("does not convert pounds into a gallon jug", () => {
+    const plan = planInventoryDeductions([line({
+      amount: 1,
+      unit: "lb",
+      inventoryUnit: "each",
+      onHand: 4,
+      sizeVolume: { amount: 2.5, unit: "gal" },
+    })]);
+    expect(plan.ok).toBe(false);
+    if (plan.ok) return;
+    expect(plan.message).toMatch(/Pounds cannot be converted/i);
+  });
+
+  it("counts a 5 pound bag from a 2 pound record", () => {
+    const plan = planInventoryDeductions([line({
+      amount: 2,
+      unit: "lb",
+      inventoryUnit: "each",
+      onHand: 3,
+      sizeVolume: { amount: 5, unit: "lb" },
+    })]);
+    expect(plan).toEqual({ ok: true, deductions: [{ inventoryItemId: 7, quantity: 0.4, unit: "each" }] });
+  });
+});
+
 describe("pound deductions", () => {
   it("deducts pounds from pounds", () => {
     const plan = planInventoryDeductions([line({ amount: 2, unit: "lb", inventoryUnit: "Pounds", onHand: 10 })]);

@@ -8,13 +8,16 @@ import {
 } from "@workspace/db";
 import {
   inventoryStockUnit,
+  parseStockUnit,
   planInventoryDeductions,
   quantityAfterReplacement,
   readInventoryDeductions,
   roundStock,
   type InventoryDeduction,
+  type SizeVolume,
   type SprayUsageLine,
 } from "./chemicalInventory";
+import { stockNeedsReorder } from "./reorderPoint";
 
 export class ChemicalStockError extends Error {
   status: number;
@@ -46,12 +49,22 @@ async function lockedItems(tx: Parameters<Parameters<typeof db.transaction>[0]>[
     .for("update");
   const sizeIds = items.flatMap(item => item.sizeId == null ? [] : [item.sizeId]);
   const sizes = sizeIds.length
-    ? await tx.select({ id: inventoryPartSizesTable.id, name: inventoryPartSizesTable.name })
-      .from(inventoryPartSizesTable)
+    ? await tx.select({
+      id: inventoryPartSizesTable.id,
+      name: inventoryPartSizesTable.name,
+      volumeAmount: inventoryPartSizesTable.volumeAmount,
+      volumeUnit: inventoryPartSizesTable.volumeUnit,
+    }).from(inventoryPartSizesTable)
       .where(inArray(inventoryPartSizesTable.id, sizeIds))
     : [];
-  const sizeNameById = new Map(sizes.map(size => [size.id, size.name]));
-  return items.map(item => ({ item, sizeName: item.sizeId == null ? null : sizeNameById.get(item.sizeId) ?? null }));
+  const sizeById = new Map(sizes.map(size => [size.id, size]));
+  return items.map(item => {
+    const size = item.sizeId == null ? null : sizeById.get(item.sizeId) ?? null;
+    const volume: SizeVolume | null = size && size.volumeAmount != null && size.volumeAmount > 0 && parseStockUnit(size.volumeUnit)
+      ? { amount: size.volumeAmount, unit: size.volumeUnit ?? "" }
+      : null;
+    return { item, sizeName: size?.name ?? null, sizeVolume: volume };
+  });
 }
 
 /**
@@ -108,7 +121,8 @@ export async function commitChemicalUse(tenantId: number, values: ApplicationIns
         unit: line.unit ?? "",
         inventoryItemId: linked.item.id,
         inventoryName: linked.item.name,
-        inventoryUnit: inventoryStockUnit(linked.sizeName, linked.item.unit),
+        inventoryUnit: inventoryStockUnit(linked.sizeName, linked.item.unit) ?? linked.item.unit,
+        sizeVolume: linked.sizeVolume,
         onHand: available,
       });
     }
@@ -137,7 +151,7 @@ export async function commitChemicalUse(tenantId: number, values: ApplicationIns
       if (next < -1e-9) throw new ChemicalStockError(`Not enough ${linked.item.name} in inventory.`);
       await tx.update(inventoryItemsTable).set({
         quantity: next,
-        isLowStock: next <= linked.item.reorderPoint,
+        isLowStock: stockNeedsReorder(next, linked.item.reorderPoint, linked.item.stockAlerts),
       }).where(and(eq(inventoryItemsTable.id, itemId), eq(inventoryItemsTable.tenantId, tenantId)));
     }
     return saved;
@@ -174,7 +188,7 @@ export async function deleteChemicalUse(tenantId: number, id: number): Promise<b
       item.quantity = next;
       await tx.update(inventoryItemsTable).set({
         quantity: next,
-        isLowStock: next <= item.reorderPoint,
+        isLowStock: stockNeedsReorder(next, item.reorderPoint, item.stockAlerts),
       }).where(and(eq(inventoryItemsTable.id, item.id), eq(inventoryItemsTable.tenantId, tenantId)));
     }
     await tx.delete(chemicalApplicationsTable).where(and(

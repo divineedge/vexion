@@ -3669,6 +3669,8 @@ export interface InventoryItem {
   /** Reorder when on hand is at or below this number. 0 is a real reorder point. */
   reorderPoint?: number;
   unit?: string;
+  /** When false, the item stays in inventory but is left out of low-stock and reorder alerts. */
+  stockAlerts?: boolean;
   isLowStock?: boolean;
   /** Other inventory items used with this one. Null when the part stands alone. */
   linkedParts?: LinkedParts | null;
@@ -3735,6 +3737,8 @@ export interface InventoryItemInput {
   /** 0 is a real reorder point. A blank field is not sent as 0. */
   reorderPoint?: number;
   unit?: string;
+  /** When false, the item is left out of low-stock and reorder alerts. Defaults to true. */
+  stockAlerts?: boolean;
   /** When true, this item is offered as a pickable option in the Blueprint canvas palette. */
   availableForBlueprint?: boolean;
   /** Percentage of the markup (sell - buy) awarded to the salesperson as commission. */
@@ -3780,6 +3784,8 @@ export interface InventoryItemUpdate {
   /** 0 is a real reorder point. A blank field is not sent as 0. */
   reorderPoint?: number;
   unit?: string;
+  /** When false, the item is left out of low-stock and reorder alerts. */
+  stockAlerts?: boolean;
   /** When true, this item is offered as a pickable option in the Blueprint canvas palette. */
   availableForBlueprint?: boolean;
   /** Percentage of the markup (sell - buy) awarded to the salesperson as commission. */
@@ -3811,16 +3817,24 @@ export interface InventorySize {
   typeId: number;
   name: string;
   sortOrder: number;
+  /** Chemical in one unit of an item that uses this size. Null when the size has no volume. */
+  volumeAmount?: number | null;
+  /** gal, oz, l, or lb. Gallons and ounces convert. Pounds stay weight. */
+  volumeUnit?: string | null;
   createdAt: string;
 }
 
 export interface InventorySizeInput {
   typeId: number;
   name: string;
+  volumeAmount?: number | null;
+  volumeUnit?: string | null;
 }
 
 export interface InventorySizeUpdate {
   name: string;
+  volumeAmount?: number | null;
+  volumeUnit?: string | null;
 }
 
 export interface InventorySupplier {

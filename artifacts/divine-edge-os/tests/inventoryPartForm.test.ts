@@ -15,9 +15,12 @@ import {
   priceWithMarkup,
   scaledComponentQuantity,
   sizeIdAcrossTypes,
+  lowStockItems,
+  rewriteCategory,
   stockNeedsReorder,
 } from "../src/lib/inventoryPartForm";
 import { parseReorderPoint as apiReorderPoint, stockNeedsReorder as apiNeedsReorder } from "../../api-server/src/lib/reorderPoint";
+import { rewriteCategory as apiRewriteCategory } from "../../api-server/src/lib/inventoryCatalog";
 import { planLinkedUse, scaledComponentQuantity as apiScaledQuantity } from "../../api-server/src/lib/inventoryKits";
 import {
   applyArrival,
@@ -157,6 +160,33 @@ describe("inventory list sell price and company markup", () => {
       costPrice: 10, pricePerFoot: 2, unitPrice: pipeBlank.sellPrice, markupPct: pipeBlank.markupPct, defaultMarkupPct: standard,
     });
     expect(resolvedPipe).toEqual({ pricePerFoot: 2, markupPct: standard, sellPrice: 2.5 });
+  });
+});
+
+describe("numeric size order", () => {
+  it("puts fractions and mixed numbers before labels", () => {
+    expect(inventorySizeOptions([
+      { id: 5, name: "2" },
+      { id: 6, name: "Gallons" },
+      { id: 1, name: "1/2" },
+      { id: 4, name: "1 1/2" },
+      { id: 2, name: "3/4" },
+      { id: 3, name: "1" },
+    ]).map(size => size.label)).toEqual(["1/2", "3/4", "1", "1 1/2", "2", "Gallons"]);
+  });
+});
+
+describe("stock alerts off", () => {
+  it("leaves a zero-quantity item out of the low-stock list", () => {
+    const quiet = { id: 1, quantity: 0, reorderPoint: 5, stockAlerts: false };
+    const loud = { id: 2, quantity: 0, reorderPoint: 5, stockAlerts: true };
+    expect(stockNeedsReorder(0, 5, false)).toBe(false);
+    expect(stockNeedsReorder(0, 5, false)).toBe(apiNeedsReorder(0, 5, false));
+    expect(lowStockItems([quiet, loud])).toEqual([loud]);
+    expect(rewriteCategory("Valves, Pipe", "Valves", null)).toBe("Pipe");
+    expect(rewriteCategory("Valves, Pipe", "Valves", null)).toBe(apiRewriteCategory("Valves, Pipe", "Valves", null));
+    expect(inventoryPage).toContain('data-testid="switch-stock-alerts"');
+    expect(inventoryPage).toContain("showsStockAlert");
   });
 });
 

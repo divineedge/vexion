@@ -14,6 +14,7 @@ export type DuplicableItem = {
   quantity: number;
   reorderPoint: number;
   unit: string;
+  stockAlerts?: boolean;
   availableForBlueprint: boolean;
   commissionPct: number | null;
   supplierId: number | null;
@@ -38,6 +39,7 @@ export type DuplicateInsert = {
   quantity: 0;
   reorderPoint: number;
   unit: string;
+  stockAlerts: boolean;
   isLowStock: boolean;
   availableForBlueprint: boolean;
   commissionPct: number | null;
@@ -119,7 +121,8 @@ export function planDuplicates(
       quantity: 0,
       reorderPoint: source.reorderPoint,
       unit: source.unit,
-      isLowStock: shareStock ? false : source.reorderPoint >= 0,
+      stockAlerts: source.stockAlerts !== false,
+      isLowStock: source.stockAlerts === false ? false : (shareStock ? false : source.reorderPoint >= 0),
       availableForBlueprint: source.availableForBlueprint,
       commissionPct: source.commissionPct,
       supplierId: source.supplierId,

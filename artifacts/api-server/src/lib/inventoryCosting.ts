@@ -20,6 +20,9 @@ export async function installInventoryCostSchema(){
  unit_cost double precision NOT NULL,source text NOT NULL,created_at timestamptz NOT NULL DEFAULT now())`);
  await db.execute(sql`CREATE INDEX IF NOT EXISTS inventory_cost_lots_available ON inventory_cost_lots(tenant_id,inventory_item_id,unit_cost DESC,id) WHERE remaining_quantity>0`);
  await db.execute(sql`ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS markup_pct real`);
+ await db.execute(sql`ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS stock_alerts boolean NOT NULL DEFAULT true`);
+ await db.execute(sql`ALTER TABLE inventory_part_sizes ADD COLUMN IF NOT EXISTS volume_amount double precision`);
+ await db.execute(sql`ALTER TABLE inventory_part_sizes ADD COLUMN IF NOT EXISTS volume_unit text`);
  // The quantity trigger blocks ALTER TYPE. Drop it, widen the column, then put the trigger back.
  await db.execute(sql`DROP TRIGGER IF EXISTS inventory_cost_opening ON inventory_items`);
  await db.execute(sql`DROP TRIGGER IF EXISTS inventory_cost_changes ON inventory_items`);
@@ -125,7 +128,7 @@ async function applyDesiredQuantity(tx:HrDb,tenantId:number,jobId:number,item:It
  usage.total=Math.round((desiredLegacy*usage.legacyUnitCost+usage.allocations.reduce((n,a)=>n+a.quantity*a.unitCost,0))*1e6)/1e6;
  if(delta){
   stock.quantity=stock.quantity-delta;
-  await tx.update(inventoryItemsTable).set({quantity:stock.quantity,isLowStock:stock.quantity<=stock.reorderPoint}).where(eq(inventoryItemsTable.id,stock.id));
+  await tx.update(inventoryItemsTable).set({quantity:stock.quantity,isLowStock:stock.stockAlerts!==false&&stock.quantity<=stock.reorderPoint}).where(eq(inventoryItemsTable.id,stock.id));
   await tx.insert(inventoryTransfersTable).values({tenantId,inventoryItemId:stock.id,quantity:Math.abs(delta),reason:`Job #${jobId} supplies ${delta>0?'used':'returned'}`});
  }
  return usage;

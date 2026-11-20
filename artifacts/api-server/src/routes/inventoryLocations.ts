@@ -218,7 +218,7 @@ router.post("/inventory/locations/:id/stock", requireAdmin, async (req, res): Pr
     .returning();
    const total=await tx.execute(sql`SELECT COALESCE(SUM(quantity),0) AS quantity FROM inventory_location_stock WHERE tenant_id=${tenantId} AND inventory_item_id=${stockId}`);
    const next=Math.max(Number(total.rows[0].quantity),lockedItem.quantity+Math.min(0,qty-(prior?.quantity??0)));
-   await tx.update(inventoryItemsTable).set({quantity:next,isLowStock:next<=lockedItem.reorderPoint}).where(eq(inventoryItemsTable.id,stockId));
+   await tx.update(inventoryItemsTable).set({quantity:next,isLowStock:lockedItem.stockAlerts!==false&&next<=lockedItem.reorderPoint}).where(eq(inventoryItemsTable.id,stockId));
    return saved;
   });
 
@@ -287,7 +287,7 @@ router.post("/inventory/locations/:id/stock/adjust", requireAdmin, async (req, r
         .set({ quantity: newQty })
         .where(eq(inventoryLocationStockTable.id, locked.id))
         .returning();
-      await tx.update(inventoryItemsTable).set({quantity:item.quantity+d,isLowStock:item.quantity+d<=item.reorderPoint}).where(eq(inventoryItemsTable.id,stockId));
+      await tx.update(inventoryItemsTable).set({quantity:item.quantity+d,isLowStock:item.stockAlerts!==false&&item.quantity+d<=item.reorderPoint}).where(eq(inventoryItemsTable.id,stockId));
       return row;
     });
   } catch (err: any) {

@@ -1387,7 +1387,7 @@ export default function InventoryPage() {
           className="w-full sm:max-w-md overflow-y-auto"
           onInteractOutside={event => { isFromPickerPortal(event); }}
           onPointerDownOutside={event => { isFromPickerPortal(event); }}
-          onFocusOutside={event => { isFromPickerPortal(event); }}
+          onFocusOutside={event => { event.preventDefault(); }}
         >
           <SheetHeader className="pb-4">
             <SheetTitle>{sheetMode === 'create' ? 'Add Inventory Item' : 'Edit Item'}</SheetTitle>

@@ -233,6 +233,10 @@ describe("add inventory form", () => {
     expect(inventoryPage).toContain("list-sell-price-");
     expect(inventoryPage).toContain("list-markup-");
     expect(inventoryPage).toContain('data-testid="text-sell-price"');
+    expect(inventoryPage).toContain("onFocusOutside={event => { event.preventDefault(); }}");
+    const typeMenu = readFileSync(new URL("../src/components/inventory/CreatableOptionMenu.tsx", import.meta.url), "utf8");
+    expect(typeMenu).toContain("onCloseAutoFocus={event => event.preventDefault()}");
+    expect(typeMenu).not.toContain("<Popover open={open} onOpenChange={next => { if (!disabled) setOpen(next); }} modal>");
     expect(inventoryPage).toContain("c * (1 + m / 100)");
     expect(inventoryPage).not.toContain("New Supplier");
     expect(inventoryPage).not.toContain("e.g. Ewing Irrigation");

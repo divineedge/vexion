@@ -167,8 +167,10 @@ export interface DivisionBudget extends OverheadLineItems {
   /** Billable hours each technician can sell in a working week. When omitted, days × hours/day is used. */
   weeklyBillableHours?: number;
   technicianSchedule?: TechnicianSchedule;
-  /** Production weeks for a seasonal crew. Year-round crews use the company annual working weeks. */
+  /** Production weeks for a seasonal crew. */
   weeksWorkedPerYear?: number;
+  /** Year-round production and hourly-pay weeks. Kept on the division, not copied from the company default. */
+  workingWeeks?: number;
   /** Seasonal crews paid through the off-season. Those wages are overhead, not productive labor. */
   yearRoundPay?: boolean;
   customOverhead?: CustomOverheadLine[];
@@ -358,10 +360,24 @@ export function normalizeOverheadLaborRole(raw: any): OverheadLaborRole | null {
   };
 }
 
-/** Working weeks for hourly overhead. Company working weeks win over a seasonal crew's production weeks. */
-export function overheadLaborWorkingWeeks(division: DivisionBudget, annualWorkingWeeks?: number): number {
+/**
+ * Weeks this division produces and pays hourly labor.
+ * Seasonal crews use weeks worked. Year-round crews use their own working weeks.
+ * Company annual weeks are only a fallback for a year-round division that has not stored its own yet.
+ */
+export function divisionWorkingWeeks(d: DivisionBudget, annualWorkingWeeks?: number): number {
+  if (d.technicianSchedule === 'seasonal') {
+    const worked = Number(d.weeksWorkedPerYear);
+    return Number.isFinite(worked) && worked > 0 ? worked : Math.max(0, d.workWeeksPerYear);
+  }
+  if (typeof d.workingWeeks === 'number' && Number.isFinite(d.workingWeeks) && d.workingWeeks >= 0) return d.workingWeeks;
   if (typeof annualWorkingWeeks === 'number' && Number.isFinite(annualWorkingWeeks) && annualWorkingWeeks > 0) return annualWorkingWeeks;
-  return nonNegative(division.workWeeksPerYear);
+  return Math.max(0, d.workWeeksPerYear);
+}
+
+/** Working weeks for hourly overhead on this division. */
+export function overheadLaborWorkingWeeks(division: DivisionBudget, annualWorkingWeeks?: number): number {
+  return divisionWorkingWeeks(division, annualWorkingWeeks);
 }
 
 export function overheadLaborBurdenPct(role: OverheadLaborRole, inheritedPct: number): number {
@@ -451,6 +467,10 @@ function migrateFlatToDivision(raw: any, name = 'Main'): DivisionBudget {
   merged.weeksWorkedPerYear = Number.isFinite(Number(raw.weeksWorkedPerYear))
     ? Math.max(0, Number(raw.weeksWorkedPerYear))
     : merged.workWeeksPerYear;
+  const ownWeeks = Number(raw.workingWeeks);
+  merged.workingWeeks = Number.isFinite(ownWeeks) && ownWeeks > 0
+    ? clampAnnualWorkingWeeks(String(ownWeeks), merged.workWeeksPerYear)
+    : undefined;
   merged.yearRoundPay = raw.yearRoundPay === true;
   merged.customOverhead = Array.isArray(raw.customOverhead)
     ? raw.customOverhead.flatMap((line: any) => normalizeCustomOverheadLine(line))
@@ -474,7 +494,7 @@ export interface BudgetYear {
   year: number;
   divisions: DivisionBudget[];
   overheadOverrides: Partial<OverheadLineItems>;
-  /** Weeks the company actually produces. Overhead and year-round payroll use this, not a 12-month average. */
+  /** Company default. Seasonal crews paid through the off-season use this for wages outside the working season. Year-round divisions keep their own working weeks. */
   annualWorkingWeeks?: number;
   /** Manual company-wide job floor. Null follows the aggregated division baseline. */
   companyFloorPriceOverride?: number | null;
@@ -498,9 +518,11 @@ export interface BudgetYear {
 }
 
 export function defaultBudgetYear(year = new Date().getFullYear()): BudgetYear {
+  const division = defaultDivision('Main');
+  division.workingWeeks = 48;
   return {
     year,
-    divisions: [defaultDivision('Main')],
+    divisions: [division],
     overheadOverrides: {},
     annualWorkingWeeks: 48,
     companyTotalRevenue: 0,
@@ -544,14 +566,16 @@ export function migrateBudgetPayload(saved: unknown): BudgetYear[] {
   const rawList = Array.isArray(saved) ? saved : [saved];
   return rawList.map((raw: any) => {
     if (raw && Array.isArray(raw.divisions)) {
+      const annualWorkingWeeks = Number.isFinite(Number(raw.annualWorkingWeeks)) && Number(raw.annualWorkingWeeks) > 0
+        ? clampAnnualWorkingWeeks(String(raw.annualWorkingWeeks), 48) : 48;
+      const divisions = raw.divisions.length > 0
+        ? raw.divisions.map((d: any) => migrateFlatToDivision(d, d.name ?? 'Main'))
+        : [defaultDivision('Main')];
       return {
         year: raw.year ?? new Date().getFullYear(),
-        divisions: raw.divisions.length > 0
-          ? raw.divisions.map((d: any) => migrateFlatToDivision(d, d.name ?? 'Main'))
-          : [defaultDivision('Main')],
+        divisions: divisions.map(division => stampYearRoundWorkingWeeks(division, annualWorkingWeeks)),
         overheadOverrides: (raw.overheadOverrides && typeof raw.overheadOverrides === 'object') ? raw.overheadOverrides : {},
-        annualWorkingWeeks: Number.isFinite(Number(raw.annualWorkingWeeks)) && Number(raw.annualWorkingWeeks) > 0
-          ? clampAnnualWorkingWeeks(String(raw.annualWorkingWeeks), 48) : 48,
+        annualWorkingWeeks,
         companyTotalRevenue: nonNegative(raw.companyTotalRevenue),
         companyOverhead: normalizeCompanyOverhead(raw.companyOverhead),
         companyOverheadFrequency: normalizeFrequencyMap(raw.companyOverheadFrequency),
@@ -571,7 +595,7 @@ export function migrateBudgetPayload(saved: unknown): BudgetYear[] {
     // Legacy flat shape: the whole object IS a single division's fields.
     return {
       year: raw?.year ?? new Date().getFullYear(),
-      divisions: [migrateFlatToDivision(raw ?? {}, 'Main')],
+      divisions: [stampYearRoundWorkingWeeks(migrateFlatToDivision(raw ?? {}, 'Main'), 48)],
       overheadOverrides: {},
       annualWorkingWeeks: 48,
       companyTotalRevenue: nonNegative(raw?.companyTotalRevenue),
@@ -595,14 +619,15 @@ export function resolvedWeeklyBillableHours(d: DivisionBudget): number {
   return Math.max(0, d.workDaysPerWeek) * Math.max(0, d.billableHoursPerDay);
 }
 
-/** Production weeks. Seasonal crews use weeks worked. Year-round crews use the company working-week setting when it is provided. */
+/** Production weeks for this division. Year-round crews keep their own working weeks. */
 export function capacityWeeks(d: DivisionBudget, annualWorkingWeeks?: number): number {
-  if (d.technicianSchedule === 'seasonal') {
-    const worked = Number(d.weeksWorkedPerYear);
-    return Number.isFinite(worked) && worked > 0 ? worked : d.workWeeksPerYear;
-  }
-  if (d.technicianSchedule === 'year_round' && typeof annualWorkingWeeks === 'number' && annualWorkingWeeks > 0) return annualWorkingWeeks;
-  return d.workWeeksPerYear;
+  return divisionWorkingWeeks(d, annualWorkingWeeks);
+}
+
+function stampYearRoundWorkingWeeks(division: DivisionBudget, annualWorkingWeeks: number): DivisionBudget {
+  if (division.technicianSchedule === 'seasonal') return division;
+  if (typeof division.workingWeeks === 'number' && division.workingWeeks > 0) return division;
+  return { ...division, workingWeeks: annualWorkingWeeks };
 }
 
 export function payrollWeeks(d: DivisionBudget, capacity: number, annualWorkingWeeks?: number): number {

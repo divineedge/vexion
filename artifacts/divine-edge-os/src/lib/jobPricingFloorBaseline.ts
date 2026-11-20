@@ -10,8 +10,8 @@ export function fieldEmployeeCount(d: DivisionBudget): number {
 
 /**
  * Annual on-site CREW hours. Weekly billable hours are already productive hours,
- * so production efficiency is not applied again. Seasonal divisions use weeks
- * worked. Year-round divisions use the company annual working weeks.
+ * so production efficiency is not applied again. Each division uses its own
+ * working weeks.
  * A 52-week year is weekly hours × 52 / 12 (about 4.333 weeks per month).
  */
 export function divisionCrewHoursYear(d: DivisionBudget, annualWorkingWeeks?: number): number {

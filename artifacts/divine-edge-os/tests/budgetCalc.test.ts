@@ -123,6 +123,35 @@ describe("budget man-hour rate", () => {
     expect(result.offSeasonPayrollOverhead).toBe(25 * 40 * 16);
   });
 
+  it("keeps each year-round division on its own working weeks", () => {
+    const lawn = budgetWithWorkers(1);
+    lawn.id = "lawn";
+    lawn.workingWeeks = 40;
+    lawn.weeklyBillableHours = 35;
+    const snow = budgetWithWorkers(1);
+    snow.id = "snow";
+    snow.workingWeeks = 20;
+    snow.weeklyBillableHours = 35;
+    const year = { ...defaultBudgetYear(2026), annualWorkingWeeks: 48, divisions: [lawn, snow] };
+
+    const totals = computeCompanyTotal(year);
+    expect(totals.rows[0].results.capacityWeeks).toBe(40);
+    expect(totals.rows[1].results.capacityWeeks).toBe(20);
+    expect(totals.rows[0].results.employeeLaborCost).toBe(25 * 40 * 40);
+    expect(totals.rows[1].results.employeeLaborCost).toBe(25 * 40 * 20);
+    expect(totals.rows[0].results.annualBillableHours).toBe(Math.round(2 * 35 * 40));
+    expect(totals.rows[1].results.annualBillableHours).toBe(Math.round(2 * 35 * 20));
+    expect(totals.combinedManHours).toBe(totals.rows[0].results.manHoursYear + totals.rows[1].results.manHoursYear);
+
+    lawn.workingWeeks = 30;
+    const changed = computeCompanyTotal(year);
+    expect(changed.rows[0].results.capacityWeeks).toBe(30);
+    expect(changed.rows[0].results.annualBillableHours).toBe(Math.round(2 * 35 * 30));
+    expect(changed.rows[1].results.capacityWeeks).toBe(20);
+    expect(changed.rows[1].results.annualBillableHours).toBe(totals.rows[1].results.annualBillableHours);
+    expect(changed.rows[1].division.workingWeeks).toBe(20);
+  });
+
   it("rolls custom division overhead into company miscellaneous", () => {
     const division = budgetWithWorkers(0);
     division.customOverhead = [{ id: "storage", name: "Storage yard", monthlyAmount: 100 }];
@@ -184,6 +213,8 @@ describe("expense frequency", () => {
       divisions: [{ name: "Main", fuelMaintenance: 10, customOverhead: [{ id: "yard", name: "Yard", monthlyAmount: 25 }] }],
     });
     expect(year.annualWorkingWeeks).toBe(48);
+    expect(year.divisions[0].technicianSchedule).not.toBe("seasonal");
+    expect(year.divisions[0].workingWeeks).toBe(48);
     expect(year.divisions[0].overheadFrequency).toEqual({});
     expect(year.divisions[0].fuelMaintenance).toBe(10);
     expect(year.divisions[0].customOverhead[0].frequency).toBe("monthly");
@@ -227,6 +258,50 @@ describe("overhead and salaried labor", () => {
     expect(result.overheadLaborAnnual).toBe(20 * 10 * 48 * 1.1);
     expect(result.monthlyOverhead).toBeCloseTo(result.overheadLaborAnnual / 12, 5);
     expect(result.breakEvenRate).toBeCloseTo(result.totalAnnualCosts / result.manHoursYear, 5);
+  });
+
+  it("uses each division's own weeks for hourly overhead, including a seasonal crew", () => {
+    const yearRound = budgetWithWorkers(0);
+    yearRound.id = "office";
+    yearRound.workingWeeks = 30;
+    yearRound.overheadLabor = [salaried({
+      id: "hourly-office", payType: "hourly", hourlyRate: 20, hoursPerWeek: 10, annualAmount: 0, inheritBurden: false, payrollBurdenPct: 0,
+    })];
+    const seasonal = budgetWithWorkers(0);
+    seasonal.id = "shop";
+    seasonal.technicianSchedule = "seasonal";
+    seasonal.weeksWorkedPerYear = 16;
+    seasonal.overheadLabor = [salaried({
+      id: "hourly-shop", payType: "hourly", hourlyRate: 15, hoursPerWeek: 8, annualAmount: 0, inheritBurden: false, payrollBurdenPct: 0,
+    })];
+    const year = { ...defaultBudgetYear(2026), annualWorkingWeeks: 50, divisions: [yearRound, seasonal] };
+    const totals = computeCompanyTotal(year);
+    expect(totals.rows[0].results.overheadLaborAnnual).toBe(20 * 10 * 30);
+    expect(totals.rows[1].results.overheadLaborAnnual).toBe(15 * 8 * 16);
+    expect(totals.rows[0].results.capacityWeeks).toBe(30);
+    expect(totals.rows[1].results.capacityWeeks).toBe(16);
+    expect(totals.overheadLaborAnnual).toBe(20 * 10 * 30 + 15 * 8 * 16);
+  });
+
+  it("snapshots company weeks onto a year-round division and keeps an edited value", () => {
+    const [loaded] = migrateBudgetPayload({
+      year: 2026,
+      annualWorkingWeeks: 44,
+      divisions: [
+        { name: "Lawn", technicianSchedule: "year_round" },
+        { name: "Snow", technicianSchedule: "year_round", workingWeeks: 18 },
+        { name: "Spray", technicianSchedule: "seasonal", weeksWorkedPerYear: 28 },
+      ],
+    });
+    expect(loaded.divisions[0].workingWeeks).toBe(44);
+    expect(loaded.divisions[1].workingWeeks).toBe(18);
+    expect(loaded.divisions[2].workingWeeks).toBeUndefined();
+    expect(loaded.divisions[2].weeksWorkedPerYear).toBe(28);
+    loaded.annualWorkingWeeks = 50;
+    const totals = computeCompanyTotal(loaded);
+    expect(totals.rows[0].results.capacityWeeks).toBe(44);
+    expect(totals.rows[1].results.capacityWeeks).toBe(18);
+    expect(totals.rows[2].results.capacityWeeks).toBe(28);
   });
 
   it("inherits the division payroll burden when the role does not set its own", () => {

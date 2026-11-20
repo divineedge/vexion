@@ -11,6 +11,7 @@ import {
   categoryAnnualAmount, companyCategoryOverheadAnnual, companyOverheadShare, expenseFrequency, customLineAmount, customLineFrequency, customLineWithAmount, customLineWithFrequency,
   materialCostAnnual, materialExpenseFrequency, salaryPayrollAnnual, divisionWithSharedRevenue,
   overheadLaborAnnualCost, overheadLaborBasePay, newOverheadLaborRole, OVERHEAD_LABOR_PRESETS, proportionalOverheadLaborShares,
+  divisionWorkingWeeks,
   type CustomOverheadLine, type OverheadLaborRole, type OverheadPayType, type OverheadLaborAllocation,
 } from '@/lib/budgetCalc';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -106,7 +107,7 @@ export function DivisionPanel({
           </div>
           <div className="mt-4 p-3 rounded-lg bg-muted/40 text-sm">
             <span className="inline-flex items-center gap-1">
-              <span className="font-medium">{results.annualBillableHours.toLocaleString()} annual billable hours</span>
+              <span className="font-medium" data-testid="division-annual-billable-hours">{results.annualBillableHours.toLocaleString()} annual billable hours</span>
               <BudgetInfoButton id="division-billable-hours" label="annual billable hours" title="Annual billable hours"><ManHoursInfo /></BudgetInfoButton>
             </span>
             <span className="text-muted-foreground">
@@ -128,18 +129,32 @@ export function DivisionPanel({
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Technician work schedule</label>
-              <Select value={division.technicianSchedule === 'seasonal' ? 'seasonal' : 'year_round'} onValueChange={value => set('technicianSchedule', value === 'seasonal' ? 'seasonal' : 'year_round')}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select value={division.technicianSchedule === 'seasonal' ? 'seasonal' : 'year_round'} onValueChange={value => {
+                const weeks = divisionWorkingWeeks(division, annualWorkingWeeks);
+                if (value === 'seasonal') onChange({ ...division, technicianSchedule: 'seasonal', weeksWorkedPerYear: weeks });
+                else onChange({ ...division, technicianSchedule: 'year_round', workingWeeks: weeks });
+              }}>
+                <SelectTrigger data-testid="select-technician-schedule"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="year_round">Year-round</SelectItem>
                   <SelectItem value="seasonal">Seasonal</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-[11px] text-muted-foreground">{division.technicianSchedule === 'seasonal' ? 'Labor and capacity use the weeks this crew actually works.' : `Uses the company annual working weeks (${annualWorkingWeeks}).`}</p>
+              <p className="text-[11px] text-muted-foreground">{division.technicianSchedule === 'seasonal' ? 'Labor, capacity, and hourly overhead use the weeks this crew actually works.' : 'Labor, capacity, and hourly overhead use this division’s working weeks.'}</p>
             </div>
-            {division.technicianSchedule === 'seasonal' && (
-              <NumField label="Weeks Worked per Year" value={division.weeksWorkedPerYear ?? division.workWeeksPerYear} onChange={v => set('weeksWorkedPerYear', v)} prefix="" hint="Example: 32 weeks for mowing or spraying" />
-            )}
+            <NumField
+              label="Weeks Worked per Year"
+              testId="input-division-working-weeks"
+              value={division.technicianSchedule === 'seasonal'
+                ? (division.weeksWorkedPerYear ?? division.workWeeksPerYear)
+                : (division.workingWeeks ?? annualWorkingWeeks)}
+              onChange={v => {
+                if (division.technicianSchedule === 'seasonal') set('weeksWorkedPerYear', v);
+                else onChange({ ...division, workingWeeks: v > 52 ? 52 : Math.max(0, v) });
+              }}
+              prefix=""
+              hint={division.technicianSchedule === 'seasonal' ? 'Example: 32 weeks for mowing or spraying' : 'This division only. 1–52.'}
+            />
           </div>
           {division.technicianSchedule === 'seasonal' && (
             <div className="mt-4 flex items-center justify-between gap-4 rounded-lg border p-3">
@@ -528,15 +543,16 @@ function OverheadLaborEditor({
   onChange: (roles: OverheadLaborRole[]) => void;
 }) {
   const roles = division.overheadLabor ?? [];
+  const workingWeeks = divisionWorkingWeeks(division, annualWorkingWeeks);
   const patch = (id: string, next: Partial<OverheadLaborRole>) => onChange(roles.map(role => role.id === id ? { ...role, ...next } : role));
-  const divisionAnnual = roles.reduce((sum, role) => role.allocation === 'division' ? sum + overheadLaborAnnualCost(role, annualWorkingWeeks, division.payrollBurdenPct) : sum, 0);
+  const divisionAnnual = roles.reduce((sum, role) => role.allocation === 'division' ? sum + overheadLaborAnnualCost(role, workingWeeks, division.payrollBurdenPct) : sum, 0);
   const payrollAnnual = salaryPayrollAnnual(division) + divisionAnnual + companyLaborShare;
   return (
     <div className="mt-6 space-y-3 border-t pt-4" data-testid="overhead-labor-section">
       <div>
         <p className="text-sm font-medium">Salary / Payroll roles</p>
         <p className="text-xs text-muted-foreground">
-          Non-billable roles (office, shop, sales, admin). Annual salary, or hourly rate × hours/week × {annualWorkingWeeks} working weeks, plus payroll tax and burden. These roles are part of the Salary / Payroll total above, together with the salary / payroll expense line. They are separate from field wages and the owner salary in Labor & Payroll. Division roles are recovered on this division&apos;s productive hours. Company-wide roles are split across divisions by productive hours, or kept in the company total only.
+          Non-billable roles (office, shop, sales, admin). Annual salary, or hourly rate × hours/week × {workingWeeks} working weeks, plus payroll tax and burden. These roles are part of the Salary / Payroll total above, together with the salary / payroll expense line. They are separate from field wages and the owner salary in Labor & Payroll. Division roles are recovered on this division&apos;s productive hours. Company-wide roles are split across divisions by productive hours, or kept in the company total only.
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -550,8 +566,8 @@ function OverheadLaborEditor({
         </Button>
       </div>
       {roles.map(role => {
-        const burdened = overheadLaborAnnualCost(role, annualWorkingWeeks, division.payrollBurdenPct);
-        const base = overheadLaborBasePay(role, annualWorkingWeeks);
+        const burdened = overheadLaborAnnualCost(role, workingWeeks, division.payrollBurdenPct);
+        const base = overheadLaborBasePay(role, workingWeeks);
         return (
           <div key={role.id} className="rounded-lg border p-3 space-y-3" data-testid="overhead-labor-role">
             <div className="flex flex-wrap items-end gap-2">
@@ -577,7 +593,7 @@ function OverheadLaborEditor({
             {role.payType === 'hourly' ? (
               <div className="grid grid-cols-2 gap-3">
                 <NumField label="Hourly rate" value={role.hourlyRate} onChange={value => patch(role.id, { hourlyRate: value })} hint="Overhead wage, not a field billable rate" />
-                <NumField label="Hours / week" value={role.hoursPerWeek} onChange={value => patch(role.id, { hoursPerWeek: value })} prefix="" hint={`× ${annualWorkingWeeks} working weeks`} />
+                <NumField label="Hours / week" value={role.hoursPerWeek} onChange={value => patch(role.id, { hoursPerWeek: value })} prefix="" hint={`× ${workingWeeks} working weeks`} />
               </div>
             ) : (
               <NumField label="Annual salary" value={role.annualAmount} onChange={value => patch(role.id, { annualAmount: value })} hint="Paid whether or not this person bills field hours" />
@@ -613,7 +629,7 @@ function OverheadLaborEditor({
               </select>
             </div>
             <p className="text-xs text-muted-foreground" data-testid="overhead-labor-role-cost">
-              {role.payType === 'hourly' ? `${$(role.hourlyRate, 2)} × ${role.hoursPerWeek} hrs/wk × ${annualWorkingWeeks} wks = ${$(base)} base. ` : ''}
+              {role.payType === 'hourly' ? `${$(role.hourlyRate, 2)} × ${role.hoursPerWeek} hrs/wk × ${workingWeeks} wks = ${$(base)} base. ` : ''}
               Burdened {$(burdened)} / yr · {$(burdened / 12)} / mo.
               {role.allocation === 'division' ? ' Counted in this division’s overhead, break-even rate, and job floor.' : role.allocation === 'company_proportional' ? ' Split across divisions by productive hours, then recovered on each division’s billable hours.' : ' Rolled into company total overhead only. This division’s rate does not include it.'}
             </p>

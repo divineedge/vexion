@@ -170,7 +170,7 @@ export function CompanyTotalPanel({
             <div className="p-3 rounded-lg border text-sm">
               <p className="text-muted-foreground inline-flex items-center gap-1">Monthly overhead expense <BudgetInfoButton id="company-monthly-overhead" label="monthly overhead expense" title="Monthly overhead expense"><CompanyMonthlyOverheadInfo /></BudgetInfoButton></p>
               <p className="font-bold">{$(totals.monthlyOverheadExpense)} / mo</p>
-              <p className="text-[11px] text-muted-foreground">Annual overhead ÷ 12, for cash-flow reference. Rates still use {year.annualWorkingWeeks ?? totals.annualWorkingWeeks} working weeks.</p>
+              <p className="text-[11px] text-muted-foreground">Annual overhead ÷ 12, for cash-flow reference. Each division’s rates use that division’s working weeks.</p>
             </div>
           </div>
           <div className="mt-4 space-y-2" data-testid="company-overhead-labor">
@@ -226,7 +226,7 @@ export function CompanyTotalPanel({
             saved={year.companyJobPricingFloor}
             baseline={jpfBaseline}
             onChange={onJobPricingFloorChange}
-            baselineNote="Wage is the headcount-weighted average of each division's hourly rate, and payroll burden is weighted by those wages. Monthly overhead adds every division's annualized expenses (monthly × 12, annual as entered, including custom categories and overhead/salaried labor) ÷ 12, plus owner salaries ÷ 12, plus company-wide salaried labor ÷ 12. Monthly crew hours add each division's crews × weekly billable hours × its working weeks, then ÷ 12. Seasonal divisions use weeks worked. Stop times and direct costs are example values."
+            baselineNote="Wage is the headcount-weighted average of each division's hourly rate, and payroll burden is weighted by those wages. Monthly overhead adds every division's annualized expenses (monthly × 12, annual as entered, including custom categories and overhead/salaried labor) ÷ 12, plus owner salaries ÷ 12, plus company-wide salaried labor ÷ 12. Monthly crew hours add each division's crews × weekly billable hours × its own working weeks, then ÷ 12. Stop times and direct costs are example values."
           />
         </Section>
 

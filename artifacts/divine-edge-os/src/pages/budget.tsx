@@ -129,6 +129,7 @@ export default function BudgetPage() {
   const addDivision = async () => {
     const name = `Division ${year.divisions.length + 1}`;
     const newDiv = defaultDivision(name);
+    newDiv.workingWeeks = year.annualWorkingWeeks ?? 48;
     const ensured = years.some(item => item.year === currentYear) ? years : [...years, resolveBudgetYear(years, currentYear)];
     const nextYears = ensured.map(y => y.year === currentYear
       ? { ...y, divisions: [...y.divisions, newDiv] }

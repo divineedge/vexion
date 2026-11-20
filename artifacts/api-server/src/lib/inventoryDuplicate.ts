@@ -10,6 +10,7 @@ export type DuplicableItem = {
   sizeId: number | null;
   unitPrice: number;
   markedUpPrice: number;
+  markupPct?: number | null;
   quantity: number;
   reorderPoint: number;
   unit: string;
@@ -33,6 +34,7 @@ export type DuplicateInsert = {
   sizeId: number | null;
   unitPrice: number;
   markedUpPrice: number;
+  markupPct: number | null;
   quantity: 0;
   reorderPoint: number;
   unit: string;
@@ -113,6 +115,7 @@ export function planDuplicates(
       sizeId: source.sizeId,
       unitPrice: source.unitPrice,
       markedUpPrice: source.markedUpPrice,
+      markupPct: source.markupPct ?? null,
       quantity: 0,
       reorderPoint: source.reorderPoint,
       unit: source.unit,

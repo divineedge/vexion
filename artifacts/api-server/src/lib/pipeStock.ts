@@ -67,11 +67,28 @@ export function resolveInventorySell(input: {
   pricePerFoot?: number | null;
   markedUpPrice: number;
   defaultMarkupPct: number;
+  /**
+   * Stored item markup. Null means derive it from the stored sell price, where a
+   * sell price equal to the buy price uses the company standard. A number, including
+   * 0, is an explicit markup and must not be replaced by the company standard.
+   */
+  itemMarkupPct?: number | null;
 }): { sellPrice: number; markupPct: number; pricePerFoot: number | null; usesDefaultMarkup: boolean } {
   const pricePerFoot = finiteAmount(input.pricePerFoot);
   const cost = finiteAmount(input.cost) ?? 0;
   const storedSell = finiteAmount(input.markedUpPrice) ?? 0;
   const standard = finiteAmount(input.defaultMarkupPct) ?? 0;
+  const explicit = finiteAmount(input.itemMarkupPct);
+  if (explicit != null && explicit >= 0) {
+    const markup = roundPct(explicit);
+    const base = pricePerFoot ?? cost;
+    return {
+      sellPrice: roundMoney(priceWithMarkup(base, markup)),
+      markupPct: markup,
+      pricePerFoot,
+      usesDefaultMarkup: false,
+    };
+  }
   // A zero cost cannot imply a markup. Keep a stored sell price and show the company standard.
   if (pricePerFoot == null && cost === 0) {
     return {

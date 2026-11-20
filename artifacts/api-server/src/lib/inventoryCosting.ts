@@ -19,6 +19,7 @@ export async function installInventoryCostSchema(){
  expense_id integer REFERENCES expense_entries(id),received_quantity double precision NOT NULL,remaining_quantity double precision NOT NULL,
  unit_cost double precision NOT NULL,source text NOT NULL,created_at timestamptz NOT NULL DEFAULT now())`);
  await db.execute(sql`CREATE INDEX IF NOT EXISTS inventory_cost_lots_available ON inventory_cost_lots(tenant_id,inventory_item_id,unit_cost DESC,id) WHERE remaining_quantity>0`);
+ await db.execute(sql`ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS markup_pct real`);
  // The quantity trigger blocks ALTER TYPE. Drop it, widen the column, then put the trigger back.
  await db.execute(sql`DROP TRIGGER IF EXISTS inventory_cost_opening ON inventory_items`);
  await db.execute(sql`DROP TRIGGER IF EXISTS inventory_cost_changes ON inventory_items`);
@@ -49,9 +50,11 @@ export async function installInventoryCostSchema(){
    END LOOP;
   END IF;
   SELECT MAX(unit_cost) INTO highest FROM inventory_cost_lots WHERE tenant_id=NEW.tenant_id AND inventory_item_id=NEW.id AND remaining_quantity>0;
-  -- A catalog edit sets the buy price or the sell price on purpose. Keep that price.
-  -- A quantity-only change still adopts the highest remaining lot cost.
+  -- Stock use and receipts adopt the highest remaining lot when the catalog price was not edited.
+  -- A catalog save sets inventory.keep_catalog_price so the buy price the user saved stays,
+  -- even when that price is the same number already stored and only the quantity changed.
   IF highest IS NOT NULL
+     AND current_setting('inventory.keep_catalog_price', true) IS DISTINCT FROM 'on'
      AND NEW.unit_price IS NOT DISTINCT FROM OLD.unit_price
      AND NEW.marked_up_price IS NOT DISTINCT FROM OLD.marked_up_price THEN
    NEW.unit_price=highest;
@@ -167,7 +170,7 @@ export async function setJobPart(tenantId:number,jobId:number,itemId:number,quan
   };
   const parentStock=stockOf(item);
   const [tenant]=await tx.select({defaultMarkupPct:tenantsTable.defaultMarkupPct}).from(tenantsTable).where(eq(tenantsTable.id,tenantId));
-  const sellOf=(row:Item)=>resolveInventorySell({cost:row.unitPrice,pricePerFoot:row.pricePerFoot,markedUpPrice:row.markedUpPrice,defaultMarkupPct:tenant?.defaultMarkupPct??20}).sellPrice;
+  const sellOf=(row:Item)=>resolveInventorySell({cost:row.unitPrice,pricePerFoot:row.pricePerFoot,markedUpPrice:row.markedUpPrice,defaultMarkupPct:tenant?.defaultMarkupPct??20,itemMarkupPct:row.markupPct}).sellPrice;
   const starting:StockUsage=old?structuredClone(old._stockUsage??{legacyQuantity:old.quantity,legacyUnitCost:item.unitPrice,allocations:[],locations:[],total:old.quantity*item.unitPrice}):emptyUsage();
   const componentRows= [...componentIds].flatMap(id=>{
    const row=locked.get(id);

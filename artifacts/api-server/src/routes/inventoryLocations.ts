@@ -44,12 +44,13 @@ async function companyMarkup(tenantId: number): Promise<number> {
   return row?.defaultMarkupPct ?? 20;
 }
 
-function sellFor(item: { unitPrice: number; pricePerFoot?: number | null; markedUpPrice: number }, markup: number): number {
+function sellFor(item: { unitPrice: number; pricePerFoot?: number | null; markedUpPrice: number; markupPct?: number | null }, markup: number): number {
   return resolveInventorySell({
     cost: item.unitPrice,
     pricePerFoot: item.pricePerFoot,
     markedUpPrice: item.markedUpPrice,
     defaultMarkupPct: markup,
+    itemMarkupPct: item.markupPct,
   }).sellPrice;
 }
 

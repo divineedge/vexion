@@ -127,6 +127,12 @@ export const inventoryItemsTable = pgTable("inventory_items", {
   sizeId: integer("size_id").references(() => inventoryPartSizesTable.id, { onDelete: "set null" }),
   unitPrice: real("unit_price").notNull().default(0),
   markedUpPrice: real("marked_up_price").notNull().default(0),
+  /**
+   * Explicit item markup percent. Null means the company standard applies when the
+   * stored sell price still equals the buy price (or the raw per-foot price).
+   * 0 is a real markup of zero and is not the company standard.
+   */
+  markupPct: real("markup_pct"),
   quantity: doublePrecision("quantity").notNull().default(0),
   reorderPoint: integer("reorder_point").notNull().default(5),
   unit: text("unit").notNull().default("each"),

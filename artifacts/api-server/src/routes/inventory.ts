@@ -200,6 +200,7 @@ function formatItem(
     pricePerFoot: i.pricePerFoot,
     markedUpPrice: i.markedUpPrice,
     defaultMarkupPct: tenantMarkupPct,
+    itemMarkupPct: i.markupPct,
   });
   const sellPrice = priced.sellPrice;
   const markup = priced.markupPct;
@@ -222,6 +223,7 @@ function formatItem(
     costPrice: includeCostPrice ? costPrice : null,
     unitPrice: sellPrice,
     markupPct: markup,
+    usesDefaultMarkup: priced.usesDefaultMarkup,
     markedUpPrice: sellPrice,
     quantity: i.quantity,
     reorderPoint: i.reorderPoint,
@@ -403,6 +405,7 @@ router.get("/inventory/summary", async (req, res): Promise<void> => {
       pricePerFoot: i.pricePerFoot,
       markedUpPrice: i.markedUpPrice,
       defaultMarkupPct: tenantMarkupPct,
+      itemMarkupPct: i.markupPct,
     }).sellPrice * i.quantity;
   }, 0);
   const lowStockCount = shown.filter(i => i.quantity <= i.reorderPoint).length;
@@ -633,6 +636,7 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
     lengthReceived: lengthRead.value ?? null,
     pricePerFoot: priceRead.value ?? null,
     vendorId: vendor.id,
+    markupPct: explicitMarkup ? effectiveMarkupPct : null,
   }).returning();
 
   if (linkedBody !== undefined) {
@@ -711,12 +715,13 @@ router.post("/inventory/duplicate", requireInventoryMutate, async (req, res): Pr
   res.status(201).json({ items });
 });
 
-router.get("/inventory/:id", async (req, res): Promise<void> => {
+router.get("/inventory/:id", async (req, res, next): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  // Static paths such as /inventory/locations are mounted on a later router.
+  if (isNaN(id)) { next(); return; }
 
   const [item, markupPct, showCost] = await Promise.all([
     db.select().from(inventoryItemsTable)
@@ -771,13 +776,17 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
     if (req.body.sku !== undefined) {
       const sku = String(req.body.sku).trim();
       if (!sku) { res.status(400).json({ error: "sku is required" }); return; }
-      const [clash] = await db.select({ id: inventoryItemsTable.id }).from(inventoryItemsTable)
-        .where(and(
-          eq(inventoryItemsTable.tenantId, tenantId),
-          ne(inventoryItemsTable.id, id),
-          sql`lower(${inventoryItemsTable.sku}) = lower(${sku})`,
-        ));
-      if (clash) { res.status(400).json({ error: "SKU is already in use" }); return; }
+      // Create does not reject a repeated SKU. An item that already shares one can still
+      // be edited as long as this save does not rename it onto yet another item.
+      if (sku.toLowerCase() !== current.sku.trim().toLowerCase()) {
+        const [clash] = await db.select({ id: inventoryItemsTable.id }).from(inventoryItemsTable)
+          .where(and(
+            eq(inventoryItemsTable.tenantId, tenantId),
+            ne(inventoryItemsTable.id, id),
+            sql`lower(${inventoryItemsTable.sku}) = lower(${sku})`,
+          ));
+        if (clash) { res.status(400).json({ error: "SKU is already in use" }); return; }
+      }
       updates.sku = sku;
     }
     if (quantity !== undefined) {
@@ -787,8 +796,11 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
       if (ownerId === current.id) {
         updates.quantity = nextQty;
       } else {
-        await db.update(inventoryItemsTable).set({ quantity: nextQty })
-          .where(and(eq(inventoryItemsTable.id, ownerId), eq(inventoryItemsTable.tenantId, tenantId)));
+        await db.transaction(async tx => {
+          await tx.execute(sql`SELECT set_config('inventory.keep_catalog_price', 'on', true)`);
+          await tx.update(inventoryItemsTable).set({ quantity: nextQty })
+            .where(and(eq(inventoryItemsTable.id, ownerId), eq(inventoryItemsTable.tenantId, tenantId)));
+        });
       }
       sharedQuantity = nextQty;
     }
@@ -862,12 +874,15 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
       pricePerFoot: nextPerFoot,
       markedUpPrice: existing.markedUpPrice,
       defaultMarkupPct: tenantDefault,
+      itemMarkupPct: existing.markupPct,
     });
     const costVal = costPrice !== undefined ? parseSafeFloat(costPrice, existing.unitPrice) : existing.unitPrice;
     const clearToStandard = reqMarkupPct === null;
     const explicitMarkup = reqMarkupPct != null;
     const effectiveMarkupPct = clearToStandard ? tenantDefault : explicitMarkup ? parseSafeFloat(reqMarkupPct, priced.markupPct) : priced.markupPct;
     const storeStandard = clearToStandard || (!explicitMarkup && priced.usesDefaultMarkup);
+    // 0 is an explicit markup. Null clears it so the company standard applies again.
+    if (reqMarkupPct !== undefined) updates.markupPct = clearToStandard ? null : effectiveMarkupPct;
     if (nextPerFoot != null) {
       if (costPrice !== undefined || explicitMarkup || clearToStandard) updates.unitPrice = costVal;
       if (explicitMarkup) updates.markedUpPrice = priceWithMarkup(nextPerFoot, effectiveMarkupPct);
@@ -905,11 +920,13 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
       .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)));
     updated = current;
   } else {
-    const [row] = await db
-      .update(inventoryItemsTable)
-      .set(updates)
-      .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)))
-      .returning();
+    const [row] = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT set_config('inventory.keep_catalog_price', 'on', true)`);
+      return tx.update(inventoryItemsTable)
+        .set(updates)
+        .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)))
+        .returning();
+    });
     updated = row;
   }
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }

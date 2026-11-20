@@ -12,6 +12,7 @@ import {
 } from "@workspace/db";
 import { installInventoryCostSchema } from "../lib/inventoryCosting";
 import inventoryRouter from "./inventory";
+import inventoryLocationsRouter from "./inventoryLocations";
 import inventoryPartGroupsRouter from "./inventoryPartGroups";
 
 const app = express();
@@ -25,6 +26,7 @@ app.use((req, _res, next) => {
 });
 app.use(inventoryPartGroupsRouter);
 app.use(inventoryRouter);
+app.use(inventoryLocationsRouter);
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const err = error as { message?: string; cause?: { message?: string }; stack?: string };
   res.status(500).json({ error: err.message, cause: err.cause?.message, stack: err.stack });
@@ -53,7 +55,8 @@ describe("inventory create and update", () => {
     await db.delete(inventoryItemsTable).where(eq(inventoryItemsTable.tenantId, tenantId));
     await db.delete(inventoryPartTypesTable).where(eq(inventoryPartTypesTable.tenantId, tenantId));
     await db.delete(usersTable).where(eq(usersTable.tenantId, tenantId));
-    await db.delete(tenantsTable).where(eq(tenantsTable.id, tenantId));
+    // Payroll rates are immutable, so the tenant row can outlive this test.
+    await db.delete(tenantsTable).where(eq(tenantsTable.id, tenantId)).catch(() => undefined);
   });
 
   const authed = () => ({ "x-tenant-id": String(tenantId), "x-user-id": String(userId) });
@@ -148,5 +151,130 @@ describe("inventory create and update", () => {
     expect(pipeUpdate.body.costPrice).toBe(8);
     expect(pipeUpdate.body.unitPrice).toBe(3);
     expect(pipeUpdate.body.quantity).toBe(80);
+
+    const changed = await request(app).patch(`/inventory/${part.body.id}`).set(authed()).send({
+      name: "Brass Gate Valve 1in",
+      sku: "BGV-1",
+      costPrice: 18,
+      markupPct: 30,
+      quantity: 7,
+      reorderPoint: 0,
+      unit: "each",
+      pricePerFoot: null,
+      linkedParts: null,
+    });
+    expect(changed.status, JSON.stringify(changed.body)).toBe(200);
+    expect(changed.body.costPrice).toBe(18);
+    expect(changed.body.markupPct).toBe(30);
+    expect(changed.body.usesDefaultMarkup).toBe(false);
+    expect(changed.body.unitPrice).toBe(23.4);
+    expect(changed.body.quantity).toBe(7);
+
+    const reread = await request(app).get(`/inventory/${part.body.id}`).set(authed());
+    expect(reread.status).toBe(200);
+    expect(reread.body.costPrice).toBe(18);
+    expect(reread.body.markupPct).toBe(30);
+    expect(reread.body.quantity).toBe(7);
+
+    await db.insert(inventoryCostLotsTable).values({
+      tenantId,
+      inventoryItemId: part.body.id,
+      receivedQuantity: 2,
+      remainingQuantity: 2,
+      unitCost: 40,
+      source: "receipt",
+    });
+    const withLot = await request(app).patch(`/inventory/${part.body.id}`).set(authed()).send({
+      costPrice: 17,
+      markupPct: 35,
+      quantity: 8,
+      reorderPoint: 0,
+    });
+    expect(withLot.status, JSON.stringify(withLot.body)).toBe(200);
+    expect(withLot.body.costPrice).toBe(17);
+    expect(withLot.body.markupPct).toBe(35);
+    expect(withLot.body.quantity).toBe(8);
+    const [stored] = await db.select({
+      unitPrice: inventoryItemsTable.unitPrice,
+      quantity: inventoryItemsTable.quantity,
+    }).from(inventoryItemsTable).where(eq(inventoryItemsTable.id, part.body.id));
+    expect(stored.unitPrice).toBe(17);
+    expect(stored.quantity).toBe(8);
+  });
+
+  it("keeps an explicit markup of 0 instead of the company standard", async () => {
+    const created = await request(app).post("/inventory").set(authed()).send({
+      name: "Zero markup valve",
+      sku: "ZERO-1",
+      costPrice: 10,
+      markupPct: null,
+      quantity: 4,
+      reorderPoint: 0,
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    expect(created.body.markupPct).toBe(25);
+    expect(created.body.usesDefaultMarkup).toBe(true);
+
+    const zero = await request(app).patch(`/inventory/${created.body.id}`).set(authed()).send({
+      costPrice: 21,
+      markupPct: 0,
+      quantity: 3,
+      reorderPoint: 0,
+    });
+    expect(zero.status, JSON.stringify(zero.body)).toBe(200);
+    expect(zero.body.costPrice).toBe(21);
+    expect(zero.body.markupPct).toBe(0);
+    expect(zero.body.usesDefaultMarkup).toBe(false);
+    expect(zero.body.unitPrice).toBe(21);
+    expect(zero.body.quantity).toBe(3);
+
+    const again = await request(app).get(`/inventory/${created.body.id}`).set(authed());
+    expect(again.body.markupPct).toBe(0);
+    expect(again.body.unitPrice).toBe(21);
+    expect(again.body.quantity).toBe(3);
+
+    const cleared = await request(app).patch(`/inventory/${created.body.id}`).set(authed()).send({
+      costPrice: 21,
+      markupPct: null,
+      quantity: 3,
+    });
+    expect(cleared.status, JSON.stringify(cleared.body)).toBe(200);
+    expect(cleared.body.usesDefaultMarkup).toBe(true);
+    expect(cleared.body.markupPct).toBe(25);
+    expect(cleared.body.unitPrice).toBe(26.25);
+  });
+
+  it("updates an item that shares a SKU and still lists locations", async () => {
+    const first = await request(app).post("/inventory").set(authed()).send({
+      name: "Shared sku",
+      sku: "SAME-1",
+      costPrice: 4,
+      quantity: 1,
+      reorderPoint: 0,
+    });
+    const second = await request(app).post("/inventory").set(authed()).send({
+      name: "Shared sku copy",
+      sku: "SAME-1",
+      costPrice: 4,
+      quantity: 1,
+      reorderPoint: 0,
+    });
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    const updated = await request(app).patch(`/inventory/${second.body.id}`).set(authed()).send({
+      sku: "SAME-1",
+      costPrice: 9,
+      markupPct: 10,
+      quantity: 6,
+      reorderPoint: 0,
+    });
+    expect(updated.status, JSON.stringify(updated.body)).toBe(200);
+    expect(updated.body.costPrice).toBe(9);
+    expect(updated.body.markupPct).toBe(10);
+    expect(updated.body.quantity).toBe(6);
+
+    const locations = await request(app).get("/inventory/locations").set(authed());
+    expect(locations.status, JSON.stringify(locations.body)).toBe(200);
+    expect(Array.isArray(locations.body)).toBe(true);
   });
 });

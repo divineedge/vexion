@@ -48,6 +48,7 @@ const ADDITIVE_SETTINGS_SQL = [
   `ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS size_id integer REFERENCES inventory_part_sizes(id) ON DELETE SET NULL`,
   `ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS length_received real`,
   `ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS price_per_foot real`,
+  `ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS markup_pct real`,
   `ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS vendor_id integer REFERENCES vendors(id) ON DELETE SET NULL`,
   `ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS stock_item_id integer REFERENCES inventory_items(id)`,
   `CREATE INDEX IF NOT EXISTS inventory_items_stock_item_idx ON inventory_items (stock_item_id)`,

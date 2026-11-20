@@ -141,6 +141,12 @@ describe("inventory list sell price and company markup", () => {
       costPrice: 10, pricePerFoot: null, unitPrice: 10, markupPct: 0, defaultMarkupPct: standard,
     })).toEqual({ pricePerFoot: null, markupPct: standard, sellPrice: 12.5 });
 
+    const explicitZero = resolveInventorySell({ cost: 21, pricePerFoot: null, markedUpPrice: 21, defaultMarkupPct: standard, itemMarkupPct: 0 });
+    expect(explicitZero).toMatchObject({ markupPct: 0, sellPrice: 21, usesDefaultMarkup: false });
+    expect(inventoryListFigures({
+      costPrice: 21, pricePerFoot: null, unitPrice: 21, markupPct: 0, defaultMarkupPct: standard, usesDefaultMarkup: false,
+    })).toEqual({ pricePerFoot: null, markupPct: 0, sellPrice: 21 });
+
     const supplyOverride = resolveInventorySell({ cost: 10, pricePerFoot: null, markedUpPrice: 12, defaultMarkupPct: standard });
     expect(supplyOverride).toMatchObject({ markupPct: 20, sellPrice: 12, usesDefaultMarkup: false });
     expect(inventoryListFigures({

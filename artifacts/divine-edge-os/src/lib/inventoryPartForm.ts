@@ -93,17 +93,36 @@ function roundMoney(amount: number): number {
  * Pipe sell price is the per-foot price times one plus that markup. Another part
  * keeps its stored sell price when it already has its own markup.
  */
+/** The API says whether this row's markup is the company standard or an explicit percent, including 0. */
+export function readUsesDefaultMarkup(item: object): boolean | undefined {
+  if (!("usesDefaultMarkup" in item)) return undefined;
+  const value = (item as { usesDefaultMarkup?: unknown }).usesDefaultMarkup;
+  return typeof value === "boolean" ? value : undefined;
+}
+
 export function inventoryListFigures(input: {
   costPrice?: number | null;
   pricePerFoot?: number | null;
   unitPrice: number;
   markupPct?: number | null;
   defaultMarkupPct: number;
+  /** False means markupPct is explicit, including 0. Undefined keeps the older sell-versus-cost guess. */
+  usesDefaultMarkup?: boolean;
 }): { pricePerFoot: number | null; markupPct: number; sellPrice: number } {
   const pricePerFoot = input.pricePerFoot != null && Number.isFinite(input.pricePerFoot) ? input.pricePerFoot : null;
   const cost = input.costPrice != null && Number.isFinite(input.costPrice) ? input.costPrice : null;
   const storedSell = Number.isFinite(input.unitPrice) ? input.unitPrice : 0;
   const standard = Number.isFinite(input.defaultMarkupPct) ? input.defaultMarkupPct : 0;
+  if (input.usesDefaultMarkup === false && input.markupPct != null && Number.isFinite(input.markupPct)) {
+    const markup = input.markupPct;
+    if (pricePerFoot != null) {
+      return { pricePerFoot, markupPct: markup, sellPrice: roundMoney(priceWithMarkup(pricePerFoot, markup)) };
+    }
+    if (cost != null) {
+      return { pricePerFoot: null, markupPct: markup, sellPrice: roundMoney(priceWithMarkup(cost, markup)) };
+    }
+    return { pricePerFoot: null, markupPct: markup, sellPrice: roundMoney(storedSell) };
+  }
   if (pricePerFoot == null && cost === 0) {
     return { pricePerFoot: null, markupPct: standard, sellPrice: roundMoney(storedSell) };
   }

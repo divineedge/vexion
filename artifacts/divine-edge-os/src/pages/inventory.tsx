@@ -50,7 +50,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useDebounce } from '@/hooks/use-debounce';
 import { upsertInventoryLocation } from '@/lib/inventoryLocations';
 import { groupInventoryItems, type InventoryGroupBy } from '@/lib/inventoryGrouping';
-import { categoryChoices, feetFromLength, formatInventoryQuantity, inventoryListFigures, inventorySizeOptions, isPipeTypeName, namedId, parseLinkedPartsDraft, parseReorderPoint, pipeSellPerFoot, sizeIdAcrossTypes, unitForChemicalSize } from '@/lib/inventoryPartForm';
+import { categoryChoices, feetFromLength, formatInventoryQuantity, inventoryListFigures, inventorySizeOptions, isPipeTypeName, namedId, parseLinkedPartsDraft, parseReorderPoint, pipeSellPerFoot, readUsesDefaultMarkup, sizeIdAcrossTypes, unitForChemicalSize } from '@/lib/inventoryPartForm';
 import { LinkedPartsEditor, type LinkRow } from '@/components/inventory/LinkedPartsEditor';
 import { ShrinkageReport } from '@/components/inventory/ShrinkageReport';
 
@@ -430,6 +430,7 @@ export default function InventoryPage() {
     unitPrice: selectedItem.unitPrice,
     markupPct: selectedItem.markupPct,
     defaultMarkupPct,
+    usesDefaultMarkup: readUsesDefaultMarkup(selectedItem),
   }) : null;
 
   const createItem = useCreateInventoryItem();
@@ -563,14 +564,16 @@ export default function InventoryPage() {
     const item = items?.find(i => i.id === id);
     if (!item) return;
     const costVal = item.costPrice != null ? String(item.costPrice) : '';
+    const explicitMarkup = readUsesDefaultMarkup(item) === false;
     const figures = inventoryListFigures({
       costPrice: item.costPrice,
       pricePerFoot: item.pricePerFoot,
       unitPrice: item.unitPrice,
       markupPct: item.markupPct,
       defaultMarkupPct,
+      usesDefaultMarkup: readUsesDefaultMarkup(item),
     });
-    const mPct = Math.abs(figures.markupPct - defaultMarkupPct) < 0.001 ? '' : String(figures.markupPct);
+    const mPct = explicitMarkup || Math.abs(figures.markupPct - defaultMarkupPct) >= 0.001 ? String(figures.markupPct) : '';
     const linkedSpray = sprayProducts.find(product => product.inventoryItemId === id);
     setSprayBaseline(linkedSpray?.id ?? null);
     setForm({
@@ -671,7 +674,10 @@ export default function InventoryPage() {
           qc.invalidateQueries({ queryKey: getGetInventorySummaryQueryKey() });
           setSheetMode(null);
         },
-        onError: () => toast.error('Failed to update item'),
+        onError: (error: unknown) => {
+          const detail = error instanceof Error ? error.message.replace(/^HTTP \d+ [^:]+:\s*/, '') : '';
+          toast.error(detail ? `Failed to update item. ${detail}` : 'Failed to update item');
+        },
       });
     }
   };
@@ -1100,6 +1106,7 @@ export default function InventoryPage() {
                         unitPrice: item.unitPrice,
                         markupPct: item.markupPct,
                         defaultMarkupPct,
+                        usesDefaultMarkup: readUsesDefaultMarkup(item),
                       });
                       return (
                   <TableRow
@@ -1182,7 +1189,7 @@ export default function InventoryPage() {
       </Card>}
 
       {/* View Detail Sheet */}
-      <Sheet open={sheetMode === 'view'} onOpenChange={open => { if (!open) setSheetMode(null); }}>
+      <Sheet open={sheetMode === 'view'} onOpenChange={open => { if (!open) setSheetMode(mode => mode === 'view' ? null : mode); }}>
         <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
           {selectedItem ? (
             <>
@@ -1217,7 +1224,7 @@ export default function InventoryPage() {
                       </Button>
                     )}
                     {canManage && (
-                      <Button size="sm" variant="outline" className="gap-1.5" data-testid="button-edit-inventory-item" onClick={() => { setSheetMode(null); setTimeout(() => openEdit(selectedItem.id), 50); }}>
+                      <Button size="sm" variant="outline" className="gap-1.5" data-testid="button-edit-inventory-item" onClick={() => openEdit(selectedItem.id)}>
                         <Edit className="w-3.5 h-3.5" /> Edit
                       </Button>
                     )}
@@ -1382,7 +1389,7 @@ export default function InventoryPage() {
       </Sheet>
 
       {/* Create / Edit Sheet */}
-      <Sheet open={sheetMode === 'create' || sheetMode === 'edit'} onOpenChange={open => { if (!open) setSheetMode(null); }}>
+      <Sheet open={sheetMode === 'create' || sheetMode === 'edit'} onOpenChange={open => { if (!open) setSheetMode(mode => (mode === 'create' || mode === 'edit') ? null : mode); }}>
         <SheetContent
           className="w-full sm:max-w-md overflow-y-auto"
           onInteractOutside={event => { isFromPickerPortal(event); }}

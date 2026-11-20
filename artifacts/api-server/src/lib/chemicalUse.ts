@@ -8,12 +8,15 @@ import {
 } from "@workspace/db";
 import {
   inventoryStockUnit,
+  parseAreaUnit,
   parseStockUnit,
   planInventoryDeductions,
   quantityAfterReplacement,
   readInventoryDeductions,
   roundStock,
   type InventoryDeduction,
+  areaInSquareFeet,
+  type SizeCoverage,
   type SizeVolume,
   type SprayUsageLine,
 } from "./chemicalInventory";
@@ -54,6 +57,8 @@ async function lockedItems(tx: Parameters<Parameters<typeof db.transaction>[0]>[
       name: inventoryPartSizesTable.name,
       volumeAmount: inventoryPartSizesTable.volumeAmount,
       volumeUnit: inventoryPartSizesTable.volumeUnit,
+      coverageAmount: inventoryPartSizesTable.coverageAmount,
+      coverageUnit: inventoryPartSizesTable.coverageUnit,
     }).from(inventoryPartSizesTable)
       .where(inArray(inventoryPartSizesTable.id, sizeIds))
     : [];
@@ -63,7 +68,10 @@ async function lockedItems(tx: Parameters<Parameters<typeof db.transaction>[0]>[
     const volume: SizeVolume | null = size && size.volumeAmount != null && size.volumeAmount > 0 && parseStockUnit(size.volumeUnit)
       ? { amount: size.volumeAmount, unit: size.volumeUnit ?? "" }
       : null;
-    return { item, sizeName: size?.name ?? null, sizeVolume: volume };
+    const coverage: SizeCoverage | null = size && size.coverageAmount != null && size.coverageAmount > 0 && parseAreaUnit(size.coverageUnit)?.canonical === "sqft"
+      ? { amount: size.coverageAmount, unit: "sqft" }
+      : null;
+    return { item, sizeName: size?.name ?? null, sizeVolume: volume, sizeCoverage: coverage };
   });
 }
 
@@ -94,6 +102,10 @@ export async function commitChemicalUse(tenantId: number, values: ApplicationIns
       previousByItem.set(deduction.inventoryItemId, roundStock((previousByItem.get(deduction.inventoryItemId) ?? 0) + deduction.quantity));
     }
 
+    const treatedAmount = Number(values.treatedArea);
+    const treated = areaInSquareFeet(treatedAmount, values.areaUnit ?? "sqft");
+    const areaSqft = treatedAmount > 0 && treated.ok ? treated.sqft : null;
+
     const usage: SprayUsageLine[] = [];
     for (const line of lines) {
       const productId = Number(line.productId);
@@ -115,14 +127,16 @@ export async function commitChemicalUse(tenantId: number, values: ApplicationIns
       const linked = itemById.get(product.inventoryItemId);
       if (!linked) throw new ChemicalStockError(`The inventory item linked to ${product.name} was not found.`);
       const available = quantityAfterReplacement(linked.item.quantity, previousByItem.get(linked.item.id) ?? 0, 0);
+      const useArea = !linked.sizeVolume && linked.sizeCoverage != null && areaSqft != null;
       usage.push({
         productName: product.name,
-        amount,
-        unit: line.unit ?? "",
+        amount: useArea ? areaSqft : amount,
+        unit: useArea ? "sqft" : (line.unit ?? ""),
         inventoryItemId: linked.item.id,
         inventoryName: linked.item.name,
-        inventoryUnit: inventoryStockUnit(linked.sizeName, linked.item.unit) ?? linked.item.unit,
-        sizeVolume: linked.sizeVolume,
+        inventoryUnit: useArea ? linked.item.unit : (inventoryStockUnit(linked.sizeName, linked.item.unit) ?? linked.item.unit),
+        sizeVolume: useArea ? null : linked.sizeVolume,
+        sizeCoverage: useArea ? linked.sizeCoverage : null,
         onHand: available,
       });
     }

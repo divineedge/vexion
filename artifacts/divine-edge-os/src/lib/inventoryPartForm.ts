@@ -45,6 +45,12 @@ export function formatSizeVolume(amount: number | null | undefined, unit: string
   return `${formatInventoryQuantity(amount)} ${labels[unit] ?? unit}`;
 }
 
+export function formatSizeCoverage(amount: number | null | undefined, unit: string | null | undefined): string | null {
+  if (amount == null || !(amount > 0) || !unit) return null;
+  const label = unit === "sqft" || unit === "sq ft" ? "sq ft" : unit;
+  return `${formatInventoryQuantity(amount)} ${label}`;
+}
+
 export function formatInventoryQuantity(value: number): string {
   if (!Number.isFinite(value)) return "0";
   const rounded = Math.round(value * 1_000_000) / 1_000_000;

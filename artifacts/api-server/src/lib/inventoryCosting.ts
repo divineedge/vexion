@@ -23,6 +23,8 @@ export async function installInventoryCostSchema(){
  await db.execute(sql`ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS stock_alerts boolean NOT NULL DEFAULT true`);
  await db.execute(sql`ALTER TABLE inventory_part_sizes ADD COLUMN IF NOT EXISTS volume_amount double precision`);
  await db.execute(sql`ALTER TABLE inventory_part_sizes ADD COLUMN IF NOT EXISTS volume_unit text`);
+ await db.execute(sql`ALTER TABLE inventory_part_sizes ADD COLUMN IF NOT EXISTS coverage_amount double precision`);
+ await db.execute(sql`ALTER TABLE inventory_part_sizes ADD COLUMN IF NOT EXISTS coverage_unit text`);
  // The quantity trigger blocks ALTER TYPE. Drop it, widen the column, then put the trigger back.
  await db.execute(sql`DROP TRIGGER IF EXISTS inventory_cost_opening ON inventory_items`);
  await db.execute(sql`DROP TRIGGER IF EXISTS inventory_cost_changes ON inventory_items`);

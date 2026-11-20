@@ -51,7 +51,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useDebounce } from '@/hooks/use-debounce';
 import { upsertInventoryLocation } from '@/lib/inventoryLocations';
 import { groupInventoryItems, type InventoryGroupBy } from '@/lib/inventoryGrouping';
-import { categoryChoices, feetFromLength, formatInventoryQuantity, formatSizeVolume, inventoryListFigures, inventorySizeOptions, isPipeTypeName, namedId, parseLinkedPartsDraft, parseReorderPoint, pipeSellPerFoot, readUsesDefaultMarkup, rewriteCategory, showsStockAlert, sizeIdAcrossTypes, unitForChemicalSize } from '@/lib/inventoryPartForm';
+import { categoryChoices, feetFromLength, formatInventoryQuantity, formatSizeCoverage, formatSizeVolume, inventoryListFigures, inventorySizeOptions, isPipeTypeName, namedId, parseLinkedPartsDraft, parseReorderPoint, pipeSellPerFoot, readUsesDefaultMarkup, rewriteCategory, showsStockAlert, sizeIdAcrossTypes, unitForChemicalSize } from '@/lib/inventoryPartForm';
 import { LinkedPartsEditor, type LinkRow } from '@/components/inventory/LinkedPartsEditor';
 import { ShrinkageReport } from '@/components/inventory/ShrinkageReport';
 
@@ -426,9 +426,11 @@ export default function InventoryPage() {
     const size = partSizes.find(row => String(row.id) === option.value);
     return {
       ...option,
-      detail: formatSizeVolume(size?.volumeAmount, size?.volumeUnit),
+      detail: [formatSizeVolume(size?.volumeAmount, size?.volumeUnit), formatSizeCoverage(size?.coverageAmount, size?.coverageUnit)].filter(Boolean).join(" · ") || null,
       volumeAmount: size?.volumeAmount ?? null,
       volumeUnit: size?.volumeUnit ?? null,
+      coverageAmount: size?.coverageAmount ?? null,
+      coverageUnit: size?.coverageUnit ?? null,
     };
   }), [partSizes]);
   const { data: storedCategories } = useQuery({
@@ -564,12 +566,18 @@ export default function InventoryPage() {
     return fallback;
   };
 
-  const renameSize = async (value: string, next: { name: string; volumeAmount: number | null; volumeUnit: string | null }) => {
+  const renameSize = async (value: string, next: { name: string; volumeAmount: number | null; volumeUnit: string | null; coverageAmount: number | null; coverageUnit: string | null }) => {
     try {
       const saved = await customFetch<{ name: string; updatedItems: number }>(`/api/inventory/sizes/${value}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: next.name, volumeAmount: next.volumeAmount, volumeUnit: next.volumeUnit }),
+        body: JSON.stringify({
+          name: next.name,
+          volumeAmount: next.volumeAmount,
+          volumeUnit: next.volumeUnit,
+          coverageAmount: next.coverageAmount,
+          coverageUnit: next.coverageUnit,
+        }),
       });
       toast.success(`Updated ${saved.name} on ${saved.updatedItems} item${saved.updatedItems === 1 ? '' : 's'}`);
       refreshCatalog();

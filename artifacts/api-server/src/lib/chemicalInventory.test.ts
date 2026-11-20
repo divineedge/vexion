@@ -89,6 +89,42 @@ describe("size volume", () => {
   });
 });
 
+describe("size coverage", () => {
+  it("drops one roll when 100 square feet are used from a 100 square foot size", () => {
+    const plan = planInventoryDeductions([line({
+      amount: 100,
+      unit: "sq ft",
+      inventoryUnit: "each",
+      onHand: 4,
+      sizeCoverage: { amount: 100, unit: "sqft" },
+    })]);
+    expect(plan).toEqual({ ok: true, deductions: [{ inventoryItemId: 7, quantity: 1, unit: "each" }] });
+    expect(quantityAfterReplacement(4, 0, 1)).toBe(3);
+  });
+
+  it("does not convert square feet into gallons or pounds", () => {
+    const gallons = planInventoryDeductions([line({
+      amount: 100,
+      unit: "sq ft",
+      inventoryUnit: "gal",
+      onHand: 4,
+      sizeCoverage: { amount: 100, unit: "sqft" },
+    })]);
+    expect(gallons.ok).toBe(false);
+    if (!gallons.ok) expect(gallons.message).toMatch(/Area cannot be converted to gallons or pounds/i);
+
+    const pounds = planInventoryDeductions([line({
+      amount: 1,
+      unit: "lb",
+      inventoryUnit: "each",
+      onHand: 4,
+      sizeCoverage: { amount: 100, unit: "sqft" },
+    })]);
+    expect(pounds.ok).toBe(false);
+    if (!pounds.ok) expect(pounds.message).toMatch(/Area cannot be converted to gallons or pounds/i);
+  });
+});
+
 describe("pound deductions", () => {
   it("deducts pounds from pounds", () => {
     const plan = planInventoryDeductions([line({ amount: 2, unit: "lb", inventoryUnit: "Pounds", onHand: 10 })]);

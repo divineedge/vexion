@@ -1,4 +1,4 @@
-import { parseStockUnit, roundStock } from "./chemicalInventory";
+import { parseAreaUnit, parseStockUnit, roundStock } from "./chemicalInventory";
 
 export function categoryParts(value: string | null | undefined): string[] {
   return (value ?? "").split(",").map(part => part.trim()).filter(Boolean);
@@ -47,4 +47,17 @@ export function readSizeVolume(amount: unknown, unit: unknown): { ok: true; amou
   const parsed = parseStockUnit(typeof unit === "string" ? unit : String(unit));
   if (!parsed) return { ok: false, error: "Volume unit must be gallons, ounces, liters, or pounds" };
   return { ok: true, amount: roundStock(value), unit: parsed.canonical };
+}
+
+/** Blank amount and unit clear the coverage. Coverage is square feet, not gallons or pounds. */
+export function readSizeCoverage(amount: unknown, unit: unknown): { ok: true; amount: number | null; unit: string | null } | { ok: false; error: string } {
+  const amountBlank = amount == null || (typeof amount === "string" && amount.trim() === "");
+  const unitBlank = unit == null || (typeof unit === "string" && unit.trim() === "");
+  if (amountBlank && unitBlank) return { ok: true, amount: null, unit: null };
+  if (amountBlank || unitBlank) return { ok: false, error: "Enter both a coverage amount and square feet" };
+  const value = typeof amount === "number" ? amount : Number(String(amount).trim());
+  if (!Number.isFinite(value) || value <= 0) return { ok: false, error: "Coverage must be greater than 0" };
+  const parsed = parseAreaUnit(typeof unit === "string" ? unit : String(unit));
+  if (!parsed || parsed.canonical !== "sqft") return { ok: false, error: "Coverage unit must be square feet" };
+  return { ok: true, amount: roundStock(value), unit: "sqft" };
 }

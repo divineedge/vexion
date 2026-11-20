@@ -106,6 +106,10 @@ export const inventoryPartSizesTable = pgTable("inventory_part_sizes", {
   volumeAmount: doublePrecision("volume_amount"),
   /** gal, oz, l, or lb. Gallons and ounces convert. Pounds stay weight. */
   volumeUnit: text("volume_unit"),
+  /** Area one unit of this size covers, such as 100 square feet per roll. */
+  coverageAmount: doublePrecision("coverage_amount"),
+  /** sqft. Area is not converted to gallons or pounds. */
+  coverageUnit: text("coverage_unit"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (t) => [

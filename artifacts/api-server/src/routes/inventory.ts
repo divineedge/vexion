@@ -3,7 +3,7 @@ import { db, inventoryItemsTable, inventoryPartSizesTable, inventoryPartTypesTab
 import { chemicalUnitCode } from "../lib/chemicalInventory";
 import { parseLinkedPartsBody } from "../lib/inventoryKits";
 import { linkedPartsByParent, saveLinkedPartsFromBody, type LinkedPartsView } from "../lib/inventoryKitStore";
-import { parseReorderPoint, stockNeedsReorder } from "../lib/reorderPoint";
+import { lowStockItems, parseReorderPoint, readStockAlerts, stockNeedsReorder } from "../lib/reorderPoint";
 import { eq, and, or, ilike, sql, inArray, ne } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { applyArrival, isPipeTypeName, parseOptionalAmount, priceWithMarkup, resolveInventorySell } from "../lib/pipeStock";
@@ -101,13 +101,13 @@ const inventoryImportExportConfig: ImportExportEntityConfig = {
   update: async (tenantId, id, values) => {
     const record = await inventoryRecordFromImport(tenantId, values, "update");
     if (record.quantity !== undefined || record.reorderPoint !== undefined) {
-      const [existing] = await db.select({ quantity: inventoryItemsTable.quantity, reorderPoint: inventoryItemsTable.reorderPoint })
+      const [existing] = await db.select({ quantity: inventoryItemsTable.quantity, reorderPoint: inventoryItemsTable.reorderPoint, stockAlerts: inventoryItemsTable.stockAlerts })
         .from(inventoryItemsTable)
         .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)));
       if (existing) {
         const quantity = record.quantity ?? existing.quantity;
         const reorderPoint = record.reorderPoint ?? existing.reorderPoint;
-        record.isLowStock = quantity <= reorderPoint;
+        record.isLowStock = stockNeedsReorder(quantity, reorderPoint, existing.stockAlerts);
       }
     }
     await db.update(inventoryItemsTable).set(record)
@@ -228,7 +228,8 @@ function formatItem(
     quantity: i.quantity,
     reorderPoint: i.reorderPoint,
     unit: i.pricePerFoot != null && (!i.unit || i.unit === "each") ? "ft" : (chemicalUnitCode(grouping?.sizeName) ?? i.unit),
-    isLowStock: stockNeedsReorder(i.quantity, i.reorderPoint),
+    stockAlerts: i.stockAlerts !== false,
+    isLowStock: stockNeedsReorder(i.quantity, i.reorderPoint, i.stockAlerts !== false),
     linkedParts: linkedParts ?? null,
     availableForBlueprint: i.availableForBlueprint,
     commissionPct: i.commissionPct ?? null,
@@ -260,7 +261,7 @@ async function ownerQuantities(
 
 async function syncFamilyLowStock(tenantId: number, ownerId: number, quantity: number): Promise<void> {
   await db.update(inventoryItemsTable).set({
-    isLowStock: sql`${quantity} <= ${inventoryItemsTable.reorderPoint}`,
+    isLowStock: sql`${inventoryItemsTable.stockAlerts} AND ${quantity} <= ${inventoryItemsTable.reorderPoint}`,
   }).where(and(
     eq(inventoryItemsTable.tenantId, tenantId),
     or(eq(inventoryItemsTable.id, ownerId), eq(inventoryItemsTable.stockItemId, ownerId)),
@@ -408,7 +409,7 @@ router.get("/inventory/summary", async (req, res): Promise<void> => {
       itemMarkupPct: i.markupPct,
     }).sellPrice * i.quantity;
   }, 0);
-  const lowStockCount = shown.filter(i => i.quantity <= i.reorderPoint).length;
+  const lowStockCount = lowStockItems(shown).length;
 
   const catMap: Record<string, number> = {};
   for (const item of items) {
@@ -557,6 +558,8 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
   const { name, sku, description, category, costPrice, markupPct: reqMarkupPct, quantity, reorderPoint, unit, availableForBlueprint, commissionPct: reqCommissionPct, supplierId: reqSupplierId, typeId: reqTypeId, sizeId: reqSizeId } = req.body;
+  const stockAlerts = readStockAlerts(req.body?.stockAlerts);
+  if (stockAlerts === "invalid") { res.status(400).json({ error: "stockAlerts must be true or false" }); return; }
 
   if (!name || !sku) {
     res.status(400).json({ error: "name and sku are required" });
@@ -629,7 +632,8 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
     quantity: arrival.quantity,
     reorderPoint: reorder,
     unit: arrival.unit,
-    isLowStock: stockNeedsReorder(arrival.quantity, reorder),
+    stockAlerts: stockAlerts !== false,
+    isLowStock: stockNeedsReorder(arrival.quantity, reorder, stockAlerts !== false),
     availableForBlueprint: availableForBlueprint === true || availableForBlueprint === "true",
     commissionPct: commissionPctVal,
     supplierId: resolvedSupplierId,
@@ -764,7 +768,10 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
   }
 
   const { name, description, category, costPrice, markupPct: reqMarkupPct, quantity, reorderPoint, unit, availableForBlueprint, commissionPct: reqCommissionPct, supplierId: reqSupplierId, typeId: reqTypeId, sizeId: reqSizeId } = req.body;
+  const stockAlerts = readStockAlerts(req.body?.stockAlerts);
+  if (stockAlerts === "invalid") { res.status(400).json({ error: "stockAlerts must be true or false" }); return; }
   const updates: Partial<typeof inventoryItemsTable.$inferInsert> = {};
+  if (stockAlerts !== undefined) updates.stockAlerts = stockAlerts;
   if (name !== undefined) updates.name = String(name);
   if (description !== undefined) updates.description = description ? String(description) : null;
   if (category !== undefined) updates.category = category ? String(category) : null;
@@ -898,19 +905,21 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
     updates.unit = "ft";
   }
 
-  if (updates.quantity !== undefined || updates.reorderPoint !== undefined) {
-    if (updates.quantity === undefined || updates.reorderPoint === undefined) {
-      const [existing] = await db
-        .select({ quantity: inventoryItemsTable.quantity, reorderPoint: inventoryItemsTable.reorderPoint })
-        .from(inventoryItemsTable)
-        .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)));
-      if (existing) {
-        const qty = updates.quantity ?? existing.quantity;
-        const reorder = updates.reorderPoint ?? existing.reorderPoint;
-        updates.isLowStock = stockNeedsReorder(qty, reorder);
+  if (updates.quantity !== undefined || updates.reorderPoint !== undefined || updates.stockAlerts !== undefined) {
+    const [existing] = await db
+      .select({ quantity: inventoryItemsTable.quantity, reorderPoint: inventoryItemsTable.reorderPoint, stockAlerts: inventoryItemsTable.stockAlerts, stockItemId: inventoryItemsTable.stockItemId })
+      .from(inventoryItemsTable)
+      .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)));
+    if (existing) {
+      let qty = updates.quantity ?? existing.quantity;
+      if (existing.stockItemId != null && updates.quantity === undefined) {
+        const [owner] = await db.select({ quantity: inventoryItemsTable.quantity }).from(inventoryItemsTable)
+          .where(and(eq(inventoryItemsTable.id, existing.stockItemId), eq(inventoryItemsTable.tenantId, tenantId)));
+        if (owner) qty = owner.quantity;
       }
-    } else {
-      updates.isLowStock = stockNeedsReorder(updates.quantity as number, updates.reorderPoint as number);
+      const reorder = updates.reorderPoint ?? existing.reorderPoint;
+      const alerts = updates.stockAlerts ?? existing.stockAlerts;
+      updates.isLowStock = stockNeedsReorder(qty, reorder, alerts);
     }
   }
 
@@ -985,7 +994,7 @@ router.post("/inventory/:id/adjust-stock", requireInventoryMutate, async (req, r
   }
 
   const [updatedOwner] = await db.update(inventoryItemsTable)
-    .set({ quantity: sql`${inventoryItemsTable.quantity}+${delta}`, isLowStock: sql`${inventoryItemsTable.quantity}+${delta}<=${inventoryItemsTable.reorderPoint}` })
+    .set({ quantity: sql`${inventoryItemsTable.quantity}+${delta}`, isLowStock: sql`${inventoryItemsTable.stockAlerts} AND ${inventoryItemsTable.quantity}+${delta}<=${inventoryItemsTable.reorderPoint}` })
     .where(and(eq(inventoryItemsTable.id, ownerId), eq(inventoryItemsTable.tenantId, tenantId), sql`${inventoryItemsTable.quantity}+${delta}>=0`))
     .returning();
   if (!updatedOwner) { res.status(409).json({ error: "Stock changed. Refresh the item and try again." }); return; }

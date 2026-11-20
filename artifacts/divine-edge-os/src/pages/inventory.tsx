@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import {
   useListInventoryItems, getListInventoryItemsQueryKey,
@@ -22,6 +23,7 @@ import {
   useDuplicateInventoryItems,
   useListChemicalProducts, getListChemicalProductsQueryKey,
   useUpdateChemicalProduct,
+  customFetch,
 } from '@workspace/api-client-react';
 import type { InventoryLocation, InventorySize, InventoryType } from '@workspace/api-client-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -37,7 +39,6 @@ import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import {
@@ -50,7 +51,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useDebounce } from '@/hooks/use-debounce';
 import { upsertInventoryLocation } from '@/lib/inventoryLocations';
 import { groupInventoryItems, type InventoryGroupBy } from '@/lib/inventoryGrouping';
-import { categoryChoices, feetFromLength, formatInventoryQuantity, inventoryListFigures, inventorySizeOptions, isPipeTypeName, namedId, parseLinkedPartsDraft, parseReorderPoint, pipeSellPerFoot, readUsesDefaultMarkup, sizeIdAcrossTypes, unitForChemicalSize } from '@/lib/inventoryPartForm';
+import { categoryChoices, feetFromLength, formatInventoryQuantity, formatSizeVolume, inventoryListFigures, inventorySizeOptions, isPipeTypeName, namedId, parseLinkedPartsDraft, parseReorderPoint, pipeSellPerFoot, readUsesDefaultMarkup, rewriteCategory, showsStockAlert, sizeIdAcrossTypes, unitForChemicalSize } from '@/lib/inventoryPartForm';
 import { LinkedPartsEditor, type LinkRow } from '@/components/inventory/LinkedPartsEditor';
 import { ShrinkageReport } from '@/components/inventory/ShrinkageReport';
 
@@ -214,6 +215,7 @@ type ItemForm = {
   availableForBlueprint: boolean;
   commissionPct: string;
   vendorId: string;
+  stockAlerts: boolean;
   sprayProductId: string;
   linkQuantity: string;
   links: LinkRow[];
@@ -223,7 +225,7 @@ const EMPTY_FORM: ItemForm = {
   name: '', sku: '', description: '', category: '', typeId: '', sizeId: '',
   costPrice: '', markupPct: '', quantity: '0', reorderPoint: '5', unit: 'each',
   lengthReceived: '', pricePerFoot: '',
-  availableForBlueprint: false, commissionPct: '', vendorId: '', sprayProductId: '',
+  availableForBlueprint: false, commissionPct: '', vendorId: '', stockAlerts: true, sprayProductId: '',
   linkQuantity: '', links: [],
 };
 
@@ -420,7 +422,19 @@ export default function InventoryPage() {
   const groupedItems = useMemo(() => groupInventoryItems(items ?? [], groupBy), [items, groupBy]);
   const visibleIds = (items ?? []).map(item => item.id);
   const listColumnCount = (canSeeCost ? 11 : 10) + (canManage ? 1 : 0);
-  const sizeOptions = useMemo(() => inventorySizeOptions(partSizes), [partSizes]);
+  const sizeOptions = useMemo(() => inventorySizeOptions(partSizes).map(option => {
+    const size = partSizes.find(row => String(row.id) === option.value);
+    return {
+      ...option,
+      detail: formatSizeVolume(size?.volumeAmount, size?.volumeUnit),
+      volumeAmount: size?.volumeAmount ?? null,
+      volumeUnit: size?.volumeUnit ?? null,
+    };
+  }), [partSizes]);
+  const { data: storedCategories } = useQuery({
+    queryKey: ['inventory-categories'],
+    queryFn: () => customFetch<{ names: string[] }>('/api/inventory/categories'),
+  });
   const { data: selectedItem } = useGetInventoryItem(selectedId!, {
     query: { enabled: selectedId != null, queryKey: getGetInventoryItemQueryKey(selectedId!) },
   });
@@ -445,8 +459,12 @@ export default function InventoryPage() {
   const [sprayBaseline, setSprayBaseline] = useState<number | null>(null);
 
   const categoryOptions = useMemo(
-    () => categoryChoices((items ?? []).map(item => item.category ?? ''), draftCategories, form.category),
-    [items, draftCategories, form.category],
+    () => categoryChoices(
+      [...(items ?? []).map(item => item.category ?? ''), ...(storedCategories?.names ?? [])],
+      draftCategories,
+      form.category,
+    ),
+    [items, storedCategories, draftCategories, form.category],
   );
   const selectedTypeName = partTypes.find(type => String(type.id) === form.typeId)?.name ?? '';
   const pipePart = isPipeTypeName(selectedTypeName);
@@ -529,6 +547,174 @@ export default function InventoryPage() {
     }
   };
 
+  const refreshCatalog = () => {
+    void qc.invalidateQueries({ queryKey: getListInventoryTypesQueryKey() });
+    void qc.invalidateQueries({ queryKey: getListInventorySizesQueryKey() });
+    void qc.invalidateQueries({ queryKey: getListInventoryItemsQueryKey() });
+    void qc.invalidateQueries({ queryKey: getGetInventorySummaryQueryKey() });
+    void qc.invalidateQueries({ queryKey: ['inventory-categories'] });
+    if (selectedId) void qc.invalidateQueries({ queryKey: getGetInventoryItemQueryKey(selectedId) });
+  };
+
+  const requestError = (err: unknown, fallback: string) => {
+    if (err && typeof err === 'object' && 'data' in err) {
+      const data = (err as { data?: { error?: string } }).data;
+      if (data?.error) return data.error;
+    }
+    return fallback;
+  };
+
+  const renameSize = async (value: string, next: { name: string; volumeAmount: number | null; volumeUnit: string | null }) => {
+    try {
+      const saved = await customFetch<{ name: string; updatedItems: number }>(`/api/inventory/sizes/${value}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: next.name, volumeAmount: next.volumeAmount, volumeUnit: next.volumeUnit }),
+      });
+      toast.success(`Updated ${saved.name} on ${saved.updatedItems} item${saved.updatedItems === 1 ? '' : 's'}`);
+      refreshCatalog();
+    } catch (err) {
+      toast.error(requestError(err, 'Could not update that size'));
+      throw err;
+    }
+  };
+
+  const mergeSize = async (source: string, keep: string) => {
+    try {
+      const saved = await customFetch<{ keptName: string; movedItems: number }>(`/api/inventory/sizes/${source}/merge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keepId: Number(keep) }),
+      });
+      if (form.sizeId === source) setForm(current => ({ ...current, sizeId: keep }));
+      if (sizeFilter === source) setSizeFilter(keep);
+      toast.success(`Merged into ${saved.keptName}. Moved ${saved.movedItems} item${saved.movedItems === 1 ? '' : 's'}.`);
+      refreshCatalog();
+    } catch (err) {
+      toast.error(requestError(err, 'Could not merge those sizes'));
+      throw err;
+    }
+  };
+
+  const deleteSize = async (source: string) => {
+    try {
+      const saved = await customFetch<{ name: string; clearedItems: number }>(`/api/inventory/sizes/${source}`, { method: 'DELETE' });
+      if (form.sizeId === source) setForm(current => ({ ...current, sizeId: '' }));
+      if (sizeFilter === source) setSizeFilter('');
+      toast.success(saved.clearedItems
+        ? `Deleted ${saved.name} and cleared it from ${saved.clearedItems} item${saved.clearedItems === 1 ? '' : 's'}`
+        : `Deleted ${saved.name}`);
+      refreshCatalog();
+    } catch (err) {
+      toast.error(requestError(err, 'Could not delete that size'));
+      throw err;
+    }
+  };
+
+  const renameType = async (value: string, next: { name: string }) => {
+    try {
+      const saved = await customFetch<{ name: string; updatedItems: number }>(`/api/inventory/types/${value}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: next.name }),
+      });
+      toast.success(`Updated ${saved.name} on ${saved.updatedItems} item${saved.updatedItems === 1 ? '' : 's'}`);
+      refreshCatalog();
+    } catch (err) {
+      toast.error(requestError(err, 'Could not update that type'));
+      throw err;
+    }
+  };
+
+  const mergeType = async (source: string, keep: string) => {
+    try {
+      const saved = await customFetch<{ keptName: string; movedItems: number }>(`/api/inventory/types/${source}/merge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keepId: Number(keep) }),
+      });
+      if (form.typeId === source) setForm(current => ({ ...current, typeId: keep }));
+      if (typeFilter === source) setTypeFilter(keep);
+      toast.success(`Merged into ${saved.keptName}. Moved ${saved.movedItems} item${saved.movedItems === 1 ? '' : 's'}.`);
+      refreshCatalog();
+    } catch (err) {
+      toast.error(requestError(err, 'Could not merge those types'));
+      throw err;
+    }
+  };
+
+  const deleteType = async (source: string) => {
+    try {
+      const saved = await customFetch<{ name: string; clearedItems: number; removedSizes: number }>(`/api/inventory/types/${source}`, { method: 'DELETE' });
+      if (form.typeId === source) setForm(current => ({ ...current, typeId: '', sizeId: '' }));
+      if (typeFilter === source) setTypeFilter('');
+      const cleared = saved.clearedItems
+        ? ` Cleared it from ${saved.clearedItems} item${saved.clearedItems === 1 ? '' : 's'}.`
+        : '';
+      const sizes = saved.removedSizes
+        ? ` Removed ${saved.removedSizes} size${saved.removedSizes === 1 ? '' : 's'} that belonged only to it.`
+        : '';
+      toast.success(`Deleted ${saved.name}.${cleared}${sizes}`);
+      refreshCatalog();
+    } catch (err) {
+      toast.error(requestError(err, 'Could not delete that type'));
+      throw err;
+    }
+  };
+
+  const renameCategory = async (from: string, next: { name: string }) => {
+    try {
+      const saved = await customFetch<{ name: string; updatedItems: number }>('/api/inventory/categories/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from, to: next.name }),
+      });
+      setForm(current => ({ ...current, category: rewriteCategory(current.category, from, saved.name) ?? '' }));
+      setDraftCategories(current => current.map(name => rewriteCategory(name, from, saved.name) ?? '').filter(Boolean));
+      toast.success(`Updated ${saved.name} on ${saved.updatedItems} item${saved.updatedItems === 1 ? '' : 's'}`);
+      refreshCatalog();
+    } catch (err) {
+      toast.error(requestError(err, 'Could not update that category'));
+      throw err;
+    }
+  };
+
+  const mergeCategory = async (source: string, keep: string) => {
+    try {
+      const saved = await customFetch<{ name: string; movedItems: number }>('/api/inventory/categories/merge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source, keep }),
+      });
+      setForm(current => ({ ...current, category: rewriteCategory(current.category, source, saved.name) ?? '' }));
+      setDraftCategories(current => current.map(name => rewriteCategory(name, source, saved.name) ?? '').filter(Boolean));
+      toast.success(`Merged into ${saved.name}. Moved ${saved.movedItems} item${saved.movedItems === 1 ? '' : 's'}.`);
+      refreshCatalog();
+    } catch (err) {
+      toast.error(requestError(err, 'Could not merge those categories'));
+      throw err;
+    }
+  };
+
+  const deleteCategory = async (name: string) => {
+    try {
+      const saved = await customFetch<{ name: string; clearedItems: number }>('/api/inventory/categories/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      setForm(current => ({ ...current, category: rewriteCategory(current.category, name, null) ?? '' }));
+      setDraftCategories(current => current.map(value => rewriteCategory(value, name, null) ?? '').filter(Boolean));
+      toast.success(saved.clearedItems
+        ? `Deleted ${saved.name} and cleared it from ${saved.clearedItems} item${saved.clearedItems === 1 ? '' : 's'}`
+        : `Deleted ${saved.name}`);
+      refreshCatalog();
+    } catch (err) {
+      toast.error(requestError(err, 'Could not delete that category'));
+      throw err;
+    }
+  };
+
   const addCategory = (name: string) => {
     const match = categoryOptions.find(option => option.toLowerCase() === name.trim().toLowerCase());
     const chosen = match ?? name.trim();
@@ -593,6 +779,7 @@ export default function InventoryPage() {
       availableForBlueprint: item.availableForBlueprint ?? false,
       commissionPct: item.commissionPct != null ? String(item.commissionPct) : '',
       vendorId: item.vendorId != null ? String(item.vendorId) : '',
+      stockAlerts: item.stockAlerts !== false,
       sprayProductId: linkedSpray ? String(linkedSpray.id) : '',
       linkQuantity: item.linkedParts ? String(item.linkedParts.quantity) : '',
       links: item.linkedParts?.components.map(component => ({
@@ -637,6 +824,7 @@ export default function InventoryPage() {
       availableForBlueprint: form.availableForBlueprint,
       commissionPct: form.commissionPct ? parseFloat(form.commissionPct) : undefined,
       vendorId: form.vendorId ? parseInt(form.vendorId, 10) : null,
+      stockAlerts: form.stockAlerts,
       linkedParts: linked.value,
     };
 
@@ -1111,7 +1299,7 @@ export default function InventoryPage() {
                       return (
                   <TableRow
                     key={item.id}
-                    className={`cursor-pointer ${item.isLowStock ? 'bg-destructive/5 hover:bg-destructive/10' : 'hover:bg-muted/50'}`}
+                    className={`cursor-pointer ${showsStockAlert(item) ? 'bg-destructive/5 hover:bg-destructive/10' : 'hover:bg-muted/50'}`}
                     onClick={() => openView(item.id)}
                     data-testid={`inventory-item-${item.id}`}
                   >
@@ -1151,13 +1339,13 @@ export default function InventoryPage() {
                       ${figures.sellPrice.toFixed(2)}{figures.pricePerFoot != null ? '/ft' : ''}
                     </TableCell>
                     <TableCell className="text-right" title={`${formatInventoryQuantity(item.quantity)} ${item.unit || 'units'} in stock`} data-testid={`inventory-qty-${item.id}`}>
-                      <span className={`font-medium ${item.isLowStock ? 'text-destructive' : ''}`} data-testid={`list-quantity-${item.id}`}>
+                      <span className={`font-medium ${showsStockAlert(item) ? 'text-destructive' : ''}`} data-testid={`list-quantity-${item.id}`}>
                         {formatInventoryQuantity(item.quantity)} {item.unit || ''}
                       </span>
                     </TableCell>
                     <TableCell onClick={event => event.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
-                        {item.isLowStock && (
+                        {showsStockAlert(item) && (
                           <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive" title={`Low stock — reorder point is ${item.reorderPoint} ${item.unit || 'units'}`}>
                             <AlertTriangle className="w-3.5 h-3.5" /> Low
                           </span>
@@ -1200,7 +1388,7 @@ export default function InventoryPage() {
                     <SheetDescription className="font-mono mt-1" title={selectedItem.sku ? `SKU: ${selectedItem.sku}` : undefined}>{selectedItem.sku}</SheetDescription>
                   </div>
                   <div className="flex items-center gap-2">
-                    {selectedItem.isLowStock && (
+                    {showsStockAlert(selectedItem) && (
                       <>
                         <Badge variant="destructive" className="gap-1" title={`Stock below reorder point of ${selectedItem.reorderPoint} ${selectedItem.unit ?? 'units'}`}><AlertTriangle className="w-3 h-3" /> Low Stock</Badge>
                         {canManage && (
@@ -1269,7 +1457,7 @@ export default function InventoryPage() {
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">In Stock</p>
-                    <p className={`text-2xl font-bold ${selectedItem.isLowStock ? 'text-destructive' : ''}`} data-testid="text-item-quantity" title={`${formatInventoryQuantity(selectedItem.quantity)} ${selectedItem.unit ?? 'units'} in stock${selectedItem.isLowStock ? ' — below reorder point' : ''}`}>
+                    <p className={`text-2xl font-bold ${showsStockAlert(selectedItem) ? 'text-destructive' : ''}`} data-testid="text-item-quantity" title={`${formatInventoryQuantity(selectedItem.quantity)} ${selectedItem.unit ?? 'units'} in stock${showsStockAlert(selectedItem) ? ' — below reorder point' : ''}`}>
                       {formatInventoryQuantity(selectedItem.quantity)} <span className="text-sm font-normal text-muted-foreground">{selectedItem.unit}</span>
                     </p>
                     {selectedItem.stockItemId != null && (
@@ -1438,6 +1626,7 @@ export default function InventoryPage() {
                     }));
                   }}
                   onAdd={addType}
+                  manage={canManage ? { noun: 'type', onRename: renameType, onMerge: mergeType, onDelete: deleteType } : undefined}
                 />
               </div>
               <div className="space-y-1.5">
@@ -1458,6 +1647,7 @@ export default function InventoryPage() {
                     setForm(current => ({ ...current, sizeId, unit: chemicalUnit ?? current.unit }));
                   }}
                   onAdd={addSize}
+                  manage={canManage ? { noun: 'size', volume: true, onRename: renameSize, onMerge: mergeSize, onDelete: deleteSize } : undefined}
                 />
               </div>
               <div className="space-y-1.5 col-span-2">
@@ -1474,6 +1664,7 @@ export default function InventoryPage() {
                   addLabel="Category"
                   onChange={category => setForm(current => ({ ...current, category }))}
                   onAdd={addCategory}
+                  manage={canManage ? { noun: 'category', onRename: renameCategory, onMerge: mergeCategory, onDelete: deleteCategory } : undefined}
                 />
               </div>
             </div>
@@ -1591,6 +1782,18 @@ export default function InventoryPage() {
                 <label className="text-sm font-medium">Unit</label>
                 <Input title="Unit of measure (e.g. each, ft, gallon)" placeholder="each" value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))} />
               </div>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/20">
+              <div>
+                <p className="text-sm font-medium">Stock alerts</p>
+                <p className="text-xs text-muted-foreground">Turn this off to leave the item out of low-stock and reorder alerts. It still stays in the list and can still be used.</p>
+              </div>
+              <Switch
+                data-testid="switch-stock-alerts"
+                title={form.stockAlerts ? 'Stock alerts are on' : 'Stock alerts are off'}
+                checked={form.stockAlerts}
+                onCheckedChange={checked => setForm(current => ({ ...current, stockAlerts: checked }))}
+              />
             </div>
 
             <div className="space-y-1.5">

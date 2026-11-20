@@ -80,7 +80,7 @@ export async function recordExpense(tenantId: number, input: CreateExpenseInput,
         });
       } else if (stocks.length) fail("Choose an active receiving location");
       await tx.update(inventoryItemsTable).set({
-        quantity:item.quantity+receipt.quantity, isLowStock:item.quantity+receipt.quantity<=item.reorderPoint,
+        quantity:item.quantity+receipt.quantity, isLowStock:item.stockAlerts!==false&&item.quantity+receipt.quantity<=item.reorderPoint,
         unitPrice:stockCost,...(receipt.updatePrice ? {markedUpPrice:sell} : {}),
       }).where(and(eq(inventoryItemsTable.tenantId,tenantId),eq(inventoryItemsTable.id,item.id)));
       snapshots.push({...receipt,purchaseCostPrice,costPrice:effectiveCost,landedUnitCost:effectiveCost,shippingAllocation,costLotId:lot.id,salesTaxPct:tax.salesTaxPct,capitalizeSalesTax:tax.capitalizeSalesTax,locationId:location?.id,locationName:location?.name ?? "Unallocated inventory",itemName:selected.name,previousCostPrice:selected.unitPrice,previousSellPrice:selected.markedUpPrice,newSellPrice:receipt.updatePrice?sell:selected.markedUpPrice});

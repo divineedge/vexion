@@ -102,6 +102,10 @@ export const inventoryPartSizesTable = pgTable("inventory_part_sizes", {
   typeId: integer("type_id").notNull().references(() => inventoryPartTypesTable.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
+  /** Chemical in one unit of an item that uses this size. Null when the size has no volume. */
+  volumeAmount: doublePrecision("volume_amount"),
+  /** gal, oz, l, or lb. Gallons and ounces convert. Pounds stay weight. */
+  volumeUnit: text("volume_unit"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (t) => [
@@ -136,6 +140,8 @@ export const inventoryItemsTable = pgTable("inventory_items", {
   quantity: doublePrecision("quantity").notNull().default(0),
   reorderPoint: integer("reorder_point").notNull().default(5),
   unit: text("unit").notNull().default("each"),
+  /** When false, the item stays in inventory but is left out of low-stock and reorder alerts. */
+  stockAlerts: boolean("stock_alerts").notNull().default(true),
   isLowStock: boolean("is_low_stock").notNull().default(false),
   /** When true, this item is offered as a pickable option in the Blueprint canvas palette / can be linked to a placed element. */
   availableForBlueprint: boolean("available_for_blueprint").notNull().default(false),

@@ -13548,6 +13548,9 @@ components:
           description: "Reorder when on hand is at or below this number. 0 is a real reorder point and means only when the part is out of stock."
         unit:
           type: string
+        stockAlerts:
+          type: boolean
+          description: "When false, the item stays in inventory but is left out of low-stock and reorder alerts."
         isLowStock:
           type: boolean
         linkedParts:
@@ -13622,6 +13625,9 @@ components:
           description: "Reorder when on hand is at or below this number. 0 is saved and is not the same as leaving the field blank."
         unit:
           type: string
+        stockAlerts:
+          type: boolean
+          description: "When false, the item is left out of low-stock and reorder alerts. Defaults to true."
         availableForBlueprint:
           type: boolean
           description: "When true, this item is offered as a pickable option in the Blueprint canvas palette."
@@ -13674,6 +13680,9 @@ components:
           description: "Reorder when on hand is at or below this number. 0 is saved and is not the same as leaving the field blank."
         unit:
           type: string
+        stockAlerts:
+          type: boolean
+          description: "When false, the item is left out of low-stock and reorder alerts."
         availableForBlueprint:
           type: boolean
           description: "When true, this item is offered as a pickable option in the Blueprint canvas palette."
@@ -13809,6 +13818,12 @@ components:
           type: string
         sortOrder:
           type: integer
+        volumeAmount:
+          type: ["number", "null"]
+          description: "Chemical in one unit of an item that uses this size. Null when the size has no volume."
+        volumeUnit:
+          type: ["string", "null"]
+          description: "gal, oz, l, or lb. Gallons and ounces convert. Pounds stay weight."
         createdAt:
           type: string
 
@@ -13820,6 +13835,10 @@ components:
           type: integer
         name:
           type: string
+        volumeAmount:
+          type: ["number", "null"]
+        volumeUnit:
+          type: ["string", "null"]
 
     InventorySizeUpdate:
       type: object
@@ -13827,6 +13846,10 @@ components:
       properties:
         name:
           type: string
+        volumeAmount:
+          type: ["number", "null"]
+        volumeUnit:
+          type: ["string", "null"]
 
     ReorderListReport:
       type: object

@@ -1752,7 +1752,7 @@ router.get("/equipment/:id/linked-parts", async (req, res): Promise<void> => {
       quantity: i.quantity,
       reorderPoint: i.reorderPoint,
       unit: i.unit,
-      isLowStock: i.quantity <= i.reorderPoint,
+      isLowStock: i.stockAlerts !== false && i.quantity <= i.reorderPoint,
       availableForBlueprint: i.availableForBlueprint,
       createdAt: i.createdAt.toISOString(),
       checkLabels: itemIdToLabels.get(i.id) ?? [],

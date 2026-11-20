@@ -746,6 +746,7 @@ router.get("/reports/inventory-reorder-list", async (req, res): Promise<void> =>
     .where(and(
       eq(inventoryItemsTable.tenantId, tenantId),
       eq(inventoryItemsTable.isLowStock, true),
+      eq(inventoryItemsTable.stockAlerts, true),
     ))
     .orderBy(inventoryItemsTable.name);
 

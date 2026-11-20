@@ -39,16 +39,55 @@ export function unitForChemicalSize(name: string | null | undefined): "gal" | "o
   return null;
 }
 
+export function formatSizeVolume(amount: number | null | undefined, unit: string | null | undefined): string | null {
+  if (amount == null || !(amount > 0) || !unit) return null;
+  const labels: Record<string, string> = { gal: "gallons", oz: "ounces", l: "liters", lb: "pounds" };
+  return `${formatInventoryQuantity(amount)} ${labels[unit] ?? unit}`;
+}
+
 export function formatInventoryQuantity(value: number): string {
   if (!Number.isFinite(value)) return "0";
   const rounded = Math.round(value * 1_000_000) / 1_000_000;
   return rounded.toFixed(6).replace(/\.?0+$/, "");
 }
 
-/** Every saved size, in name order. The menu does not depend on the selected type. */
+/**
+ * A leading size number, including fractions and mixed numbers.
+ * 1/2 is 0.5, 3/4 is 0.75, and 1 1/2 is 1.5. Labels that are not numbers return null.
+ */
+export function inventorySizeRank(name: string): number | null {
+  let text = name.trim().replace(/\s+/g, " ");
+  text = text.replace(/(?:"|″|''|′′)$/, "").trim();
+  text = text.replace(/\s+(?:in|inch|inches)$/i, "").trim();
+  const mixed = text.match(/^(\d+)(?:\s+|-)\s*(\d+)\s*\/\s*(\d+)$/);
+  if (mixed) {
+    const denominator = Number(mixed[3]);
+    if (denominator === 0) return null;
+    return Number(mixed[1]) + Number(mixed[2]) / denominator;
+  }
+  const fraction = text.match(/^(\d+)\s*\/\s*(\d+)$/);
+  if (fraction) {
+    const denominator = Number(fraction[2]);
+    if (denominator === 0) return null;
+    return Number(fraction[1]) / denominator;
+  }
+  if (/^\d+(?:\.\d+)?$/.test(text)) return Number(text);
+  return null;
+}
+
+export function compareInventorySizes(a: { id: number; name: string }, b: { id: number; name: string }): number {
+  const left = inventorySizeRank(a.name);
+  const right = inventorySizeRank(b.name);
+  if (left != null && right != null && left !== right) return left - right;
+  if (left != null && right == null) return -1;
+  if (left == null && right != null) return 1;
+  return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }) || a.id - b.id;
+}
+
+/** Numeric sizes first, smallest to largest, then labels such as Gallons. The menu does not depend on the selected type. */
 export function inventorySizeOptions(sizes: readonly { id: number; name: string }[]): { value: string; label: string }[] {
   return [...sizes]
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }) || a.id - b.id)
+    .sort(compareInventorySizes)
     .map(size => ({ value: String(size.id), label: size.name }));
 }
 
@@ -155,8 +194,46 @@ export function parseReorderPoint(value: unknown, fallback = 5): number | "inval
   return n;
 }
 
-export function stockNeedsReorder(onHand: number, reorderPoint: number): boolean {
+/** Low stock when alerts are on and on hand is at or below the reorder point, including 0. */
+export function stockNeedsReorder(onHand: number, reorderPoint: number, stockAlerts: boolean = true): boolean {
+  if (stockAlerts === false) return false;
   return onHand <= reorderPoint;
+}
+
+/** Items that belong on the low-stock list. Alerts off stays off even at quantity 0. */
+export function lowStockItems<T extends { quantity: number; reorderPoint: number; stockAlerts?: boolean | null }>(
+  items: readonly T[],
+): T[] {
+  return items.filter(item => stockNeedsReorder(item.quantity, item.reorderPoint, item.stockAlerts !== false));
+}
+
+export function showsStockAlert(item: { isLowStock?: boolean | null; stockAlerts?: boolean | null }): boolean {
+  return item.stockAlerts !== false && item.isLowStock === true;
+}
+
+export function categoryParts(value: string | null | undefined): string[] {
+  return (value ?? "").split(",").map(part => part.trim()).filter(Boolean);
+}
+
+/** Rename, merge, or clear one category name inside a stored category string. */
+export function rewriteCategory(value: string | null | undefined, from: string, to: string | null): string | null {
+  const source = (value ?? "").trim();
+  if (!source) return null;
+  const parts = categoryParts(source);
+  const key = from.trim().toLowerCase();
+  if (!key || !parts.some(part => part.toLowerCase() === key)) return source;
+  const next: string[] = [];
+  const seen = new Set<string>();
+  for (const part of parts) {
+    const replacement = part.toLowerCase() === key ? (to ?? "") : part;
+    const name = replacement.trim();
+    if (!name) continue;
+    const id = name.toLowerCase();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    next.push(name);
+  }
+  return next.length ? next.join(", ") : null;
 }
 
 /** 100 of the parent with 10 of a component means 50 uses 5 and 200 uses 20. */

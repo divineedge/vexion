@@ -16,6 +16,15 @@ export type CanonicalUnit = "gal" | "oz" | "lb" | "l";
 /** Chemical contained in one inventory unit of a size, such as a 2.5 gallon jug. */
 export type SizeVolume = { amount: number; unit: string };
 
+/** Area one inventory unit covers, such as 100 square feet per roll. */
+export type SizeCoverage = { amount: number; unit: string };
+
+export type ParsedAreaUnit = {
+  canonical: "sqft" | "acre" | "sqm";
+  /** Multiply an amount in this unit to get square feet. */
+  toSqft: number;
+};
+
 export type ParsedStockUnit = {
   family: StockFamily;
   canonical: CanonicalUnit;
@@ -42,6 +51,8 @@ export type SprayUsageLine = {
   onHand: number;
   /** Set when the item's size holds a volume, such as 2.5 gallons per jug. */
   sizeVolume?: SizeVolume | null;
+  /** Set when the item's size covers an area, such as 100 square feet per roll. */
+  sizeCoverage?: SizeCoverage | null;
 };
 
 export type DeductionPlan =
@@ -52,6 +63,9 @@ const GALLONS = new Set(["gal", "gallon", "gallons"]);
 const OUNCES = new Set(["oz", "ounce", "ounces", "fl oz", "floz", "fl-oz", "fluid oz", "fluid ounce", "fluid ounces"]);
 const LITERS = new Set(["l", "liter", "liters", "litre", "litres"]);
 const POUNDS = new Set(["lb", "lbs", "pound", "pounds"]);
+const SQUARE_FEET = new Set(["sqft", "sq ft", "square feet", "square foot", "ft2", "ft²"]);
+const ACRES = new Set(["acre", "acres"]);
+const SQUARE_METERS = new Set(["sqm", "sq m", "m2", "square meter", "square meters", "square metre", "square metres"]);
 
 export function roundStock(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
@@ -75,6 +89,28 @@ export function parseStockUnit(raw: string | null | undefined): ParsedStockUnit 
   if (LITERS.has(label)) return { family: "liquid", canonical: "l", toBase: OUNCES_PER_LITER };
   if (POUNDS.has(label)) return { family: "weight", canonical: "lb", toBase: 1 };
   return null;
+}
+
+export function parseAreaUnit(raw: string | null | undefined): ParsedAreaUnit | null {
+  const label = normalizeStockLabel(raw ?? "");
+  if (!label) return null;
+  if (SQUARE_FEET.has(label)) return { canonical: "sqft", toSqft: 1 };
+  if (ACRES.has(label)) return { canonical: "acre", toSqft: 43560 };
+  if (SQUARE_METERS.has(label)) return { canonical: "sqm", toSqft: 10.76391041671 };
+  return null;
+}
+
+/** Square feet for an area amount. Gallons and pounds are not converted. */
+export function areaInSquareFeet(amount: number, unit: string): { ok: true; sqft: number } | { ok: false; message: string } {
+  const area = parseAreaUnit(unit);
+  if (!area) {
+    const chemical = parseStockUnit(unit);
+    return {
+      ok: false,
+      message: `Units do not match. This size is square feet and this use is ${unitLabel(unit)}.${chemical ? " Area cannot be converted to gallons or pounds." : ""}`,
+    };
+  }
+  return { ok: true, sqft: roundStock(amount * area.toSqft) };
 }
 
 export function chemicalUnitCode(sizeOrUnit: string | null | undefined): CanonicalUnit | null {
@@ -135,8 +171,31 @@ export function convertStockAmount(
  * record amount is converted into that stock unit instead, so the record and
  * the inventory stay in the same units.
  */
-export function deductionForUse(line: Pick<SprayUsageLine, "amount" | "unit" | "inventoryUnit" | "sizeVolume">):
+export function deductionForUse(line: Pick<SprayUsageLine, "amount" | "unit" | "inventoryUnit" | "sizeVolume" | "sizeCoverage">):
   { ok: true; amount: number; unit: string } | { ok: false; message: string } {
+  const coverage = line.sizeCoverage;
+  const coverageSqft = coverage && coverage.amount > 0 ? parseAreaUnit(coverage.unit) : null;
+  if (coverage && coverageSqft && parseAreaUnit(line.unit)) {
+    const used = areaInSquareFeet(line.amount, line.unit);
+    if (!used.ok) return used;
+    if (parseStockUnit(line.inventoryUnit)) {
+      return { ok: false, message: "Area cannot be converted to gallons or pounds." };
+    }
+    if (parseAreaUnit(line.inventoryUnit)) {
+      return { ok: true, amount: used.sqft, unit: "sqft" };
+    }
+    return {
+      ok: true,
+      amount: roundStock(used.sqft / coverage.amount),
+      unit: (line.inventoryUnit ?? "each").trim() || "each",
+    };
+  }
+  if (parseAreaUnit(line.unit)) {
+    return { ok: false, message: "Area cannot be converted to gallons or pounds." };
+  }
+  if (coverage && coverageSqft && !line.sizeVolume && parseStockUnit(line.unit)) {
+    return { ok: false, message: "Area cannot be converted to gallons or pounds." };
+  }
   const volume = line.sizeVolume;
   const volumeUnit = volume && volume.amount > 0 ? parseStockUnit(volume.unit) : null;
   const stockUnit = parseStockUnit(line.inventoryUnit);

@@ -54,6 +54,8 @@ const ADDITIVE_SETTINGS_SQL = [
   `ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS stock_alerts boolean NOT NULL DEFAULT true`,
   `ALTER TABLE inventory_part_sizes ADD COLUMN IF NOT EXISTS volume_amount double precision`,
   `ALTER TABLE inventory_part_sizes ADD COLUMN IF NOT EXISTS volume_unit text`,
+  `ALTER TABLE inventory_part_sizes ADD COLUMN IF NOT EXISTS coverage_amount double precision`,
+  `ALTER TABLE inventory_part_sizes ADD COLUMN IF NOT EXISTS coverage_unit text`,
   `CREATE INDEX IF NOT EXISTS inventory_items_stock_item_idx ON inventory_items (stock_item_id)`,
   `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS inventory_group_by text NOT NULL DEFAULT 'type'`,
   `CREATE TABLE IF NOT EXISTS inventory_reservations (id uuid PRIMARY KEY, company_id integer NOT NULL REFERENCES tenants(id), inventory_item_id integer NOT NULL REFERENCES inventory_items(id), job_id integer NOT NULL REFERENCES jobs(id), invoice_line_id uuid, quantity numeric(12, 3) NOT NULL, consumed_quantity numeric(12, 3) NOT NULL DEFAULT 0, unit_cost numeric(12, 4) NOT NULL DEFAULT 0, status text NOT NULL DEFAULT 'reserved' CHECK (status IN ('reserved', 'reconciled')), created_at timestamptz NOT NULL DEFAULT now())`,

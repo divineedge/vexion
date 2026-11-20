@@ -13824,6 +13824,12 @@ components:
         volumeUnit:
           type: ["string", "null"]
           description: "gal, oz, l, or lb. Gallons and ounces convert. Pounds stay weight."
+        coverageAmount:
+          type: ["number", "null"]
+          description: "Area one unit of this size covers, such as 100 square feet per roll."
+        coverageUnit:
+          type: ["string", "null"]
+          description: "sqft. Area is not converted to gallons or pounds."
         createdAt:
           type: string
 
@@ -13839,6 +13845,10 @@ components:
           type: ["number", "null"]
         volumeUnit:
           type: ["string", "null"]
+        coverageAmount:
+          type: ["number", "null"]
+        coverageUnit:
+          type: ["string", "null"]
 
     InventorySizeUpdate:
       type: object
@@ -13849,6 +13859,10 @@ components:
         volumeAmount:
           type: ["number", "null"]
         volumeUnit:
+          type: ["string", "null"]
+        coverageAmount:
+          type: ["number", "null"]
+        coverageUnit:
           type: ["string", "null"]
 
     ReorderListReport:

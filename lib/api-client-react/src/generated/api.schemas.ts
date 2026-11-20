@@ -3821,6 +3821,10 @@ export interface InventorySize {
   volumeAmount?: number | null;
   /** gal, oz, l, or lb. Gallons and ounces convert. Pounds stay weight. */
   volumeUnit?: string | null;
+  /** Area one unit of this size covers, such as 100 square feet per roll. */
+  coverageAmount?: number | null;
+  /** sqft. Area is not converted to gallons or pounds. */
+  coverageUnit?: string | null;
   createdAt: string;
 }
 
@@ -3829,12 +3833,16 @@ export interface InventorySizeInput {
   name: string;
   volumeAmount?: number | null;
   volumeUnit?: string | null;
+  coverageAmount?: number | null;
+  coverageUnit?: string | null;
 }
 
 export interface InventorySizeUpdate {
   name: string;
   volumeAmount?: number | null;
   volumeUnit?: string | null;
+  coverageAmount?: number | null;
+  coverageUnit?: string | null;
 }
 
 export interface InventorySupplier {

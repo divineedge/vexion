@@ -11,6 +11,8 @@ export type CreatableOption = {
   detail?: string | null;
   volumeAmount?: number | null;
   volumeUnit?: string | null;
+  coverageAmount?: number | null;
+  coverageUnit?: string | null;
 };
 
 const VOLUME_UNITS = [
@@ -21,7 +23,13 @@ const VOLUME_UNITS = [
   { value: "lb", label: "Pounds" },
 ];
 
-type CatalogEdit = { name: string; volumeAmount: number | null; volumeUnit: string | null };
+type CatalogEdit = {
+  name: string;
+  volumeAmount: number | null;
+  volumeUnit: string | null;
+  coverageAmount: number | null;
+  coverageUnit: string | null;
+};
 
 type Props = {
   value: string;
@@ -73,6 +81,8 @@ export function CreatableOptionMenu({
   const [editName, setEditName] = useState("");
   const [volumeAmount, setVolumeAmount] = useState("");
   const [volumeUnit, setVolumeUnit] = useState("");
+  const [coverageAmount, setCoverageAmount] = useState("");
+  const [coverageUnit, setCoverageUnit] = useState("");
   const [merging, setMerging] = useState<string | null>(null);
   const [mergeInto, setMergeInto] = useState("");
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -102,6 +112,8 @@ export function CreatableOptionMenu({
     setEditName(option.label);
     setVolumeAmount(option.volumeAmount != null ? String(option.volumeAmount) : "");
     setVolumeUnit(option.volumeUnit ?? "");
+    setCoverageAmount(option.coverageAmount != null ? String(option.coverageAmount) : "");
+    setCoverageUnit(option.coverageUnit ?? "");
     setMerging(null);
     setConfirming(null);
   };
@@ -112,6 +124,8 @@ export function CreatableOptionMenu({
     if (!name) return;
     let nextVolume: number | null = null;
     let nextUnit: string | null = null;
+    let nextCoverage: number | null = null;
+    let nextCoverageUnit: string | null = null;
     if (manage.volume) {
       const amountText = volumeAmount.trim();
       const unitText = volumeUnit.trim();
@@ -122,10 +136,25 @@ export function CreatableOptionMenu({
         nextVolume = amount;
         nextUnit = unitText;
       }
+      const coverageText = coverageAmount.trim();
+      const coverageUnitText = coverageUnit.trim();
+      if ((coverageText && !coverageUnitText) || (!coverageText && coverageUnitText)) return;
+      if (coverageText) {
+        const amount = Number(coverageText);
+        if (!Number.isFinite(amount) || amount <= 0) return;
+        nextCoverage = amount;
+        nextCoverageUnit = coverageUnitText;
+      }
     }
     setBusy(true);
     try {
-      await manage.onRename(option.value, { name, volumeAmount: nextVolume, volumeUnit: nextUnit });
+      await manage.onRename(option.value, {
+        name,
+        volumeAmount: nextVolume,
+        volumeUnit: nextUnit,
+        coverageAmount: nextCoverage,
+        coverageUnit: nextCoverageUnit,
+      });
       setEditing(null);
     } finally {
       setBusy(false);
@@ -262,6 +291,31 @@ export function CreatableOptionMenu({
                         {VOLUME_UNITS.map(unit => (
                           <option key={unit.value} value={unit.value}>{unit.label}</option>
                         ))}
+                      </select>
+                    </div>
+                  )}
+                  {manage.volume && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        step="any"
+                        value={coverageAmount}
+                        placeholder="Coverage"
+                        data-testid={`${testId}-coverage-amount`}
+                        className="h-8 text-sm"
+                        aria-label="Coverage amount"
+                        onChange={event => setCoverageAmount(event.target.value)}
+                      />
+                      <select
+                        value={coverageUnit}
+                        data-testid={`${testId}-coverage-unit`}
+                        aria-label="Coverage unit"
+                        className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
+                        onChange={event => setCoverageUnit(event.target.value)}
+                      >
+                        <option value="">No area</option>
+                        <option value="sqft">Square feet</option>
                       </select>
                     </div>
                   )}

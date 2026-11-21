@@ -219,6 +219,7 @@ type ItemForm = {
   sprayProductId: string;
   linkQuantity: string;
   links: LinkRow[];
+  linkCostOverride: string;
 };
 
 const EMPTY_FORM: ItemForm = {
@@ -226,7 +227,7 @@ const EMPTY_FORM: ItemForm = {
   costPrice: '', markupPct: '', quantity: '0', reorderPoint: '5', unit: 'each',
   lengthReceived: '', pricePerFoot: '',
   availableForBlueprint: false, commissionPct: '', vendorId: '', stockAlerts: true, sprayProductId: '',
-  linkQuantity: '', links: [],
+  linkQuantity: '', links: [], linkCostOverride: '',
 };
 
 export default function InventoryPage() {
@@ -795,6 +796,7 @@ export default function InventoryPage() {
         inventoryItemId: component.inventoryItemId,
         quantity: String(component.quantity),
       })) ?? [],
+      linkCostOverride: item.linkedParts?.costOverride != null ? String(item.linkedParts.costOverride) : '',
     });
     setDraftCategories([]);
     updateSellPreview(costVal, mPct);
@@ -813,7 +815,7 @@ export default function InventoryPage() {
     if (!Number.isFinite(quantity) || quantity < 0) { toast.error('Quantity must be a non-negative number'); return; }
     const reorderPoint = parseReorderPoint(form.reorderPoint);
     if (reorderPoint === 'invalid') { toast.error('Reorder point must be a whole number, 0 or more'); return; }
-    const linked = parseLinkedPartsDraft(form.linkQuantity, form.links);
+    const linked = parseLinkedPartsDraft(form.linkQuantity, form.links, form.linkCostOverride);
     if (!linked.ok) { toast.error(linked.error); return; }
     const data = {
       name: form.name,
@@ -1513,6 +1515,12 @@ export default function InventoryPage() {
                       {formatInventoryQuantity(selectedItem.linkedParts.quantity)} {selectedItem.unit || 'units'} uses {selectedItem.linkedParts.components.map(component => `${formatInventoryQuantity(component.quantity)} ${component.unit || 'units'} ${component.name}`).join(', ')}.
                     </p>
                     <p className="text-xs text-muted-foreground">Using this part also uses the linked parts at that ratio. The job shows one combined price, and each part's own count still goes down.</p>
+                    {selectedItem.linkedParts.combinedCost != null && (
+                      <p className="text-sm" data-testid="text-combined-cost">
+                        Combined cost for 1 {selectedItem.unit || 'unit'}: ${ (selectedItem.linkedParts.costOverride ?? selectedItem.linkedParts.combinedCost).toFixed(2) }
+                        {selectedItem.linkedParts.costOverride != null ? ` (override; parts sum to $${selectedItem.linkedParts.combinedCost.toFixed(2)})` : ''}
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -1874,8 +1882,10 @@ export default function InventoryPage() {
               unit={pipePart ? 'ft' : (form.unit || 'each')}
               linkQuantity={form.linkQuantity}
               links={form.links}
+              costOverride={form.linkCostOverride}
               onLinkQuantity={linkQuantity => setForm(current => ({ ...current, linkQuantity }))}
               onLinks={links => setForm(current => ({ ...current, links }))}
+              onCostOverride={linkCostOverride => setForm(current => ({ ...current, linkCostOverride }))}
             />
             <Separator />
             <div className="flex gap-3 justify-end">

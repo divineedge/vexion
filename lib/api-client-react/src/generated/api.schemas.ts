@@ -3601,9 +3601,19 @@ export interface LinkedPartComponent {
 }
 
 export interface LinkedParts {
-  /** This much of the parent part. Both sides of the ratio are set by the user. */
+  /** This much of the parent part. 1 means each component quantity is for one unit. */
   quantity: number;
   components: LinkedPartComponent[];
+  /**
+   * Buy cost of 1 unit from the sum of component costs. Null when buy prices are hidden.
+   * @nullable
+   */
+  combinedCost?: number | null;
+  /**
+   * Optional buy cost for 1 unit. Null uses the sum of component costs.
+   * @nullable
+   */
+  costOverride?: number | null;
 }
 
 export interface InventoryItem {

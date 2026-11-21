@@ -1,12 +1,13 @@
-import {db,inventoryItemsTable,inventoryCostLotsTable,inventoryLocationStockTable,inventoryLocationsTable,inventoryTransfersTable,jobsTable,tenantsTable} from '@workspace/db';
+import {randomUUID} from 'node:crypto';
+import {blueprintsTable,db,inventoryItemsTable,inventoryCostLotsTable,inventoryLocationStockTable,inventoryLocationsTable,inventoryTransfersTable,jobsTable,tenantsTable} from '@workspace/db';
 import {and,eq,sql,desc,asc} from 'drizzle-orm';
 import type {HrDb} from './hrAccess';
 import {installInventoryKitSchema} from './inventoryKitSchema';
-import {formatKitAmount,kitJobLine,onHandNeeded,planLinkedUse,roundKitQuantity} from './inventoryKits';
-import {readKitRatio} from './inventoryKitStore';
+import {formatKitAmount,inventoryUseKeys,kitJobLine,onHandNeeded,planLinkedUse,roundKitQuantity,selectRecordedUse} from './inventoryKits';
+import {readKitRatio,readKitUses,saveKitUse} from './inventoryKitStore';
 import {resolveInventorySell} from './pipeStock';
 import {stockOwnerId} from './inventoryDuplicate';
-const fail=(message:string,status=400):never=>{throw Object.assign(new Error(message),{status});};
+function fail(message:string,status=400):never{throw Object.assign(new Error(message),{status});}
 type Item=typeof inventoryItemsTable.$inferSelect;
 type Allocation={lotId:number;quantity:number;unitCost:number};
 type LocationUse={locationId:number|null;quantity:number};
@@ -86,7 +87,7 @@ function emptyUsage():StockUsage{return{legacyQuantity:0,legacyUnitCost:0,alloca
 
 /** Move one inventory item to a desired used quantity. The quantity is in that item's own unit.
  * A shared-stock copy deducts the owner's pile; the catalog row stays the job line. */
-async function applyDesiredQuantity(tx:HrDb,tenantId:number,jobId:number,item:Item,desired:number,previous:StockUsage|null,stock:Item=item):Promise<StockUsage>{
+async function applyDesiredQuantity(tx:HrDb,tenantId:number,label:string,item:Item,desired:number,previous:StockUsage|null,stock:Item=item):Promise<StockUsage>{
  await ensureOpeningCost(tx,stock);
  const usage:StockUsage=previous?structuredClone(previous):emptyUsage();
  const desiredLegacy=Math.min(usage.legacyQuantity,desired);
@@ -131,25 +132,58 @@ async function applyDesiredQuantity(tx:HrDb,tenantId:number,jobId:number,item:It
  if(delta){
   stock.quantity=stock.quantity-delta;
   await tx.update(inventoryItemsTable).set({quantity:stock.quantity,isLowStock:stock.stockAlerts!==false&&stock.quantity<=stock.reorderPoint}).where(eq(inventoryItemsTable.id,stock.id));
-  await tx.insert(inventoryTransfersTable).values({tenantId,inventoryItemId:stock.id,quantity:Math.abs(delta),reason:`Job #${jobId} supplies ${delta>0?'used':'returned'}`});
+  await tx.insert(inventoryTransfersTable).values({tenantId,inventoryItemId:stock.id,quantity:Math.abs(delta),reason:`${label} ${delta>0?'used':'returned'}`});
  }
  return usage;
 }
 
 type StoredKitUse={inventoryItemId:number;name:string;quantity:number;unit:string;_stockUsage:StockUsage};
 
-/** Replace the desired used quantity, not a delta; repeated submits cannot consume twice. */
-export async function setJobPart(tenantId:number,jobId:number,itemId:number,quantity:number){
- if(!Number.isSafeInteger(quantity)||quantity<0||quantity>1000000)fail('Enter a whole-number supply quantity from 0 to 1,000,000');
- await installInventoryKitSchema();
- return db.transaction(async tx=>{
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(${tenantId},-19001)`);
-  const [job]=await tx.select().from(jobsTable).where(and(eq(jobsTable.tenantId,tenantId),eq(jobsTable.id,jobId))).for('update');
-  if(!job)fail('Job not found',404);
-  const parts=(Array.isArray(job.jobParts)?job.jobParts:[]) as any[];
-  const old=parts.find(p=>p.inventoryItemId===itemId);
-  const previousKit:StoredKitUse[]=Array.isArray(old?._kitUsage)?old._kitUsage:[];
-  const kit=await readKitRatio(tx,tenantId,itemId);
+function usageFromJson(value:unknown,fallback:StockUsage):StockUsage{
+ if(!value||typeof value!=='object')return fallback;
+ const row=value as Partial<StockUsage>;
+ return {
+  legacyQuantity:Number(row.legacyQuantity)||0,
+  legacyUnitCost:Number(row.legacyUnitCost)||0,
+  allocations:Array.isArray(row.allocations)?row.allocations.filter(entry=>entry&&typeof entry==='object').map(entry=>({lotId:Number(entry.lotId),quantity:Number(entry.quantity)||0,unitCost:Number(entry.unitCost)||0})): [],
+  locations:Array.isArray(row.locations)?row.locations.filter(entry=>entry&&typeof entry==='object').map(entry=>({locationId:entry.locationId==null?null:Number(entry.locationId),quantity:Number(entry.quantity)||0})):[],
+  total:Number(row.total)||0,
+ };
+}
+function kitUsageFromJson(value:unknown):StoredKitUse[]{
+ if(!Array.isArray(value))return [];
+ return value.flatMap(entry=>{
+  if(!entry||typeof entry!=='object')return [];
+  const row=entry as Partial<StoredKitUse>;
+  const inventoryItemId=Number(row.inventoryItemId);
+  if(!Number.isInteger(inventoryItemId)||inventoryItemId<=0)return [];
+  return [{inventoryItemId,name:typeof row.name==='string'?row.name:'',quantity:Number(row.quantity)||0,unit:typeof row.unit==='string'?row.unit:'',_stockUsage:usageFromJson(row._stockUsage,emptyUsage())}];
+ });
+}
+
+type CommitUse={
+ tenantId:number;
+ itemId:number;
+ quantity:number;
+ jobId:number|null;
+ blueprintId:number|null;
+ adjustmentId:string|null;
+ reasonLabel:string;
+};
+
+/** One stock use of an item, including its linked parts. A repeated use with the same job or blueprint sets the quantity. */
+async function commitLinkedUse(tx:HrDb,input:CommitUse){
+ const {tenantId,itemId,quantity,reasonLabel}=input;
+ await tx.execute(sql`SELECT pg_advisory_xact_lock(${tenantId},-19001)`);
+ const jobId=input.jobId;
+ const [job]=jobId==null?[]:await tx.select().from(jobsTable).where(and(eq(jobsTable.tenantId,tenantId),eq(jobsTable.id,jobId))).for('update');
+ if(jobId!=null&&!job)fail('Job not found',404);
+ const parts=(Array.isArray(job?.jobParts)?job.jobParts:[]) as any[];
+ const old=parts.find(p=>p.inventoryItemId===itemId);
+ const identity=inventoryUseKeys({itemId,jobId,blueprintId:job?.blueprintId??input.blueprintId,adjustmentId:input.adjustmentId});
+ const recorded=selectRecordedUse(await readKitUses(tx,tenantId,identity.matchKeys),identity.matchKeys);
+ const previousKit:StoredKitUse[]=recorded?kitUsageFromJson(recorded.kitUsage):Array.isArray(old?._kitUsage)?old._kitUsage:[];
+ const kit=await readKitRatio(tx,tenantId,itemId);
   const componentIds=new Set<number>();
   for(const component of kit?.components??[])componentIds.add(component.inventoryItemId);
   for(const previous of previousKit)componentIds.add(previous.inventoryItemId);
@@ -161,7 +195,7 @@ export async function setJobPart(tenantId:number,jobId:number,itemId:number,quan
    if(row)locked.set(id,row);
   }
   const found=locked.get(itemId);
-  if(!found){if(quantity===0&&old&&!old._stockUsage)return(await tx.update(jobsTable).set({jobParts:parts.filter(p=>p!==old)}).where(eq(jobsTable.id,jobId)).returning())[0];fail('Inventory item not found',404);}
+  if(!found){if(quantity===0&&job&&old&&!old._stockUsage)return(await tx.update(jobsTable).set({jobParts:parts.filter(p=>p!==old)}).where(eq(jobsTable.id,job.id)).returning())[0];fail('Inventory item not found',404);}
   const item=found as Item;
   const ownerIds=[...new Set([stockOwnerId(item),...[...componentIds].flatMap(id=>{const row=locked.get(id);return row?[stockOwnerId(row)]:[];})])].filter(id=>!locked.has(id)).sort((a,b)=>a-b);
   for(const id of ownerIds){
@@ -175,8 +209,10 @@ export async function setJobPart(tenantId:number,jobId:number,itemId:number,quan
   };
   const parentStock=stockOf(item);
   const [tenant]=await tx.select({defaultMarkupPct:tenantsTable.defaultMarkupPct}).from(tenantsTable).where(eq(tenantsTable.id,tenantId));
-  const sellOf=(row:Item)=>resolveInventorySell({cost:row.unitPrice,pricePerFoot:row.pricePerFoot,markedUpPrice:row.markedUpPrice,defaultMarkupPct:tenant?.defaultMarkupPct??20,itemMarkupPct:row.markupPct}).sellPrice;
-  const starting:StockUsage=old?structuredClone(old._stockUsage??{legacyQuantity:old.quantity,legacyUnitCost:item.unitPrice,allocations:[],locations:[],total:old.quantity*item.unitPrice}):emptyUsage();
+  const pricedFor=(row:Item)=>resolveInventorySell({cost:row.unitPrice,pricePerFoot:row.pricePerFoot,markedUpPrice:row.markedUpPrice,defaultMarkupPct:tenant?.defaultMarkupPct??20,itemMarkupPct:row.markupPct});
+  const sellOf=(row:Item)=>pricedFor(row).sellPrice;
+  const legacyStart:StockUsage=old?structuredClone(old._stockUsage??{legacyQuantity:old.quantity,legacyUnitCost:item.unitPrice,allocations:[],locations:[],total:old.quantity*item.unitPrice}):emptyUsage();
+  const starting:StockUsage=recorded?usageFromJson(recorded.parentUsage,legacyStart):legacyStart;
   const componentRows= [...componentIds].flatMap(id=>{
    const row=locked.get(id);
    if(!row)return [];
@@ -205,6 +241,7 @@ export async function setJobPart(tenantId:number,jobId:number,itemId:number,quan
    },
    kit,
    components:componentRows,
+   markupPct:pricedFor(item).markupPct,
   });
   if(plan.ok===false)fail(plan.message);
   const plannedLines=plan.ok?plan.lines:[];
@@ -226,14 +263,14 @@ export async function setJobPart(tenantId:number,jobId:number,itemId:number,quan
    const previous=previousKit.find(entry=>entry.inventoryItemId===line.inventoryItemId);
    claim(row,line.quantity,previous?._stockUsage??null);
   }
-  const parentUsage=await applyDesiredQuantity(tx,tenantId,jobId,item,quantity,starting,parentStock);
+  const parentUsage=await applyDesiredQuantity(tx,tenantId,reasonLabel,item,quantity,starting,parentStock);
   const storedKit:StoredKitUse[]=[];
   for(const line of plannedLines){
    if(line.inventoryItemId===item.id)continue;
    const row=locked.get(line.inventoryItemId);
    if(!row)continue;
    const previous=previousKit.find(entry=>entry.inventoryItemId===line.inventoryItemId);
-   const usage=await applyDesiredQuantity(tx,tenantId,jobId,row,line.quantity,previous?._stockUsage??null,stockOf(row));
+   const usage=await applyDesiredQuantity(tx,tenantId,reasonLabel,row,line.quantity,previous?._stockUsage??null,stockOf(row));
    if(line.quantity>0)storedKit.push({inventoryItemId:line.inventoryItemId,name:row.name,quantity:line.quantity,unit:row.unit,_stockUsage:usage});
   }
   if(storedKit.length)parentUsage.total=Math.round((parentUsage.total+storedKit.reduce((sum,component)=>sum+component._stockUsage.total,0))*1e6)/1e6;
@@ -255,6 +292,55 @@ export async function setJobPart(tenantId:number,jobId:number,itemId:number,quan
     kitComponents:storedKit.map(({_stockUsage,...component})=>component),
    }:{}),
   };
-  return(await tx.update(jobsTable).set({jobParts:[...parts.filter(p=>p.inventoryItemId!==itemId),...(quantity?[part]:[])]}).where(eq(jobsTable.id,jobId)).returning())[0];
- });
+  await saveKitUse(tx,tenantId,{
+   useKey:identity.canonicalKey,
+   inventoryItemId:item.id,
+   units:quantity,
+   jobId:job?.id??null,
+   blueprintId:job?.blueprintId??input.blueprintId,
+   parentUsage,
+   kitUsage:storedKit,
+  },identity.matchKeys);
+  if(!job)return null;
+  return(await tx.update(jobsTable).set({jobParts:[...parts.filter(p=>p.inventoryItemId!==itemId),...(quantity?[part]:[])]}).where(eq(jobsTable.id,job.id)).returning())[0];
+}
+
+/** Replace the desired used quantity, not a delta; repeated submits cannot consume twice. */
+export async function setJobPart(tenantId:number,jobId:number,itemId:number,quantity:number):Promise<typeof jobsTable.$inferSelect>{
+ if(!Number.isSafeInteger(quantity)||quantity<0||quantity>1000000)fail('Enter a whole-number supply quantity from 0 to 1,000,000');
+ await installInventoryKitSchema();
+ const job=await db.transaction(tx=>commitLinkedUse(tx,{tenantId,itemId,quantity,jobId,blueprintId:null,adjustmentId:null,reasonLabel:`Job #${jobId} supplies`}));
+ if(job==null)fail('Job not found',404);
+ return job;
+}
+
+/** Consume this many units of an item. A kit deducts each component by component quantity times units, or nothing if one is short. */
+export async function consumeInventoryUnits(tenantId:number,itemId:number,units:number,reason:string){
+ if(!Number.isFinite(units)||units<=0)fail('Enter a quantity greater than 0');
+ await installInventoryKitSchema();
+ const label=reason.trim()||'Inventory adjustment';
+ await db.transaction(tx=>commitLinkedUse(tx,{tenantId,itemId,quantity:units,jobId:null,blueprintId:null,adjustmentId:randomUUID(),reasonLabel:label}));
+}
+
+/**
+ * Record a blueprint's use of an item through the same deduction a job uses.
+ * When the blueprint is linked to one job, that job's use is updated instead of deducted again.
+ */
+export async function recordBlueprintInventoryUse(tenantId:number,blueprintId:number,itemId:number,quantity:number){
+ if(!Number.isFinite(quantity)||quantity<0)fail('Enter a supply quantity of 0 or more');
+ await installInventoryKitSchema();
+ const [blueprint]=await db.select({id:blueprintsTable.id,jobId:blueprintsTable.jobId}).from(blueprintsTable).where(and(eq(blueprintsTable.tenantId,tenantId),eq(blueprintsTable.id,blueprintId)));
+ if(!blueprint)fail('Blueprint not found',404);
+ const jobs=await db.select({id:jobsTable.id}).from(jobsTable).where(and(eq(jobsTable.tenantId,tenantId),eq(jobsTable.blueprintId,blueprintId)));
+ const linkedJobId=blueprint.jobId??(jobs.length===1?jobs[0].id:null);
+ const job=await db.transaction(tx=>commitLinkedUse(tx,{
+  tenantId,
+  itemId,
+  quantity,
+  jobId:linkedJobId,
+  blueprintId,
+  adjustmentId:null,
+  reasonLabel:linkedJobId?`Job #${linkedJobId} supplies`:`Blueprint #${blueprintId} supplies`,
+ }));
+ return job;
 }

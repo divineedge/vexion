@@ -53,6 +53,10 @@ describe.skipIf(!(process.env.DATABASE_URL || process.env.PGHOST))("blueprint me
   app.use(router);
 
   beforeAll(async () => {
+    await pool.query(`ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS planning_inputs jsonb NOT NULL DEFAULT '{}'::jsonb`);
+    await pool.query(`ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS chosen_plan_version_id integer`);
+    await pool.query(`ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS planning_locked boolean NOT NULL DEFAULT false`);
+    await pool.query(`ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS planning_locked_reason text`);
     await pool.query(`ALTER TABLE inventory_part_sizes ADD COLUMN IF NOT EXISTS length_amount double precision`);
     await pool.query(`ALTER TABLE inventory_part_sizes ADD COLUMN IF NOT EXISTS length_unit text`);
     await pool.query(`CREATE TABLE IF NOT EXISTS blueprint_inventory_uses (

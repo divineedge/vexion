@@ -3,6 +3,7 @@ import { db, blueprintsTable, inventoryItemsTable, mediaAttachmentsTable, jobsTa
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { releaseBlueprintInventoryUses } from "../lib/blueprintInventoryUse";
+import { rejectIfBlueprintLocked } from "../lib/blueprintPlanningLock";
 import { ObjectStorageService } from "../lib/objectStorage";
 
 const router: IRouter = Router();
@@ -321,6 +322,7 @@ router.patch("/blueprints/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
+  if (await rejectIfBlueprintLocked(res, tenantId, id)) return;
   const { name, canvasData, overageBufferPercent, p4pPercentage, isTemplate, scalePxPerFt, isArchived, pdfObjectPath, pdfFileName, pdfSizeBytes } = req.body;
   const updates: Partial<typeof blueprintsTable.$inferInsert> = {};
   if (name) updates.name = name;
@@ -457,6 +459,7 @@ router.delete("/blueprints/:id", async (req, res): Promise<void> => {
 
   const [existing] = await db.select().from(blueprintsTable).where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId)));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (await rejectIfBlueprintLocked(res, tenantId, id)) return;
 
   // blueprintId on jobs/estimates has no DB-level foreign key, so deleting the blueprint row alone would
   // leave those references dangling (pointing at an id that no longer exists). Null them out first so
@@ -522,6 +525,7 @@ router.post("/blueprints/:id/estimate", async (req, res): Promise<void> => {
 
   const [bp] = await db.select().from(blueprintsTable).where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId)));
   if (!bp) { res.status(404).json({ error: "Not found" }); return; }
+  if (await rejectIfBlueprintLocked(res, tenantId, id)) return;
 
   const canvas = normalizeCanvasData(bp.canvasData);
   const points = canvas.points as CanvasPointEl[];
@@ -911,6 +915,7 @@ router.post("/blueprints/:id/generate-ai-zones", async (req, res): Promise<void>
 
   const [bp] = await db.select().from(blueprintsTable).where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId)));
   if (!bp) { res.status(404).json({ error: "Not found" }); return; }
+  if (await rejectIfBlueprintLocked(res, tenantId, id)) return;
 
   // Normalize first: legacy-shaped blueprints (nodes/from/to) would otherwise look empty here, and
   // merging + saving would silently discard their original layout under the old field names.

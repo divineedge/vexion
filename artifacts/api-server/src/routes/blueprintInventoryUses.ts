@@ -6,6 +6,7 @@ import {
   MeasuredStockError,
   saveBlueprintInventoryUse,
 } from "../lib/blueprintInventoryUse";
+import { rejectIfBlueprintLocked } from "../lib/blueprintPlanningLock";
 
 const router: IRouter = Router();
 
@@ -25,6 +26,7 @@ router.get("/blueprints/:id/inventory-uses", async (req, res): Promise<void> => 
 router.post("/blueprints/:id/inventory-uses", async (req, res): Promise<void> => {
   const id = pathId(req.params.id);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (await rejectIfBlueprintLocked(res, getTenantId(req), id)) return;
   const inventoryItemId = Number(req.body?.inventoryItemId);
   const amount = Number(req.body?.amount);
   const unit = typeof req.body?.unit === "string" ? req.body.unit : null;
@@ -42,6 +44,7 @@ router.patch("/blueprints/:id/inventory-uses/:useId", async (req, res): Promise<
   const id = pathId(req.params.id);
   const useId = pathId(req.params.useId);
   if (!id || !useId) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (await rejectIfBlueprintLocked(res, getTenantId(req), id)) return;
   const inventoryItemId = Number(req.body?.inventoryItemId);
   const amount = Number(req.body?.amount);
   const unit = typeof req.body?.unit === "string" ? req.body.unit : null;
@@ -59,6 +62,7 @@ router.delete("/blueprints/:id/inventory-uses/:useId", async (req, res): Promise
   const id = pathId(req.params.id);
   const useId = pathId(req.params.useId);
   if (!id || !useId) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (await rejectIfBlueprintLocked(res, getTenantId(req), id)) return;
   const removed = await deleteBlueprintInventoryUse(getTenantId(req), id, useId);
   if (!removed) { res.status(404).json({ error: "Not found" }); return; }
   res.sendStatus(204);

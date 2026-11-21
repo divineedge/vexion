@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real, doublePrecision, jsonb, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, doublePrecision, jsonb, boolean, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -41,6 +41,13 @@ export const blueprintsTable = pgTable("blueprints", {
   /** True once the linked job is completed or the linked estimate/quote is declined. Hidden from the main Blueprints list but still visible on its property page. */
   isArchived: boolean("is_archived").notNull().default(false),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
+  /** Property outline, work areas, and features collected before a plan is calculated. */
+  planningInputs: jsonb("planning_inputs").notNull().default({}),
+  /** Version the customer or office selected. Other versions stay archived. */
+  chosenPlanVersionId: integer("chosen_plan_version_id"),
+  /** Set when an estimate from this blueprint is accepted or its job is completed. */
+  planningLocked: boolean("planning_locked").notNull().default(false),
+  planningLockedReason: text("planning_locked_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
@@ -66,3 +73,77 @@ export const blueprintInventoryUsesTable = pgTable("blueprint_inventory_uses", {
 export const insertBlueprintSchema = createInsertSchema(blueprintsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertBlueprint = z.infer<typeof insertBlueprintSchema>;
 export type Blueprint = typeof blueprintsTable.$inferSelect;
+
+/** Spacing, material density, and which sprinkler heads cannot share a zone. */
+export const blueprintPlanningSettingsTable = pgTable("blueprint_planning_settings", {
+  tenantId: integer("tenant_id").primaryKey().references(() => tenantsTable.id),
+  sprinklerMinSpacingFt: doublePrecision("sprinkler_min_spacing_ft"),
+  sprinklerMaxSpacingFt: doublePrecision("sprinkler_max_spacing_ft"),
+  tonsPerYard: doublePrecision("tons_per_yard"),
+  yardsPerTruckLoad: doublePrecision("yards_per_truck_load"),
+  bufferPercent: doublePrecision("buffer_percent").notNull().default(10),
+  zoneExclusions: jsonb("zone_exclusions").notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+/** Pass-through charges the blueprint can offer. Kept separate from estimate line JSON. */
+export const blueprintPassthroughDefaultsTable = pgTable("blueprint_passthrough_defaults", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  name: text("name").notNull(),
+  unit: text("unit"),
+  unitPrice: doublePrecision("unit_price").notNull().default(0),
+  internalCost: doublePrecision("internal_cost"),
+  availableForBlueprint: boolean("available_for_blueprint").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+/** Kits and services marked available on blueprints. Inventory and pass-throughs keep their own flags. */
+export const blueprintCatalogAvailabilityTable = pgTable("blueprint_catalog_availability", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  sourceKind: text("source_kind").notNull(),
+  sourceId: integer("source_id").notNull(),
+  available: boolean("available").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => [
+  uniqueIndex("blueprint_catalog_availability_source").on(t.tenantId, t.sourceKind, t.sourceId),
+]);
+
+/** A catalog row assigned to a role the plan needs, such as pipe or valve kit. */
+export const blueprintCatalogLinksTable = pgTable("blueprint_catalog_links", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  roleKey: text("role_key").notNull(),
+  sourceKind: text("source_kind").notNull(),
+  sourceId: integer("source_id").notNull(),
+  customerLabel: text("customer_label"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => [
+  uniqueIndex("blueprint_catalog_links_source").on(t.tenantId, t.roleKey, t.sourceKind, t.sourceId),
+]);
+
+/** One priced take of a blueprint. Unchosen versions are archived, not deleted. */
+export const blueprintPlanVersionsTable = pgTable("blueprint_plan_versions", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  blueprintId: integer("blueprint_id").notNull().references(() => blueprintsTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  status: text("status").notNull().default("open"),
+  inputs: jsonb("inputs").notNull().default({}),
+  plan: jsonb("plan").notNull().default({}),
+  lines: jsonb("lines").notNull().default([]),
+  orderList: jsonb("order_list").notNull().default([]),
+  total: doublePrecision("total"),
+  estimateId: integer("estimate_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+}, (t) => [
+  index("blueprint_plan_versions_blueprint_idx").on(t.tenantId, t.blueprintId),
+]);

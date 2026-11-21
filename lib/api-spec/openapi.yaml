@@ -3540,6 +3540,117 @@ paths:
         "204":
           description: Deleted
 
+  /blueprints/{id}/inventory-uses:
+    get:
+      operationId: listBlueprintInventoryUses
+      tags: [blueprints]
+      summary: List measured inventory uses on a blueprint
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Uses with remaining stock in the item's measure
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BlueprintMeasuredUse"
+    post:
+      operationId: createBlueprintInventoryUse
+      tags: [blueprints]
+      summary: Use a measured amount of inventory on a blueprint
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [inventoryItemId, amount]
+              properties:
+                inventoryItemId:
+                  type: integer
+                amount:
+                  type: number
+                unit:
+                  type: string
+                  description: "Square feet, gallons, ounces, pounds, feet, or inches. Defaults to the item's measure."
+                elementId:
+                  type: string
+      responses:
+        "201":
+          description: The use and the remaining measured stock
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlueprintMeasuredUse"
+
+  /blueprints/{id}/inventory-uses/{useId}:
+    patch:
+      operationId: updateBlueprintInventoryUse
+      tags: [blueprints]
+      summary: Change a blueprint inventory use and replace its deduction
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: useId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [inventoryItemId, amount]
+              properties:
+                inventoryItemId:
+                  type: integer
+                amount:
+                  type: number
+                unit:
+                  type: string
+      responses:
+        "200":
+          description: Updated use
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlueprintMeasuredUse"
+    delete:
+      operationId: deleteBlueprintInventoryUse
+      tags: [blueprints]
+      summary: Remove a blueprint inventory use and put the amount back
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: useId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Removed
+
   /blueprints/{id}/estimate:
     post:
       operationId: calculateBlueprintEstimate
@@ -13846,6 +13957,12 @@ components:
         coverageUnit:
           type: ["string", "null"]
           description: "sqft. Area is not converted to gallons or pounds."
+        lengthAmount:
+          type: ["number", "null"]
+          description: "Length this size stores, such as 10 feet or 6 inches. Null when the size has no length."
+        lengthUnit:
+          type: ["string", "null"]
+          description: "ft or in. Feet and inches convert. Length is not converted to area, volume, or weight."
         createdAt:
           type: string
 
@@ -13865,6 +13982,10 @@ components:
           type: ["number", "null"]
         coverageUnit:
           type: ["string", "null"]
+        lengthAmount:
+          type: ["number", "null"]
+        lengthUnit:
+          type: ["string", "null"]
 
     InventorySizeUpdate:
       type: object
@@ -13879,6 +14000,39 @@ components:
         coverageAmount:
           type: ["number", "null"]
         coverageUnit:
+          type: ["string", "null"]
+        lengthAmount:
+          type: ["number", "null"]
+        lengthUnit:
+          type: ["string", "null"]
+
+    BlueprintMeasuredUse:
+      type: object
+      required: [id, blueprintId, inventoryItemId, name, sku, amount, unit, onHand, measure, remainingLabel]
+      properties:
+        id:
+          type: integer
+        blueprintId:
+          type: integer
+        inventoryItemId:
+          type: integer
+        name:
+          type: string
+        sku:
+          type: string
+        amount:
+          type: number
+        unit:
+          type: string
+        onHand:
+          type: number
+          description: "Quantity left in the item's measure."
+        measure:
+          type: string
+        remainingLabel:
+          type: string
+          description: "On-hand amount in the item's measure, such as 750 sq ft or 75 feet."
+        elementId:
           type: ["string", "null"]
 
     ReorderListReport:

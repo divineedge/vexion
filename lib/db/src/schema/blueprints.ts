@@ -1,9 +1,10 @@
-import { pgTable, text, serial, timestamp, integer, real, jsonb, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, doublePrecision, jsonb, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { propertiesTable } from "./properties";
 import { jobsTable } from "./jobs";
+import { inventoryItemsTable } from "./inventory";
 
 export const blueprintsTable = pgTable("blueprints", {
   id: serial("id").primaryKey(),
@@ -40,6 +41,24 @@ export const blueprintsTable = pgTable("blueprints", {
   /** True once the linked job is completed or the linked estimate/quote is declined. Hidden from the main Blueprints list but still visible on its property page. */
   isArchived: boolean("is_archived").notNull().default(false),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+/** One measured use of inventory on a blueprint. Editing or removing it puts the deducted amount back. */
+export const blueprintInventoryUsesTable = pgTable("blueprint_inventory_uses", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  blueprintId: integer("blueprint_id").notNull().references(() => blueprintsTable.id, { onDelete: "cascade" }),
+  inventoryItemId: integer("inventory_item_id").notNull().references(() => inventoryItemsTable.id),
+  /** Amount entered in the use's unit. */
+  amount: doublePrecision("amount").notNull(),
+  unit: text("unit").notNull(),
+  /** Amount removed from on-hand quantity, in the stock's measure. */
+  deductedQuantity: doublePrecision("deducted_quantity").notNull(),
+  deductedUnit: text("deducted_unit").notNull(),
+  /** Canvas element this use belongs to, when it was entered on a placed item. */
+  elementId: text("element_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

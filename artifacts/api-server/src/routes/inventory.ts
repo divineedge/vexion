@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db, inventoryItemsTable, inventoryPartSizesTable, inventoryPartTypesTable, inventorySuppliersTable, tenantsTable, vendorsTable } from "@workspace/db";
-import { chemicalUnitCode } from "../lib/chemicalInventory";
+import { displayInventoryUnit } from "../lib/chemicalInventory";
 import { parseLinkedPartsBody } from "../lib/inventoryKits";
 import { linkedPartsByParent, readKitRatio, saveLinkedPartsFromBody, type LinkedPartsView } from "../lib/inventoryKitStore";
 import { consumeInventoryUnits } from "../lib/inventoryCosting";
@@ -204,7 +204,7 @@ function formatItem(
   tenantMarkupPct: number,
   includeCostPrice: boolean,
   supplierName?: string | null,
-  grouping?: { typeName: string | null; sizeName: string | null },
+  grouping?: { typeName: string | null; sizeName: string | null; lengthUnit?: string | null },
   vendorName?: string | null,
   linkedParts?: LinkedPartsView | null,
 ) {
@@ -241,7 +241,7 @@ function formatItem(
     markedUpPrice: sellPrice,
     quantity: i.quantity,
     reorderPoint: i.reorderPoint,
-    unit: i.pricePerFoot != null && (!i.unit || i.unit === "each") ? "ft" : (chemicalUnitCode(grouping?.sizeName) ?? i.unit),
+    unit: displayInventoryUnit(grouping?.sizeName, i.unit, i.pricePerFoot, grouping?.lengthUnit),
     stockAlerts: i.stockAlerts !== false,
     isLowStock: stockNeedsReorder(i.quantity, i.reorderPoint, i.stockAlerts !== false),
     linkedParts: presentLinkedParts(linkedParts, includeCostPrice),
@@ -305,6 +305,7 @@ type ResolvedGrouping = {
   sizeId: number | null;
   typeName: string | null;
   sizeName: string | null;
+  lengthUnit: string | null;
 };
 
 function nullableId(value: unknown): number | null | undefined {
@@ -331,7 +332,7 @@ async function resolveGrouping(
 
   if (typeId == null) {
     if (sizeId != null) return { ok: false, error: "Choose a type before choosing a size" };
-    return { ok: true, value: { typeId: null, sizeId: null, typeName: null, sizeName: null } };
+    return { ok: true, value: { typeId: null, sizeId: null, typeName: null, sizeName: null, lengthUnit: null } };
   }
 
   const [type] = await db.select({ id: inventoryPartTypesTable.id, name: inventoryPartTypesTable.name })
@@ -347,16 +348,17 @@ async function resolveGrouping(
   }
 
   if (sizeId == null) {
-    return { ok: true, value: { typeId: type.id, sizeId: null, typeName: type.name, sizeName: null } };
+    return { ok: true, value: { typeId: type.id, sizeId: null, typeName: type.name, sizeName: null, lengthUnit: null } };
   }
 
   const [size] = await db.select({
     id: inventoryPartSizesTable.id,
     name: inventoryPartSizesTable.name,
+    lengthUnit: inventoryPartSizesTable.lengthUnit,
   }).from(inventoryPartSizesTable)
     .where(and(eq(inventoryPartSizesTable.id, sizeId), eq(inventoryPartSizesTable.tenantId, tenantId)));
   if (!size) return { ok: false, error: "Size not found" };
-  return { ok: true, value: { typeId: type.id, sizeId: size.id, typeName: type.name, sizeName: size.name } };
+  return { ok: true, value: { typeId: type.id, sizeId: size.id, typeName: type.name, sizeName: size.name, lengthUnit: size.lengthUnit } };
 }
 
 async function partyNames(tenantId: number, item: { supplierId: number | null; vendorId: number | null }) {
@@ -396,7 +398,7 @@ function readAmount(value: unknown, label: string): { ok: true; value: number | 
 
 async function groupingForItem(tenantId: number, typeId: number | null, sizeId: number | null) {
   const resolved = await resolveGrouping(tenantId, typeId, sizeId);
-  return resolved.ok ? resolved.value : { typeId, sizeId, typeName: null, sizeName: null };
+  return resolved.ok ? resolved.value : { typeId, sizeId, typeName: null, sizeName: null, lengthUnit: null };
 }
 
 // ─── routes ───────────────────────────────────────────────────────────────────
@@ -532,6 +534,7 @@ router.get("/inventory", async (req, res): Promise<void> => {
       item: inventoryItemsTable,
       typeName: inventoryPartTypesTable.name,
       sizeName: inventoryPartSizesTable.name,
+      lengthUnit: inventoryPartSizesTable.lengthUnit,
     }).from(inventoryItemsTable)
       .leftJoin(inventoryPartTypesTable, eq(inventoryItemsTable.typeId, inventoryPartTypesTable.id))
       .leftJoin(inventoryPartSizesTable, eq(inventoryItemsTable.sizeId, inventoryPartSizesTable.id))
@@ -551,12 +554,12 @@ router.get("/inventory", async (req, res): Promise<void> => {
   const vendorMap = new Map(vendors.map(vendor => [vendor.id, vendor.name]));
   const links = await linkedPartsByParent(tenantId, items.map(({ item }) => item.id));
   const quantities = await ownerQuantities(tenantId, items.map(({ item }) => item));
-  const formatted = items.map(({ item, typeName, sizeName }) => formatItem(
+  const formatted = items.map(({ item, typeName, sizeName, lengthUnit }) => formatItem(
     withSharedQuantity(item, quantities.get(stockOwnerId(item))),
     markupPct,
     showCost,
     item.supplierId ? supplierMap.get(item.supplierId) : null,
-    { typeName: typeName ?? null, sizeName: sizeName ?? null },
+    { typeName: typeName ?? null, sizeName: sizeName ?? null, lengthUnit: lengthUnit ?? null },
     item.vendorId ? vendorMap.get(item.vendorId) ?? null : null,
     links.get(item.id) ?? null,
   ));

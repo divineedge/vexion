@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, blueprintsTable, inventoryItemsTable, mediaAttachmentsTable, jobsTable, estimatesTable, quotesTable } from "@workspace/db";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { releaseBlueprintInventoryUses } from "../lib/blueprintInventoryUse";
 import { ObjectStorageService } from "../lib/objectStorage";
 
 const router: IRouter = Router();
@@ -468,6 +469,7 @@ router.delete("/blueprints/:id", async (req, res): Promise<void> => {
 
   // (The underlying object-storage file, if any, is left in place — only the DB rows referencing this
   // blueprint are cleaned up. No route currently exposes deleting an individual storage object.)
+  await releaseBlueprintInventoryUses(tenantId, id);
   await db.delete(mediaAttachmentsTable).where(and(eq(mediaAttachmentsTable.entityType, "blueprint"), eq(mediaAttachmentsTable.entityId, id)));
   await db.delete(blueprintsTable).where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId)));
   res.sendStatus(204);

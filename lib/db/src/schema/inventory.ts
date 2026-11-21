@@ -110,6 +110,10 @@ export const inventoryPartSizesTable = pgTable("inventory_part_sizes", {
   coverageAmount: doublePrecision("coverage_amount"),
   /** sqft. Area is not converted to gallons or pounds. */
   coverageUnit: text("coverage_unit"),
+  /** Length this size stores, such as 10 feet or 6 inches. Null when the size has no length. */
+  lengthAmount: doublePrecision("length_amount"),
+  /** ft or in. Feet and inches convert. Length is not converted to area, volume, or weight. */
+  lengthUnit: text("length_unit"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (t) => [

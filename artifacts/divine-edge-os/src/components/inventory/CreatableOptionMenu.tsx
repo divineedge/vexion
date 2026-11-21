@@ -14,6 +14,8 @@ export type CreatableOption = {
   volumeUnit?: string | null;
   coverageAmount?: number | null;
   coverageUnit?: string | null;
+  lengthAmount?: number | null;
+  lengthUnit?: string | null;
 };
 
 const VOLUME_UNITS = [
@@ -30,6 +32,8 @@ type CatalogEdit = {
   volumeUnit: string | null;
   coverageAmount: number | null;
   coverageUnit: string | null;
+  lengthAmount: number | null;
+  lengthUnit: string | null;
 };
 
 type Props = {
@@ -103,6 +107,8 @@ export function CreatableOptionMenu({
   const [volumeUnit, setVolumeUnit] = useState("");
   const [coverageAmount, setCoverageAmount] = useState("");
   const [coverageUnit, setCoverageUnit] = useState("");
+  const [lengthAmount, setLengthAmount] = useState("");
+  const [lengthUnit, setLengthUnit] = useState("");
   const [merging, setMerging] = useState<string | null>(null);
   const [mergeInto, setMergeInto] = useState("");
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -237,6 +243,8 @@ export function CreatableOptionMenu({
     setVolumeUnit(option.volumeUnit ?? "");
     setCoverageAmount(option.coverageAmount != null ? String(option.coverageAmount) : "");
     setCoverageUnit(option.coverageUnit ?? "");
+    setLengthAmount(option.lengthAmount != null ? String(option.lengthAmount) : "");
+    setLengthUnit(option.lengthUnit ?? "");
     setMerging(null);
     setConfirming(null);
   };
@@ -249,6 +257,8 @@ export function CreatableOptionMenu({
     let nextUnit: string | null = null;
     let nextCoverage: number | null = null;
     let nextCoverageUnit: string | null = null;
+    let nextLength: number | null = null;
+    let nextLengthUnit: string | null = null;
     if (manage.volume) {
       const amountText = volumeAmount.trim();
       const unitText = volumeUnit.trim();
@@ -268,6 +278,15 @@ export function CreatableOptionMenu({
         nextCoverage = amount;
         nextCoverageUnit = coverageUnitText;
       }
+      const lengthText = lengthAmount.trim();
+      const lengthUnitText = lengthUnit.trim();
+      if ((lengthText && !lengthUnitText) || (!lengthText && lengthUnitText)) return;
+      if (lengthText) {
+        const amount = Number(lengthText);
+        if (!Number.isFinite(amount) || amount <= 0) return;
+        nextLength = amount;
+        nextLengthUnit = lengthUnitText;
+      }
     }
     setBusy(true);
     try {
@@ -277,6 +296,8 @@ export function CreatableOptionMenu({
         volumeUnit: nextUnit,
         coverageAmount: nextCoverage,
         coverageUnit: nextCoverageUnit,
+        lengthAmount: nextLength,
+        lengthUnit: nextLengthUnit,
       });
       setEditing(null);
     } finally {
@@ -494,6 +515,32 @@ export function CreatableOptionMenu({
                       >
                         <option value="">No area</option>
                         <option value="sqft">Square feet</option>
+                      </select>
+                    </div>
+                  )}
+                  {manage.volume && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        step="any"
+                        value={lengthAmount}
+                        placeholder="Length"
+                        data-testid={`${testId}-length-amount`}
+                        className="h-8 text-sm"
+                        aria-label="Length amount"
+                        onChange={event => setLengthAmount(event.target.value)}
+                      />
+                      <select
+                        value={lengthUnit}
+                        data-testid={`${testId}-length-unit`}
+                        aria-label="Length unit"
+                        className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
+                        onChange={event => setLengthUnit(event.target.value)}
+                      >
+                        <option value="">No length</option>
+                        <option value="ft">Feet</option>
+                        <option value="in">Inches</option>
                       </select>
                     </div>
                   )}

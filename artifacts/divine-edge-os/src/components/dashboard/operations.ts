@@ -20,14 +20,30 @@ export type ActionTask = {
   date?: string;
 };
 
+export type AttentionInvoice = {
+  id: number;
+  invoiceNumber: string;
+  customerName: string | null;
+  total: number | null;
+  dueAt: string | null;
+  createdAt: string;
+  href: string;
+  overdue: boolean;
+};
+
 export type OperationsPayload = {
   layout: DashboardLayout;
   tasks: ActionTask[];
   widgets: {
+    needsAction: { empty: boolean; timeframe: string; filter: string | null } | null;
     jobsCompleted: { count: number; value: number | null; restricted: boolean; empty: boolean; timeframe: string; filter: string | null } | null;
     invoicesRevenue: { openCount: number; overdueCount: number; collectedCount: number; openTotal: number | null; overdueTotal: number | null; collectedTotal: number | null; restricted: boolean; empty: boolean; timeframe: string; filter: string | null } | null;
+    invoiceAttention: { toSend: AttentionInvoice[]; due: AttentionInvoice[]; restricted: boolean; empty: boolean; timeframe: string; filter: string | null } | null;
+    profitAndLoss: { revenue: number | null; costOfGoodsSold: number | null; grossProfit: number | null; operatingExpenses: number | null; netIncome: number | null; restricted: boolean; empty: boolean; timeframe: string; filter: string | null; href: string } | null;
     payrollSummary: { entries: number; people: number; openClocks: number; minutes: number; estimatedPay: number | null; periodCount: number; restricted: boolean; empty: boolean; timeframe: string; filter: string | null } | null;
     schedule: { today: ScheduleJob[]; upcoming: ScheduleJob[]; empty: boolean; timeframe: string; filter: string | null } | null;
+    jobWaitlist: { jobs: { id: number; title: string; customerName: string | null; createdAt: string; href: string }[]; count: number; empty: boolean; timeframe: string; filter: string | null } | null;
+    inventoryReorder: { items: { id: number; name: string; sku: string; quantity: number; reorderPoint: number; unit: string; href: string }[]; count: number; empty: boolean; timeframe: string; filter: string | null } | null;
     reportSnapshots: { snapshots: { key: string; label: string; count: number; value: number | null; href: string }[]; empty: boolean; timeframe: string; filter: string | null } | null;
     alerts: { system: { id: string; severity: string; message: string }[]; weather: { id: number; title: string; detail: string; href: string }[]; equipment: { id: number; name: string; detail: string; href: string }[]; empty: boolean; timeframe: string; filter: string | null } | null;
   };
@@ -41,6 +57,8 @@ export const TASK_SOURCE_OPTIONS = [
   { value: 'equipment_maintenance', label: 'Equipment maintenance' },
   { value: 'rain_warning', label: 'High-rain warnings' },
   { value: 'followup', label: 'Follow-ups' },
+  { value: 'invoice_to_send', label: 'Invoices to send' },
+  { value: 'invoice_due', label: 'Invoices due' },
 ] as const;
 
 export function money(value: number | null): string {

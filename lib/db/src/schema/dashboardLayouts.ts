@@ -3,7 +3,7 @@ import { tenantsTable } from "./tenants";
 import { usersTable } from "./users";
 
 /**
- * Per-user Operations dashboard layout. One row belongs to one staff user.
+ * Per-user dashboard layout. One row belongs to one staff user.
  * Company settings never read or write this table.
  */
 export const userDashboardLayoutsTable = pgTable("user_dashboard_layouts", {

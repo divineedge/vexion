@@ -1,24 +1,53 @@
+import { randomBytes } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import {
+  billingEmailQueueTable,
+  customersTable,
   db,
   equipmentTable,
   estimatesTable,
   followupQueueItemsTable,
+  invoicesTable,
   jobsTable,
   portalMessageReadsTable,
   portalMessagesTable,
   tenantsTable,
   userDashboardLayoutsTable,
 } from "@workspace/db";
-import { getCallerRole } from "./roles";
-import { buildEffectivePermissions, type PermissionKey } from "./rolePermissions";
+import { customLineSum } from "./customLineItems";
+import { invoiceBalance } from "./customerCredit";
 import { ackCovers, joinSignature, maintenanceDue, scheduleDueParts, thresholdFor, type CategoryThreshold } from "./equipmentMaintenance";
-import { checkRainBeforeWindow } from "./weatherCheck";
 import { logger } from "./logger";
+import { stockNeedsReorder } from "./reorderPoint";
+import { buildEffectivePermissions, type PermissionKey } from "./rolePermissions";
+import { getCallerRole, isAdminRole } from "./roles";
+import { checkRainBeforeWindow } from "./weatherCheck";
 
-export const WIDGET_KEYS = ["jobs_completed", "invoices_revenue", "payroll_summary", "schedule", "report_snapshots", "alerts"] as const;
+export const WIDGET_KEYS = [
+  "needs_action",
+  "jobs_completed",
+  "invoices_revenue",
+  "invoice_attention",
+  "profit_and_loss",
+  "payroll_summary",
+  "schedule",
+  "job_waitlist",
+  "inventory_reorder",
+  "report_snapshots",
+  "alerts",
+] as const;
 export const TIMEFRAMES = ["today", "week", "month", "quarter", "year"] as const;
-export const TASK_SOURCES = ["portal_message", "estimate_response", "equipment_maintenance", "rain_warning", "followup"] as const;
+export const TASK_SOURCES = [
+  "portal_message",
+  "estimate_response",
+  "equipment_maintenance",
+  "rain_warning",
+  "followup",
+  "invoice_to_send",
+  "invoice_due",
+] as const;
+/** Invoices due inside this window count as close to overdue. It matches the default reminder of 3 days before the due date. */
+export const DUE_SOON_DAYS = 3;
 
 export type WidgetKey = (typeof WIDGET_KEYS)[number];
 export type Timeframe = (typeof TIMEFRAMES)[number];
@@ -27,31 +56,59 @@ export type WidgetConfig = { key: WidgetKey; visible: boolean; timeframe: Timefr
 export type DashboardLayout = { widgets: WidgetConfig[]; taskSources: TaskSource[] };
 
 const FILTERS: Record<WidgetKey, string[]> = {
+  needs_action: ["all"],
   jobs_completed: ["all", "mine"],
   invoices_revenue: ["outstanding", "activity"],
+  invoice_attention: ["all", "to_send", "due"],
+  profit_and_loss: ["all"],
   payroll_summary: ["all", "mine"],
   schedule: ["all", "mine"],
+  job_waitlist: ["all", "mine"],
+  inventory_reorder: ["all"],
   report_snapshots: ["all"],
   alerts: ["all", "system", "weather", "equipment"],
 };
 
 const DEFAULT_TIMEFRAME: Record<WidgetKey, Timeframe> = {
+  needs_action: "today",
   jobs_completed: "month",
   invoices_revenue: "month",
+  invoice_attention: "month",
+  profit_and_loss: "month",
   payroll_summary: "week",
   schedule: "week",
+  job_waitlist: "year",
+  inventory_reorder: "today",
   report_snapshots: "month",
   alerts: "today",
 };
 
 const DEFAULT_FILTER: Record<WidgetKey, string> = {
+  needs_action: "all",
   jobs_completed: "all",
   invoices_revenue: "outstanding",
+  invoice_attention: "all",
+  profit_and_loss: "all",
   payroll_summary: "all",
   schedule: "all",
+  job_waitlist: "all",
+  inventory_reorder: "all",
   report_snapshots: "all",
   alerts: "all",
 };
+
+export function classifyInvoiceAttention(
+  invoice: { status: string; createdAt: Date; dueAt: Date | null; handled: boolean; balance: number },
+  range: { start: Date; end: Date },
+  now = new Date(),
+): "send" | "due" | null {
+  if (invoice.status === "draft" && invoice.createdAt >= range.start && invoice.createdAt < range.end) return "send";
+  if (invoice.handled || invoice.balance <= 0) return null;
+  if ((invoice.status === "sent" || invoice.status === "overdue") && invoice.dueAt && invoice.dueAt.getTime() < now.getTime() + DUE_SOON_DAYS * 86400000) {
+    return "due";
+  }
+  return null;
+}
 
 export function defaultLayout(): DashboardLayout {
   return {
@@ -143,13 +200,22 @@ async function tenantContext(tenantId: number) {
     thresholds: tenantsTable.equipmentCategoryThresholds,
     rainThreshold: tenantsTable.rainfastRainThresholdPct,
     rolePermissions: tenantsTable.rolePermissions,
+    p4p: tenantsTable.p4pMasterPercentage,
   }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
   return {
     timeZone: tenant?.timezone || "America/Denver",
     thresholds: (Array.isArray(tenant?.thresholds) ? tenant.thresholds : []) as CategoryThreshold[],
     rainThreshold: tenant?.rainThreshold ?? 50,
     rolePermissions: (tenant?.rolePermissions ?? null) as Record<string, Record<string, boolean>> | null,
+    p4p: tenant?.p4p ?? 0,
   };
+}
+
+function storedWidgetKeys(widgets: unknown): string[] {
+  if (!Array.isArray(widgets)) return [];
+  return widgets.flatMap(item => (
+    item && typeof item === "object" && typeof (item as { key?: unknown }).key === "string" ? [(item as { key: string }).key] : []
+  ));
 }
 
 export async function readLayout(tenantId: number, userId: number): Promise<DashboardLayout> {
@@ -157,7 +223,21 @@ export async function readLayout(tenantId: number, userId: number): Promise<Dash
     .from(userDashboardLayoutsTable)
     .where(and(eq(userDashboardLayoutsTable.userId, userId), eq(userDashboardLayoutsTable.tenantId, tenantId)));
   if (!row) return defaultLayout();
-  return normalizeLayout({ widgets: row.widgets, taskSources: row.taskSources }) ?? defaultLayout();
+  const layout = normalizeLayout({ widgets: row.widgets, taskSources: row.taskSources }) ?? defaultLayout();
+  const stored = storedWidgetKeys(row.widgets);
+  if (!stored.includes("needs_action")) {
+    const index = layout.widgets.findIndex(widget => widget.key === "needs_action");
+    if (index > 0) {
+      const [needsAction] = layout.widgets.splice(index, 1);
+      layout.widgets.unshift(needsAction);
+    }
+  }
+  if (!stored.includes("invoice_attention")) {
+    for (const source of ["invoice_to_send", "invoice_due"] as const) {
+      if (!layout.taskSources.includes(source)) layout.taskSources.push(source);
+    }
+  }
+  return layout;
 }
 
 export async function writeLayout(tenantId: number, userId: number, layout: DashboardLayout): Promise<DashboardLayout> {
@@ -479,7 +559,7 @@ async function scheduleWidget(tenantId: number, userId: number, config: WidgetCo
     SELECT j.id, j.title, j.status, j.scheduled_at, c.name AS customer_name
     FROM jobs j
     LEFT JOIN customers c ON c.id = j.customer_id AND c.tenant_id = j.tenant_id
-    WHERE j.tenant_id = ${tenantId} AND j.archived_at IS NULL AND j.status <> 'cancelled'
+    WHERE j.tenant_id = ${tenantId} AND j.archived_at IS NULL AND j.status NOT IN ('cancelled', 'waitlist')
       AND j.scheduled_at >= ${today.start.toISOString()}::timestamptz
       AND j.scheduled_at < ${windowEnd.toISOString()}::timestamptz
       AND (j.customer_id IS NULL OR c.archived_at IS NULL)
@@ -554,6 +634,313 @@ async function alertsWidget(tenantId: number, config: WidgetConfig, timeZone: st
   };
 }
 
+type AttentionInvoice = {
+  id: number;
+  invoiceNumber: string;
+  customerName: string | null;
+  total: number | null;
+  dueAt: string | null;
+  createdAt: string;
+  href: string;
+  overdue: boolean;
+};
+
+async function attentionInvoices(tenantId: number, config: WidgetConfig, timeZone: string, canSeeMoney: boolean, now: Date) {
+  const range = timeframeRange(config.timeframe, timeZone, now);
+  const soon = new Date(now.getTime() + DUE_SOON_DAYS * 86400000).toISOString();
+  const wantSend = config.filter !== "due";
+  const wantDue = config.filter !== "to_send";
+  const toSendRows = wantSend ? (await db.execute(sql`
+    SELECT i.id, i.invoice_number, i.total, i.due_date, i.created_at, c.name AS customer_name
+    FROM invoices i
+    JOIN customers c ON c.id = i.customer_id AND c.tenant_id = i.tenant_id
+    WHERE i.tenant_id = ${tenantId} AND i.archived_at IS NULL AND c.archived_at IS NULL
+      AND i.status = 'draft'
+      AND i.created_at >= ${range.start.toISOString()}::timestamptz
+      AND i.created_at < ${range.end.toISOString()}::timestamptz
+    ORDER BY i.created_at DESC
+    LIMIT 20
+  `)).rows : [];
+  const dueRows = wantDue ? (await db.execute(sql`
+    SELECT i.id, i.invoice_number, i.total, i.credit_applied, i.deposit_applied, i.due_date, i.created_at, c.name AS customer_name
+    FROM invoices i
+    JOIN customers c ON c.id = i.customer_id AND c.tenant_id = i.tenant_id
+    WHERE i.tenant_id = ${tenantId} AND i.archived_at IS NULL AND c.archived_at IS NULL
+      AND i.status IN ('sent', 'overdue')
+      AND i.due_attention_handled_at IS NULL
+      AND i.due_date IS NOT NULL
+      AND i.due_date < ${soon}::timestamptz
+      AND (i.total - COALESCE(i.credit_applied, 0) - COALESCE(i.deposit_applied, 0)) > 0
+    ORDER BY i.due_date ASC
+    LIMIT 20
+  `)).rows : [];
+  const present = (row: Record<string, unknown>, overdue: boolean): AttentionInvoice => ({
+    id: Number(row.id),
+    invoiceNumber: String(row.invoice_number),
+    customerName: row.customer_name == null ? null : String(row.customer_name),
+    total: canSeeMoney ? money(num(row.total)) : null,
+    dueAt: row.due_date == null ? null : new Date(String(row.due_date)).toISOString(),
+    createdAt: new Date(String(row.created_at)).toISOString(),
+    href: `/financials?invoiceId=${row.id}`,
+    overdue,
+  });
+  const toSend = toSendRows.map(row => present(row, false));
+  const due = dueRows.map(row => present(row, row.due_date != null && new Date(String(row.due_date)).getTime() < now.getTime()));
+  return {
+    toSend,
+    due,
+    restricted: !canSeeMoney,
+    empty: toSend.length + due.length === 0,
+    timeframe: config.timeframe,
+    filter: config.filter,
+  };
+}
+
+async function invoiceTasks(tenantId: number, sources: TaskSource[], timeZone: string, now: Date, timeframe: Timeframe, canSeeMoney: boolean): Promise<TaskItem[]> {
+  const tasks: TaskItem[] = [];
+  const range = timeframeRange(timeframe, timeZone, now);
+  if (sources.includes("invoice_to_send")) {
+    const rows = (await db.execute(sql`
+      SELECT i.id, i.invoice_number, i.total, i.created_at, c.name AS customer_name
+      FROM invoices i
+      JOIN customers c ON c.id = i.customer_id AND c.tenant_id = i.tenant_id
+      WHERE i.tenant_id = ${tenantId} AND i.archived_at IS NULL AND c.archived_at IS NULL
+        AND i.status = 'draft'
+        AND i.created_at >= ${range.start.toISOString()}::timestamptz
+        AND i.created_at < ${range.end.toISOString()}::timestamptz
+      ORDER BY i.created_at DESC
+      LIMIT 25
+    `)).rows;
+    for (const row of rows) {
+      tasks.push({
+        source: "invoice_to_send",
+        sourceId: Number(row.id),
+        title: `Send invoice ${row.invoice_number}`,
+        detail: canSeeMoney ? `${row.customer_name ?? "Customer"} · $${money(num(row.total)).toFixed(2)}` : String(row.customer_name ?? "Customer"),
+        href: `/financials?invoiceId=${row.id}`,
+        createdAt: new Date(String(row.created_at)).toISOString(),
+      });
+    }
+  }
+  if (sources.includes("invoice_due")) {
+    const soon = new Date(now.getTime() + DUE_SOON_DAYS * 86400000).toISOString();
+    const rows = (await db.execute(sql`
+      SELECT i.id, i.invoice_number, i.total, i.due_date, i.created_at, c.name AS customer_name
+      FROM invoices i
+      JOIN customers c ON c.id = i.customer_id AND c.tenant_id = i.tenant_id
+      WHERE i.tenant_id = ${tenantId} AND i.archived_at IS NULL AND c.archived_at IS NULL
+        AND i.status IN ('sent', 'overdue')
+        AND i.due_attention_handled_at IS NULL
+        AND i.due_date IS NOT NULL
+        AND i.due_date < ${soon}::timestamptz
+        AND (i.total - COALESCE(i.credit_applied, 0) - COALESCE(i.deposit_applied, 0)) > 0
+      ORDER BY i.due_date ASC
+      LIMIT 25
+    `)).rows;
+    for (const row of rows) {
+      const overdue = new Date(String(row.due_date)).getTime() < now.getTime();
+      tasks.push({
+        source: "invoice_due",
+        sourceId: Number(row.id),
+        title: overdue ? `Invoice ${row.invoice_number} is overdue` : `Invoice ${row.invoice_number} is close to overdue`,
+        detail: canSeeMoney ? `${row.customer_name ?? "Customer"} · $${money(num(row.total)).toFixed(2)}` : String(row.customer_name ?? "Customer"),
+        href: `/financials?invoiceId=${row.id}`,
+        createdAt: row.due_date ? new Date(String(row.due_date)).toISOString() : now.toISOString(),
+      });
+    }
+  }
+  return tasks;
+}
+
+async function profitAndLoss(tenantId: number, config: WidgetConfig, timeZone: string, p4pPct: number, canSeeMoney: boolean) {
+  const range = timeframeRange(config.timeframe, timeZone);
+  const hidden = {
+    revenue: null, costOfGoodsSold: null, grossProfit: null, operatingExpenses: null, netIncome: null,
+    restricted: true, empty: false, timeframe: config.timeframe, filter: config.filter, href: "/reports",
+  };
+  if (!canSeeMoney) return hidden;
+  const rows = (await db.execute(sql`
+    SELECT
+      i.total AS invoice_total,
+      COALESCE((SELECT SUM((part->>'total')::numeric) FROM jsonb_array_elements(COALESCE(j.job_parts, '[]'::jsonb)) AS part), 0) AS parts_cost,
+      ${customLineSum(sql`i.line_items`, "sell")} AS custom_sell,
+      ${customLineSum(sql`i.line_items`, "cost")} AS custom_cost,
+      b.p4p_percentage AS blueprint_p4p_pct
+    FROM invoices i
+    LEFT JOIN jobs j ON j.id = i.job_id AND j.tenant_id = i.tenant_id
+    LEFT JOIN blueprints b ON b.id = j.blueprint_id AND b.tenant_id = j.tenant_id
+    INNER JOIN customers c ON c.id = i.customer_id AND c.tenant_id = i.tenant_id
+    WHERE i.tenant_id = ${tenantId}
+      AND i.status = 'paid'
+      AND i.archived_at IS NULL
+      AND c.archived_at IS NULL
+      AND (i.job_id IS NULL OR j.archived_at IS NULL)
+      AND i.paid_at >= ${range.start.toISOString()}::timestamptz
+      AND i.paid_at < ${range.end.toISOString()}::timestamptz
+  `)).rows;
+  let revenue = 0;
+  let partsCost = 0;
+  let passThroughCost = 0;
+  let laborCost = 0;
+  for (const row of rows) {
+    const total = num(row.invoice_total);
+    revenue += total;
+    const parts = num(row.parts_cost);
+    const customSell = num(row.custom_sell);
+    const customCost = num(row.custom_cost);
+    partsCost += parts;
+    passThroughCost += customCost;
+    const pct = row.blueprint_p4p_pct == null ? p4pPct : num(row.blueprint_p4p_pct);
+    laborCost += Math.max(0, total - parts - customSell) * pct / 100;
+  }
+  const fromDay = calendarDay(range.start, timeZone);
+  const toDay = calendarDay(new Date(range.end.getTime() - 1), timeZone);
+  const fuelCost = num((await db.execute(sql`
+    SELECT COALESCE(SUM(f.cost), 0)::float AS total FROM equipment_fuel_logs f
+    LEFT JOIN jobs j ON j.id = f.job_id AND j.tenant_id = f.tenant_id
+    LEFT JOIN customers c ON c.id = j.customer_id AND c.tenant_id = j.tenant_id
+    WHERE f.tenant_id = ${tenantId}
+      AND (f.job_id IS NULL OR (j.archived_at IS NULL AND c.archived_at IS NULL))
+      AND f.date >= ${fromDay} AND f.date <= ${toDay}
+  `)).rows[0]?.total);
+  const operatingExpenses = num((await db.execute(sql`
+    SELECT COALESCE(SUM(GREATEST(0, amount - COALESCE((SELECT SUM((r->>'quantity')::numeric * (r->>'costPrice')::numeric)
+      FROM jsonb_array_elements(COALESCE(inventory_receipts, '[]'::jsonb)) r), 0))), 0)::float AS total
+    FROM expense_entries
+    WHERE tenant_id = ${tenantId} AND date >= ${fromDay} AND date <= ${toDay}
+  `)).rows[0]?.total);
+  const costOfGoodsSold = money(partsCost + passThroughCost + laborCost + fuelCost);
+  const grossProfit = money(revenue - costOfGoodsSold);
+  const netIncome = money(grossProfit - operatingExpenses);
+  return {
+    revenue: money(revenue),
+    costOfGoodsSold,
+    grossProfit,
+    operatingExpenses: money(operatingExpenses),
+    netIncome,
+    restricted: false,
+    empty: revenue === 0 && costOfGoodsSold === 0 && operatingExpenses === 0,
+    timeframe: config.timeframe,
+    filter: config.filter,
+    href: "/reports",
+  };
+}
+
+async function inventoryReorder(tenantId: number, config: WidgetConfig) {
+  const rows = (await db.execute(sql`
+    SELECT i.id, i.name, i.sku, i.unit, i.reorder_point, i.stock_alerts, i.stock_item_id,
+      CASE WHEN i.stock_item_id IS NULL THEN i.quantity ELSE COALESCE(owner.quantity, 0) END AS on_hand
+    FROM inventory_items i
+    LEFT JOIN inventory_items owner ON owner.id = i.stock_item_id AND owner.tenant_id = i.tenant_id
+    WHERE i.tenant_id = ${tenantId}
+    ORDER BY i.name
+  `)).rows;
+  const matched = rows.flatMap(row => {
+    const onHand = num(row.on_hand);
+    const reorderPoint = num(row.reorder_point);
+    const alertsOn = row.stock_alerts !== false && row.stock_alerts !== "false";
+    if (!stockNeedsReorder(onHand, reorderPoint, alertsOn)) return [];
+    return [{
+      id: Number(row.id),
+      name: String(row.name),
+      sku: String(row.sku),
+      quantity: onHand,
+      reorderPoint,
+      unit: String(row.unit ?? "each"),
+      href: "/inventory",
+    }];
+  });
+  const items = matched.slice(0, 20);
+  return { items, count: matched.length, empty: matched.length === 0, timeframe: config.timeframe, filter: config.filter };
+}
+
+async function jobWaitlist(tenantId: number, userId: number, config: WidgetConfig) {
+  const mine = config.filter === "mine" ? sql`AND j.assignee_id = ${userId}` : sql``;
+  const where = sql`
+    j.tenant_id = ${tenantId} AND j.archived_at IS NULL AND j.status = 'waitlist'
+    AND (j.customer_id IS NULL OR c.archived_at IS NULL)
+    ${mine}
+  `;
+  const count = num((await db.execute(sql`
+    SELECT count(*)::int AS count
+    FROM jobs j
+    LEFT JOIN customers c ON c.id = j.customer_id AND c.tenant_id = j.tenant_id
+    WHERE ${where}
+  `)).rows[0]?.count);
+  const rows = (await db.execute(sql`
+    SELECT j.id, j.title, COALESCE(j.created_at, j.scheduled_at) AS created_at, c.name AS customer_name
+    FROM jobs j
+    LEFT JOIN customers c ON c.id = j.customer_id AND c.tenant_id = j.tenant_id
+    WHERE ${where}
+    ORDER BY COALESCE(j.created_at, j.scheduled_at) DESC
+    LIMIT 20
+  `)).rows;
+  const jobs = rows.map(row => ({
+    id: Number(row.id),
+    title: String(row.title),
+    customerName: row.customer_name == null ? null : String(row.customer_name),
+    createdAt: new Date(String(row.created_at)).toISOString(),
+    href: `/schedule?jobId=${row.id}`,
+  }));
+  return { jobs, count, empty: count === 0, timeframe: config.timeframe, filter: config.filter };
+}
+
+async function markInvoiceSent(tenantId: number, userId: number, invoiceId: number) {
+  if (!(await isAdminRole(tenantId, userId))) return { error: "Restricted to owner/admin/office roles", status: 403 };
+  const result = await db.transaction(async tx => {
+    const [existing] = await tx.select().from(invoicesTable).where(and(
+      eq(invoicesTable.id, invoiceId), eq(invoicesTable.tenantId, tenantId),
+    )).for("update");
+    if (!existing || existing.archivedAt) return { error: "Invoice not found", status: 404 };
+    if (existing.status !== "draft") return { ok: true as const, alreadyComplete: true };
+    if (!(existing.total > 0)) return { error: "Add a positive price before sending.", status: 422 };
+    const [customer] = await tx.select({ email: customersTable.email, archivedAt: customersTable.archivedAt }).from(customersTable).where(and(
+      eq(customersTable.id, existing.customerId), eq(customersTable.tenantId, tenantId),
+    ));
+    if (!customer?.email || customer.archivedAt) return { error: "An active customer with an email address is required.", status: 422 };
+    const covered = existing.creditApplied + existing.depositApplied > 0 && invoiceBalance(existing) === 0;
+    await tx.update(invoicesTable).set({
+      status: covered ? "paid" : "sent",
+      paidAt: covered ? new Date() : existing.paidAt,
+      paymentMethod: covered ? (existing.creditApplied > 0 ? "prepaid_credit" : "estimate_deposit") : existing.paymentMethod,
+      publicToken: existing.publicToken ?? randomBytes(32).toString("hex"),
+    }).where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.tenantId, tenantId)));
+    await tx.insert(billingEmailQueueTable).values({ tenantId, invoiceId, status: "pending", attempts: 0 });
+    return { ok: true as const, alreadyComplete: false };
+  });
+  if ("ok" in result && !result.alreadyComplete) {
+    await import("./billingScheduler").then(module => module.processEmailQueue(tenantId)).catch(error => {
+      logger.warn({ err: error, invoiceId }, "Invoice email delivery failed");
+    });
+    await import("./invoiceCardPayments").then(module => module.chargeInvoiceCard(tenantId, invoiceId, "when_sent")).catch(error => {
+      logger.warn({ err: error, invoiceId }, "Invoice charge on send failed");
+    });
+  }
+  return result;
+}
+
+async function markInvoiceDueHandled(tenantId: number, userId: number, invoiceId: number) {
+  if (!(await isAdminRole(tenantId, userId))) return { error: "Restricted to owner/admin/office roles", status: 403 };
+  const [existing] = await db.select({
+    id: invoicesTable.id,
+    status: invoicesTable.status,
+    handledAt: invoicesTable.dueAttentionHandledAt,
+    archivedAt: invoicesTable.archivedAt,
+  }).from(invoicesTable).where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.tenantId, tenantId)));
+  if (!existing || existing.archivedAt) return { error: "Invoice not found", status: 404 };
+  if (existing.handledAt || existing.status === "paid" || existing.status === "cancelled") return { ok: true as const, alreadyComplete: true };
+  if (existing.status !== "sent" && existing.status !== "overdue") return { error: "That invoice is not waiting on a due date", status: 409 };
+  const [updated] = await db.update(invoicesTable).set({
+    dueAttentionHandledAt: new Date(),
+    dueAttentionHandledByUserId: userId,
+  }).where(and(
+    eq(invoicesTable.id, invoiceId),
+    eq(invoicesTable.tenantId, tenantId),
+    sql`${invoicesTable.dueAttentionHandledAt} IS NULL`,
+  )).returning({ id: invoicesTable.id });
+  return updated ? { ok: true as const, alreadyComplete: false } : { ok: true as const, alreadyComplete: true };
+}
+
 export async function loadOperations(tenantId: number, userId: number) {
   const layout = await readLayout(tenantId, userId);
   const context = await tenantContext(tenantId);
@@ -561,7 +948,9 @@ export async function loadOperations(tenantId: number, userId: number) {
   const permissions = buildEffectivePermissions(role, context.rolePermissions);
   const allowed = (key: PermissionKey) => permissions[key];
   const now = new Date();
-  const { tasks, equipment } = await actionTasks(tenantId, layout.taskSources, context, now);
+  const { tasks: sourceTasks, equipment } = await actionTasks(tenantId, layout.taskSources, context, now);
+  const canSeeInvoices = allowed("financials.invoiceAmounts");
+  const tasks = [...sourceTasks, ...await invoiceTasks(tenantId, layout.taskSources, context.timeZone, now, widget(layout, "invoice_attention").timeframe, canSeeInvoices)];
   const alertConfig = widget(layout, "alerts");
   const wantWeather = alertConfig.visible && (alertConfig.filter === "all" || alertConfig.filter === "weather");
   const rain = wantWeather && !layout.taskSources.includes("rain_warning")
@@ -569,11 +958,16 @@ export async function loadOperations(tenantId: number, userId: number) {
     : tasks.filter(task => task.source === "rain_warning");
   const visible = new Set(layout.widgets.filter(item => item.visible).map(item => item.key));
   const widgets = {
+    needsAction: visible.has("needs_action") ? { empty: tasks.length === 0, timeframe: widget(layout, "needs_action").timeframe, filter: widget(layout, "needs_action").filter } : null,
     jobsCompleted: visible.has("jobs_completed") ? await jobsCompleted(tenantId, userId, widget(layout, "jobs_completed"), context.timeZone, allowed("financials.jobPrices")) : null,
-    invoicesRevenue: visible.has("invoices_revenue") ? await invoicesRevenue(tenantId, widget(layout, "invoices_revenue"), context.timeZone, allowed("financials.invoiceAmounts")) : null,
+    invoicesRevenue: visible.has("invoices_revenue") ? await invoicesRevenue(tenantId, widget(layout, "invoices_revenue"), context.timeZone, canSeeInvoices) : null,
+    invoiceAttention: visible.has("invoice_attention") ? await attentionInvoices(tenantId, widget(layout, "invoice_attention"), context.timeZone, canSeeInvoices, now) : null,
+    profitAndLoss: visible.has("profit_and_loss") ? await profitAndLoss(tenantId, widget(layout, "profit_and_loss"), context.timeZone, context.p4p, allowed("pages.reports") && canSeeInvoices) : null,
     payrollSummary: visible.has("payroll_summary") ? await payrollSummary(tenantId, userId, widget(layout, "payroll_summary"), context.timeZone, allowed("pages.billing")) : null,
     schedule: visible.has("schedule") ? await scheduleWidget(tenantId, userId, widget(layout, "schedule"), context.timeZone, now) : null,
-    reportSnapshots: visible.has("report_snapshots") ? await reportSnapshots(tenantId, widget(layout, "report_snapshots"), context.timeZone, allowed("financials.jobPrices"), allowed("financials.invoiceAmounts")) : null,
+    jobWaitlist: visible.has("job_waitlist") ? await jobWaitlist(tenantId, userId, widget(layout, "job_waitlist")) : null,
+    inventoryReorder: visible.has("inventory_reorder") ? await inventoryReorder(tenantId, widget(layout, "inventory_reorder")) : null,
+    reportSnapshots: visible.has("report_snapshots") ? await reportSnapshots(tenantId, widget(layout, "report_snapshots"), context.timeZone, allowed("financials.jobPrices"), canSeeInvoices) : null,
     alerts: visible.has("alerts") ? await alertsWidget(tenantId, widget(layout, "alerts"), context.timeZone, equipment, rain) : null,
   };
   return { layout, widgets, tasks };
@@ -627,6 +1021,8 @@ export async function completeActionTask(tenantId: number, userId: number, sourc
     if (!updated) return { error: "Job not found", status: 404 };
     return { ok: true, alreadyComplete: false };
   }
+  if (source === "invoice_to_send") return markInvoiceSent(tenantId, userId, sourceId);
+  if (source === "invoice_due") return markInvoiceDueHandled(tenantId, userId, sourceId);
   const [existing] = await db.select({
     id: followupQueueItemsTable.id, status: followupQueueItemsTable.status, note: followupQueueItemsTable.communicationNote,
   }).from(followupQueueItemsTable).where(and(
@@ -638,7 +1034,7 @@ export async function completeActionTask(tenantId: number, userId: number, sourc
     status: "resolved",
     resolvedAt: new Date(),
     resolvedByUserId: userId,
-    communicationNote: existing.note ?? "Completed from the Operations dashboard",
+    communicationNote: existing.note ?? "Completed from the Dashboard",
   }).where(and(
     eq(followupQueueItemsTable.id, sourceId),
     eq(followupQueueItemsTable.tenantId, tenantId),

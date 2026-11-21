@@ -26,8 +26,8 @@ vi.mock("@workspace/db", async (original) => {
 
 import { and, eq } from "drizzle-orm";
 import {
-  db, pool, customersTable, equipmentMaintenanceTable, equipmentTable, estimatesTable,
-  followupQueueItemsTable, invoicesTable, jobsTable, portalMessagesTable, propertiesTable,
+  billingEmailQueueTable, customersTable, db, equipmentMaintenanceTable, equipmentTable, estimatesTable,
+  followupQueueItemsTable, inventoryItemsTable, invoicesTable, jobsTable, pool, portalMessagesTable, propertiesTable,
   servicesTable, staffSessionsTable, tenantsTable, timeEntriesTable, usersTable,
 } from "@workspace/db";
 import { requireVerifiedStaff } from "../lib/verifiedStaff";
@@ -59,11 +59,16 @@ describe.skipIf(!RUN)("operations dashboard", () => {
   let equipmentId = 0;
   let followupId = 0;
   let rainJobId = 0;
+  let draftInvoiceId = 0;
+  let overdueInvoiceId = 0;
+  let closeInvoiceId = 0;
+  let laterInvoiceId = 0;
 
   const auth = (token: string) => ({ "x-staff-session": token });
 
   beforeAll(async () => {
     await pool.query(readFileSync(new URL("../../../../lib/db/drizzle/0115_operations_dashboard.sql", import.meta.url), "utf8"));
+    await pool.query(readFileSync(new URL("../../../../lib/db/drizzle/0116_dashboard_widgets.sql", import.meta.url), "utf8"));
     fixtureClient = await pool.connect();
     await fixtureClient.query("BEGIN");
     const base = drizzle(fixtureClient);
@@ -148,10 +153,24 @@ describe.skipIf(!RUN)("operations dashboard", () => {
       title: "Spray today", status: "scheduled", scheduledAt: now,
     }).returning();
     rainJobId = rainJob.id;
-    await db.insert(invoicesTable).values([
+    const [draftInvoice, closeInvoice, overdueInvoice, laterInvoice] = await db.insert(invoicesTable).values([
+      { tenantId, customerId: customer.id, invoiceNumber: `DRF-${suffix}`, status: "draft", total: 55, dueDate: new Date(Date.now() + 10 * 86400000) },
       { tenantId, customerId: customer.id, invoiceNumber: `OPN-${suffix}`, status: "sent", total: 40, dueDate: new Date(Date.now() + 86400000) },
       { tenantId, customerId: customer.id, invoiceNumber: `OVR-${suffix}`, status: "sent", total: 25, dueDate: new Date(Date.now() - 86400000) },
-      { tenantId, customerId: customer.id, invoiceNumber: `PAY-${suffix}`, status: "paid", total: 80, paidAt: now, dueDate: now },
+      { tenantId, customerId: customer.id, invoiceNumber: `LTR-${suffix}`, status: "sent", total: 15, dueDate: new Date(Date.now() + 30 * 86400000) },
+    ]).returning();
+    draftInvoiceId = draftInvoice.id;
+    closeInvoiceId = closeInvoice.id;
+    overdueInvoiceId = overdueInvoice.id;
+    laterInvoiceId = laterInvoice.id;
+    await db.insert(invoicesTable).values({ tenantId, customerId: customer.id, invoiceNumber: `PAY-${suffix}`, status: "paid", total: 80, paidAt: now, dueDate: now });
+    await db.insert(jobsTable).values({
+      tenantId, customerId: customer.id, title: "Waiting for a date", status: "waitlist", scheduledAt: now,
+    });
+    await db.insert(inventoryItemsTable).values([
+      { tenantId, name: "Quiet fertilizer", sku: `quiet-${suffix}`, quantity: 0, reorderPoint: 5, stockAlerts: false },
+      { tenantId, name: "Loud nozzles", sku: `loud-${suffix}`, quantity: 1, reorderPoint: 5, stockAlerts: true },
+      { tenantId, name: "Stocked gloves", sku: `ok-${suffix}`, quantity: 20, reorderPoint: 5, stockAlerts: true },
     ]);
     await db.insert(timeEntriesTable).values({
       tenantId, userId: ownerId, clockedInAt: new Date(Date.now() - 2 * 3600_000), clockedOutAt: now, totalMinutes: 120,
@@ -175,8 +194,15 @@ describe.skipIf(!RUN)("operations dashboard", () => {
     expect(owner.body.widgets.payrollSummary.entries).toBeGreaterThan(0);
     expect(owner.body.widgets.schedule.empty).toBe(false);
     expect(owner.body.widgets.reportSnapshots.empty).toBe(false);
+    expect(owner.body.widgets.jobWaitlist.jobs.map((job: { title: string }) => job.title)).toContain("Waiting for a date");
+    expect(owner.body.widgets.inventoryReorder.items.map((item: { name: string }) => item.name)).toEqual(["Loud nozzles"]);
+    expect(owner.body.widgets.invoiceAttention.toSend.map((invoice: { id: number }) => invoice.id)).toEqual([draftInvoiceId]);
+    expect(owner.body.widgets.invoiceAttention.due.map((invoice: { id: number }) => invoice.id).sort()).toEqual([closeInvoiceId, overdueInvoiceId].sort());
+    expect(owner.body.widgets.invoiceAttention.due.map((invoice: { id: number }) => invoice.id)).not.toContain(laterInvoiceId);
+    expect(owner.body.widgets.profitAndLoss.revenue).toBe(80);
+    expect(owner.body.widgets.profitAndLoss.netIncome).toBe(80);
     expect(owner.body.tasks.map((task: { source: string }) => task.source).sort()).toEqual([
-      "equipment_maintenance", "estimate_response", "followup", "portal_message", "rain_warning",
+      "equipment_maintenance", "estimate_response", "followup", "invoice_due", "invoice_due", "invoice_to_send", "portal_message", "rain_warning",
     ]);
 
     const custom = defaultLayout();
@@ -211,6 +237,10 @@ describe.skipIf(!RUN)("operations dashboard", () => {
     expect(response.body.widgets.invoicesRevenue.restricted).toBe(true);
     expect(response.body.widgets.invoicesRevenue.openTotal).toBeNull();
     expect(response.body.widgets.jobsCompleted.value).toBeNull();
+    expect(response.body.widgets.profitAndLoss.restricted).toBe(true);
+    expect(response.body.widgets.profitAndLoss.revenue).toBeNull();
+    expect(response.body.widgets.invoiceAttention.restricted).toBe(true);
+    expect(response.body.widgets.invoiceAttention.toSend[0].total).toBeNull();
   });
 
   it("completes a portal message, estimate, follow-up, equipment alert, and rain warning on the source", async () => {
@@ -227,7 +257,7 @@ describe.skipIf(!RUN)("operations dashboard", () => {
     expect((await request(app).post("/dashboard/action-tasks/complete").set(auth(ownerToken)).send({ source: "followup", sourceId: followupId })).status).toBe(200);
     const [followup] = await db.select().from(followupQueueItemsTable).where(eq(followupQueueItemsTable.id, followupId));
     expect(followup.status).toBe("resolved");
-    expect(followup.communicationNote).toContain("Operations dashboard");
+    expect(followup.communicationNote).toContain("Dashboard");
 
     expect((await request(app).post("/dashboard/action-tasks/complete").set(auth(ownerToken)).send({ source: "equipment_maintenance", sourceId: equipmentId })).status).toBe(200);
     const [equipment] = await db.select().from(equipmentTable).where(eq(equipmentTable.id, equipmentId));
@@ -242,8 +272,22 @@ describe.skipIf(!RUN)("operations dashboard", () => {
     expect(rain.status).toBe(200);
     expect(rain.body.jobs.map((item: { id: number }) => item.id)).not.toContain(rainJobId);
 
+    expect((await request(app).post("/dashboard/action-tasks/complete").set(auth(ownerToken)).send({ source: "invoice_to_send", sourceId: draftInvoiceId })).status).toBe(200);
+    const [draft] = await db.select().from(invoicesTable).where(eq(invoicesTable.id, draftInvoiceId));
+    expect(draft.status).toBe("sent");
+    expect(draft.publicToken).toBeTruthy();
+    expect(await db.select().from(billingEmailQueueTable).where(eq(billingEmailQueueTable.invoiceId, draftInvoiceId))).toHaveLength(1);
+    expect((await request(app).post("/dashboard/action-tasks/complete").set(auth(ownerToken)).send({ source: "invoice_due", sourceId: overdueInvoiceId })).status).toBe(200);
+    const [overdue] = await db.select().from(invoicesTable).where(eq(invoicesTable.id, overdueInvoiceId));
+    expect(overdue.status).toBe("sent");
+    expect(overdue.dueAttentionHandledAt).toBeTruthy();
+    expect(overdue.dueAttentionHandledByUserId).toBe(ownerId);
+    expect((await request(app).post("/dashboard/action-tasks/complete").set(auth(ownerToken)).send({ source: "invoice_due", sourceId: closeInvoiceId })).status).toBe(200);
+
     const after = await request(app).get("/dashboard/operations").set(auth(ownerToken));
     expect(after.body.tasks).toEqual([]);
+    expect(after.body.widgets.invoiceAttention.toSend).toEqual([]);
+    expect(after.body.widgets.invoiceAttention.due).toEqual([]);
     expect((await request(app).post("/dashboard/action-tasks/complete").set(auth(ownerToken)).send({ source: "portal_message", sourceId: messageId })).body.alreadyComplete).toBe(true);
   });
 

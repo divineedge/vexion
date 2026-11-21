@@ -14,7 +14,16 @@ const TIMEFRAMES = [
 ] as const;
 
 const FILTERS: Record<string, { value: string; label: string }[]> = {
+  needs_action: [{ value: 'all', label: 'Selected sources' }],
   jobs_completed: [{ value: 'all', label: 'Everyone' }, { value: 'mine', label: 'Assigned to me' }],
+  invoice_attention: [
+    { value: 'all', label: 'Need to send and due' },
+    { value: 'to_send', label: 'Need to send' },
+    { value: 'due', label: 'Due or overdue' },
+  ],
+  profit_and_loss: [{ value: 'all', label: 'Company' }],
+  job_waitlist: [{ value: 'all', label: 'Every waiting job' }, { value: 'mine', label: 'Assigned to me' }],
+  inventory_reorder: [{ value: 'all', label: 'At or below reorder' }],
   invoices_revenue: [{ value: 'outstanding', label: 'Current balances' }, { value: 'activity', label: 'Activity in the timeframe' }],
   payroll_summary: [{ value: 'all', label: 'Whole team' }, { value: 'mine', label: 'My time' }],
   schedule: [{ value: 'all', label: 'Whole schedule' }, { value: 'mine', label: 'Assigned to me' }],
@@ -112,10 +121,15 @@ export function CustomizeDashboardDrawer({
 
 export function widgetTitle(key: string): string {
   switch (key) {
+    case 'needs_action': return 'Needs Action';
     case 'jobs_completed': return 'Jobs Completed';
     case 'invoices_revenue': return 'Invoices & Revenue';
+    case 'invoice_attention': return 'Invoices';
+    case 'profit_and_loss': return 'Profit and Loss';
     case 'payroll_summary': return 'Payroll Summary';
     case 'schedule': return "Today's & Upcoming Schedule";
+    case 'job_waitlist': return 'Job Waitlist';
+    case 'inventory_reorder': return 'Inventory Reorder';
     case 'report_snapshots': return 'Key Reports';
     case 'alerts': return 'System, Weather & Equipment';
     default: return key;

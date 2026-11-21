@@ -22,6 +22,8 @@ import ReportsPage from '@/pages/reports';
 import TimeTrackingPage from '@/pages/time-tracking';
 import BlueprintsPage from '@/pages/blueprints';
 import BlueprintCanvasPage from '@/pages/blueprint-canvas';
+import BlueprintPlanPage from '@/pages/blueprint-plan';
+import BlueprintPlanningSettingsPage from '@/pages/blueprint-planning-settings';
 import SettingsPage from '@/pages/settings';
 import CrewsPage from '@/pages/crews';
 import EfficiencyPage from '@/pages/efficiency';
@@ -102,6 +104,8 @@ function ProtectedRoutes() {
         <Route path="/kpis" component={KpisPage} />
         <Route path="/reports" component={ReportsPage} />
         <Route path="/time-tracking" component={TimeTrackingPage} />
+        <Route path="/blueprints/:id/plan" component={BlueprintPlanPage} />
+        <Route path="/blueprint-planning" component={BlueprintPlanningSettingsPage} />
         <Route path="/blueprints/:id" component={BlueprintCanvasPage} />
         <Route path="/blueprints" component={BlueprintsPage} />
         <Route path="/settings" component={SettingsPage} />

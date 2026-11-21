@@ -9,6 +9,7 @@
 export type JobProfitabilityReportTotals = {
   revenue: number;
   partsCost: number;
+  passThroughCost?: number;
   laborCost: number;
   fuelCost: number;
   netProfit: number;

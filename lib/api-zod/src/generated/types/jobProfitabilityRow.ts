@@ -26,6 +26,7 @@ export interface JobProfitabilityRow {
   propertyAddress?: string | null;
   revenue: number;
   partsCost: number;
+  passThroughCost?: number;
   laborCost: number;
   fuelCost: number;
   netProfit: number;

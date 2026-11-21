@@ -9,6 +9,7 @@ import { ADMIN_ROLES, getCallerRole } from "../lib/roles";
 import { checkPermission } from "../lib/rolePermissions";
 import { zonedDayBounds } from "./timeTracking";
 import { array, record, finite, money, materialBreakdown, jobMeasurement, reportCostTotals } from "../lib/jobEconomics";
+import { customCostLines } from "../lib/customLineItems";
 
 const router = Router();
 router.use("/reports/job-economics", requireVerifiedStaff, async (req,res,next) => {
@@ -145,6 +146,10 @@ router.get("/reports/job-economics",async(req,res) => {
     }
     const actualServiceName = String(service.name ?? serviceNames.get(serviceId!) ?? "Unspecified service");
     const {materials,materialCost}=materialBreakdown(r.job_parts,r.supplies_needed);
+    const passThrough=customCostLines(r.line_items);
+    const passThroughCost=money(passThrough.reduce((sum,line)=>sum+line.cost,0));
+    const pricedMaterials=[...materials,...passThrough];
+    const pricedMaterialCost=materialCost===null?null:money(materialCost+passThroughCost);
     const minutes=Number(r.minutes??0), hasOpenTimers=Boolean(r.open);
     const laborCost=hasOpenTimers||minutes<=0?null:finite(r.labor_cost);
     const fuelCost=money(Number(r.fuel_cost)),otherCost=money(Number(r.other_cost));
@@ -158,8 +163,8 @@ router.get("/reports/job-economics",async(req,res) => {
     if (multiService) issues.push("Multiple services share job-level time/cost; kept in an unallocated group, not duplicated across services.");
     if (measured.measurement===null) issues.push("No usable service measurement; excluded from per-unit comparisons.");
     else if (!service.linkedZoneTypeId) issues.push("Measurement uses total enabled property area/length; no service-specific zone is linked.");
-    const totals=reportCostTotals(laborCost===null?null:money(laborCost),materialCost,fuelCost,otherCost,revenue,
-      Number(r.known_labor_cost??0),materials.reduce((sum,p)=>sum+(p.cost??0),0));
+    const totals=reportCostTotals(laborCost===null?null:money(laborCost),pricedMaterialCost,fuelCost,otherCost,revenue,
+      Number(r.known_labor_cost??0),materials.reduce((sum,p)=>sum+(p.cost??0),0)+passThroughCost);
     return {
       id:Number(r.id),title:String(r.title),customerId:finite(r.customer_id),customerName:String(r.customer_name??"No customer"),
       propertyAddress:r.property_address==null?null:String(r.property_address),serviceId,serviceIds,
@@ -173,7 +178,7 @@ router.get("/reports/job-economics",async(req,res) => {
       budgetLaborCost:frozen?finite(baseline.budgetLaborCost):null,
       baselineSource:frozen?String(baseline.source):r.estimate_id!=null?"Linked estimate (current; not frozen)":"Current job budget (not frozen)",
       estimateId:finite(baseline.estimateId)??finite(r.estimate_id),minutes,hasOpenTimers,
-      laborCost:laborCost===null?null:money(laborCost),materialCost,fuelCost,otherCost,...totals,multiService,materials,
+      laborCost:laborCost===null?null:money(laborCost),materialCost:pricedMaterialCost,fuelCost,otherCost,...totals,multiService,materials:pricedMaterials,
       workers:array(r.workers).map(w=>{const x=record(w);return {id:Number(x.id),name:String(x.name),minutes:Number(x.minutes),cost:finite(x.cost)===null?null:money(Number(x.cost))};}),
       otherCosts:array(r.other_costs).map(c=>costOutput(record(c))),issues,
     };

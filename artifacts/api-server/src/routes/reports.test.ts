@@ -13,14 +13,21 @@ import request from "supertest";
 
 // ── Mocks (must be hoisted above imports that pull in the mocked modules) ──────
 
-vi.mock("@workspace/db", () => ({
-  db: {
-    select: vi.fn(),
-    execute: vi.fn(),
-  },
-  tenantsTable: {},
-  usersTable: {},
-}));
+vi.mock("@workspace/db", () => {
+  const column = { name: "stub" };
+  const table = new Proxy({}, { get: () => column });
+  return {
+    db: {
+      select: vi.fn(),
+      execute: vi.fn(),
+    },
+    tenantsTable: table,
+    usersTable: table,
+    timeEntriesTable: table,
+    inventoryItemsTable: table,
+    inventorySuppliersTable: table,
+  };
+});
 
 vi.mock("../lib/roles", () => ({
   isAdminRole: vi.fn().mockResolvedValue(true),

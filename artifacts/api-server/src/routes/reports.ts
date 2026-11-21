@@ -19,6 +19,7 @@ import { db, tenantsTable, inventoryItemsTable, inventorySuppliersTable } from "
 import { eq, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { customLineSum } from "../lib/customLineItems";
 import { isAdminRole } from "../lib/roles";
 import { getCachedReport } from "../lib/reportsCache";
 import { zonedDayBounds } from "./timeTracking";
@@ -170,6 +171,8 @@ router.get("/reports/job-profitability", async (req, res): Promise<void> => {
         j.id, j.title, j.completed_at, j.crew_id, j.assignee_id, j.property_id,
         j.total_amount,
         COALESCE((SELECT SUM(COALESCE((part->'_stockUsage'->>'total')::numeric,(part->>'total')::numeric)) FROM jsonb_array_elements(COALESCE(j.job_parts, '[]'::jsonb)) AS part), 0) AS parts_cost, COALESCE((SELECT SUM((part->>'total')::numeric) FROM jsonb_array_elements(COALESCE(j.job_parts,'[]'::jsonb)) AS part),0) AS parts_sell,
+        ${customLineSum(sql`CASE WHEN i.id IS NOT NULL THEN i.line_items ELSE j.line_items END`, "sell")} AS custom_sell,
+        ${customLineSum(sql`CASE WHEN i.id IS NOT NULL THEN i.line_items ELSE j.line_items END`, "cost")} AS custom_cost,
         b.p4p_percentage AS blueprint_p4p_pct,
         i.total AS invoice_total,
         cr.name AS crew_name,
@@ -238,13 +241,15 @@ router.get("/reports/job-profitability", async (req, res): Promise<void> => {
     const results = jobs.map(j => {
       const revenue = j.invoice_total != null ? Number(j.invoice_total) : Number(j.total_amount ?? 0);
       const partsCost = Math.round(Number(j.parts_cost ?? 0) * 100) / 100;
+      const customSell = Number((j as Row & { custom_sell?: string }).custom_sell ?? 0);
+      const customCost = Math.round(Number((j as Row & { custom_cost?: string }).custom_cost ?? 0) * 100) / 100;
       const p4pPct = j.blueprint_p4p_pct != null ? Number(j.blueprint_p4p_pct) : globalPct;
-      const netLaborRevenue = Math.max(0, revenue - Number((j as Row & {parts_sell:string}).parts_sell??partsCost));
+      const netLaborRevenue = Math.max(0, revenue - Number((j as Row & {parts_sell:string}).parts_sell??partsCost) - customSell);
       const laborCost = Math.round((netLaborRevenue * p4pPct / 100) * 100) / 100;
       const fuelIsLinked = linkedFuelByJob.has(j.id);
       const rawFuelCost = fuelIsLinked ? linkedFuelByJob.get(j.id)! : unlinkedFuelPerJob;
       const fuelCost = Math.round(rawFuelCost * 100) / 100;
-      const netProfit = Math.round((revenue - partsCost - laborCost - fuelCost) * 100) / 100;
+      const netProfit = Math.round((revenue - partsCost - customCost - laborCost - fuelCost) * 100) / 100;
       const marginPct = revenue > 0 ? Math.round((netProfit / revenue) * 1000) / 10 : 0;
       return {
         jobId: j.id,
@@ -259,6 +264,7 @@ router.get("/reports/job-profitability", async (req, res): Promise<void> => {
         propertyAddress: j.property_address,
         revenue: Math.round(revenue * 100) / 100,
         partsCost,
+        passThroughCost: customCost,
         laborCost,
         fuelCost,
         fuelCostSource: fuelIsLinked ? 'actual' : 'estimated',
@@ -272,6 +278,7 @@ router.get("/reports/job-profitability", async (req, res): Promise<void> => {
       totals: {
         revenue: Math.round(results.reduce((s, r) => s + r.revenue, 0) * 100) / 100,
         partsCost: Math.round(results.reduce((s, r) => s + r.partsCost, 0) * 100) / 100,
+        passThroughCost: Math.round(results.reduce((s, r) => s + r.passThroughCost, 0) * 100) / 100,
         laborCost: Math.round(results.reduce((s, r) => s + r.laborCost, 0) * 100) / 100,
         fuelCost: Math.round(results.reduce((s, r) => s + r.fuelCost, 0) * 100) / 100,
         netProfit: Math.round(results.reduce((s, r) => s + r.netProfit, 0) * 100) / 100,
@@ -301,6 +308,7 @@ router.get("/reports/employee-revenue", async (req, res): Promise<void> => {
         j.assignee_id, u.name AS assignee_name,
         j.total_amount,
         COALESCE((SELECT SUM((part->>'total')::numeric) FROM jsonb_array_elements(COALESCE(j.job_parts, '[]'::jsonb)) AS part), 0) AS parts_cost,
+        ${customLineSum(sql`CASE WHEN i.id IS NOT NULL THEN i.line_items ELSE j.line_items END`, "sell")} AS custom_sell,
         b.p4p_percentage AS blueprint_p4p_pct,
         i.total AS invoice_total
       FROM jobs j
@@ -319,6 +327,7 @@ router.get("/reports/employee-revenue", async (req, res): Promise<void> => {
 
     type Row = {
       assignee_id: number; assignee_name: string | null; total_amount: string; parts_cost: string;
+      custom_sell?: string;
       blueprint_p4p_pct: number | null; invoice_total: string | null;
     };
     const jobs = rows.rows as Row[];
@@ -327,8 +336,9 @@ router.get("/reports/employee-revenue", async (req, res): Promise<void> => {
     for (const j of jobs) {
       const revenue = j.invoice_total != null ? Number(j.invoice_total) : Number(j.total_amount ?? 0);
       const partsCost = Number(j.parts_cost ?? 0);
+      const customSell = Number(j.custom_sell ?? 0);
       const p4pPct = j.blueprint_p4p_pct != null ? Number(j.blueprint_p4p_pct) : globalPct;
-      const netLaborRevenue = Math.max(0, revenue - partsCost);
+      const netLaborRevenue = Math.max(0, revenue - partsCost - customSell);
       const earnings = netLaborRevenue * p4pPct / 100;
       const prev = byTech.get(j.assignee_id) ?? { name: j.assignee_name ?? `User ${j.assignee_id}`, revenue: 0, p4pEarnings: 0, jobCount: 0 };
       byTech.set(j.assignee_id, {
@@ -375,6 +385,8 @@ router.get("/reports/pl-statement", async (req, res): Promise<void> => {
         i.id AS invoice_id, i.total AS invoice_total, i.subtotal, i.tax,
         j.total_amount,
         COALESCE((SELECT SUM((part->>'total')::numeric) FROM jsonb_array_elements(COALESCE(j.job_parts, '[]'::jsonb)) AS part), 0) AS parts_cost,
+        ${customLineSum(sql`i.line_items`, "sell")} AS custom_sell,
+        ${customLineSum(sql`i.line_items`, "cost")} AS custom_cost,
         b.p4p_percentage AS blueprint_p4p_pct
       FROM invoices i
        LEFT JOIN jobs j ON j.id = i.job_id AND j.tenant_id = i.tenant_id
@@ -389,17 +401,20 @@ router.get("/reports/pl-statement", async (req, res): Promise<void> => {
         AND i.paid_at <= ${endDate.toISOString()}::timestamptz
     `);
 
-    type Row = { invoice_id: number; invoice_total: string; subtotal: string; tax: string; total_amount: string | null; parts_cost: string | null; blueprint_p4p_pct: number | null };
+    type Row = { invoice_id: number; invoice_total: string; subtotal: string; tax: string; total_amount: string | null; parts_cost: string | null; custom_sell?: string | null; custom_cost?: string | null; blueprint_p4p_pct: number | null };
     const invoiceRows = rows.rows as Row[];
 
-    let revenue = 0, partsCost = 0, laborCost = 0;
+    let revenue = 0, partsCost = 0, passThroughCost = 0, laborCost = 0;
     for (const r of invoiceRows) {
       const total = Number(r.invoice_total ?? 0);
       revenue += total;
       const parts = Number(r.parts_cost ?? 0);
+      const customSell = Number(r.custom_sell ?? 0);
+      const customCost = Number(r.custom_cost ?? 0);
       partsCost += parts;
+      passThroughCost += customCost;
       const p4pPct = r.blueprint_p4p_pct != null ? Number(r.blueprint_p4p_pct) : globalPct;
-      const netLaborRevenue = Math.max(0, total - parts);
+      const netLaborRevenue = Math.max(0, total - parts - customSell);
       laborCost += netLaborRevenue * p4pPct / 100;
     }
 
@@ -422,7 +437,7 @@ router.get("/reports/pl-statement", async (req, res): Promise<void> => {
     `)).rows as { total: number }[];
     const operatingExpenses = expenseAggRows[0] ? Number(expenseAggRows[0].total) : 0;
 
-    const costOfGoodsSold = Math.round((partsCost + laborCost + fuelCost) * 100) / 100;
+    const costOfGoodsSold = Math.round((partsCost + passThroughCost + laborCost + fuelCost) * 100) / 100;
     const grossProfit = Math.round((revenue - costOfGoodsSold) * 100) / 100;
     const netIncome = Math.round((grossProfit - operatingExpenses) * 100) / 100;
 
@@ -438,6 +453,7 @@ router.get("/reports/pl-statement", async (req, res): Promise<void> => {
       revenue: Math.round(revenue * 100) / 100,
       costOfGoodsSold: {
         partsCost: Math.round(partsCost * 100) / 100,
+        passThroughCost: Math.round(passThroughCost * 100) / 100,
         laborCost: Math.round(laborCost * 100) / 100,
         fuelCost: Math.round(fuelCost * 100) / 100,
         total: costOfGoodsSold,

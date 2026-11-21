@@ -17,6 +17,7 @@ import { Router, type IRouter } from "express";
 import { db, jobsTable, blueprintsTable, tenantsTable, subTimersTable, usersTable } from "@workspace/db";
 import { eq, and, gte, lte, sql, inArray } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { customLineSum } from "../lib/customLineItems";
 import { subDays } from "date-fns";
 import { zonedDayBounds } from "./timeTracking";
 import { payrollRouter } from "./payroll";
@@ -139,6 +140,7 @@ export async function calculatePayrollJobs(db: PayrollDb, tenantId: number, { ra
         SELECT SUM((part->>'total')::numeric)
         FROM jsonb_array_elements(COALESCE(j.job_parts, '[]'::jsonb)) AS part
       ), 0) AS material_sell_amount,
+      ${customLineSum(sql`j.line_items`, "sell")} AS custom_sell,
       COALESCE(
         payroll_rate_at(j.tenant_id, 'blueprint', j.blueprint_id, j.completed_at),
         payroll_rate_at(j.tenant_id, 'service', j.service_id, j.completed_at)
@@ -160,7 +162,7 @@ export async function calculatePayrollJobs(db: PayrollDb, tenantId: number, { ra
   type JobRow = {
     id: number; title: string; total_amount: string; blueprint_id: number | null;
     assignee_id: number | null; crew_id: number | null; completed_at: string;
-    material_sell_amount: string; blueprint_p4p_pct: number | null; global_p4p_pct: number | null; blueprint_name: string | null;
+    material_sell_amount: string; custom_sell?: string; blueprint_p4p_pct: number | null; global_p4p_pct: number | null; blueprint_name: string | null;
     customer_name: string | null;
   };
   const jobs = jobRows.rows as JobRow[];
@@ -208,8 +210,9 @@ export async function calculatePayrollJobs(db: PayrollDb, tenantId: number, { ra
   const result = jobs.map(j => {
     const totalAmount = Number(j.total_amount ?? 0);
     const materialCost = Number(j.material_sell_amount ?? 0);
+    const customSell = Number(j.custom_sell ?? 0);
     const p4pPct = Number(j.blueprint_p4p_pct ?? j.global_p4p_pct ?? 0);
-    const { netLaborRevenue, p4pPool: unroundedP4pPool } = calculateP4pAmounts(totalAmount, materialCost, p4pPct);
+    const { netLaborRevenue, p4pPool: unroundedP4pPool } = calculateP4pAmounts(totalAmount, materialCost + customSell, p4pPct);
     const p4pPool = Math.round(unroundedP4pPool * 100) / 100;
 
     const jobTimers = timerMap.get(Number(j.id)) ?? new Map<number, number>();
@@ -303,6 +306,7 @@ export async function calculatePayrollSummary(db: PayrollDb, tenantId: number, {
         SELECT SUM((part->>'total')::numeric)
         FROM jsonb_array_elements(COALESCE(j.job_parts, '[]'::jsonb)) AS part
       ), 0) AS material_sell_amount,
+      ${customLineSum(sql`j.line_items`, "sell")} AS custom_sell,
       COALESCE(
         payroll_rate_at(j.tenant_id, 'blueprint', j.blueprint_id, j.completed_at),
         payroll_rate_at(j.tenant_id, 'service', j.service_id, j.completed_at),
@@ -317,7 +321,7 @@ export async function calculatePayrollSummary(db: PayrollDb, tenantId: number, {
       AND j.completed_at <= ${rangeEnd.toISOString()}::timestamptz
   `);
 
-  type SumJobRow = { id: number; total_amount: string; assignee_id: number | null; material_sell_amount: string; blueprint_p4p_pct: number | null };
+  type SumJobRow = { id: number; total_amount: string; assignee_id: number | null; material_sell_amount: string; custom_sell?: string; blueprint_p4p_pct: number | null };
   const jobs = jobRows.rows as SumJobRow[];
 
   const jobIds = jobs.map(j => Number(j.id));
@@ -348,8 +352,9 @@ export async function calculatePayrollSummary(db: PayrollDb, tenantId: number, {
   for (const j of jobs) {
     const totalAmount = Number(j.total_amount ?? 0);
     const materialCost = Number(j.material_sell_amount ?? 0);
+    const customSell = Number(j.custom_sell ?? 0);
     const p4pPct = j.blueprint_p4p_pct != null ? Number(j.blueprint_p4p_pct) : globalPct;
-    const { netLaborRevenue, p4pPool: rawPool } = calculateP4pAmounts(totalAmount, materialCost, p4pPct);
+    const { netLaborRevenue, p4pPool: rawPool } = calculateP4pAmounts(totalAmount, materialCost + customSell, p4pPct);
     const p4pPool = Math.round(rawPool * 100) / 100;
 
     const jobTimers = timerMap.get(Number(j.id)) ?? new Map<number, number>();

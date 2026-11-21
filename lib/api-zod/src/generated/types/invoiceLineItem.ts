@@ -18,4 +18,10 @@ export interface InvoiceLineItem {
   quantity: number;
   unitPrice: number;
   total: number;
+  /** @nullable */
+  kind?: string | null;
+  /** @nullable */
+  unit?: string | null;
+  /** @nullable */
+  internalCost?: number | null;
 }

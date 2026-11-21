@@ -2499,6 +2499,11 @@ export interface Customer {
      * @nullable
      */
   archivedAt?: string | null;
+  /**
+     * Timestamp when the customer was hidden from the default list; null when visible
+     * @nullable
+     */
+  hiddenAt?: string | null;
 }
 
 export type CustomerInputCustomFieldValues = {[key: string]: string};
@@ -10176,6 +10181,14 @@ includeArchived?: boolean;
  * Return only archived customers
  */
 archivedOnly?: boolean;
+/**
+ * Include customers hidden from the default list
+ */
+includeHidden?: boolean;
+/**
+ * Return only customers hidden from the default list
+ */
+hiddenOnly?: boolean;
 };
 
 export type GetAddressSuggestionsParams = {

@@ -557,34 +557,51 @@ type PaymentStanding = {
   isServicePaused: boolean;
 };
 
+async function lookupOrEmpty<T>(label: string, query: Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await query;
+  } catch (error) {
+    logger.error({ err: error, label }, "Customer detail lookup failed; the customer record is still returned");
+    return fallback;
+  }
+}
+
 /** Computes a customer's payment standing from existing invoice/flag/job data — nothing is duplicated in storage. */
 async function computePaymentStanding(tenantId: number, customerId: number): Promise<PaymentStanding> {
   const now = new Date();
 
-  const [overdueInvoices, [pendingFlag], [pausedJob]] = await Promise.all([
-    db.select().from(invoicesTable).where(and(
+  const [overdueInvoices, pendingFlags, pausedJobs] = await Promise.all([
+    lookupOrEmpty("overdue invoices", db.select({
+      id: invoicesTable.id,
+      total: invoicesTable.total,
+      dueDate: invoicesTable.dueDate,
+      paymentRemindersSent: invoicesTable.paymentRemindersSent,
+    }).from(invoicesTable).where(and(
       eq(invoicesTable.tenantId, tenantId),
       eq(invoicesTable.customerId, customerId),
       ne(invoicesTable.status, "paid"),
       sql`${invoicesTable.dueDate} IS NOT NULL AND ${invoicesTable.dueDate} < ${now.toISOString()}::timestamptz`,
-    )).orderBy(invoicesTable.dueDate),
-    db.select().from(stopServiceFlagsTable).where(and(
+    )).orderBy(invoicesTable.dueDate), [] as Array<{ id: number; total: number; dueDate: Date | null; paymentRemindersSent: unknown }>),
+    lookupOrEmpty("stop service flags", db.select({ id: stopServiceFlagsTable.id }).from(stopServiceFlagsTable).where(and(
       eq(stopServiceFlagsTable.tenantId, tenantId),
       eq(stopServiceFlagsTable.customerId, customerId),
       eq(stopServiceFlagsTable.status, "pending"),
-    )).limit(1),
-    db.select().from(jobsTable).where(and(
+    )).limit(1), [] as Array<{ id: number }>),
+    lookupOrEmpty("paused jobs", db.select({ id: jobsTable.id }).from(jobsTable).where(and(
       eq(jobsTable.tenantId, tenantId),
       eq(jobsTable.customerId, customerId),
       isNull(jobsTable.recurrenceParentId),
       eq(jobsTable.isRecurrencePaused, true),
-    )).limit(1),
+    )).limit(1), [] as Array<{ id: number }>),
   ]);
 
+  const pendingFlag = pendingFlags[0];
+  const pausedJob = pausedJobs[0];
   const overdueAmount = overdueInvoices.reduce((sum, i) => sum + i.total, 0);
   const oldest = overdueInvoices[0] ?? null;
-  const daysOverdue = oldest?.dueDate ? Math.floor((now.getTime() - oldest.dueDate.getTime()) / (1000 * 60 * 60 * 24)) : null;
-  const remindersSent = (oldest?.paymentRemindersSent as number[] | null) ?? [];
+  const dueMs = oldest?.dueDate == null ? Number.NaN : new Date(oldest.dueDate).getTime();
+  const daysOverdue = Number.isFinite(dueMs) ? Math.floor((now.getTime() - dueMs) / (1000 * 60 * 60 * 24)) : null;
+  const remindersSent = Array.isArray(oldest?.paymentRemindersSent) ? oldest.paymentRemindersSent : [];
 
   let status: PaymentStanding["status"] = "current";
   if (pausedJob) status = "paused";
@@ -653,6 +670,7 @@ function formatCustomer(
     noCardAlertSilenced: c.noCardAlertSilenced ?? false,
     cardExpiresAt: c.cardExpiresAt ?? null,
     archivedAt: c.archivedAt?.toISOString() ?? null,
+    hiddenAt: c.hiddenAt?.toISOString() ?? null,
     mergedIntoCustomerId:c.mergedIntoCustomerId??null,
     createdAt: c.createdAt.toISOString(),
   };
@@ -694,18 +712,21 @@ async function fetchLastReminderFailures(tenantId: number, customerIds: number[]
 
 router.get("/customers", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { q, page, limit, hasReminderFailure, includeArchived, archivedOnly } = req.query as Record<string, string>;
+  const { q, page, limit, hasReminderFailure, includeArchived, archivedOnly, includeHidden, hiddenOnly } = req.query as Record<string, string>;
   const { page: pageNum, limit: limitNum } = customerListPage(page, limit);
   const offset = limitNum == null ? 0 : (pageNum - 1) * limitNum;
 
-  const archiveWhere = req.query.activeOnly==="true"
+  const archiveWhere = hiddenOnly === "true"
+    ? and(eq(customersTable.tenantId, tenantId), isNotNull(customersTable.hiddenAt))
+    : req.query.activeOnly==="true"
     ? and(eq(customersTable.tenantId,tenantId),isNull(customersTable.archivedAt))
     : archivedOnly === "true"
     ? and(eq(customersTable.tenantId, tenantId), isNotNull(customersTable.archivedAt))
     : includeArchived === "true"
       ? eq(customersTable.tenantId, tenantId)
       : and(eq(customersTable.tenantId, tenantId), isNull(customersTable.archivedAt));
-  const baseWhere=and(archiveWhere,isNull(customersTable.mergedIntoCustomerId));
+  const hiddenWhere = hiddenOnly === "true" || includeHidden === "true" ? undefined : isNull(customersTable.hiddenAt);
+  const baseWhere=and(archiveWhere,isNull(customersTable.mergedIntoCustomerId),hiddenWhere);
   let where = q
     ? and(baseWhere, or(
         ilike(customersTable.name, `%${q}%`),
@@ -933,31 +954,31 @@ router.get("/customers/:id", async (req, res): Promise<void> => {
   const lastYearEnd = new Date(now.getFullYear(), 0, 1).toISOString();
 
   const [
-    [{ count: propCount }],
-    [thisYear],
-    [lastYear],
+    propRows,
+    thisYearRows,
+    lastYearRows,
     paymentStanding,
     failureMap,
     referrer,
   ] = await Promise.all([
-    db.select({ count: sql<number>`count(*)::int` }).from(propertiesTable)
-      .where(and(eq(propertiesTable.customerId, id), eq(propertiesTable.tenantId, tenantId))),
-    db.select({ total: sql<number>`COALESCE(sum(total),0)::float` }).from(invoicesTable)
-      .where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.customerId, id), eq(invoicesTable.status, "paid"), sql`created_at >= ${thisYearStart}::timestamptz`)),
-    db.select({ total: sql<number>`COALESCE(sum(total),0)::float` }).from(invoicesTable)
-      .where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.customerId, id), eq(invoicesTable.status, "paid"), sql`created_at >= ${lastYearStart}::timestamptz AND created_at < ${lastYearEnd}::timestamptz`)),
+    lookupOrEmpty("property count", db.select({ count: sql<number>`count(*)::int` }).from(propertiesTable)
+      .where(and(eq(propertiesTable.customerId, id), eq(propertiesTable.tenantId, tenantId))), [{ count: 0 }]),
+    lookupOrEmpty("this year spend", db.select({ total: sql<number>`COALESCE(sum(total),0)::float` }).from(invoicesTable)
+      .where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.customerId, id), eq(invoicesTable.status, "paid"), sql`created_at >= ${thisYearStart}::timestamptz`)), [{ total: 0 }]),
+    lookupOrEmpty("last year spend", db.select({ total: sql<number>`COALESCE(sum(total),0)::float` }).from(invoicesTable)
+      .where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.customerId, id), eq(invoicesTable.status, "paid"), sql`created_at >= ${lastYearStart}::timestamptz AND created_at < ${lastYearEnd}::timestamptz`)), [{ total: 0 }]),
     computePaymentStanding(tenantId, id),
-    fetchLastReminderFailures(tenantId, [id]),
+    lookupOrEmpty("reminder failures", fetchLastReminderFailures(tenantId, [id]), new Map()),
     customer.referringCustomerId
-      ? db.select({ name: customersTable.name }).from(customersTable)
-          .where(and(eq(customersTable.id, customer.referringCustomerId), eq(customersTable.tenantId, tenantId))).limit(1)
+      ? lookupOrEmpty("referring customer", db.select({ name: customersTable.name }).from(customersTable)
+          .where(and(eq(customersTable.id, customer.referringCustomerId), eq(customersTable.tenantId, tenantId))).limit(1), [])
       : Promise.resolve([]),
   ]);
 
   res.json(formatCustomer(customer, {
-    propertyCount: propCount,
-    thisYearSpend: thisYear?.total ?? 0,
-    lastYearSpend: lastYear?.total ?? 0,
+    propertyCount: propRows[0]?.count ?? 0,
+    thisYearSpend: thisYearRows[0]?.total ?? 0,
+    lastYearSpend: lastYearRows[0]?.total ?? 0,
     paymentStanding,
     lastReminderFailure: failureMap.get(id) ?? null,
     referringCustomerName: referrer[0]?.name ?? null,
@@ -1147,7 +1168,11 @@ router.delete("/customers/:id", async (req, res): Promise<void> => {
       .where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.customerId, id))),
   ]);
   if (jobCount > 0 || invoiceCount > 0) {
-    res.status(409).json({ error: "Cannot permanently delete customer because related jobs or invoices still exist. Delete those first, then try again." });
+    res.status(409).json({
+      error: "Cannot permanently delete this customer because jobs or invoices still exist. Hide the customer to take them off the list, or merge them into the customer you want to keep. Job, invoice, and blueprint history stays in place.",
+      code: "customer_has_history",
+      canHide: true,
+    });
     return;
   }
   try {
@@ -1168,12 +1193,37 @@ router.delete("/customers/:id", async (req, res): Promise<void> => {
     });
   } catch (error: unknown) {
     if ((error as { code?: string }).code === "23503") {
-      res.status(409).json({ error: "Cannot permanently delete this customer because its properties still have related jobs, estimates, or other records. Remove those records first, then try again." });
+      res.status(409).json({
+        error: "Cannot permanently delete this customer because related records still exist. Hide the customer to take them off the list, or merge them into the customer you want to keep. Job, invoice, and blueprint history stays in place.",
+        code: "customer_has_history",
+        canHide: true,
+      });
       return;
     }
     throw error;
   }
   res.sendStatus(204);
+});
+
+async function setCustomerHidden(req: import("express").Request, res: import("express").Response, hidden: boolean): Promise<void> {
+  const tenantId = getTenantId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+  if (!await requireAdmin(req, res)) return;
+  const [updated] = await db.update(customersTable)
+    .set({ hiddenAt: hidden ? new Date() : null })
+    .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(formatCustomer(updated));
+}
+
+router.post("/customers/:id/hide", async (req, res): Promise<void> => {
+  await setCustomerHidden(req, res, true);
+});
+
+router.post("/customers/:id/unhide", async (req, res): Promise<void> => {
+  await setCustomerHidden(req, res, false);
 });
 
 // ── SEND CARD-SETUP LINK VIA SMS ─────────────────────────────────────────────

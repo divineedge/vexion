@@ -29,4 +29,12 @@ includeArchived?: boolean;
  * Return only archived customers
  */
 archivedOnly?: boolean;
+/**
+ * Include customers hidden from the default list
+ */
+includeHidden?: boolean;
+/**
+ * Return only customers hidden from the default list
+ */
+hiddenOnly?: boolean;
 };

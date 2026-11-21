@@ -33,6 +33,7 @@ interface Props {
   displayLabel?: React.ReactNode;
   ariaLabel?: string;
   title?: string;
+  testId?: string;
 }
 
 /**
@@ -43,7 +44,7 @@ interface Props {
 export function SearchableCombobox({
   options, value, onChange, placeholder = 'Select...', searchPlaceholder = 'Search...',
   emptyText = 'No matches found.', className, contentClassName, disabled, leadingOption,
-  triggerIcon, displayLabel, ariaLabel, title,
+  triggerIcon, displayLabel, ariaLabel, title, testId,
 }: Props) {
   const [open, setOpen] = React.useState(false);
   const selected = React.useMemo(
@@ -76,6 +77,7 @@ export function SearchableCombobox({
           aria-expanded={open}
           aria-label={ariaLabel ?? placeholder}
           title={title}
+          data-testid={testId}
           disabled={disabled}
           className={cn(
             'flex h-8 items-center gap-1 rounded-md border border-input bg-background px-2.5 text-xs text-left',

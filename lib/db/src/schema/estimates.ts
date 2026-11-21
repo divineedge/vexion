@@ -55,6 +55,9 @@ export const estimatesTable = pgTable("estimates", {
   sentAt: timestamp("sent_at", { withTimezone: true }),
   approvedAt: timestamp("approved_at", { withTimezone: true }),
   declinedAt: timestamp("declined_at", { withTimezone: true }),
+  /** Set when staff clear an accepted or declined response from the action center. */
+  responseHandledAt: timestamp("response_handled_at", { withTimezone: true }),
+  responseHandledByUserId: integer("response_handled_by_user_id"),
   declineReason: text("decline_reason"),
   declineReasonChoice: text("decline_reason_choice"),
   /** Expected job duration in minutes, set by the estimator */

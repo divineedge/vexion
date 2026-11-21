@@ -52,6 +52,11 @@ export const equipmentTable = pgTable("equipment", {
   sellAfterHours: real("sell_after_hours"),
   /** When true, the sell-recommendation logic is suppressed for this unit regardless of thresholds. */
   neverSell: boolean("never_sell").notNull().default(false),
+  /**
+   * Signature of maintenance thresholds the office has already cleared.
+   * Null leaves every current threshold actionable. Existing rows are not rewritten.
+   */
+  maintenanceAlertAck: text("maintenance_alert_ack"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, table => [

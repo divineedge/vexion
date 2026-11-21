@@ -1,256 +1,302 @@
-import React, { useState } from 'react';
-import {
-  useGetRecentActivity, getGetRecentActivityQueryKey,
-  customFetch,
-} from '@workspace/api-client-react';
-import { useQuery } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Briefcase, Inbox, MessageSquare, Ban, CalendarSearch, ChevronDown, ChevronUp } from 'lucide-react';
-import { RainRiskBanner } from '@/components/schedule/RainRiskBanner';
-import { MyTasksWidget } from '@/components/tasks/MyTasksWidget';
-import { FollowupQueueWidget } from '@/components/followups/FollowupQueueWidget';
-import { useAuth } from '@/contexts/AuthContext';
-import { useListJobs, getListJobsQueryKey } from '@workspace/api-client-react';
+import { useState, type ReactNode } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { customFetch } from '@workspace/api-client-react';
 import { useLocation } from 'wouter';
-import { format as fmtDate } from 'date-fns';
+import { format } from 'date-fns';
+import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { CustomizeDashboardDrawer, widgetTitle } from '@/components/dashboard/CustomizeDashboardDrawer';
+import {
+  money, TASK_SOURCE_OPTIONS, timeframeLabel,
+  type ActionTask, type DashboardLayout, type OperationsPayload,
+} from '@/components/dashboard/operations';
+import { useAuth } from '@/contexts/AuthContext';
+import { AlertTriangle, Briefcase, Check, CloudRain, DollarSign, LayoutGrid, SlidersHorizontal, Wrench } from 'lucide-react';
+
+const queryKey = ['operations-dashboard'];
 
 export default function DashboardPage() {
-  const { user, isTechnician, canManageOffice, can } = useAuth();
-  const showKpis = !isTechnician && canManageOffice && can('pages.billing') && can('financials.costData') && can('financials.jobPrices') && can('financials.invoiceAmounts');
+  const { isTechnician } = useAuth();
   const [, setLocation] = useLocation();
-  const todayStr = fmtDate(new Date(), 'yyyy-MM-dd');
-  const { data: myTodayJobs } = useListJobs(
-    { assigneeId: user?.id, startDate: todayStr, endDate: todayStr },
-    { query: { enabled: isTechnician && !!user?.id, queryKey: getListJobsQueryKey({ assigneeId: user?.id, startDate: todayStr, endDate: todayStr }) } }
-  );
+  const queryClient = useQueryClient();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const operations = useQuery({
+    queryKey,
+    queryFn: () => customFetch<OperationsPayload>('/api/dashboard/operations'),
+  });
+  const saveLayout = useMutation({
+    mutationFn: (layout: DashboardLayout) => customFetch<DashboardLayout>('/api/dashboard/layout', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(layout),
+    }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+    onError: () => toast.error('The dashboard layout was not saved'),
+  });
+  const resetLayout = useMutation({
+    mutationFn: () => customFetch<DashboardLayout>('/api/dashboard/layout/reset', { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+      toast.success('Dashboard reset to the default widgets');
+    },
+    onError: () => toast.error('The dashboard was not reset'),
+  });
+  const completeTask = useMutation({
+    mutationFn: (task: ActionTask) => customFetch<{ ok: boolean }>('/api/dashboard/action-tasks/complete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: task.source, sourceId: task.sourceId, date: task.date }),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+      toast.success('Task completed');
+    },
+    onError: () => toast.error('That task was not completed'),
+  });
 
-  const [activityExpanded, setActivityExpanded] = useState(false);
-  const { data: recentActivity } = useGetRecentActivity({ query: { queryKey: getGetRecentActivityQueryKey() }});
+  const layout = operations.data?.layout as DashboardLayout | undefined;
+  const widgets = operations.data?.widgets as OperationsPayload['widgets'] | undefined;
+  const tasks = (operations.data?.tasks ?? []) as ActionTask[];
+  const visible = layout?.widgets.filter(widget => widget.visible) ?? [];
+
+  const toggleSource = (source: string, checked: boolean) => {
+    if (!layout) return;
+    const taskSources = checked
+      ? [...layout.taskSources, source]
+      : layout.taskSources.filter(item => item !== source);
+    saveLayout.mutate({ ...layout, taskSources });
+  };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Portal activity banner — shown at top when there's pending customer activity */}
-      {canManageOffice && <PortalActivityWidget />}
-      {canManageOffice && <RainRiskBanner date={todayStr} enabled />}
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500" data-testid="dashboard-operations">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">Today's work, tasks and recent activity.</p>
+          <h1 className="text-3xl font-bold tracking-tight">Operations</h1>
+          <p className="text-muted-foreground mt-1">Action center for today's work, money, and alerts.</p>
         </div>
-        {!isTechnician && (
-          <div className="flex gap-2">
-            <button
-              className="inline-flex items-center gap-1.5 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-3 py-1.5 transition-colors"
-              title="Create a new job"
-              onClick={() => setLocation('/schedule?action=create')}
-            >
-              + New Job
-            </button>
-            <button
-              className="inline-flex items-center gap-1.5 text-sm font-medium border border-border hover:bg-muted rounded-md px-3 py-1.5 transition-colors"
-              title="Create a new estimate"
-              onClick={() => setLocation('/estimates?action=create')}
-            >
-              + Estimate
-            </button>
-            <button
-              className="inline-flex items-center gap-1.5 text-sm font-medium border border-border hover:bg-muted rounded-md px-3 py-1.5 transition-colors"
-              title="Add a new customer"
-              onClick={() => setLocation('/customers?action=create')}
-            >
-              + Customer
-            </button>
-          </div>
-        )}
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" onClick={() => setDrawerOpen(true)} data-testid="button-customize-dashboard">
+            <SlidersHorizontal className="mr-2 h-4 w-4" /> Customize
+          </Button>
+          {!isTechnician && (
+            <>
+              <Button onClick={() => setLocation('/schedule?action=create')}>+ New Job</Button>
+              <Button variant="outline" onClick={() => setLocation('/estimates?action=create')}>+ Estimate</Button>
+              <Button variant="outline" onClick={() => setLocation('/customers?action=create')}>+ Customer</Button>
+            </>
+          )}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 space-y-6">
-          {isTechnician && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Briefcase className="w-4 h-4 text-primary" /> My Jobs Today
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {!myTodayJobs || myTodayJobs.length === 0 ? (
-                  <p className="px-4 pb-4 text-sm text-muted-foreground">No jobs scheduled today.</p>
-                ) : (
-                  <div className="divide-y">
-                    {myTodayJobs.map(j => (
-                      <div
-                        key={j.id}
-                        className="px-4 py-2.5 flex items-start justify-between gap-2 cursor-pointer hover:bg-muted/40 transition-colors"
-                        onClick={() => setLocation(`/schedule?jobId=${j.id}`)}
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{j.title}</p>
-                          <p className="text-xs text-muted-foreground">{j.customerName ?? ''}{j.scheduledAt ? ` · ${new Date(j.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}</p>
-                        </div>
-                        <Badge className="capitalize shrink-0 text-xs">{(j.status ?? 'scheduled').replace(/_/g, ' ')}</Badge>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+      <Card data-testid="action-tasks">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Needs action</CardTitle>
+          <div className="flex flex-wrap gap-3 pt-2">
+            {TASK_SOURCE_OPTIONS.map(option => (
+              <label key={option.value} className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={layout?.taskSources.includes(option.value) ?? true}
+                  onCheckedChange={checked => toggleSource(option.value, checked === true)}
+                  aria-label={option.label}
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {operations.isLoading && <p className="text-sm text-muted-foreground">Loading tasks…</p>}
+          {operations.isError && <p className="text-sm text-destructive">Tasks could not be loaded.</p>}
+          {operations.data && tasks.length === 0 && (
+            <p className="py-6 text-center text-sm text-muted-foreground" data-testid="action-tasks-empty">
+              {layout?.taskSources.length ? 'Nothing needs action from the sources you selected.' : 'Choose at least one source to see tasks.'}
+            </p>
           )}
-          <MyTasksWidget />
-          <FollowupQueueWidget />
-        </div>
-        <Card className="lg:col-span-2">
-          <CardHeader className="cursor-pointer select-none" onClick={() => setActivityExpanded(e => !e)}>
-            <div className="flex items-center justify-between">
-              <CardTitle>Recent Activity</CardTitle>
-              <div className="flex items-center gap-2">
-                {!activityExpanded && recentActivity && recentActivity.length > 1 && (
-                  <span className="text-xs text-muted-foreground">{recentActivity.length - 1} more</span>
-                )}
-                {activityExpanded
-                  ? <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                  : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-              </div>
+          {tasks.map(task => (
+            <div key={`${task.source}-${task.sourceId}`} className="flex items-start justify-between gap-3 rounded-md border px-3 py-2.5" data-testid={`task-${task.source}-${task.sourceId}`}>
+              <button className="min-w-0 text-left" onClick={() => setLocation(task.href)}>
+                <p className="text-sm font-medium">{task.title}</p>
+                <p className="text-xs text-muted-foreground truncate">{task.detail}</p>
+              </button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={completeTask.isPending}
+                data-testid={`button-complete-${task.source}-${task.sourceId}`}
+                onClick={() => completeTask.mutate(task)}
+              >
+                <Check className="mr-1 h-3.5 w-3.5" /> Done
+              </Button>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              {(activityExpanded ? recentActivity : recentActivity?.slice(0, 1))?.map((activity, idx, arr) => {
-                const href = activity.entityId != null ? (() => {
-                  if (activity.type === 'job_created' || activity.type === 'job_completed') return `schedule?jobId=${activity.entityId}`;
-                  if (activity.type === 'invoice_sent' || activity.type === 'payment_received') return `financials?invoiceId=${activity.entityId}`;
-                  if (activity.type === 'customer_added') return `customers/${activity.entityId}`;
-                  return null;
-                })() : null;
-                const isLast = idx === arr.length - 1;
-                return (
-                  <div key={activity.id} className="flex gap-4">
-                    <div className="relative flex flex-col items-center">
-                      <div className="w-2 h-2 bg-primary rounded-full z-10 mt-1 shrink-0" />
-                      {!isLast && <div className="w-px flex-1 bg-border mt-1" />}
-                    </div>
-                    <div className={`flex-1 ${!isLast ? 'pb-6' : ''}`}>
-                      <p
-                        className={`text-sm font-medium ${href ? 'cursor-pointer hover:underline text-primary' : ''}`}
-                        title={activity.message}
-                        onClick={href ? (e) => { e.stopPropagation(); setLocation(href); } : undefined}
-                      >{activity.message}</p>
-                      <p className="text-xs text-muted-foreground mt-1" title={new Date(activity.createdAt).toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}>
-                        {new Date(activity.createdAt).toLocaleString()} {activity.userName && `• by ${activity.userName}`}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-              {(!recentActivity || recentActivity.length === 0) && (
-                <div className="text-center py-6 text-muted-foreground">No recent activity</div>
-              )}
-              {activityExpanded && recentActivity && recentActivity.length >= 15 && (
-                <p className="text-xs text-center text-muted-foreground pt-1">Showing last 15 events</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+          ))}
+        </CardContent>
+      </Card>
+
+      {operations.isLoading && <p className="text-sm text-muted-foreground">Loading widgets…</p>}
+      {operations.isError && <p className="text-sm text-destructive">The operations dashboard could not be loaded.</p>}
+      {operations.data && visible.length === 0 && (
+        <p className="text-sm text-muted-foreground">Every widget is hidden. Customize the dashboard to show the default set again.</p>
+      )}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {visible.map(widget => (
+          <div key={widget.key} data-testid={`widget-${widget.key}`}>
+            {widget.key === 'jobs_completed' && widgets?.jobsCompleted && <JobsWidget data={widgets.jobsCompleted} />}
+            {widget.key === 'invoices_revenue' && widgets?.invoicesRevenue && <InvoicesWidget data={widgets.invoicesRevenue} />}
+            {widget.key === 'payroll_summary' && widgets?.payrollSummary && <PayrollWidget data={widgets.payrollSummary} />}
+            {widget.key === 'schedule' && widgets?.schedule && <ScheduleWidget data={widgets.schedule} onOpen={setLocation} />}
+            {widget.key === 'report_snapshots' && widgets?.reportSnapshots && <ReportsWidget data={widgets.reportSnapshots} onOpen={setLocation} />}
+            {widget.key === 'alerts' && widgets?.alerts && <AlertsWidget data={widgets.alerts} onOpen={setLocation} />}
+          </div>
+        ))}
       </div>
+
+      <CustomizeDashboardDrawer
+        open={drawerOpen}
+        layout={layout}
+        saving={saveLayout.isPending || resetLayout.isPending}
+        onOpenChange={setDrawerOpen}
+        onChange={next => saveLayout.mutate(next)}
+        onReset={() => resetLayout.mutate()}
+      />
     </div>
   );
 }
 
-function PortalActivityWidget() {
-  const [, setLocation] = useLocation();
-  const { data: unreadData } = useQuery<{ count: number }>({
-    queryKey: ['portal-inbox-unread'],
-    queryFn: () => customFetch<{ count: number }>('/api/portal-inbox/unread-count'),
-    refetchInterval: 60_000,
-  });
-  const { data: portalJobs } = useQuery<{ id: number; title: string; customerName: string | null; createdAt: string }[]>({
-    queryKey: ['portal-requests-pending'],
-    queryFn: () => customFetch<any[]>('/api/jobs?source=portal&status=pending&limit=5'),
-    refetchInterval: 60_000,
-  });
-  const { data: pendingRequests } = useQuery<{ id: number; title: string; customerName: string | null; requestType: 'cancel' | 'reschedule'; requestedAt: string }[]>({
-    queryKey: ['portal-cancel-reschedule-pending'],
-    queryFn: () => customFetch<any[]>('/api/jobs/pending-requests'),
-    refetchInterval: 60_000,
-  });
-
-  const unread = unreadData?.count ?? 0;
-  const requests = portalJobs ?? [];
-  const pendingCancelReschedule = pendingRequests ?? [];
-
-  // Hide while loading and when there's genuinely no activity
-  if (unreadData === undefined && portalJobs === undefined && pendingRequests === undefined) return null;
-  if (unread === 0 && requests.length === 0 && pendingCancelReschedule.length === 0) return null;
-
-  const totalActivity = unread + requests.length + pendingCancelReschedule.length;
-
+function WidgetFrame({ title, icon, timeframe, children }: { title: string; icon: ReactNode; timeframe?: string; children: ReactNode }) {
   return (
-    <Card className="border-l-4 border-l-primary shadow-sm">
-      <CardHeader className="pb-2 pt-3">
-        <CardTitle className="text-sm flex items-center justify-between">
-          <span className="flex items-center gap-2 font-semibold text-primary">
-            <Inbox className="w-4 h-4" /> Portal Activity
-            {totalActivity > 0 && (
-              <Badge className="bg-primary text-primary-foreground text-xs h-5 px-1.5">{totalActivity}</Badge>
-            )}
-          </span>
-          <button
-            className="text-xs text-primary hover:underline font-normal"
-            onClick={() => setLocation('/portal-inbox')}
-          >
-            View all →
-          </button>
+    <Card className="h-full">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center justify-between gap-2 text-base">
+          <span className="flex items-center gap-2">{icon}{title}</span>
+          {timeframe && <Badge variant="outline">{timeframeLabel(timeframe)}</Badge>}
         </CardTitle>
       </CardHeader>
-      <CardContent className="p-0 pb-2">
-        {unread > 0 && (
-          <button
-            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-primary/5 transition-colors text-left"
-            onClick={() => setLocation('/portal-inbox')}
-          >
-            <MessageSquare className="w-4 h-4 text-primary shrink-0" />
-            <span className="font-semibold text-primary">{unread} unread message{unread !== 1 ? 's' : ''} from customers</span>
-          </button>
-        )}
-        {pendingCancelReschedule.length > 0 && (
-          <div className="divide-y">
-            {pendingCancelReschedule.slice(0, 4).map((r: any) => (
-              <button
-                key={`req-${r.id}-${r.requestType}`}
-                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-muted/50 transition-colors text-left"
-                onClick={() => setLocation(`/schedule?jobId=${r.id}`)}
-              >
-                {r.requestType === 'cancel'
-                  ? <Ban className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                  : <CalendarSearch className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                }
-                <span className="flex-1 truncate">
-                  {r.customerName ?? 'Customer'} — {r.requestType === 'cancel' ? 'cancel request' : 'reschedule request'} for "{r.title}"
-                </span>
-                <Badge variant="outline" className={`text-[10px] shrink-0 ${r.requestType === 'cancel' ? 'border-red-200 text-red-700' : 'border-amber-200 text-amber-700'}`}>
-                  {r.requestType === 'cancel' ? 'cancel' : 'reschedule'}
-                </Badge>
-              </button>
-            ))}
-          </div>
-        )}
-        {requests.length > 0 && (
-          <div className="divide-y">
-            {requests.slice(0, 3).map((j: any) => (
-              <button
-                key={j.id}
-                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-muted/50 transition-colors text-left"
-                onClick={() => setLocation(`/schedule?jobId=${j.id}`)}
-              >
-                <Briefcase className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                <span className="flex-1 truncate">{j.customerName ?? 'Customer'} — service request</span>
-                <Badge variant="outline" className="text-[10px] shrink-0">new</Badge>
-              </button>
-            ))}
-          </div>
-        )}
-      </CardContent>
+      <CardContent>{children}</CardContent>
     </Card>
+  );
+}
+
+function EmptyNote({ children }: { children: ReactNode }) {
+  return <p className="py-6 text-center text-sm text-muted-foreground" data-testid="widget-empty">{children}</p>;
+}
+
+function JobsWidget({ data }: { data: NonNullable<OperationsPayload['widgets']['jobsCompleted']> }) {
+  return (
+    <WidgetFrame title={widgetTitle('jobs_completed')} icon={<Briefcase className="h-4 w-4" />} timeframe={data.timeframe}>
+      {data.empty ? <EmptyNote>No completed jobs in this timeframe.</EmptyNote> : (
+        <div className="grid grid-cols-2 gap-3">
+          <Metric label="Completed" value={String(data.count)} />
+          <Metric label="Value" value={data.restricted ? 'Hidden for this role' : money(data.value)} />
+        </div>
+      )}
+    </WidgetFrame>
+  );
+}
+
+function InvoicesWidget({ data }: { data: NonNullable<OperationsPayload['widgets']['invoicesRevenue']> }) {
+  return (
+    <WidgetFrame title={widgetTitle('invoices_revenue')} icon={<DollarSign className="h-4 w-4" />} timeframe={data.timeframe}>
+      {data.empty ? <EmptyNote>No open, overdue, or collected invoices in this view.</EmptyNote> : (
+        <div className="grid grid-cols-3 gap-2">
+          <Metric label="Open" value={data.restricted ? String(data.openCount) : `${data.openCount} · ${money(data.openTotal)}`} />
+          <Metric label="Overdue" value={data.restricted ? String(data.overdueCount) : `${data.overdueCount} · ${money(data.overdueTotal)}`} />
+          <Metric label="Collected" value={data.restricted ? String(data.collectedCount) : `${data.collectedCount} · ${money(data.collectedTotal)}`} />
+        </div>
+      )}
+    </WidgetFrame>
+  );
+}
+
+function PayrollWidget({ data }: { data: NonNullable<OperationsPayload['widgets']['payrollSummary']> }) {
+  const hours = Math.floor(data.minutes / 60);
+  const minutes = data.minutes % 60;
+  return (
+    <WidgetFrame title={widgetTitle('payroll_summary')} icon={<DollarSign className="h-4 w-4" />} timeframe={data.timeframe}>
+      {data.empty ? <EmptyNote>No time entries or payroll periods in this timeframe.</EmptyNote> : (
+        <div className="space-y-2 text-sm">
+          <p>{data.people} {data.people === 1 ? 'person' : 'people'} · {hours}h {minutes}m · {data.openClocks} still clocked in</p>
+          <p>{data.periodCount} approved payroll {data.periodCount === 1 ? 'period' : 'periods'}</p>
+          <p className="font-medium">{data.restricted ? 'Pay is hidden for this role' : data.estimatedPay == null ? 'No hourly rates are set, so pay is not estimated.' : `Estimated pay ${money(data.estimatedPay)}`}</p>
+        </div>
+      )}
+    </WidgetFrame>
+  );
+}
+
+function ScheduleWidget({ data, onOpen }: { data: NonNullable<OperationsPayload['widgets']['schedule']>; onOpen: (href: string) => void }) {
+  return (
+    <WidgetFrame title={widgetTitle('schedule')} icon={<LayoutGrid className="h-4 w-4" />} timeframe={data.timeframe}>
+      {data.empty ? <EmptyNote>Nothing is scheduled in this window.</EmptyNote> : (
+        <div className="space-y-3">
+          <JobList label="Today" jobs={data.today} onOpen={onOpen} />
+          <JobList label="Upcoming" jobs={data.upcoming} onOpen={onOpen} />
+        </div>
+      )}
+    </WidgetFrame>
+  );
+}
+
+function JobList({ label, jobs, onOpen }: { label: string; jobs: { id: number; title: string; customerName: string | null; scheduledAt: string; href: string; status: string }[]; onOpen: (href: string) => void }) {
+  return (
+    <div>
+      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      {jobs.length === 0 ? <p className="text-sm text-muted-foreground">None</p> : jobs.map(job => (
+        <button key={job.id} className="flex w-full items-center justify-between gap-2 rounded px-1 py-1.5 text-left hover:bg-muted/50" onClick={() => onOpen(job.href)}>
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-medium">{job.title}</span>
+            <span className="block text-xs text-muted-foreground">{job.customerName ?? 'No customer'} · {format(new Date(job.scheduledAt), 'MMM d, h:mm a')}</span>
+          </span>
+          <Badge variant="outline" className="shrink-0 capitalize">{job.status.replace(/_/g, ' ')}</Badge>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ReportsWidget({ data, onOpen }: { data: NonNullable<OperationsPayload['widgets']['reportSnapshots']>; onOpen: (href: string) => void }) {
+  return (
+    <WidgetFrame title={widgetTitle('report_snapshots')} icon={<LayoutGrid className="h-4 w-4" />} timeframe={data.timeframe}>
+      {data.empty ? <EmptyNote>No report activity in this timeframe.</EmptyNote> : (
+        <div className="space-y-1">
+          {data.snapshots.map(item => (
+            <button key={item.key} className="flex w-full items-center justify-between gap-3 rounded px-1 py-1.5 text-left text-sm hover:bg-muted/50" onClick={() => onOpen(item.href)}>
+              <span>{item.label}</span>
+              <span className="font-medium">{item.count}{item.value != null ? ` · ${money(item.value)}` : ''}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </WidgetFrame>
+  );
+}
+
+function AlertsWidget({ data, onOpen }: { data: NonNullable<OperationsPayload['widgets']['alerts']>; onOpen: (href: string) => void }) {
+  return (
+    <WidgetFrame title={widgetTitle('alerts')} icon={<AlertTriangle className="h-4 w-4" />} timeframe={data.timeframe}>
+      {data.empty ? <EmptyNote>No system, weather, or equipment alerts right now.</EmptyNote> : (
+        <div className="space-y-2 text-sm">
+          {data.system.map(alert => <p key={alert.id}><Badge variant="outline" className="mr-2">{alert.severity}</Badge>{alert.message}</p>)}
+          {data.weather.map(alert => (
+            <button key={alert.id} className="flex w-full items-center gap-2 text-left hover:underline" onClick={() => onOpen(alert.href)}>
+              <CloudRain className="h-4 w-4" /> {alert.title}: {alert.detail}
+            </button>
+          ))}
+          {data.equipment.map(alert => (
+            <button key={alert.id} className="flex w-full items-center gap-2 text-left hover:underline" onClick={() => onOpen(alert.href)}>
+              <Wrench className="h-4 w-4" /> {alert.name}: {alert.detail}
+            </button>
+          ))}
+        </div>
+      )}
+    </WidgetFrame>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-lg font-semibold leading-tight">{value}</p>
+    </div>
   );
 }

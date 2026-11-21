@@ -52,11 +52,12 @@ import { buildPreviewInvoice, settingsTaxRate, normalizeWording } from '@/lib/do
 import { InvoiceDocument, businessProfileFromSettings } from '@/components/documents/InvoiceDocument';
 import InvoiceTemplatesSettings from '@/components/settings/InvoiceTemplatesSettings';
 import { Button } from '@/components/ui/button';
-import { SearchableCombobox } from '@/components/shared/SearchableCombobox';
-import { InventoryItemCombobox } from '@/components/inventory/InventoryItemCombobox';
-import { LineSourcePicker } from '@/components/billing/LineSourcePicker';
-import { lineSource, qtyWithUnit, type LineSource } from '@/lib/customLinePrice';
-import type { InventoryItem } from '@workspace/api-client-react';
+import { LineCatalogSearch } from '@/components/billing/LineCatalogSearch';
+import { PassThroughFields } from '@/components/billing/PassThroughFields';
+import { AttachedPartsField } from '@/components/billing/AttachedPartsField';
+import { BillingCatalog } from '@/components/billing/BillingCatalog';
+import { invoiceLinePayload, linePatchFromHit, lineSaveError, type LineComponent } from '@/lib/lineEntry';
+import { qtyWithUnit } from '@/lib/customLinePrice';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -88,12 +89,12 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: 'bg-gray-200 text-gray-500 border-transparent',
 };
 
-interface LineItemRow { description: string; quantity: number; unitPrice: number; total: number; propertyId?: number | null; jobId?: number | null; serviceId?: number | null; inventoryItemId?: number | null; sku?: string | null; costPrice?: number | null; priceOverridden?: boolean; kind?: 'service' | 'part' | 'custom' | null; unit?: string | null; internalCost?: number | null; }
+interface LineItemRow { description: string; quantity: number; unitPrice: number; total: number; propertyId?: number | null; jobId?: number | null; serviceId?: number | null; serviceName?: string | null; inventoryItemId?: number | null; sku?: string | null; costPrice?: number | null; priceOverridden?: boolean; kind?: 'service' | 'part' | 'custom' | 'plan' | 'kit' | null; unit?: string | null; internalCost?: number | null; markup?: number; catalogId?: number | null; planTemplateId?: number | null; planTemplateName?: string | null; planBillingCycle?: string | null; components?: LineComponent[] | null; }
 type InvoiceGrouping = 'combined' | 'by_property';
 
 // ── Create Invoice Sheet ────────────────────────────────────────────────────────
 
-interface ServiceOption { id: number; name: string; description: string | null; basePrice: number; pricingMode?: string | null; pricingMatrix?: unknown; linearRate?: number | null; linkedZoneTypeId?: string | null; }
+interface ServiceOption { id: number; name: string; description?: string | null; basePrice: number; pricingMode?: string | null; pricingMatrix?: unknown; linearRate?: number | null; linkedZoneTypeId?: string | null; }
 
 interface CreateInvoiceSheetProps {
   open: boolean;
@@ -260,7 +261,7 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
   };
   React.useEffect(() => {
     setLineItems(prev => prev.map(line => {
-      if (!line.serviceId || line.priceOverridden || line.jobId != null || line.kind === 'custom' || line.kind === 'part') return line;
+      if (!line.serviceId || line.priceOverridden || line.jobId != null || line.kind === 'custom' || line.kind === 'part' || line.kind === 'kit' || line.kind === 'plan') return line;
       const service = (services ?? []).find(row => row.id === line.serviceId);
       if (!service) return line;
       const unitPrice = pricedService(service, propertyForLine(line));
@@ -277,29 +278,6 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
       }
       updated.total = updated.quantity * updated.unitPrice;
       return updated;
-    }));
-  };
-
-  // When a service is selected for a line item, auto-fill description + price
-  const applyService = (index: number, serviceId: string) => {
-    if (!serviceId || serviceId === '__none__') return;
-    const svc = (services ?? []).find(s => String(s.id) === serviceId);
-    if (!svc) return;
-    setLineItems(prev => prev.map((li, i) => {
-      if (i !== index) return li;
-      const desc = svc.description?.trim() || svc.name;
-      const unitPrice = pricedService(svc, propertyForLine(li));
-      const updated = { ...li, description: desc, unitPrice, total: li.quantity * unitPrice, serviceId: svc.id, inventoryItemId: null, sku: null, costPrice: null, priceOverridden: false, kind: 'service' as const, unit: null, internalCost: null };
-      return updated;
-    }));
-  };
-
-  // Inventory part selection: fills description/price and carries inventory metadata on the line
-  const applyInventory = (index: number, item: InventoryItem) => {
-    setLineItems(prev => prev.map((li, i) => {
-      if (i !== index) return li;
-      const price = Number(item.unitPrice ?? 0);
-      return { ...li, description: item.name, unitPrice: price, total: li.quantity * price, inventoryItemId: item.id, sku: item.sku ?? null, costPrice: item.costPrice ?? null, serviceId: null, kind: 'part' as const, unit: null, internalCost: null };
     }));
   };
 
@@ -341,22 +319,12 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
     if (!groupingOverridden && (groupingQuery.isPending || groupingQuery.isError)) {
       toast.error('Wait for the customer billing choice to load, or explicitly choose how to group this invoice.'); return;
     }
-    const customMissing = lineItems.find(li => li.kind === 'custom' && !li.description.trim());
-    if (customMissing) { toast.error('Custom line needs a description'); return; }
-    const partMissing = lineItems.find(li => li.kind === 'part' && !li.inventoryItemId && li.description.trim());
-    if (partMissing) { toast.error('Pick an inventory part, or switch that line to Custom / Pass-Through'); return; }
+    const lineError = lineSaveError(lineItems);
+    if (lineError) { toast.error(lineError); return; }
     const validLineItems = lineItems
       .filter(li => li.description.trim() !== '')
-      .map(li => ({
-        description: li.description, quantity: li.quantity, unitPrice: li.unitPrice, total: Math.round(li.quantity * li.unitPrice * 100) / 100,
-        jobId: li.jobId ?? null,
-        ...(li.kind === 'custom'
-          ? { kind: 'custom' as const, unit: li.unit?.trim() || null, internalCost: li.internalCost ?? null, serviceId: null, inventoryItemId: null, sku: null }
-          : {
-              ...(li.kind === 'part' ? { kind: 'part' as const } : {}),
-              ...(li.serviceId && li.kind !== 'part' ? { serviceId: li.serviceId } : {}),
-              ...(li.inventoryItemId && li.kind !== 'custom' ? { inventoryItemId: li.inventoryItemId, sku: li.sku ?? null } : {}),
-            }),
+      .map(li => invoiceLinePayload({
+        ...li,
         propertyId: li.jobId != null ? (li.propertyId ?? null) : (li.propertyId ?? defaultPropertyId ?? null),
       }));
     createInvoice.mutate(
@@ -571,37 +539,17 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
                 <div key={i} className="rounded-lg border bg-muted/20 p-3 space-y-2">
                   {/* Service / parts / custom picker */}
                   <div className="flex items-center gap-2 flex-wrap">
-                    <LineSourcePicker
-                      value={lineSource(li)}
+                    <LineCatalogSearch
                       testId={`invoice-line-${i}`}
-                      onChange={(source: LineSource) => setLineItems(prev => prev.map((row, index) => {
+                      onSelect={(hit, extras) => setLineItems(prev => prev.map((row, index) => {
                         if (index !== i) return row;
-                        if (source === 'custom') return { ...row, kind: 'custom', serviceId: null, inventoryItemId: null, sku: null, costPrice: null };
-                        if (source === 'part') return { ...row, kind: 'part', serviceId: null, unit: null, internalCost: null };
-                        return { ...row, kind: 'service', inventoryItemId: null, sku: null, unit: null, internalCost: null };
+                        const patch = linePatchFromHit(hit) as Partial<LineItemRow>;
+                        if (hit.kind === 'service' && extras?.service) patch.unitPrice = pricedService(extras.service, propertyForLine(row));
+                        const updated = { ...row, ...patch };
+                        updated.total = updated.quantity * updated.unitPrice;
+                        return updated;
                       }))}
                     />
-                    {lineSource(li) === 'service' && (services ?? []).length > 0 && (
-                      <SearchableCombobox
-                        className="flex-1 min-w-[150px]"
-                        options={(services ?? []).map(s => ({ value: String(s.id), label: s.name, keywords: [s.description ?? ''], hint: s.basePrice > 0 ? `$${s.basePrice.toFixed(2)}` : undefined }))}
-                        value={li.serviceId ? String(li.serviceId) : null}
-                        onChange={v => applyService(i, v)}
-                        placeholder="Pick a service..."
-                        searchPlaceholder="Search services..."
-                        emptyText="No services match."
-                        ariaLabel={`Service for line ${i + 1}`}
-                        title="Pick a service to auto-fill description and price"
-                      />
-                    )}
-                    {lineSource(li) === 'part' && (
-                    <InventoryItemCombobox
-                      className="flex-1 min-w-[150px]"
-                      value={li.inventoryItemId ?? null}
-                      onSelect={item => applyInventory(i, item)}
-                      placeholder="Pick a part..."
-                    />
-                    )}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -614,10 +562,13 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
                   </div>
-                  {lineSource(li) === 'part' && (
+                  {li.kind === 'part' && (
                     <p className="text-[10px] text-muted-foreground">Inventory part{li.sku ? ` · SKU ${li.sku}` : ''}{li.costPrice != null ? ` · cost $${Number(li.costPrice).toFixed(2)}` : ''}. Invoice lines bill the customer; record stock usage on the job.</p>
                   )}
-                  {lineSource(li) === 'custom' && (
+                  {li.kind === 'kit' && (
+                    <p className="text-[10px] text-muted-foreground" data-testid={`invoice-line-${i}-kit-note`}>Kit line. Stock moves when this kit is used on a job, not when this invoice is saved.</p>
+                  )}
+                  {li.kind === 'custom' && (
                     <p className="text-[10px] text-muted-foreground">Pass-through charge. No service catalog entry and no inventory deduction.</p>
                   )}
 
@@ -647,17 +598,40 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
                   <Input
                     className="h-8 text-sm"
                     title="Line item description"
-                    placeholder={lineSource(li) === 'custom' ? 'Dump Truck Load, Equipment Rental' : 'Description'}
+                    placeholder={li.kind === 'custom' ? 'Dump Truck Load, Equipment Rental' : 'Description'}
                     value={li.description}
                     data-testid={`invoice-line-${i}-description`}
                     onChange={e => updateLineItem(i, 'description', e.target.value)}
                   />
-                  {lineSource(li) === 'custom' && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input className="h-8 text-sm" data-testid={`invoice-line-${i}-unit`} title="Optional unit label" placeholder="Load, Day, Each" value={li.unit ?? ''} onChange={e => updateLineItem(i, 'unit', e.target.value)} />
-                      <Input className="h-8 text-sm" data-testid={`invoice-line-${i}-cost`} type="number" min={0} step={0.01} title="Optional internal cost" placeholder="Internal cost" value={li.internalCost ?? ''} onChange={e => updateLineItem(i, 'internalCost', e.target.value === '' ? null : parseFloat(e.target.value))} />
-                    </div>
+                  {li.kind === 'custom' && (
+                    <PassThroughFields
+                      testId={`invoice-line-${i}`}
+                      unit={li.unit}
+                      internalCost={li.internalCost}
+                      markup={li.markup}
+                      unitPrice={li.unitPrice}
+                      onChange={patch => setLineItems(prev => prev.map((row, index) => {
+                        if (index !== i) return row;
+                        const updated = { ...row, ...patch };
+                        updated.total = updated.quantity * updated.unitPrice;
+                        return updated;
+                      }))}
+                    />
                   )}
+                  <AttachedPartsField
+                    testId={`invoice-line-${i}`}
+                    lineQty={li.quantity}
+                    components={li.components}
+                    seed={li.kind !== 'kit' && li.inventoryItemId ? { inventoryItemId: li.inventoryItemId, name: li.description || 'Part', quantity: li.quantity || 1, unit: li.unit ?? null, unitPrice: li.unitPrice } : null}
+                    priceOverridden={li.priceOverridden}
+                    clearInventoryItem={li.kind !== 'kit'}
+                    onChange={patch => setLineItems(prev => prev.map((row, index) => {
+                      if (index !== i) return row;
+                      const updated = { ...row, ...patch, components: patch.components ?? null };
+                      updated.total = updated.quantity * updated.unitPrice;
+                      return updated;
+                    }))}
+                  />
 
                   {/* Qty / Unit Price / Total */}
                   <div className="grid grid-cols-3 gap-2 items-center">
@@ -673,6 +647,7 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
                         onChange={e => updateLineItem(i, 'quantity', parseFloat(e.target.value) || 0)}
                       />
                     </div>
+                    {li.kind !== 'custom' && (
                     <div className="space-y-0.5">
                       <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Unit Price</p>
                       <Input
@@ -680,13 +655,13 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
                         type="number"
                         min={0}
                         step={0.01}
-                        title="Price per unit"
                         placeholder="Unit Price"
                         value={li.unitPrice}
                         onChange={e => updateLineItem(i, 'unitPrice', parseFloat(e.target.value) || 0)}
                         title="Price per unit. Editing this keeps your amount when measurements change."
                       />
                     </div>
+                    )}
                     <div className="space-y-0.5">
                       <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Total</p>
                       <div data-testid={`invoice-line-${i}-total`} className="h-8 flex items-center px-2 rounded-md border bg-muted/50 text-sm font-semibold">
@@ -846,11 +821,6 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
   const [termsDraft, setTermsDraft] = useState('');
   const [layoutDraft, setLayoutDraft] = useState('clean');
 
-  const { data: services } = useQuery<ServiceOption[]>({
-    queryKey: ['services-for-invoice'],
-    queryFn: () => customFetch<ServiceOption[]>('/api/services'),
-    staleTime: 5 * 60 * 1000,
-  });
   const [editingLineItems, setEditingLineItems] = useState(false);
   const [lineItems, setLineItems] = useState<LineItemRow[]>([]);
   const [editingNotes, setEditingNotes] = useState(false);
@@ -901,11 +871,9 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
 
   const handleSaveLineItems = () => {
     if (!invoiceId) return;
-    const customMissing = lineItems.find(li => li.kind === 'custom' && !li.description.trim());
-    if (customMissing) { toast.error('Custom line needs a description'); return; }
-    const validLi = lineItems.filter(li => li.description.trim() !== '').map(li => li.kind === 'custom'
-      ? { ...li, kind: 'custom' as const, serviceId: null, inventoryItemId: null, sku: null, unit: li.unit?.trim() || null, internalCost: li.internalCost ?? null, total: Math.round(li.quantity * li.unitPrice * 100) / 100 }
-      : li);
+    const lineError = lineSaveError(lineItems);
+    if (lineError) { toast.error(lineError); return; }
+    const validLi = lineItems.filter(li => li.description.trim() !== '').map(li => invoiceLinePayload(li));
     const subtotal = validLi.reduce((s, li) => s + li.total, 0);
     const tax = subtotal * 0.085;
     const total = subtotal + tax;
@@ -974,16 +942,6 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
       return updated;
     }));
   };
-  const applyService = (index: number, serviceId: string) => {
-    const svc = (services ?? []).find(s => String(s.id) === serviceId);
-    if (!svc) return;
-    setLineItems(prev => prev.map((li, i) => i === index ? { ...li, description: svc.description?.trim() || svc.name, unitPrice: svc.basePrice, total: li.quantity * svc.basePrice, serviceId: svc.id, inventoryItemId: null, sku: null, kind: 'service', unit: null, internalCost: null } : li));
-  };
-  const applyInventory = (index: number, item: { id: number; name: string; sku?: string | null; unitPrice?: number | null }) => {
-    const price = Number(item.unitPrice ?? 0);
-    setLineItems(prev => prev.map((li, i) => i === index ? { ...li, description: item.name, unitPrice: price, total: li.quantity * price, inventoryItemId: item.id, sku: item.sku ?? null, serviceId: null, kind: 'part', unit: null, internalCost: null } : li));
-  };
-
   const subtotal = lineItems.reduce((s, li) => s + li.total, 0);
   const canSend = user?.role !== 'technician';
   const canManageLifecycle = ['company_owner', 'office_manager', 'department_manager'].includes(user?.role ?? '');
@@ -1232,44 +1190,56 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
                 <div className="space-y-2">
                   {lineItems.map((li, i) => (
                     <div key={i} className="rounded-md border p-2 space-y-1.5">
-                      <LineSourcePicker
-                        value={lineSource(li)}
+                      <LineCatalogSearch
                         testId={`invoice-edit-line-${i}`}
-                        onChange={(source: LineSource) => setLineItems(prev => prev.map((row, index) => {
+                        onSelect={(hit, extras) => setLineItems(prev => prev.map((row, index) => {
                           if (index !== i) return row;
-                          if (source === 'custom') return { ...row, kind: 'custom', serviceId: null, inventoryItemId: null, sku: null };
-                          if (source === 'part') return { ...row, kind: 'part', serviceId: null, unit: null, internalCost: null };
-                          return { ...row, kind: 'service', inventoryItemId: null, sku: null, unit: null, internalCost: null };
+                          const patch = linePatchFromHit(hit) as Partial<LineItemRow>;
+                          if (hit.kind === 'service' && extras?.service) patch.unitPrice = extras.service.basePrice;
+                          const updated = { ...row, ...patch };
+                          updated.total = updated.quantity * updated.unitPrice;
+                          return updated;
                         }))}
                       />
-                      {lineSource(li) === 'service' && (
-                        <SearchableCombobox
-                          options={(services ?? []).map(s => ({ value: String(s.id), label: s.name, keywords: [s.description ?? ''] }))}
-                          value={li.serviceId ? String(li.serviceId) : null}
-                          onChange={v => applyService(i, v)}
-                          placeholder="Pick a service..."
-                          searchPlaceholder="Search services..."
-                          emptyText="No services match."
-                          ariaLabel={`Service for line ${i + 1}`}
-                        />
-                      )}
-                      {lineSource(li) === 'part' && (
-                        <InventoryItemCombobox value={li.inventoryItemId ?? null} onSelect={item => applyInventory(i, item)} placeholder="Pick a part..." />
-                      )}
-                      {lineSource(li) === 'custom' && <p className="text-[10px] text-muted-foreground">Pass-through charge. No service catalog entry and no inventory deduction.</p>}
+                      {li.kind === 'custom' && <p className="text-[10px] text-muted-foreground">Pass-through charge. No service catalog entry and no inventory deduction.</p>}
+                      {li.kind === 'kit' && <p className="text-[10px] text-muted-foreground">Kit line. Stock moves when this kit is used on a job, not when this invoice is saved.</p>}
+                      {li.kind === 'part' && <p className="text-[10px] text-muted-foreground">Invoice lines bill the customer. Record stock usage on the job.</p>}
                       <div className="grid grid-cols-12 gap-1.5 items-center text-sm">
-                        <Input className="col-span-5 h-8 text-xs" placeholder={lineSource(li) === 'custom' ? 'Dump Truck Load, Equipment Rental' : 'Description'} value={li.description} onChange={e => updateLineItem(i, 'description', e.target.value)} />
+                        <Input className="col-span-5 h-8 text-xs" placeholder={li.kind === 'custom' ? 'Dump Truck Load, Equipment Rental' : 'Description'} value={li.description} onChange={e => updateLineItem(i, 'description', e.target.value)} />
                         <Input className="col-span-2 h-8 text-xs" type="number" min={1} placeholder="Quantity" value={li.quantity} onChange={e => updateLineItem(i, 'quantity', parseFloat(e.target.value) || 0)} />
-                        <Input className="col-span-3 h-8 text-xs" type="number" min={0} step={0.01} placeholder="Unit Price" value={li.unitPrice} onChange={e => updateLineItem(i, 'unitPrice', parseFloat(e.target.value) || 0)} />
+                        {li.kind !== 'custom' && <Input className="col-span-3 h-8 text-xs" type="number" min={0} step={0.01} placeholder="Unit Price" value={li.unitPrice} onChange={e => updateLineItem(i, 'unitPrice', parseFloat(e.target.value) || 0)} />}
                         <span className="col-span-1 text-xs text-right font-medium" data-testid={`invoice-edit-line-${i}-total`}>${li.total.toFixed(2)}</span>
                         <Button variant="ghost" size="icon" className="col-span-1 h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => setLineItems(p => p.filter((_, j) => j !== i))} disabled={lineItems.length === 1}><Trash2 className="w-3 h-3" /></Button>
                       </div>
-                      {lineSource(li) === 'custom' && (
-                        <div className="grid grid-cols-2 gap-1.5">
-                          <Input className="h-8 text-xs" placeholder="Load, Day, Each" value={li.unit ?? ''} onChange={e => updateLineItem(i, 'unit', e.target.value)} />
-                          <Input className="h-8 text-xs" type="number" min={0} step={0.01} placeholder="Internal cost" value={li.internalCost ?? ''} onChange={e => updateLineItem(i, 'internalCost', e.target.value === '' ? null : parseFloat(e.target.value))} />
-                        </div>
+                      {li.kind === 'custom' && (
+                        <PassThroughFields
+                          testId={`invoice-edit-line-${i}`}
+                          unit={li.unit}
+                          internalCost={li.internalCost}
+                          markup={li.markup}
+                          unitPrice={li.unitPrice}
+                          onChange={patch => setLineItems(prev => prev.map((row, index) => {
+                            if (index !== i) return row;
+                            const updated = { ...row, ...patch };
+                            updated.total = updated.quantity * updated.unitPrice;
+                            return updated;
+                          }))}
+                        />
                       )}
+                      <AttachedPartsField
+                        testId={`invoice-edit-line-${i}`}
+                        lineQty={li.quantity}
+                        components={li.components}
+                        seed={li.kind !== 'kit' && li.inventoryItemId ? { inventoryItemId: li.inventoryItemId, name: li.description || 'Part', quantity: li.quantity || 1, unit: li.unit ?? null, unitPrice: li.unitPrice } : null}
+                        priceOverridden={li.priceOverridden}
+                        clearInventoryItem={li.kind !== 'kit'}
+                        onChange={patch => setLineItems(prev => prev.map((row, index) => {
+                          if (index !== i) return row;
+                          const updated = { ...row, ...patch, components: patch.components ?? null };
+                          updated.total = updated.quantity * updated.unitPrice;
+                          return updated;
+                        }))}
+                      />
                     </div>
                   ))}
                   <Button variant="ghost" size="sm" className="text-xs gap-1" onClick={() => setLineItems(p => [...p, { description: '', quantity: 1, unitPrice: 0, total: 0 }])}>
@@ -1692,6 +1662,8 @@ export default function FinancialsPage() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="mb-4">
           <TabsTrigger value="invoices">Invoices {(invoices ?? []).length > 0 ? `(${(invoices ?? []).length})` : ''}</TabsTrigger>
+          <TabsTrigger value="passthrough" data-testid="tab-passthrough">Pass-through</TabsTrigger>
+          <TabsTrigger value="kits" data-testid="tab-kits">Kits</TabsTrigger>
           <TabsTrigger value="recurring">Recurring Templates {(templates ?? []).length > 0 ? `(${(templates ?? []).length})` : ''}</TabsTrigger>
           {pendingStopFlags.length > 0 && (
             <TabsTrigger value="flags">
@@ -1706,6 +1678,9 @@ export default function FinancialsPage() {
             </TabsTrigger>
           )}
         </TabsList>
+
+        <TabsContent value="passthrough" className="focus-visible:outline-none"><BillingCatalog tab="passthrough" /></TabsContent>
+        <TabsContent value="kits" className="focus-visible:outline-none"><BillingCatalog tab="kits" /></TabsContent>
 
 
         {/* Invoices Tab */}

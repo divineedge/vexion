@@ -21,19 +21,33 @@ export function LinkedPartsEditor({
   unit,
   linkQuantity,
   links,
+  costOverride,
   onLinkQuantity,
   onLinks,
+  onCostOverride,
 }: {
   items: InventoryItem[];
   selfId: number | null;
   unit: string;
   linkQuantity: string;
   links: LinkRow[];
+  costOverride: string;
   onLinkQuantity: (value: string) => void;
   onLinks: (links: LinkRow[]) => void;
+  onCostOverride: (value: string) => void;
 }) {
   const parent = Number(linkQuantity);
   const parentUnit = unit.trim() || 'units';
+  let partCost = 0;
+  let pricedParts = 0;
+  for (const link of links) {
+    const component = items.find(item => item.id === link.inventoryItemId);
+    const componentQty = Number(link.quantity);
+    if (!component || !(componentQty > 0) || component.costPrice == null) continue;
+    partCost += component.costPrice * componentQty;
+    pricedParts += 1;
+  }
+  const perUnitCost = parent > 0 && pricedParts > 0 ? partCost / parent : null;
   const preview = links.flatMap(link => {
     const component = items.find(item => item.id === link.inventoryItemId);
     const componentQty = Number(link.quantity);
@@ -49,7 +63,7 @@ export function LinkedPartsEditor({
       <div>
         <p className="text-sm font-medium">Linked parts</p>
         <p className="text-xs text-muted-foreground">
-          Tie this part to other inventory items. Set both sides of the ratio. Using this part on a job also uses the linked parts, scaled, and the job shows one combined price.
+          Tie this part to other inventory items. For a kit, enter 1 and the quantity of each part in one kit. Using it on a job, or consuming it, deducts each linked part by that quantity times the units used. The combined cost is the sum of those part costs unless you set an override.
         </p>
       </div>
       <div className="space-y-1.5">
@@ -115,6 +129,24 @@ export function LinkedPartsEditor({
           {preview.map(line => <p key={line}>{line}</p>)}
         </div>
       )}
+      {perUnitCost != null && (
+        <p className="text-xs text-muted-foreground" data-testid="text-combined-cost">
+          Combined cost for 1 {parentUnit}: ${perUnitCost.toFixed(2)}. Leave the override blank to use that sum.
+        </p>
+      )}
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium">Combined cost override</label>
+        <Input
+          type="number"
+          min={0}
+          step="0.01"
+          title="Optional buy cost for 1 unit of this part. Blank uses the sum of the linked part costs."
+          placeholder="Blank uses the sum"
+          data-testid="input-link-cost-override"
+          value={costOverride}
+          onChange={event => onCostOverride(event.target.value)}
+        />
+      </div>
     </div>
   );
 }

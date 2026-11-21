@@ -13740,11 +13740,17 @@ components:
       properties:
         quantity:
           type: number
-          description: "This much of the parent part. Both sides of the ratio are set by the user."
+          description: "This much of the parent part. 1 means each component quantity is for one unit. Both sides of the ratio are set by the user."
         components:
           type: array
           items:
             $ref: "#/components/schemas/LinkedPartComponent"
+        combinedCost:
+          type: ["number", "null"]
+          description: "Buy cost of 1 unit from the sum of component costs. Null when buy prices are hidden."
+        costOverride:
+          type: ["number", "null"]
+          description: "Optional buy cost for 1 unit. Null uses the sum of component costs. The job charges this cost with the part's markup."
 
     InventorySupplier:
       type: object

@@ -799,9 +799,17 @@ router.patch("/chemical-applications/:id", async (req, res): Promise<void> => {
 router.delete("/chemical-applications/:id", requireOfficeRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-  const removed = await deleteChemicalUse(tenantId, id);
-  if (!removed) { res.status(404).json({ error: "Application not found" }); return; }
-  res.sendStatus(204);
+  try {
+    const removed = await deleteChemicalUse(tenantId, id);
+    if (!removed) { res.status(404).json({ error: "Application not found" }); return; }
+    res.sendStatus(204);
+  } catch (error) {
+    if (error instanceof ChemicalStockError) {
+      res.status(error.status).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
 });
 
 export default router;

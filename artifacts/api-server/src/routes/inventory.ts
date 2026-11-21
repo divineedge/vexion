@@ -2,7 +2,8 @@ import { Router, type IRouter, type Request, type Response, type NextFunction } 
 import { db, inventoryItemsTable, inventoryPartSizesTable, inventoryPartTypesTable, inventorySuppliersTable, tenantsTable, vendorsTable } from "@workspace/db";
 import { chemicalUnitCode } from "../lib/chemicalInventory";
 import { parseLinkedPartsBody } from "../lib/inventoryKits";
-import { linkedPartsByParent, saveLinkedPartsFromBody, type LinkedPartsView } from "../lib/inventoryKitStore";
+import { linkedPartsByParent, readKitRatio, saveLinkedPartsFromBody, type LinkedPartsView } from "../lib/inventoryKitStore";
+import { consumeInventoryUnits } from "../lib/inventoryCosting";
 import { lowStockItems, parseReorderPoint, readStockAlerts, stockNeedsReorder } from "../lib/reorderPoint";
 import { eq, and, or, ilike, sql, inArray, ne } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
@@ -185,6 +186,19 @@ async function requireInventoryMutate(req: Request, res: Response, next: NextFun
   next();
 }
 
+function presentLinkedParts(links: LinkedPartsView | null | undefined, includeCost: boolean) {
+  if (!links) return null;
+  const components = links.components.map(component => ({
+    inventoryItemId: component.inventoryItemId,
+    name: component.name,
+    quantity: component.quantity,
+    unit: component.unit,
+    onHand: component.onHand,
+  }));
+  if (!includeCost) return { quantity: links.quantity, components, combinedCost: null, costOverride: null };
+  return { quantity: links.quantity, components, combinedCost: links.combinedCost, costOverride: links.costOverride };
+}
+
 function formatItem(
   i: typeof inventoryItemsTable.$inferSelect,
   tenantMarkupPct: number,
@@ -230,7 +244,7 @@ function formatItem(
     unit: i.pricePerFoot != null && (!i.unit || i.unit === "each") ? "ft" : (chemicalUnitCode(grouping?.sizeName) ?? i.unit),
     stockAlerts: i.stockAlerts !== false,
     isLowStock: stockNeedsReorder(i.quantity, i.reorderPoint, i.stockAlerts !== false),
-    linkedParts: linkedParts ?? null,
+    linkedParts: presentLinkedParts(linkedParts, includeCostPrice),
     availableForBlueprint: i.availableForBlueprint,
     commissionPct: i.commissionPct ?? null,
     supplierId: i.supplierId ?? null,
@@ -986,6 +1000,40 @@ router.post("/inventory/:id/adjust-stock", requireInventoryMutate, async (req, r
     : await db.select().from(inventoryItemsTable)
       .where(and(eq(inventoryItemsTable.id, ownerId), eq(inventoryItemsTable.tenantId, tenantId)));
   if (!owner) { res.status(404).json({ error: "Not found" }); return; }
+
+  if (delta < 0) {
+    const kit = await readKitRatio(db, tenantId, id);
+    if (kit) {
+      if (!Number.isInteger(delta)) {
+        res.status(400).json({ error: "delta must be a non-zero integer" });
+        return;
+      }
+      try {
+        await consumeInventoryUnits(tenantId, id, -delta, typeof req.body.reason === "string" ? req.body.reason : "");
+      } catch (error) {
+        const status = typeof (error as { status?: unknown }).status === "number" ? (error as { status: number }).status : 400;
+        const message = error instanceof Error ? error.message : "Could not use this item";
+        res.status(status).json({ error: message });
+        return;
+      }
+      const [updatedOwner] = await db.select().from(inventoryItemsTable)
+        .where(and(eq(inventoryItemsTable.id, ownerId), eq(inventoryItemsTable.tenantId, tenantId)));
+      if (!updatedOwner) { res.status(404).json({ error: "Not found" }); return; }
+      const [markupPct, showCost] = await Promise.all([
+        getTenantMarkupPct(tenantId),
+        canSeeCostPrice(tenantId, userId),
+      ]);
+      const freshItem = existing.id === ownerId
+        ? updatedOwner
+        : (await db.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.id, existing.id), eq(inventoryItemsTable.tenantId, tenantId))))[0] ?? existing;
+      const shown = withSharedQuantity(freshItem, updatedOwner.quantity);
+      const names = await partyNames(tenantId, shown);
+      const grouping = await groupingForItem(tenantId, shown.typeId, shown.sizeId);
+      const links = await linkedPartsByParent(tenantId, [shown.id]);
+      res.json(formatItem(shown, markupPct, showCost, names.supplierName, grouping, names.vendorName, links.get(shown.id) ?? null));
+      return;
+    }
+  }
 
   const planned = applyQuantityDelta(owner.quantity, delta);
   if (!planned.ok) {

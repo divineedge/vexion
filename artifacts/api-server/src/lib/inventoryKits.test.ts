@@ -1,10 +1,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  combinedUnitCost,
+  inventoryUseKeys,
+  kitComponentTargets,
   kitJobLine,
   onHandNeeded,
   parseLinkedPartsBody,
   planLinkedUse,
+  selectRecordedUse,
   type UseLineInput,
 } from "./inventoryKits";
 import { parseReorderPoint, stockNeedsReorder } from "./reorderPoint";
@@ -210,21 +214,181 @@ describe("linked part payload", () => {
     expect(parseLinkedPartsBody({
       quantity: 100,
       components: [{ inventoryItemId: 2, quantity: 10 }],
-    })).toEqual({ ok: true, value: { quantity: 100, components: [{ inventoryItemId: 2, quantity: 10 }] } });
+    })).toEqual({ ok: true, value: { quantity: 100, components: [{ inventoryItemId: 2, quantity: 10 }], costOverride: null } });
+    expect(parseLinkedPartsBody({
+      quantity: 1,
+      components: [{ inventoryItemId: 2, quantity: 2 }],
+      costOverride: 12.5,
+    })).toEqual({ ok: true, value: { quantity: 1, components: [{ inventoryItemId: 2, quantity: 2 }], costOverride: 12.5 } });
+    expect(parseLinkedPartsBody({
+      quantity: 1,
+      components: [{ inventoryItemId: 2, quantity: 2 }],
+      costOverride: -1,
+    }).ok).toBe(false);
     expect(parseLinkedPartsBody(null)).toEqual({ ok: true, value: null });
     const zero = parseLinkedPartsBody({ quantity: 0, components: [{ inventoryItemId: 2, quantity: 10 }] });
     expect(zero.ok).toBe(false);
   });
 });
 
+describe("kit of 1 valve, 2 elbows, and 1 coupling", () => {
+  const kit = {
+    parentQuantity: 1,
+    components: [
+      { inventoryItemId: 2, quantity: 1 },
+      { inventoryItemId: 3, quantity: 2 },
+      { inventoryItemId: 4, quantity: 1 },
+    ],
+  };
+
+  it("deducts 2 valves, 4 elbows, and 2 couplings when 2 units are used", () => {
+    const kitItem = line({ inventoryItemId: 1, name: "Valve kit", unit: "each", onHand: 5, sellPrice: 0 });
+    const valve = line({ inventoryItemId: 2, name: "Valve", unit: "each", onHand: 8, sellPrice: 40 });
+    const elbow = line({ inventoryItemId: 3, name: "Elbow", unit: "each", onHand: 10, sellPrice: 2.5 });
+    const coupling = line({ inventoryItemId: 4, name: "Coupling", unit: "each", onHand: 6, sellPrice: 3.25 });
+    const stock = new Map<number, UseLineInput>([
+      [kitItem.inventoryItemId, kitItem],
+      [valve.inventoryItemId, valve],
+      [elbow.inventoryItemId, elbow],
+      [coupling.inventoryItemId, coupling],
+    ]);
+    expect(kitComponentTargets(kit, 2, kitItem.inventoryItemId)).toEqual([
+      { inventoryItemId: 2, quantity: 2 },
+      { inventoryItemId: 3, quantity: 4 },
+      { inventoryItemId: 4, quantity: 2 },
+    ]);
+    expect(combinedUnitCost(1, [
+      { quantity: 1, unitCost: 40 },
+      { quantity: 2, unitCost: 2.5 },
+      { quantity: 1, unitCost: 3.25 },
+    ], null)).toBe(48.25);
+
+    const used = commit(stock, 2, kit);
+    expect(used.ok).toBe(true);
+    if (!used.ok) return;
+    expect(used.lines.map(entry => [entry.name, entry.quantity])).toEqual([
+      ["Valve kit", 2],
+      ["Valve", 2],
+      ["Elbow", 4],
+      ["Coupling", 2],
+    ]);
+    expect(valve.onHand).toBe(6);
+    expect(elbow.onHand).toBe(6);
+    expect(coupling.onHand).toBe(4);
+    expect(kitItem.onHand).toBe(3);
+  });
+
+  it("names a short component and does not deduct a partial set", () => {
+    const kitItem = line({ inventoryItemId: 1, name: "Valve kit", unit: "each", onHand: 5, sellPrice: 0 });
+    const valve = line({ inventoryItemId: 2, name: "Valve", unit: "each", onHand: 8, sellPrice: 40 });
+    const elbow = line({ inventoryItemId: 3, name: "Elbow", unit: "each", onHand: 3, sellPrice: 2.5 });
+    const coupling = line({ inventoryItemId: 4, name: "Coupling", unit: "each", onHand: 6, sellPrice: 3.25 });
+    const plan = planLinkedUse({
+      usedQuantity: 2,
+      parent: kitItem,
+      kit,
+      components: [valve, elbow, coupling],
+    });
+    expect(plan.ok).toBe(false);
+    if (plan.ok) return;
+    expect(plan.message).toContain("Not enough stock for Elbow");
+    expect(plan.message).toContain("need 4 more");
+    expect(kitItem.onHand).toBe(5);
+    expect(valve.onHand).toBe(8);
+    expect(elbow.onHand).toBe(3);
+    expect(coupling.onHand).toBe(6);
+  });
+
+  it("charges the cost override with markup instead of the summed sell prices", () => {
+    const kitItem = line({ inventoryItemId: 1, name: "Valve kit", unit: "each", onHand: 5, sellPrice: 10 });
+    const valve = line({ inventoryItemId: 2, name: "Valve", unit: "each", onHand: 8, sellPrice: 40 });
+    const plan = planLinkedUse({
+      usedQuantity: 2,
+      parent: kitItem,
+      kit: { ...kit, costOverride: 48.25 },
+      components: [valve, line({ inventoryItemId: 3, name: "Elbow", unit: "each", onHand: 10, sellPrice: 2.5 }), line({ inventoryItemId: 4, name: "Coupling", unit: "each", onHand: 6, sellPrice: 3.25 })],
+      markupPct: 20,
+    });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.combinedPrice).toBe(115.8);
+    expect(kitJobLine(2, plan.combinedPrice).unitPrice).toBe(57.9);
+  });
+});
+
+describe("the same job and blueprint use", () => {
+  it("does not add the quantities when both record 2 units", () => {
+    const jobKeys = inventoryUseKeys({ itemId: 1, jobId: 9, blueprintId: 4 });
+    const blueprintKeys = inventoryUseKeys({ itemId: 1, blueprintId: 4, linkedJobId: 9 });
+    expect(jobKeys.canonicalKey).toBe("job:9:item:1");
+    expect(blueprintKeys.canonicalKey).toBe(jobKeys.canonicalKey);
+    expect(blueprintKeys.matchKeys).toEqual(expect.arrayContaining(jobKeys.matchKeys));
+
+    const valve = line({ inventoryItemId: 2, name: "Valve", unit: "each", onHand: 8, sellPrice: 40 });
+    const elbow = line({ inventoryItemId: 3, name: "Elbow", unit: "each", onHand: 10, sellPrice: 2.5 });
+    const coupling = line({ inventoryItemId: 4, name: "Coupling", unit: "each", onHand: 6, sellPrice: 3.25 });
+    const kitItem = line({ inventoryItemId: 1, name: "Valve kit", unit: "each", onHand: 5, sellPrice: 0 });
+    const stock = new Map<number, UseLineInput>([[1, kitItem], [2, valve], [3, elbow], [4, coupling]]);
+    const kit = { parentQuantity: 1, components: [{ inventoryItemId: 2, quantity: 1 }, { inventoryItemId: 3, quantity: 2 }, { inventoryItemId: 4, quantity: 1 }] };
+    const records: { useKey: string; units: number }[] = [];
+
+    const apply = (ref: { jobId?: number; blueprintId?: number; linkedJobId?: number }, units: number) => {
+      const keys = inventoryUseKeys({ itemId: 1, ...ref });
+      const previous = selectRecordedUse(records, keys.matchKeys);
+      const already = previous?.units ?? 0;
+      for (const row of stock.values()) {
+        row.tracked = row.inventoryItemId === 1 || kit.components.some(component => component.inventoryItemId === row.inventoryItemId)
+          ? (previous ? scaledTracked(row.inventoryItemId, already, kit) : 0)
+          : 0;
+      }
+      const plan = commit(stock, units, kit);
+      if (!plan.ok) return plan;
+      const kept = records.filter(record => !keys.matchKeys.includes(record.useKey));
+      records.length = 0;
+      records.push(...kept, { useKey: keys.canonicalKey, units });
+      return plan;
+    };
+
+    expect(apply({ jobId: 9, blueprintId: 4 }, 2).ok).toBe(true);
+    expect(valve.onHand).toBe(6);
+    expect(elbow.onHand).toBe(6);
+    expect(coupling.onHand).toBe(4);
+    expect(apply({ blueprintId: 4, linkedJobId: 9 }, 2).ok).toBe(true);
+    expect(valve.onHand).toBe(6);
+    expect(elbow.onHand).toBe(6);
+    expect(coupling.onHand).toBe(4);
+    expect(records).toEqual([{ useKey: "job:9:item:1", units: 2 }]);
+  });
+});
+
+function scaledTracked(itemId: number, units: number, kit: { parentQuantity: number; components: { inventoryItemId: number; quantity: number }[] }): number {
+  if (itemId === 1) return units;
+  const component = kit.components.find(entry => entry.inventoryItemId === itemId);
+  if (!component) return 0;
+  return component.quantity * units / kit.parentQuantity;
+}
+
 describe("job part wiring", () => {
   it("plans the linked use before stock changes and keeps the chemical unit conversion file untouched by this planner", () => {
     const costing = readFileSync(new URL("./inventoryCosting.ts", import.meta.url), "utf8");
-    const body = costing.slice(costing.indexOf("export async function setJobPart"));
-    expect(body.indexOf("planLinkedUse")).toBeGreaterThan(0);
+    const body = costing.slice(costing.indexOf("async function commitLinkedUse"));
+    expect(body.indexOf("selectRecordedUse")).toBeGreaterThan(0);
+    expect(body.indexOf("planLinkedUse")).toBeGreaterThan(body.indexOf("selectRecordedUse"));
     expect(body.indexOf("applyDesiredQuantity")).toBeGreaterThan(body.indexOf("planLinkedUse"));
+    expect(body.indexOf("saveKitUse")).toBeGreaterThan(body.indexOf("applyDesiredQuantity"));
     expect(body).toContain("if(plan.ok===false)fail(plan.message)");
     expect(body).toContain("kitJobLine");
+    expect(costing).toContain("export async function consumeInventoryUnits");
+    expect(costing).toContain("export async function recordBlueprintInventoryUse");
+    const inventoryRoute = readFileSync(new URL("../routes/inventory.ts", import.meta.url), "utf8");
+    const adjust = inventoryRoute.slice(inventoryRoute.indexOf("adjust-stock"));
+    expect(adjust.indexOf("consumeInventoryUnits")).toBeGreaterThan(0);
+    expect(adjust.indexOf("consumeInventoryUnits")).toBeLessThan(adjust.indexOf("applyQuantityDelta"));
+    const chemical = readFileSync(new URL("./chemicalUse.ts", import.meta.url), "utf8");
+    const chemicalSave = chemical.slice(chemical.indexOf("async function commitChemicalUse"), chemical.indexOf("export async function deleteChemicalUse"));
+    expect(chemicalSave.indexOf("quantity: next")).toBeGreaterThan(0);
+    expect(chemicalSave.indexOf("await syncChemicalKitComponents")).toBeGreaterThan(chemicalSave.indexOf("quantity: next"));
+    expect(chemicalSave.indexOf("if (!kits.ok) throw new ChemicalStockError")).toBeGreaterThan(chemicalSave.indexOf("await syncChemicalKitComponents"));
     expect(readFileSync(new URL("./chemicalInventory.ts", import.meta.url), "utf8")).toContain("Pounds stay pounds");
   });
 });

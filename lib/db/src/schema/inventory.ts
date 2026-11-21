@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, serial, timestamp, integer, real, doublePrecision, boolean, unique, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, doublePrecision, boolean, jsonb, unique, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -181,6 +181,8 @@ export const inventoryPartLinksTable = pgTable("inventory_part_links", {
   tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   parentItemId: integer("parent_item_id").notNull().references(() => inventoryItemsTable.id, { onDelete: "cascade" }),
   parentQuantity: doublePrecision("parent_quantity").notNull(),
+  /** Buy cost for 1 unit of the parent. Null means the sum of component costs. */
+  costOverride: doublePrecision("cost_override"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (t) => [
@@ -205,3 +207,20 @@ export const inventoryPartLinkComponentsTable = pgTable("inventory_part_link_com
 export const insertInventoryPartLinkComponentSchema = createInsertSchema(inventoryPartLinkComponentsTable).omit({ id: true });
 export type InsertInventoryPartLinkComponent = z.infer<typeof insertInventoryPartLinkComponentSchema>;
 export type InventoryPartLinkComponent = typeof inventoryPartLinkComponentsTable.$inferSelect;
+
+// One stock use of a kit, keyed by the item and the job or blueprint that recorded it.
+// A job and its blueprint share one row so the same use is not deducted twice.
+export const inventoryKitUsesTable = pgTable("inventory_kit_uses", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  useKey: text("use_key").notNull(),
+  inventoryItemId: integer("inventory_item_id").notNull().references(() => inventoryItemsTable.id, { onDelete: "cascade" }),
+  units: doublePrecision("units").notNull(),
+  jobId: integer("job_id"),
+  blueprintId: integer("blueprint_id"),
+  parentUsage: jsonb("parent_usage").notNull().default({}),
+  kitUsage: jsonb("kit_usage").notNull().default([]),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("inventory_kit_uses_key").on(t.tenantId, t.useKey),
+]);

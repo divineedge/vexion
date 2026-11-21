@@ -16,6 +16,19 @@ async function references(handle:HrDb){
 }
 export async function installCustomerMergeSchema(){
  await db.execute(sql`ALTER TABLE customers ADD COLUMN IF NOT EXISTS merged_into_customer_id integer REFERENCES customers(id)`);
+ await db.execute(sql`ALTER TABLE customers ADD COLUMN IF NOT EXISTS hidden_at timestamptz`);
+ await db.execute(sql`CREATE TABLE IF NOT EXISTS stop_service_flags (
+  id serial PRIMARY KEY,
+  tenant_id integer NOT NULL REFERENCES tenants(id),
+  customer_id integer NOT NULL REFERENCES customers(id),
+  invoice_id integer NOT NULL REFERENCES invoices(id),
+  days_overdue integer NOT NULL,
+  message text NOT NULL,
+  status text NOT NULL DEFAULT 'pending',
+  resolved_by integer,
+  resolved_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+ )`);
  await db.execute(sql`CREATE TABLE IF NOT EXISTS customer_merge_records(id serial PRIMARY KEY,tenant_id integer NOT NULL REFERENCES tenants(id),source_id integer NOT NULL REFERENCES customers(id),primary_id integer NOT NULL REFERENCES customers(id),actor_id integer NOT NULL REFERENCES users(id),source_snapshot jsonb NOT NULL,primary_snapshot jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(tenant_id,source_id))`);
  // Redirect incoming money/history; stale operational writes must re-check the primary's rules.
  await db.execute(sql`CREATE OR REPLACE FUNCTION customer_merge_reference() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -95,7 +108,7 @@ export async function mergeCustomers(tenantId:number,actorId:number,primaryId:nu
    await tx.execute(sql`UPDATE ${sql.identifier(ref.schema)}.${sql.identifier(ref.table)} SET ${sql.identifier(ref.column)}=${self?sql`CASE WHEN id=${primaryId} THEN NULL ELSE ${primaryId}::integer END`:sql`${primaryId}`}
     WHERE ${sql.identifier(ref.column)}=${sourceId} ${ref.scoped?sql`AND tenant_id=${tenantId}`:sql``}`);
   }
-  await tx.update(customersTable).set({mergedIntoCustomerId:primaryId,archivedAt:source.archivedAt??new Date(),totalSpend:0}).where(and(eq(customersTable.tenantId,tenantId),eq(customersTable.id,sourceId)));
+  await tx.update(customersTable).set({mergedIntoCustomerId:primaryId,archivedAt:source.archivedAt??new Date(),hiddenAt:source.hiddenAt??new Date(),totalSpend:0}).where(and(eq(customersTable.tenantId,tenantId),eq(customersTable.id,sourceId)));
   return {primaryId,sourceId};
  });}catch(error){
   if((error as {code?:string}).code==='23505'||(error as {cause?:{code?:string}}).cause?.code==='23505')throw new HrError('The customers have conflicting related records. Nothing was merged. Reconcile duplicate campaign, plan, or billing assignments before retrying.',409);

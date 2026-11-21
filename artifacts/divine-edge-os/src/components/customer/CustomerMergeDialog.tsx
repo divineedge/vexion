@@ -14,7 +14,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 
 interface MergeParty { id: number; name: string; email?: string | null; phone?: string | null; archivedAt?: string | null }
 export interface MergePreview { primary: MergeParty; source: MergeParty; relations: { table: string; count: number }[]; blockers: string[] }
-interface CustomerHit { id: number; name: string; email?: string | null; phone?: string | null; archivedAt?: string | null }
+interface CustomerHit { id: number; name: string; email?: string | null; phone?: string | null; archivedAt?: string | null; hiddenAt?: string | null }
 
 const label = (t: string) => t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
@@ -39,7 +39,7 @@ function CustomerMergeDialog({ primaryId, primaryName, onClose }: { primaryId: n
   const search = useQuery({
     queryKey: ['customer-merge-search', dq],
     enabled: dq.trim().length >= 2 && !sourceId,
-    queryFn: () => customFetch<{ items: CustomerHit[] }>(`/api/customers?q=${encodeURIComponent(dq.trim())}&includeArchived=true&limit=20`),
+    queryFn: () => customFetch<{ items: CustomerHit[] }>(`/api/customers?q=${encodeURIComponent(dq.trim())}&includeArchived=true&includeHidden=true&limit=20`),
   });
   const hits = (search.data?.items ?? []).filter(c => c.id !== primaryId);
 
@@ -77,7 +77,7 @@ function CustomerMergeDialog({ primaryId, primaryName, onClose }: { primaryId: n
           <div className="space-y-3">
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input autoFocus className="pl-9" placeholder="Search name, email or phone (includes inactive)" value={q} onChange={e => setQ(e.target.value)} aria-label="Search for the duplicate customer" data-testid="input-merge-search" />
+              <Input autoFocus className="pl-9" placeholder="Search name, email or phone (includes hidden and inactive)" value={q} onChange={e => setQ(e.target.value)} aria-label="Search for the duplicate customer" data-testid="input-merge-search" />
             </div>
             {search.isLoading && <div className="space-y-2">{[0, 1, 2].map(i => <div key={i} className="h-12 rounded-md bg-muted animate-pulse" />)}</div>}
             {search.isError && <Button variant="outline" size="sm" onClick={() => search.refetch()}>Search failed. Retry</Button>}
@@ -86,7 +86,7 @@ function CustomerMergeDialog({ primaryId, primaryName, onClose }: { primaryId: n
               {hits.map(c => (
                 <li key={c.id}>
                   <button type="button" className="w-full text-left px-3 py-2 hover:bg-muted/60 focus-visible:bg-muted/60 outline-none" onClick={() => { setSourceId(c.id); setAck(false); }} data-testid={`button-merge-pick-${c.id}`}>
-                    <span className="font-medium">{c.name}</span> {c.archivedAt && <Badge variant="secondary" className="ml-1">Inactive</Badge>}
+                    <span className="font-medium">{c.name}</span> {c.hiddenAt && <Badge variant="secondary" className="ml-1">Hidden</Badge>} {c.archivedAt && <Badge variant="secondary" className="ml-1">Inactive</Badge>}
                     <span className="block text-xs text-muted-foreground">#{c.id} {[c.email, c.phone].filter(Boolean).join(' · ')}</span>
                   </button>
                 </li>

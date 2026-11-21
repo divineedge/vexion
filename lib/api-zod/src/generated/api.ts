@@ -2258,7 +2258,9 @@ export const ListCustomersQueryParams = zod.object({
   "limit": zod.coerce.number().int().optional(),
   "hasReminderFailure": zod.coerce.boolean().optional().describe('Filter to customers whose last outbound reminder failed to send'),
   "includeArchived": zod.coerce.boolean().optional().describe('Include archived customers; archived customers are excluded by default'),
-  "archivedOnly": zod.coerce.boolean().optional().describe('Return only archived customers')
+  "archivedOnly": zod.coerce.boolean().optional().describe('Return only archived customers'),
+  "includeHidden": zod.coerce.boolean().optional().describe('Include customers hidden from the default list. Hidden customers stay out of the list unless this or hiddenOnly is set.'),
+  "hiddenOnly": zod.coerce.boolean().optional().describe('Return only customers hidden from the default list')
 })
 
 export const ListCustomersResponse = zod.object({
@@ -2314,7 +2316,8 @@ export const ListCustomersResponse = zod.object({
 })]).optional(),
   "hasPaymentMethod": zod.boolean().optional().describe('True when a Stripe payment method is saved for this customer'),
   "noCardAlertSilenced": zod.boolean().optional().describe('When true, the no-card-on-file alert is suppressed for this customer'),
-  "archivedAt": zod.coerce.date().nullish().describe('Timestamp when the customer was archived; null when active')
+  "archivedAt": zod.coerce.date().nullish().describe('Timestamp when the customer was archived; null when active'),
+  "hiddenAt": zod.coerce.date().nullish().describe('Timestamp when the customer was hidden from the default list; null when visible')
 })),
   "total": zod.int(),
   "page": zod.int(),

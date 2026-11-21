@@ -14,6 +14,9 @@ export const portalMessagesTable = pgTable("portal_messages", {
    * For outbound messages: set when the customer reads it (on GET /portal/messages).
    */
   readAt: timestamp("read_at", { withTimezone: true }),
+  /** Set when staff complete the message from the Operations action center. */
+  handledAt: timestamp("handled_at", { withTimezone: true }),
+  handledByUserId: integer("handled_by_user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

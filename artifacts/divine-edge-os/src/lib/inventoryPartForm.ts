@@ -271,7 +271,8 @@ export type LinkedPartDraft = {
 export function parseLinkedPartsDraft(
   parentQuantity: string,
   links: readonly LinkedPartDraft[],
-): { ok: true; value: { quantity: number; components: { inventoryItemId: number; quantity: number }[] } | null } | { ok: false; error: string } {
+  costOverride = "",
+): { ok: true; value: { quantity: number; components: { inventoryItemId: number; quantity: number }[]; costOverride: number | null } | null } | { ok: false; error: string } {
   const filled = links.filter(link => link.inventoryItemId != null || link.quantity.trim() !== "");
   const parentText = parentQuantity.trim();
   if (filled.length === 0 && parentText === "") return { ok: true, value: null };
@@ -292,5 +293,13 @@ export function parseLinkedPartsDraft(
     seen.add(link.inventoryItemId);
     components.push({ inventoryItemId: link.inventoryItemId, quantity: Math.round(quantity * 1_000_000) / 1_000_000 });
   }
-  return { ok: true, value: { quantity: Math.round(parent * 1_000_000) / 1_000_000, components } };
+  const overrideText = costOverride.trim();
+  if (overrideText !== "") {
+    const override = Number(overrideText);
+    if (!Number.isFinite(override) || override < 0) {
+      return { ok: false, error: "Combined cost override must be a number, 0 or greater." };
+    }
+    return { ok: true, value: { quantity: Math.round(parent * 1_000_000) / 1_000_000, components, costOverride: Math.round(override * 100) / 100 } };
+  }
+  return { ok: true, value: { quantity: Math.round(parent * 1_000_000) / 1_000_000, components, costOverride: null } };
 }

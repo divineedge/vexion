@@ -23,7 +23,7 @@ import { hasEquipmentVisibility } from "../lib/equipmentVisibility";
 import { bulkFuelLossExceedsThreshold, dollarsToCents, dispenseBulkFuel, formatFuelLog, formatTank, formatTransaction, gallonsToThousandths, isDateKey, MAX_INVENTORY_INT, meterToThousandths, validateMeterInput, normalizeFuelDate, parseBulkFuelLossAlertSettings, tenantDateKey, type BulkFuelLossAlertSettings } from "../lib/bulkFuel";
 import { invalidateTenantReportCache } from "../lib/reportsCache";
 import { AdjustmentError, reconcileBulkFuel } from "../lib/bulkFuelAdjustment";
-import { maintenanceDue, thresholdFor, type CategoryThreshold } from "../lib/equipmentMaintenance";
+import { ackCovers, maintenanceDue, scheduleDueParts, thresholdFor, type CategoryThreshold } from "../lib/equipmentMaintenance";
 
 const router: IRouter = Router();
 // Equipment contains tenant-private operational and inspection data. A verified
@@ -742,7 +742,16 @@ function computeMaintenanceStatus(
   const dateDue = nextServiceDueDate != null && nextServiceDueDate <= today;
   const hoursDue = hoursUntilService != null && hoursUntilService <= 0;
   const milesDue = milesUntilService != null && milesUntilService <= 0;
-  const maintenanceDue = dateDue || hoursDue || milesDue;
+  const dueParts = scheduleDueParts({
+    currentHours: row.currentHours,
+    currentMiles: row.currentMiles,
+    nextServiceDueDate,
+    nextServiceDueHours,
+    nextServiceDueMiles,
+    today,
+  });
+  const acknowledged = ackCovers(row.maintenanceAlertAck, dueParts);
+  const maintenanceDue = (dateDue || hoursDue || milesDue) && !acknowledged;
 
   return {
     nextServiceDueDate,
@@ -1405,8 +1414,10 @@ router.get("/equipment/maintenance-alerts", async (req, res): Promise<void> => {
   try {
     const [settings] = await db.select({ thresholds: tenantsTable.equipmentCategoryThresholds }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
     const rules = (Array.isArray(settings?.thresholds) ? settings.thresholds : []) as CategoryThreshold[];
-    const assets = await db.select({ id: equipmentTable.id, name: equipmentTable.name, type: equipmentTable.type, currentHours: equipmentTable.currentHours }).from(equipmentTable).where(and(eq(equipmentTable.tenantId, tenantId), isNull(equipmentTable.archivedAt)));
-    const alerts = assets.flatMap(asset => maintenanceDue(asset.currentHours, thresholdFor(asset.type, rules)).map(item => ({
+    const assets = await db.select({ id: equipmentTable.id, name: equipmentTable.name, type: equipmentTable.type, currentHours: equipmentTable.currentHours, maintenanceAlertAck: equipmentTable.maintenanceAlertAck }).from(equipmentTable).where(and(eq(equipmentTable.tenantId, tenantId), isNull(equipmentTable.archivedAt)));
+    const alerts = assets.flatMap(asset => maintenanceDue(asset.currentHours, thresholdFor(asset.type, rules))
+      .filter(item => !ackCovers(asset.maintenanceAlertAck, [`cat:${item.bucket}`]))
+      .map(item => ({
       equipmentId: asset.id, equipmentName: asset.name, category: asset.type, hours: asset.currentHours, label: item.label,
     })));
     res.json({ alerts });

@@ -11005,6 +11005,16 @@ components:
           type: ["string", "null"]
         acceptedByCustomer:
           type: boolean
+        kind:
+          type: string
+          nullable: true
+          enum: [service, part, custom]
+        inventoryItemId:
+          type: ["integer", "null"]
+        unit:
+          type: ["string", "null"]
+        internalCost:
+          type: ["number", "null"]
 
     Estimate:
       type: object
@@ -13841,11 +13851,17 @@ components:
       properties:
         quantity:
           type: number
-          description: "This much of the parent part. Both sides of the ratio are set by the user."
+          description: "This much of the parent part. 1 means each component quantity is for one unit. Both sides of the ratio are set by the user."
         components:
           type: array
           items:
             $ref: "#/components/schemas/LinkedPartComponent"
+        combinedCost:
+          type: ["number", "null"]
+          description: "Buy cost of 1 unit from the sum of component costs. Null when buy prices are hidden."
+        costOverride:
+          type: ["number", "null"]
+          description: "Optional buy cost for 1 unit. Null uses the sum of component costs. The job charges this cost with the part's markup."
 
     InventorySupplier:
       type: object
@@ -14187,6 +14203,14 @@ components:
           type: number
         total:
           type: number
+        kind:
+          type: string
+          nullable: true
+          enum: [service, part, custom]
+        unit:
+          type: ["string", "null"]
+        internalCost:
+          type: ["number", "null"]
 
     BroadcastFilter:
       type: object
@@ -14543,6 +14567,14 @@ components:
           type: number
         unitPrice:
           type: number
+        kind:
+          type: string
+          nullable: true
+          enum: [service, part, custom]
+        unit:
+          type: ["string", "null"]
+        internalCost:
+          type: ["number", "null"]
 
     InvoiceUpdate:
       type: object
@@ -18492,6 +18524,7 @@ components:
         propertyAddress: { type: ["string", "null"] }
         revenue: { type: number }
         partsCost: { type: number }
+        passThroughCost: { type: number }
         laborCost: { type: number }
         fuelCost: { type: number }
         netProfit: { type: number }
@@ -18511,6 +18544,7 @@ components:
           properties:
             revenue: { type: number }
             partsCost: { type: number }
+            passThroughCost: { type: number }
             laborCost: { type: number }
             fuelCost: { type: number }
             netProfit: { type: number }
@@ -18554,6 +18588,7 @@ components:
           required: [partsCost, laborCost, fuelCost, total]
           properties:
             partsCost: { type: number }
+            passThroughCost: { type: number }
             laborCost: { type: number }
             fuelCost: { type: number }
             total: { type: number }

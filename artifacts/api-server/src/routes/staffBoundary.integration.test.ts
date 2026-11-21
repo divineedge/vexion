@@ -22,6 +22,7 @@ const privateRouterPaths = [
   ["storage", "/storage/uploads/request-url"],
   ["media", "/properties/1/media"],
   ["dashboard", "/dashboard"],
+  ["operationsDashboard", "/dashboard/layout"],
   ["customers", "/customers"],
   ["properties", "/properties"],
   ["jobs", "/jobs"],

@@ -28,4 +28,12 @@ export interface EstimateLineItem {
   /** @nullable */
   optionalPitchLine?: string | null;
   acceptedByCustomer: boolean;
+  /** @nullable */
+  kind?: string | null;
+  /** @nullable */
+  inventoryItemId?: number | null;
+  /** @nullable */
+  unit?: string | null;
+  /** @nullable */
+  internalCost?: number | null;
 }

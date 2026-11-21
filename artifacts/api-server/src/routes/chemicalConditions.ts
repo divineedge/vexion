@@ -61,6 +61,7 @@ router.get("/schedule/rain-risk", async (req, res): Promise<void> => {
       gte(jobsTable.scheduledAt, start),
       lt(jobsTable.scheduledAt, end),
       sql`${jobsTable.status} in ('scheduled','in_progress')`,
+      sql`(${jobsTable.rainWarningClearedOn} is null or ${jobsTable.rainWarningClearedOn} <> ${date})`,
       sql`(
         coalesce(${servicesTable.fieldRequirements}->>'requiresChemicalApplication','') = 'true'
         OR exists (select 1 from chemical_applications ca where ca.job_id = ${jobsTable.id} and ca.tenant_id = ${tenantId})

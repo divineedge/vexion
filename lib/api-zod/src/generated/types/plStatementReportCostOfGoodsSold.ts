@@ -8,6 +8,7 @@
 
 export type PlStatementReportCostOfGoodsSold = {
   partsCost: number;
+  passThroughCost?: number;
   laborCost: number;
   fuelCost: number;
   total: number;

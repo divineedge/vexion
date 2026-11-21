@@ -67,8 +67,8 @@ export function buildEstimatePrintDocument(estimate: Record<string, unknown>, se
   const legacyTerms = ((estimate.lineItems as Array<Record<string, unknown>> | undefined) ?? []).find(i => i?.type === 'text_block' && i?.role === 'terms');
   const estTerms = typeof estimate.termsText === 'string' ? estimate.termsText : String(legacyTerms?.content ?? '');
   const apiBase = (import.meta.env.BASE_URL ?? '/').replace(/\/$/, '');
-  const items = (estimate.lineItems ?? []) as Array<{ id: string; description: string; qty: number; unitPrice: number; markup: number; discount: number; isOptional: boolean; optionalPitchLine: string }>;
-  const calcItem = (i: typeof items[0]) => i.qty * i.unitPrice * (1 + i.markup / 100) * (1 - i.discount / 100);
+  const items = (estimate.lineItems ?? []) as Array<{ id: string; description: string; qty: number; unitPrice: number; markup: number; discount: number; isOptional: boolean; optionalPitchLine: string; kind?: string | null; unit?: string | null }>;
+  const calcItem = (i: typeof items[0]) => i.kind === 'custom' ? i.qty * i.unitPrice : i.qty * i.unitPrice * (1 + i.markup / 100) * (1 - i.discount / 100);
   const required = items.filter(i => !i.isOptional);
   const optional = items.filter(i => i.isOptional);
   const total = items.reduce((s, i) => s + calcItem(i), 0);
@@ -79,13 +79,13 @@ export function buildEstimatePrintDocument(estimate: Record<string, unknown>, se
   const requiredRows = required.map(it => `
     <tr>
       <td>${it.description || '—'}${it.markup > 0 || it.discount > 0 ? `<br><small style="color:#6b7280;">${fmt$(it.unitPrice)} each${it.markup > 0 ? ` + ${it.markup}% markup` : ''}${it.discount > 0 ? ` − ${it.discount}% off` : ''}</small>` : ''}</td>
-      <td class="center">${it.qty}</td>
+      <td class="center">${it.qty}${it.kind === 'custom' && it.unit ? ` ${it.unit}` : ''}</td>
       <td class="right">${fmt$(calcItem(it))}</td>
     </tr>`).join('');
 
   const optionalRows = optional.length ? `
     <tr class="optional-header"><td colspan="3">Optional Add-Ons</td></tr>
-    ${optional.map(it => `<tr class="optional-row"><td>${it.description || '—'}${it.optionalPitchLine ? `<br><small style="color:#6b7280;font-style:italic;">${it.optionalPitchLine}</small>` : ''}</td><td class="center">${it.qty}</td><td class="right">${fmt$(calcItem(it))}</td></tr>`).join('')}` : '';
+    ${optional.map(it => `<tr class="optional-row"><td>${it.description || '—'}${it.optionalPitchLine ? `<br><small style="color:#6b7280;font-style:italic;">${it.optionalPitchLine}</small>` : ''}</td><td class="center">${it.qty}${it.kind === 'custom' && it.unit ? ` ${it.unit}` : ''}</td><td class="right">${fmt$(calcItem(it))}</td></tr>`).join('')}` : '';
 
   const meta: string[] = [];
   if (estimate.customerName) meta.push(`<div class="meta-item"><label>Customer</label><p>${estimate.customerName}</p></div>`);
@@ -117,7 +117,7 @@ export function buildEstimatePrintDocument(estimate: Record<string, unknown>, se
 
 export function buildInvoicePrintDocument(invoice: Record<string, unknown>, settings: Record<string, unknown>): string {
   const apiBase = (import.meta.env.BASE_URL ?? '/').replace(/\/$/, '');
-  const lineItems = (invoice.lineItems ?? []) as Array<{ id: string | number; description: string; quantity: number; unitPrice: number; total: number }>;
+  const lineItems = (invoice.lineItems ?? []) as Array<{ id: string | number; description: string; quantity: number; unitPrice: number; total: number; kind?: string | null; unit?: string | null }>;
   const subtotal = (invoice.subtotal as number) ?? 0;
   const tax = (invoice.tax as number) ?? 0;
   const total = (invoice.total as number) ?? 0;
@@ -130,7 +130,7 @@ export function buildInvoicePrintDocument(invoice: Record<string, unknown>, sett
   const liRows = lineItems.map(li => `
     <tr>
       <td>${li.description || '—'}</td>
-      <td class="center">${li.quantity}</td>
+      <td class="center">${li.quantity}${li.kind === 'custom' && li.unit ? ` ${li.unit}` : ''}</td>
       <td class="right">${fmt$(li.unitPrice)}</td>
       <td class="right">${fmt$(li.total)}</td>
     </tr>`).join('');

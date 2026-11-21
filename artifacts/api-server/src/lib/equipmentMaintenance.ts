@@ -13,6 +13,32 @@ export function thresholdFor(category: string, rules: CategoryThreshold[]): Cate
   return rules.find(rule => rule.category.trim().toLowerCase() === key);
 }
 
+export function scheduleDueParts(input: {
+  currentHours: number;
+  currentMiles: number | null;
+  nextServiceDueDate: string | null;
+  nextServiceDueHours: number | null;
+  nextServiceDueMiles: number | null;
+  today?: string;
+}): string[] {
+  const today = input.today ?? new Date().toISOString().slice(0, 10);
+  const parts: string[] = [];
+  if (input.nextServiceDueDate && input.nextServiceDueDate <= today) parts.push(`date:${input.nextServiceDueDate}`);
+  if (input.nextServiceDueHours != null && input.currentHours >= input.nextServiceDueHours) parts.push(`hours:${input.nextServiceDueHours}`);
+  if (input.nextServiceDueMiles != null && input.currentMiles != null && input.currentMiles >= input.nextServiceDueMiles) parts.push(`miles:${input.nextServiceDueMiles}`);
+  return parts;
+}
+
+export function ackCovers(ack: string | null | undefined, parts: string[]): boolean {
+  if (!ack || parts.length === 0) return false;
+  const tokens = new Set(ack.split("|").filter(Boolean));
+  return parts.every(part => tokens.has(part));
+}
+
+export function joinSignature(parts: string[]): string {
+  return [...new Set(parts)].sort().join("|");
+}
+
 export function maintenanceDue(hours: number, rule: CategoryThreshold | undefined): { label: string; bucket: string }[] {
   if (!rule || !Number.isFinite(hours) || hours < 0) return [];
   const due: { label: string; bucket: string }[] = [];

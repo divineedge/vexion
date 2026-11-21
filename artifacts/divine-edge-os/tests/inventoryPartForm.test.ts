@@ -242,10 +242,18 @@ describe("linked part ratio", () => {
     expect(plan.lines.find(entry => entry.name === "Stakes")?.quantity).toBe(5);
     expect(plan.combinedPrice).toBe(50 * 1 + 5 * 0.5);
     const draft = parseLinkedPartsDraft("100", [{ inventoryItemId: 2, quantity: "10" }]);
-    expect(draft).toEqual({ ok: true, value: { quantity: 100, components: [{ inventoryItemId: 2, quantity: 10 }] } });
+    expect(draft).toEqual({ ok: true, value: { quantity: 100, components: [{ inventoryItemId: 2, quantity: 10 }], costOverride: null } });
+    expect(parseLinkedPartsDraft("1", [{ inventoryItemId: 2, quantity: "2" }], "12.5")).toEqual({
+      ok: true,
+      value: { quantity: 1, components: [{ inventoryItemId: 2, quantity: 2 }], costOverride: 12.5 },
+    });
     expect(parseLinkedPartsDraft("", [])).toEqual({ ok: true, value: null });
     expect(inventoryPage).toContain("Linked parts");
     expect(inventoryPage).toContain("parseLinkedPartsDraft");
+    expect(inventoryPage).toContain("linkCostOverride");
+    expect(inventoryPage).toContain('data-testid="text-combined-cost"');
+    const editor = readFileSync(new URL("../src/components/inventory/LinkedPartsEditor.tsx", import.meta.url), "utf8");
+    expect(editor).toContain('data-testid="input-link-cost-override"');
   });
 });
 

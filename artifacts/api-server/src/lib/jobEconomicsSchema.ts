@@ -52,9 +52,10 @@ export async function installJobEconomicsSchema() {
     CREATE TRIGGER protect_allocated_job_expense_trigger BEFORE UPDATE OF amount ON expense_entries
       FOR EACH ROW EXECUTE FUNCTION protect_allocated_job_expense();
     CREATE OR REPLACE FUNCTION capture_estimate_report_costs() RETURNS trigger LANGUAGE plpgsql AS $fn$
-    DECLARE planned_cost numeric;
+    DECLARE planned_cost numeric; custom_cost numeric;
     BEGIN
-      IF TG_OP='UPDATE' AND NEW.supplies_needed IS NOT DISTINCT FROM OLD.supplies_needed THEN
+      IF TG_OP='UPDATE' AND NEW.supplies_needed IS NOT DISTINCT FROM OLD.supplies_needed
+        AND NEW.line_items IS NOT DISTINCT FROM OLD.line_items THEN
         RETURN NEW;
       END IF;
       SELECT CASE WHEN count(*) FILTER(WHERE i.id IS NULL OR NOT COALESCE(s->>'quantity' ~ '^[0-9]+(\\.[0-9]+)?$',false))>0
@@ -64,17 +65,26 @@ export async function installJobEconomicsSchema() {
           THEN NEW.supplies_needed ELSE '[]'::jsonb END) s
         LEFT JOIN inventory_items i ON i.id=CASE WHEN s->>'inventoryItemId' ~ '^[0-9]+$'
           THEN (s->>'inventoryItemId')::integer END AND i.tenant_id=NEW.tenant_id;
+      SELECT COALESCE(SUM(CASE WHEN li->>'kind'='custom'
+        AND COALESCE(li->>'qty', li->>'quantity') ~ '^[0-9]+(\\.[0-9]+)?$'
+        AND li->>'internalCost' ~ '^[0-9]+(\\.[0-9]+)?$'
+        THEN (COALESCE(li->>'qty', li->>'quantity'))::numeric * (li->>'internalCost')::numeric ELSE 0 END), 0)
+        INTO custom_cost
+        FROM jsonb_array_elements(CASE WHEN jsonb_typeof(NEW.line_items)='array' THEN NEW.line_items ELSE '[]'::jsonb END) li;
+      IF planned_cost IS NOT NULL THEN
+        planned_cost := planned_cost + custom_cost;
+      END IF;
       INSERT INTO estimate_report_baselines(estimate_id,tenant_id,baseline)
         VALUES(NEW.id,NEW.tenant_id,jsonb_build_object('capturedAt',now(),'materialCost',planned_cost))
         ON CONFLICT(estimate_id) DO UPDATE SET baseline=EXCLUDED.baseline;
       RETURN NEW;
     END $fn$;
     DROP TRIGGER IF EXISTS capture_estimate_report_costs_trigger ON estimates;
-    CREATE TRIGGER capture_estimate_report_costs_trigger AFTER INSERT OR UPDATE OF supplies_needed ON estimates
+    CREATE TRIGGER capture_estimate_report_costs_trigger AFTER INSERT OR UPDATE OF supplies_needed, line_items ON estimates
       FOR EACH ROW EXECUTE FUNCTION capture_estimate_report_costs();
     CREATE OR REPLACE FUNCTION capture_job_report_baseline() RETURNS trigger LANGUAGE plpgsql AS $fn$
     DECLARE service_data jsonb; property_data jsonb; zones jsonb; planned_cost numeric;
-      planned_rate numeric;
+      custom_cost numeric; planned_rate numeric;
     BEGIN
       -- Caller-supplied JSON cannot manufacture historical costs.
       SELECT jsonb_build_object('name',name,'pricingMode',pricing_mode,
@@ -96,6 +106,15 @@ export async function installJobEconomicsSchema() {
           THEN NEW.supplies_needed ELSE '[]'::jsonb END) s
         LEFT JOIN inventory_items i ON i.id=CASE WHEN s->>'inventoryItemId' ~ '^[0-9]+$'
           THEN (s->>'inventoryItemId')::integer END AND i.tenant_id=NEW.tenant_id;
+      SELECT COALESCE(SUM(CASE WHEN li->>'kind'='custom'
+        AND COALESCE(li->>'qty', li->>'quantity') ~ '^[0-9]+(\\.[0-9]+)?$'
+        AND li->>'internalCost' ~ '^[0-9]+(\\.[0-9]+)?$'
+        THEN (COALESCE(li->>'qty', li->>'quantity'))::numeric * (li->>'internalCost')::numeric ELSE 0 END), 0)
+        INTO custom_cost
+        FROM jsonb_array_elements(CASE WHEN jsonb_typeof(NEW.line_items)='array' THEN NEW.line_items ELSE '[]'::jsonb END) li;
+      IF planned_cost IS NOT NULL THEN
+        planned_cost := planned_cost + custom_cost;
+      END IF;
       SELECT CASE WHEN count(*)>0 AND count(r.value)=count(*) THEN avg(r.value) ELSE NULL END
         INTO planned_rate
         FROM users u LEFT JOIN LATERAL (

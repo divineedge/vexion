@@ -1174,6 +1174,14 @@ export interface EstimateLineItem {
   /** @nullable */
   optionalPitchLine?: string | null;
   acceptedByCustomer: boolean;
+  /** @nullable */
+  kind?: string | null;
+  /** @nullable */
+  inventoryItemId?: number | null;
+  /** @nullable */
+  unit?: string | null;
+  /** @nullable */
+  internalCost?: number | null;
 }
 
 export type EstimateStatus = typeof EstimateStatus[keyof typeof EstimateStatus];
@@ -1400,6 +1408,12 @@ export interface InvoiceLineItem {
   quantity: number;
   unitPrice: number;
   total: number;
+  /** @nullable */
+  kind?: string | null;
+  /** @nullable */
+  unit?: string | null;
+  /** @nullable */
+  internalCost?: number | null;
 }
 
 export interface Invoice {
@@ -3601,9 +3615,19 @@ export interface LinkedPartComponent {
 }
 
 export interface LinkedParts {
-  /** This much of the parent part. Both sides of the ratio are set by the user. */
+  /** This much of the parent part. 1 means each component quantity is for one unit. */
   quantity: number;
   components: LinkedPartComponent[];
+  /**
+   * Buy cost of 1 unit from the sum of component costs. Null when buy prices are hidden.
+   * @nullable
+   */
+  combinedCost?: number | null;
+  /**
+   * Optional buy cost for 1 unit. Null uses the sum of component costs.
+   * @nullable
+   */
+  costOverride?: number | null;
 }
 
 export interface InventoryItem {
@@ -4202,6 +4226,12 @@ export interface InvoiceLineItemInput {
   description: string;
   quantity: number;
   unitPrice: number;
+  /** @nullable */
+  kind?: string | null;
+  /** @nullable */
+  unit?: string | null;
+  /** @nullable */
+  internalCost?: number | null;
 }
 
 export interface InvoiceInput {
@@ -7756,6 +7786,7 @@ export interface JobProfitabilityRow {
   propertyAddress?: string | null;
   revenue: number;
   partsCost: number;
+  passThroughCost?: number;
   laborCost: number;
   fuelCost: number;
   netProfit: number;
@@ -7765,6 +7796,7 @@ export interface JobProfitabilityRow {
 export type JobProfitabilityReportTotals = {
   revenue: number;
   partsCost: number;
+  passThroughCost?: number;
   laborCost: number;
   fuelCost: number;
   netProfit: number;
@@ -7799,6 +7831,7 @@ export interface EmployeeRevenueReport {
 
 export type PlStatementReportCostOfGoodsSold = {
   partsCost: number;
+  passThroughCost?: number;
   laborCost: number;
   fuelCost: number;
   total: number;

@@ -3,6 +3,7 @@ import { publicAppUrl } from "../lib/publicSite";
 import { createCustomerPushRouter } from "../lib/customerPush";
 import { readScheduleDeposit } from "../lib/companyDepositRules";
 import { estimatePaymentTerms } from "../lib/paymentPolicy";
+import { acceptanceAmount, lineExtendedPrice } from "../lib/customLineItems";
 import { paymentGuardedJobInsert } from "../lib/paymentPolicy";
 import { invoiceBalance } from "../lib/customerCredit";
 import { invoiceCheckout } from "../lib/invoiceCheckout";
@@ -2075,19 +2076,18 @@ router.get("/portal/estimates/:id", requirePortalAuth, async (req: any, res): Pr
   if (!estimate) { res.status(404).json({ error: "Estimate not found" }); return; }
   estimate = await estimatePaymentTerms(db, estimate);
 
-  type RawItem = { id?: string; description?: string; qty?: number; quantity?: number; unitPrice?: number; markup?: number; discount?: number; isOptional?: boolean; optionalPitchLine?: string | null; acceptedByCustomer?: boolean; groupId?: string | null };
+  type RawItem = { id?: string; description?: string; qty?: number; quantity?: number; unitPrice?: number; markup?: number; discount?: number; isOptional?: boolean; optionalPitchLine?: string | null; acceptedByCustomer?: boolean; groupId?: string | null; kind?: string | null; unit?: string | null };
   const lineItems = ((estimate.lineItems as RawItem[]) ?? []).map((item, idx) => {
     const qty = item.qty ?? item.quantity ?? 1;
     const unit = item.unitPrice ?? 0;
-    const markupMul = 1 + (item.markup ?? 0) / 100;
-    const discountMul = 1 - (item.discount ?? 0) / 100;
     return {
       idx,
       itemId: item.id ?? null,
       description: item.description ?? "",
       quantity: qty,
+      unit: item.kind === "custom" ? item.unit ?? null : null,
       unitPrice: unit,
-      total: Math.round(qty * unit * markupMul * discountMul * 100) / 100,
+      total: Math.round(lineExtendedPrice(item) * 100) / 100,
       isOptional: item.isOptional ?? false,
       optionalPitchLine: item.optionalPitchLine ?? null,
       acceptedByCustomer: item.acceptedByCustomer ?? true,
@@ -2098,10 +2098,7 @@ router.get("/portal/estimates/:id", requirePortalAuth, async (req: any, res): Pr
   const paymentRequirement = estimate.paymentRequirement ?? "none";
   const depositValue = estimate.depositValue ?? null;
   const total = estimate.total ?? 0;
-  let depositAmount = 0;
-  if (paymentRequirement === "full") depositAmount = total;
-  else if (paymentRequirement === "deposit_pct") depositAmount = Math.round((depositValue ?? 0) / 100 * total * 100) / 100;
-  else if (paymentRequirement === "deposit_fixed") depositAmount = depositValue ?? 0;
+  const depositAmount = acceptanceAmount(paymentRequirement, depositValue, total);
 
   res.json({
     id: estimate.id,
@@ -2272,14 +2269,10 @@ export const payEstimateDeposit = async (req: any, res: import("express").Respon
       if (countedDepositGroups.has(item.groupId)) continue;
       countedDepositGroups.add(item.groupId);
     }
-    const base = (item.qty ?? 1) * (item.unitPrice ?? 0);
-    computedTotal += base * (1 + (item.markup ?? 0) / 100) * (1 - (item.discount ?? 0) / 100);
+    computedTotal += lineExtendedPrice({ ...item, qty: item.qty ?? 1 });
   }
 
-  let depositAmount = 0;
-  if (paymentRequirement === "full") depositAmount = computedTotal;
-  else if (paymentRequirement === "deposit_pct") depositAmount = Math.round((estimate.depositValue ?? 0) / 100 * computedTotal * 100) / 100;
-  else if (paymentRequirement === "deposit_fixed") depositAmount = estimate.depositValue ?? 0;
+  const depositAmount = acceptanceAmount(paymentRequirement, estimate.depositValue, computedTotal);
 
   if (depositAmount <= 0) {
     res.status(400).json({ error: "Deposit amount is zero — nothing to charge" });

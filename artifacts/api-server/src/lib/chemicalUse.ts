@@ -21,6 +21,7 @@ import {
   type SprayUsageLine,
 } from "./chemicalInventory";
 import { stockNeedsReorder } from "./reorderPoint";
+import { syncChemicalKitComponents } from "./inventoryKitUse";
 
 export class ChemicalStockError extends Error {
   status: number;
@@ -168,6 +169,14 @@ export async function commitChemicalUse(tenantId: number, values: ApplicationIns
         isLowStock: stockNeedsReorder(next, linked.item.reorderPoint, linked.item.stockAlerts),
       }).where(and(eq(inventoryItemsTable.id, itemId), eq(inventoryItemsTable.tenantId, tenantId)));
     }
+
+    // Components are deducted after the chemical's own quantity, from the stock that remains.
+    // A short component throws in this transaction, so the chemical quantity is not kept either.
+    const kitLines = new Map<number, number>();
+    for (const deduction of previous) kitLines.set(deduction.inventoryItemId, 0);
+    for (const deduction of stored) kitLines.set(deduction.inventoryItemId, deduction.quantity);
+    const kits = await syncChemicalKitComponents(tx, tenantId, saved.id, [...kitLines].map(([inventoryItemId, quantity]) => ({ inventoryItemId, quantity })));
+    if (!kits.ok) throw new ChemicalStockError(kits.message);
     return saved;
   });
 }
@@ -193,6 +202,8 @@ export async function deleteChemicalUse(tenantId: number, id: number): Promise<b
     )).for("update");
     if (!existing) return false;
     const previous = readInventoryDeductions(existing.inventoryDeductions);
+    const kits = await syncChemicalKitComponents(tx, tenantId, id, previous.map(deduction => ({ inventoryItemId: deduction.inventoryItemId, quantity: 0 })));
+    if (!kits.ok) throw new ChemicalStockError(kits.message);
     const locked = await lockedItems(tx, tenantId, previous.map(deduction => deduction.inventoryItemId));
     const itemById = new Map(locked.map(row => [row.item.id, row.item]));
     for (const deduction of previous) {

@@ -15,6 +15,7 @@ import { loadStripe, type Stripe as StripeInstance } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
 import { billableItems, toggleOptionalSelection } from '@/lib/estimateSelection';
+import { lineExtended, qtyWithUnit } from '@/lib/customLinePrice';
 
 interface LineItem {
   id: string;
@@ -29,6 +30,8 @@ interface LineItem {
   acceptedByCustomer: boolean;
   /** Cost category for breakdown view. Defaults to 'labor'. */
   category?: 'labor' | 'parts' | 'other';
+  kind?: string | null;
+  unit?: string | null;
 }
 
 function getItemCategory(item: LineItem): 'labor' | 'parts' | 'other' {
@@ -42,9 +45,7 @@ const CATEGORY_LABELS: Record<'labor' | 'parts' | 'other', string> = {
 };
 
 function calcItem(item: LineItem) {
-  const base = item.qty * item.unitPrice;
-  const afterMarkup = base * (1 + item.markup / 100);
-  return afterMarkup * (1 - item.discount / 100);
+  return lineExtended(item);
 }
 
 // ── Payment form (mounted inside Stripe Elements) ─────────────────────────────
@@ -482,7 +483,7 @@ export default function EstimatePublicPage() {
                             <div key={item.id} className="flex items-start justify-between gap-4">
                               <div className="flex-1">
                                 <p className="font-medium text-sm">{item.description}</p>
-                                <p className="text-xs text-muted-foreground">Qty {item.qty} × ${item.unitPrice.toFixed(2)}</p>
+                                <p className="text-xs text-muted-foreground">Qty {qtyWithUnit(item.qty, item.kind === 'custom' ? item.unit : null)} × ${item.unitPrice.toFixed(2)}</p>
                               </div>
                               <span className="font-semibold text-sm shrink-0">${calcItem(item).toFixed(2)}</span>
                             </div>
@@ -533,7 +534,7 @@ export default function EstimatePublicPage() {
                       {item.optionalPitchLine && (
                         <p className="text-xs text-muted-foreground italic mt-0.5">{item.optionalPitchLine}</p>
                       )}
-                      <p className="text-xs text-muted-foreground mt-0.5">Qty {item.qty} × ${item.unitPrice.toFixed(2)}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Qty {qtyWithUnit(item.qty, item.kind === 'custom' ? item.unit : null)} × ${item.unitPrice.toFixed(2)}</p>
                     </div>
                     <span className="font-semibold text-sm shrink-0">${calcItem(item).toFixed(2)}</span>
                   </label>

@@ -12,7 +12,7 @@ import { isAdminRole } from "../lib/roles";
 const router: IRouter = Router();
 // The customer's "seen by staff" receipt is shared; each staff member's inbox
 // unread state is not. Qualify outer columns explicitly inside this subquery.
-const unreadBy=(userId:number)=>sql`NOT EXISTS (
+const unreadBy=(userId:number)=>sql`portal_messages.handled_at IS NULL AND NOT EXISTS (
  SELECT 1 FROM portal_message_reads pr WHERE pr.tenant_id=portal_messages.tenant_id
  AND pr.message_id=portal_messages.id AND pr.user_id=${userId}
 )`;

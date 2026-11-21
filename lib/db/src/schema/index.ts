@@ -75,3 +75,4 @@ export * from "./p4pDamage";
 export * from "./jobEconomics";
 export * from "./platformBilling";
 export * from "./portalMessageReads";
+export * from "./dashboardLayouts";

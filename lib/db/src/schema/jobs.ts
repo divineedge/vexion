@@ -164,6 +164,8 @@ export const jobsTable = pgTable("jobs", {
   rescheduleRequestReply: text("reschedule_request_reply"),
   /** Soft archive timestamp. Customer archive cascades use the same timestamp as the customer. */
   archivedAt: timestamp("archived_at", { withTimezone: true }),
+  /** Calendar day (YYYY-MM-DD) a high-rain warning for this job was cleared. */
+  rainWarningClearedOn: text("rain_warning_cleared_on"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

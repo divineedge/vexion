@@ -1176,7 +1176,10 @@ export default function EquipmentPage() {
     },
   });
 
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(() => {
+    const id = Number(new URLSearchParams(window.location.search).get('equipmentId'));
+    return Number.isInteger(id) && id > 0 ? id : null;
+  });
   const [editingItem, setEditingItem] = useState<Equipment | null>(null);
   const [form, setForm] = useState<EquipmentFormState>(EMPTY_EQ_FORM);
 

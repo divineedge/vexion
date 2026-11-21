@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from "react";
-import { Check, ChevronDown, GitMerge, Pencil, Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { Check, ChevronDown, GitMerge, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { filterCreatableOptions, optionMatchesFilter } from "@/lib/creatableOptionFilter";
 import { cn } from "@/lib/utils";
 
 export type CreatableOption = {
@@ -54,9 +55,26 @@ type Props = {
   };
 };
 
+type MenuChoice = { value: string; id: string };
+
+function choiceDomId(testId: string, id: string): string {
+  return `${testId}-choice-${encodeURIComponent(id)}`;
+}
+
+function scrollActiveIntoList(list: HTMLElement) {
+  const active = list.querySelector<HTMLElement>("[data-active='true']");
+  if (!active) return;
+  const listRect = list.getBoundingClientRect();
+  const itemRect = active.getBoundingClientRect();
+  if (itemRect.top < listRect.top) list.scrollTop -= listRect.top - itemRect.top;
+  else if (itemRect.bottom > listRect.bottom) list.scrollTop += itemRect.bottom - listRect.bottom;
+}
+
 /**
  * Sheet-safe dropdown. The menu is a popover marked data-picker-portal so the
  * parent sheet can keep it open, and a new value can be added from the same menu.
+ * Typing in the filter narrows the open list. Arrow keys move the highlight and
+ * Enter chooses it. Edit, merge, delete, volume, and area stay on each option.
  */
 export function CreatableOptionMenu({
   value,
@@ -75,6 +93,8 @@ export function CreatableOptionMenu({
   manage,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(-1);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -86,13 +106,116 @@ export function CreatableOptionMenu({
   const [merging, setMerging] = useState<string | null>(null);
   const [mergeInto, setMergeInto] = useState("");
   const [confirming, setConfirming] = useState<string | null>(null);
+  const filterRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const selected = options.find(option => option.value === value);
   const label = selected?.label ?? (value ? value : noneLabel && !value ? noneLabel : placeholder);
+  const visibleOptions = useMemo(() => filterCreatableOptions(options, query), [options, query]);
+  const showNone = Boolean(noneLabel) && optionMatchesFilter({ label: noneLabel ?? "" }, query);
+  const choices = useMemo<MenuChoice[]>(() => {
+    const rows: MenuChoice[] = [];
+    if (showNone) rows.push({ value: "", id: "__none" });
+    for (const option of visibleOptions) rows.push({ value: option.value, id: option.value });
+    return rows;
+  }, [showNone, visibleOptions]);
+  const choicesRef = useRef(choices);
+  choicesRef.current = choices;
+  const activeIndexRef = useRef(activeIndex);
+  activeIndexRef.current = activeIndex;
+  const safeIndex = activeIndex >= choices.length ? choices.length - 1 : activeIndex;
+  const activeChoice = safeIndex >= 0 ? choices[safeIndex] : undefined;
+  const filterNoun = manage?.noun ?? "options";
 
   const choose = (next: string) => {
     onChange(next);
     setOpen(false);
   };
+  const chooseRef = useRef(choose);
+  chooseRef.current = choose;
+
+  const moveActive = (delta: number) => {
+    setActiveIndex(current => {
+      const count = choicesRef.current.length;
+      if (count === 0) return -1;
+      const start = current < 0 ? (delta > 0 ? -1 : count) : current;
+      const next = start + delta;
+      if (next < 0) return 0;
+      if (next >= count) return count - 1;
+      return next;
+    });
+  };
+  const moveActiveRef = useRef(moveActive);
+  moveActiveRef.current = moveActive;
+
+  const selectActive = () => {
+    const choice = choicesRef.current[activeIndexRef.current];
+    if (!choice) return;
+    chooseRef.current(choice.value);
+  };
+  const selectActiveRef = useRef(selectActive);
+  selectActiveRef.current = selectActive;
+
+  useEffect(() => {
+    setActiveIndex(query.trim() && choicesRef.current.length > 0 ? 0 : -1);
+  }, [query]);
+
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => filterRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || safeIndex < 0) return;
+    const list = listRef.current;
+    if (!list) return;
+    scrollActiveIntoList(list);
+  }, [open, safeIndex, query]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (!target) return;
+      const tag = target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const isCombobox = target.getAttribute("role") === "combobox";
+      const isOtherControl = !isCombobox && (
+        tag === "BUTTON"
+        || tag === "A"
+        || target.getAttribute("role") === "option"
+        || Boolean(target.closest("button, a, [role='option']"))
+      );
+      if (isOtherControl) return;
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        event.stopPropagation();
+        moveActiveRef.current(event.key === "ArrowDown" ? 1 : -1);
+        return;
+      }
+      if (event.key === "Enter") {
+        if (activeIndexRef.current < 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        selectActiveRef.current();
+        return;
+      }
+      if (event.key === "Backspace") {
+        event.preventDefault();
+        event.stopPropagation();
+        setQuery(current => current.slice(0, -1));
+        return;
+      }
+      if (event.key.length === 1) {
+        event.preventDefault();
+        event.stopPropagation();
+        setQuery(current => current + event.key);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [open]);
 
   const submit = async () => {
     const name = draft.trim();
@@ -183,13 +306,36 @@ export function CreatableOptionMenu({
     }
   };
 
+  const onFilterKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      moveActive(event.key === "ArrowDown" ? 1 : -1);
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      selectActive();
+    }
+  };
+
   return (
-    <Popover open={open} onOpenChange={next => { if (!disabled) setOpen(next); }}>
+    <Popover
+      open={open}
+      onOpenChange={next => {
+        if (disabled) return;
+        setOpen(next);
+        if (next) {
+          setQuery("");
+          setActiveIndex(-1);
+        }
+      }}
+    >
       <PopoverTrigger asChild>
         <button
           type="button"
           role="combobox"
           aria-expanded={open}
+          aria-controls={`${testId}-listbox`}
           aria-label={title ?? placeholder}
           title={title}
           disabled={disabled}
@@ -210,26 +356,58 @@ export function CreatableOptionMenu({
         onOpenAutoFocus={event => event.preventDefault()}
         onCloseAutoFocus={event => event.preventDefault()}
       >
-        <div className="max-h-72 overflow-y-auto p-1" role="listbox" aria-label={title ?? placeholder}>
-          {noneLabel && (
+        <div className="flex items-center gap-2 border-b px-2">
+          <Search className="h-3.5 w-3.5 shrink-0 opacity-50" />
+          <input
+            ref={filterRef}
+            value={query}
+            placeholder="Type to filter"
+            aria-label={`Filter ${filterNoun}`}
+            aria-autocomplete="list"
+            aria-controls={`${testId}-listbox`}
+            aria-activedescendant={activeChoice ? choiceDomId(testId, activeChoice.id) : undefined}
+            data-testid={`${testId}-filter`}
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            className="h-9 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            onChange={event => setQuery(event.target.value)}
+            onKeyDown={onFilterKeyDown}
+          />
+        </div>
+        <div
+          ref={listRef}
+          className="max-h-72 overflow-y-auto p-1"
+          role="listbox"
+          id={`${testId}-listbox`}
+          aria-label={title ?? placeholder}
+        >
+          {showNone && noneLabel && (
             <OptionRow
+              id={choiceDomId(testId, "__none")}
               testId={`${testId}-option-none`}
               label={noneLabel}
               selected={!value}
+              active={activeChoice?.id === "__none"}
               onChoose={() => choose("")}
             />
           )}
-          {options.length === 0 && emptyText && (
+          {options.length === 0 && !query.trim() && emptyText && (
             <p className="px-2 py-1.5 text-xs text-muted-foreground">{emptyText}</p>
           )}
-          {options.map(option => (
+          {query.trim() && visibleOptions.length === 0 && !showNone && (
+            <p className="px-2 py-1.5 text-xs text-muted-foreground" data-testid={`${testId}-no-matches`}>No matches.</p>
+          )}
+          {visibleOptions.map(option => (
             <div key={option.value} className="rounded-sm">
               <div className="flex items-center">
                 <OptionRow
+                  id={choiceDomId(testId, option.value)}
                   testId={`${testId}-option-${option.value}`}
                   label={option.label}
                   detail={option.detail}
                   selected={option.value === value}
+                  active={activeChoice?.id === option.value}
                   onChoose={() => choose(option.value)}
                 />
                 {manage && (
@@ -420,26 +598,35 @@ function IconButton({
 }
 
 function OptionRow({
+  id,
   label,
   detail,
   selected,
+  active,
   onChoose,
   testId,
 }: {
+  id: string;
   label: string;
   detail?: string | null;
   selected: boolean;
+  active?: boolean;
   onChoose: () => void;
   testId: string;
 }) {
   return (
     <button
       type="button"
+      id={id}
       role="option"
       aria-selected={selected}
       data-testid={testId}
       data-option-label={label}
-      className="flex min-w-0 flex-1 items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+      data-active={active ? "true" : undefined}
+      className={cn(
+        "flex min-w-0 flex-1 items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground",
+        active && "bg-accent text-accent-foreground",
+      )}
       onClick={onChoose}
     >
       <Check className={cn("h-3.5 w-3.5 shrink-0", selected ? "opacity-100" : "opacity-0")} />

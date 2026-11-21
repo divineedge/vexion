@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { ChevronDown, Phone, Mail, Globe } from 'lucide-react';
 import { billableItems } from '@/lib/estimateSelection';
+import { lineExtended, qtyWithUnit } from '@/lib/customLinePrice';
 
 const STATUS_COLORS: Record<string, string> = {
   draft:    'bg-gray-100 text-gray-700 border-gray-200',
@@ -14,8 +15,9 @@ const STATUS_COLORS: Record<string, string> = {
 interface LineItem {
   id: string; description: string; qty: number; unitPrice: number; markup: number; discount: number;
   isOptional: boolean; optionalPitchLine: string; category?: 'labor' | 'parts' | 'other';
+  kind?: string | null; unit?: string | null;
 }
-const calcItem = (i: LineItem) => i.qty * i.unitPrice * (1 + i.markup / 100) * (1 - i.discount / 100);
+const calcItem = (i: LineItem) => lineExtended(i);
 const getItemCategory = (i: LineItem) => i.category ?? 'labor';
 const CATEGORY_LABELS: Record<'labor' | 'parts' | 'other', string> = { labor: 'Labor', parts: 'Parts / Materials', other: 'Other' };
 
@@ -153,9 +155,9 @@ export function EstimateDocument({ estimate, settings, preview = true }: {
                             <div key={item.id} className="flex items-start justify-between gap-4 text-sm">
                               <div className="flex-1">
                                 <p className="font-medium">{item.description || '—'}</p>
-                                {(item.markup > 0 || item.discount > 0) && (
+                                {(item.kind === 'custom' || item.markup > 0 || item.discount > 0) && (
                                   <p className="text-xs text-muted-foreground">
-                                    ${item.unitPrice.toFixed(2)} each{item.markup > 0 && ` + ${item.markup}% markup`}{item.discount > 0 && ` − ${item.discount}% off`}
+                                    Qty {qtyWithUnit(item.qty, item.kind === 'custom' ? item.unit : null)} × ${item.unitPrice.toFixed(2)}{item.kind !== 'custom' && item.markup > 0 && ` + ${item.markup}% markup`}{item.kind !== 'custom' && item.discount > 0 && ` − ${item.discount}% off`}
                                   </p>
                                 )}
                               </div>

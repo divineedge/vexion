@@ -33,6 +33,7 @@ import {
   type ImportExportEntityConfig,
   type LineItemCsvShape,
 } from "../lib/importExport";
+import { acceptanceAmount, lineExtendedPrice, prepareLineItems, LineItemError } from "../lib/customLineItems";
 
 const router: IRouter = Router();
 
@@ -135,7 +136,9 @@ const estimatesImportExportConfig: ImportExportEntityConfig = {
   parseRow: async (tenantId, raw) => {
     const errors: string[] = [];
     const customerEmail = requireString(raw.customerEmail, "Customer Email", errors);
-    const lineItems = decodeLineItemsCell(raw.lineItems, errors);
+    let lineItems: ReturnType<typeof decodeLineItemsCell> = [];
+    try { lineItems = prepareLineItems(decodeLineItemsCell(raw.lineItems, errors), "estimate"); }
+    catch (error) { errors.push(error instanceof Error ? error.message : "Invalid line items"); }
     if (errors.length > 0 || !customerEmail) return { ok: false, errors };
 
     const [customer] = await db
@@ -254,6 +257,12 @@ function normalizeGroupedSelections(items: EstimateLineItem[]): EstimateLineItem
  * (isOptional=true AND acceptedByCustomer=true) are counted.
  * Unaccepted optional add-ons are excluded so totals reflect billable value.
  */
+function qtyNote(item: EstimateLineItem) {
+  const unit = item.unit?.trim();
+  if (item.qty === 1 && !unit) return "";
+  return ` (qty ${item.qty}${unit ? ` ${unit}` : ""})`;
+}
+
 function calcTotals(lineItems: EstimateLineItem[]) {
   // For grouped optional items, only the first accepted item per group is counted.
   const countedGroups = new Set<string>();
@@ -266,10 +275,7 @@ function calcTotals(lineItems: EstimateLineItem[]) {
       if (countedGroups.has(item.groupId)) continue;
       countedGroups.add(item.groupId);
     }
-    const base = item.qty * item.unitPrice;
-    const afterMarkup = base * (1 + item.markup / 100);
-    const afterDiscount = afterMarkup * (1 - item.discount / 100);
-    subtotal += afterDiscount;
+    subtotal += lineExtendedPrice(item);
   }
   const tax = 0; // tax handled separately if needed
   return { subtotal, tax, total: subtotal + tax };
@@ -297,6 +303,11 @@ interface EstimateLineItem {
   acceptedByCustomer: boolean;
   /** If set, items sharing this groupId are mutually exclusive (radio set) */
   groupId?: string | null;
+  /** custom = pass-through. Absent on existing service and part lines. */
+  kind?: "service" | "part" | "custom" | null;
+  unit?: string | null;
+  internalCost?: number | null;
+  inventoryItemId?: number | null;
 }
 
 function formatEstimate(
@@ -324,11 +335,7 @@ function formatEstimate(
 
 /** Compute the deposit amount in dollars given estimate totals and payment requirement. */
 function calcDepositAmount(paymentRequirement: string | null, depositValue: number | null, total: number): number {
-  if (!paymentRequirement || paymentRequirement === "none") return 0;
-  if (paymentRequirement === "full") return total;
-  if (paymentRequirement === "deposit_pct") return Math.round((depositValue ?? 0) / 100 * total * 100) / 100;
-  if (paymentRequirement === "deposit_fixed") return depositValue ?? 0;
-  return 0;
+  return acceptanceAmount(paymentRequirement, depositValue, total);
 }
 
 const VALID_PAYMENT_REQUIREMENTS = ["none", "full", "deposit_pct", "deposit_fixed"] as const;
@@ -413,10 +420,7 @@ router.get("/estimates/pipeline", async (req, res): Promise<void> => {
       const items = (r.lineItems as EstimateLineItem[]) ?? [];
       for (const item of items) {
         if (item.isOptional && item.acceptedByCustomer) {
-          const base = item.qty * item.unitPrice;
-          const afterMarkup = base * (1 + item.markup / 100);
-          const afterDiscount = afterMarkup * (1 - item.discount / 100);
-          upsellRevenue += afterDiscount;
+          upsellRevenue += lineExtendedPrice(item);
         }
       }
     }
@@ -448,6 +452,11 @@ router.post("/estimates", async (req, res): Promise<void> => {
     }
   }
 
+  try { items = prepareLineItems(items, "estimate"); }
+  catch (error) {
+    res.status(error instanceof LineItemError ? error.status : 400).json({ error: error instanceof Error ? error.message : "Invalid line items" });
+    return;
+  }
   const { subtotal, tax, total } = calcTotals(items);
   const { policy: depositPolicy, depositConfigured } = await effectivePaymentPolicy(db, tenantId, customerId, req.body.serviceId,
     { total, serviceIds: items.filter(item => !item.isOptional || item.acceptedByCustomer).map(item => item.serviceId!).filter(Boolean) });
@@ -586,7 +595,12 @@ router.patch("/estimates/:id", async (req, res): Promise<void> => {
     if (depositValue !== undefined) updateData.depositValue = effectiveVal != null ? effectiveVal : null;
   }
   if (lineItems !== undefined) {
-    const items: EstimateLineItem[] = lineItems;
+    let items: EstimateLineItem[];
+    try { items = prepareLineItems(lineItems, "estimate"); }
+    catch (error) {
+      res.status(error instanceof LineItemError ? error.status : 400).json({ error: error instanceof Error ? error.message : "Invalid line items" });
+      return;
+    }
     const { subtotal, tax, total } = calcTotals(items);
     updateData.lineItems = items;
     updateData.subtotal = subtotal;
@@ -735,11 +749,11 @@ router.post("/estimates/:id/send", async (req, res): Promise<void> => {
           : null;
 
         const serviceLines = requiredItems.map(item => {
-          const lineTotal = item.qty * item.unitPrice * (1 + item.markup / 100) * (1 - item.discount / 100);
-          return `  • ${item.description}${item.qty !== 1 ? ` (qty ${item.qty})` : ""} — ${formatMoney(lineTotal)}`;
+          const lineTotal = lineExtendedPrice(item);
+          return `  • ${item.description}${qtyNote(item)} — ${formatMoney(lineTotal)}`;
         });
         const optionalLines = optionalItems.map(item => {
-          const lineTotal = item.qty * item.unitPrice * (1 + item.markup / 100) * (1 - item.discount / 100);
+          const lineTotal = lineExtendedPrice(item);
           return `  • ${item.description} — ${formatMoney(lineTotal)} (optional add-on)${item.optionalPitchLine ? `\n    ${item.optionalPitchLine}` : ""}`;
         });
 
@@ -775,7 +789,7 @@ router.post("/estimates/:id/send", async (req, res): Promise<void> => {
           : "";
 
         const buildItemRow = (item: EstimateLineItem, badge?: string) => {
-          const lineTotal = item.qty * item.unitPrice * (1 + item.markup / 100) * (1 - item.discount / 100);
+          const lineTotal = lineExtendedPrice(item);
           const badgeHtml = badge
             ? ` <span style="font-size:11px;color:#6b7280;background:#f3f4f6;border-radius:4px;padding:1px 6px;">${badge}</span>`
             : "";
@@ -968,11 +982,11 @@ router.post("/estimates/:id/resend", async (req, res): Promise<void> => {
           : null;
 
         const serviceLines = requiredItems.map(item => {
-          const lineTotal = item.qty * item.unitPrice * (1 + item.markup / 100) * (1 - item.discount / 100);
-          return `  • ${item.description}${item.qty !== 1 ? ` (qty ${item.qty})` : ""} — ${formatMoney(lineTotal)}`;
+          const lineTotal = lineExtendedPrice(item);
+          return `  • ${item.description}${qtyNote(item)} — ${formatMoney(lineTotal)}`;
         });
         const optionalLines = optionalItems.map(item => {
-          const lineTotal = item.qty * item.unitPrice * (1 + item.markup / 100) * (1 - item.discount / 100);
+          const lineTotal = lineExtendedPrice(item);
           return `  • ${item.description} — ${formatMoney(lineTotal)} (optional add-on)${item.optionalPitchLine ? `\n    ${item.optionalPitchLine}` : ""}`;
         });
 

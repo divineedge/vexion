@@ -11,6 +11,7 @@ import crypto from "crypto";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { invoiceDocumentDefaults } from "../lib/invoiceDocumentDefaults";
 import { customerInvoiceGrouping, propertyInvoiceGroups, labelPropertyLine, type PropertyInvoiceLine } from "../lib/invoicePropertyGrouping";
+import { LineItemError, prepareLineItems } from "../lib/customLineItems";
 import { isAdminRole, isOwnerRole } from "../lib/roles";
 import { decryptSecretConfig } from "../lib/secretsCrypto";
 import { sendLobLetter, type LobConfig } from "../lib/lobProvider";
@@ -406,9 +407,14 @@ router.post("/invoices", async (req, res): Promise<void> => {
 
   // Caller-supplied line items override template line items; template line items are
   // only used when the caller sends none.
-  const lineItems = (bodyLineItems !== undefined && bodyLineItems !== null)
+  let lineItems = (bodyLineItems !== undefined && bodyLineItems !== null)
     ? bodyLineItems
     : templateFields.templateLineItems;
+  try { lineItems = prepareLineItems(lineItems, "invoice"); }
+  catch (error) {
+    res.status(error instanceof LineItemError ? error.status : 400).json({ error: error instanceof Error ? error.message : "Invalid line items" });
+    return;
+  }
 
   const custId = Number(customerId);
   const requestedIds: unknown[] = [...(Array.isArray(req.body.jobIds) ? req.body.jobIds : []),
@@ -560,7 +566,12 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
   }
   // Full line-item replacement — recalculate subtotal and total, preserve existing tax rate
   if (lineItems !== undefined && Array.isArray(lineItems)) {
-    const items = lineItems as { description: string; quantity: number; unitPrice: number; total?: number }[];
+    let items: { description: string; quantity: number; unitPrice: number; total?: number }[];
+    try { items = prepareLineItems(lineItems, "invoice"); }
+    catch (error) {
+      res.status(error instanceof LineItemError ? error.status : 400).json({ error: error instanceof Error ? error.message : "Invalid line items" });
+      return;
+    }
     const newSubtotal = items.reduce((s, li) => s + (li.quantity * li.unitPrice), 0);
     // Fetch existing to derive tax and tenant tax rate
     const [existing] = await db.select({ tax: invoicesTable.tax, total: invoicesTable.total, subtotal: invoicesTable.subtotal, tenantId: invoicesTable.tenantId, lineItems: invoicesTable.lineItems })

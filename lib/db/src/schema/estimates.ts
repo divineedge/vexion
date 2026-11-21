@@ -20,7 +20,14 @@ import { estimateTemplatesTable } from "./estimateTemplates";
  *   isOptional: boolean,
  *   optionalPitchLine?: string,
  *   acceptedByCustomer: boolean,
+ *   kind?: "service" | "part" | "custom",
+ *   inventoryItemId?: number | null,
+ *   unit?: string | null,          // custom pass-through label, e.g. Load, Day, Each
+ *   internalCost?: number | null,  // optional office cost; customer total ignores it
  * }
+ * A custom pass-through line uses kind "custom", a description, qty, optional unit,
+ * optional internalCost, and unitPrice. serviceId and inventoryItemId stay null.
+ * Existing objects are left as stored.
  *
  * CSV/XLSX import-export packs this array into a single "Line Items" cell —
  * see the encodeLineItemsCell/decodeLineItemsCell convention in

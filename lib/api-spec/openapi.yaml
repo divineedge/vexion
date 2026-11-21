@@ -10894,6 +10894,16 @@ components:
           type: ["string", "null"]
         acceptedByCustomer:
           type: boolean
+        kind:
+          type: string
+          nullable: true
+          enum: [service, part, custom]
+        inventoryItemId:
+          type: ["integer", "null"]
+        unit:
+          type: ["string", "null"]
+        internalCost:
+          type: ["number", "null"]
 
     Estimate:
       type: object
@@ -14033,6 +14043,14 @@ components:
           type: number
         total:
           type: number
+        kind:
+          type: string
+          nullable: true
+          enum: [service, part, custom]
+        unit:
+          type: ["string", "null"]
+        internalCost:
+          type: ["number", "null"]
 
     BroadcastFilter:
       type: object
@@ -14389,6 +14407,14 @@ components:
           type: number
         unitPrice:
           type: number
+        kind:
+          type: string
+          nullable: true
+          enum: [service, part, custom]
+        unit:
+          type: ["string", "null"]
+        internalCost:
+          type: ["number", "null"]
 
     InvoiceUpdate:
       type: object
@@ -18338,6 +18364,7 @@ components:
         propertyAddress: { type: ["string", "null"] }
         revenue: { type: number }
         partsCost: { type: number }
+        passThroughCost: { type: number }
         laborCost: { type: number }
         fuelCost: { type: number }
         netProfit: { type: number }
@@ -18357,6 +18384,7 @@ components:
           properties:
             revenue: { type: number }
             partsCost: { type: number }
+            passThroughCost: { type: number }
             laborCost: { type: number }
             fuelCost: { type: number }
             netProfit: { type: number }
@@ -18400,6 +18428,7 @@ components:
           required: [partsCost, laborCost, fuelCost, total]
           properties:
             partsCost: { type: number }
+            passThroughCost: { type: number }
             laborCost: { type: number }
             fuelCost: { type: number }
             total: { type: number }

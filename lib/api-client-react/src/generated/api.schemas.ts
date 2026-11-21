@@ -1174,6 +1174,14 @@ export interface EstimateLineItem {
   /** @nullable */
   optionalPitchLine?: string | null;
   acceptedByCustomer: boolean;
+  /** @nullable */
+  kind?: string | null;
+  /** @nullable */
+  inventoryItemId?: number | null;
+  /** @nullable */
+  unit?: string | null;
+  /** @nullable */
+  internalCost?: number | null;
 }
 
 export type EstimateStatus = typeof EstimateStatus[keyof typeof EstimateStatus];
@@ -1400,6 +1408,12 @@ export interface InvoiceLineItem {
   quantity: number;
   unitPrice: number;
   total: number;
+  /** @nullable */
+  kind?: string | null;
+  /** @nullable */
+  unit?: string | null;
+  /** @nullable */
+  internalCost?: number | null;
 }
 
 export interface Invoice {
@@ -4194,6 +4208,12 @@ export interface InvoiceLineItemInput {
   description: string;
   quantity: number;
   unitPrice: number;
+  /** @nullable */
+  kind?: string | null;
+  /** @nullable */
+  unit?: string | null;
+  /** @nullable */
+  internalCost?: number | null;
 }
 
 export interface InvoiceInput {
@@ -7748,6 +7768,7 @@ export interface JobProfitabilityRow {
   propertyAddress?: string | null;
   revenue: number;
   partsCost: number;
+  passThroughCost?: number;
   laborCost: number;
   fuelCost: number;
   netProfit: number;
@@ -7757,6 +7778,7 @@ export interface JobProfitabilityRow {
 export type JobProfitabilityReportTotals = {
   revenue: number;
   partsCost: number;
+  passThroughCost?: number;
   laborCost: number;
   fuelCost: number;
   netProfit: number;
@@ -7791,6 +7813,7 @@ export interface EmployeeRevenueReport {
 
 export type PlStatementReportCostOfGoodsSold = {
   partsCost: number;
+  passThroughCost?: number;
   laborCost: number;
   fuelCost: number;
   total: number;

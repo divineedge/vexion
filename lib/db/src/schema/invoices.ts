@@ -35,6 +35,7 @@ export const invoicesTable = pgTable("invoices", {
   /** Last four digits only; never store a full card number. */
   paymentCardLast4: text("payment_card_last4"),
   notes: text("notes"),
+  /** Line item JSON. Existing objects stay as stored. Custom pass-through lines add kind "custom", description, quantity, optional unit, optional internalCost, and unitPrice, with null serviceId and inventoryItemId. */
   lineItems: jsonb("line_items").default("[]"),
   stripePaymentUrl: text("stripe_payment_url"),
   /** FK to recurring_invoice_templates when this invoice was auto-generated */

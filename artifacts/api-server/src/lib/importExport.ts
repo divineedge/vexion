@@ -6,6 +6,7 @@ import { db, importBatchesTable, usersTable, activityLogTable } from "@workspace
 import { eq, and, desc } from "drizzle-orm";
 import { getUserId } from "./tenantHelper";
 import { importProgressSnapshot, shouldReportImportProgress } from "./importProgress";
+import { lineExtendedPrice } from "./customLineItems";
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -850,6 +851,10 @@ export interface LineItemCsvShape {
   discount: number;
   isOptional: boolean;
   acceptedByCustomer: boolean;
+  /** Present only on custom pass-through lines. Omitted for existing service and part lines. */
+  kind?: "custom";
+  unit?: string | null;
+  internalCost?: number | null;
 }
 
 function escapeLineItemField(value: string): string {
@@ -887,6 +892,11 @@ export function encodeLineItemsCell(items: LineItemCsvShape[]): string {
       ];
       if (item.markup) parts.push(`markup=${item.markup}`);
       if (item.discount) parts.push(`discount=${item.discount}`);
+      if (item.kind === "custom") {
+        parts.push("kind=custom");
+        if (item.unit) parts.push(`unit=${escapeLineItemField(item.unit)}`);
+        if (item.internalCost != null) parts.push(`internalcost=${item.internalCost}`);
+      }
       if (item.isOptional) {
         parts.push("optional=true");
         parts.push(`accepted=${item.acceptedByCustomer ? "true" : "false"}`);
@@ -926,15 +936,22 @@ export function decodeLineItemsCell(raw: string | undefined, errors: string[]): 
       continue;
     }
     const isOptional = (fields.optional ?? "").toLowerCase() === "true";
+    const kind = (fields.kind ?? "").toLowerCase() === "custom" ? "custom" as const : undefined;
+    const internalCost = fields.internalcost !== undefined ? Number(fields.internalcost) : undefined;
+    if (internalCost !== undefined && Number.isNaN(internalCost)) {
+      errors.push(`Line item "${fields.description}" has a non-numeric internal cost`);
+      continue;
+    }
     items.push({
       id: crypto.randomUUID(),
       description: fields.description,
       qty,
       unitPrice,
-      markup,
-      discount,
+      markup: kind === "custom" ? 0 : markup,
+      discount: kind === "custom" ? 0 : discount,
       isOptional,
       acceptedByCustomer: isOptional ? (fields.accepted ?? "").toLowerCase() === "true" : true,
+      ...(kind ? { kind, unit: fields.unit?.trim() || null, internalCost: internalCost ?? null } : {}),
     });
   }
   return items;
@@ -945,10 +962,7 @@ export function sumLineItems(items: LineItemCsvShape[]): number {
   let total = 0;
   for (const item of items) {
     if (item.isOptional && !item.acceptedByCustomer) continue;
-    const base = item.qty * item.unitPrice;
-    const afterMarkup = base * (1 + item.markup / 100);
-    const afterDiscount = afterMarkup * (1 - item.discount / 100);
-    total += afterDiscount;
+    total += lineExtendedPrice(item);
   }
   return total;
 }

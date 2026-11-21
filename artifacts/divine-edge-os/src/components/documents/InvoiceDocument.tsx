@@ -30,6 +30,8 @@ interface InvoiceLineItem {
   quantity: number;
   unitPrice: number;
   total: number;
+  unit?: string | null;
+  kind?: string | null;
 }
 
 // ── Layout: Clean ─────────────────────────────────────────────────────────────
@@ -97,7 +99,7 @@ function DetailedLineItems({ items, subtotal, tax, total }: {
             <div className="flex-1">
               <p className="font-medium text-sm">{item.description}</p>
               <p className="text-xs text-muted-foreground">
-                Qty {item.quantity} × ${(item.unitPrice ?? 0).toFixed(2)}
+                Qty {item.quantity}{item.kind === 'custom' && item.unit?.trim() ? ` ${item.unit.trim()}` : ''} × ${(item.unitPrice ?? 0).toFixed(2)}
               </p>
             </div>
             <span className="font-semibold text-sm shrink-0">

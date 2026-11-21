@@ -385,6 +385,7 @@ function JobProfitabilityReport() {
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               <Stat label="Revenue" value={money(data.totals.revenue)} />
               <Stat label="Parts Cost" value={money(data.totals.partsCost)} />
+              <Stat label="Pass-through" value={money(data.totals.passThroughCost ?? 0)} />
               <Stat label="Labor Cost" value={money(data.totals.laborCost)} />
               <Stat label="Fuel Cost" value={money(data.totals.fuelCost)} />
               <Stat label="Net Profit" value={money(data.totals.netProfit)} highlight />
@@ -583,6 +584,7 @@ function PlStatementReport() {
               { category: 'Revenue', amount: data.revenue },
               { category: 'Cost of Goods Sold', amount: -data.costOfGoodsSold.total },
               { category: '  Parts', amount: -data.costOfGoodsSold.partsCost },
+              { category: '  Pass-through', amount: -(data.costOfGoodsSold.passThroughCost ?? 0) },
               { category: '  Labor (P4P)', amount: -data.costOfGoodsSold.laborCost },
               { category: '  Fuel', amount: -data.costOfGoodsSold.fuelCost },
               { category: 'Gross Profit', amount: data.grossProfit },
@@ -634,6 +636,7 @@ function PlStatementReport() {
             <PlRow label="Revenue" value={data.revenue} bold />
             <PlRow label="Cost of Goods Sold" value={-data.costOfGoodsSold.total} indent />
             <PlRow label="— Parts" value={-data.costOfGoodsSold.partsCost} indent2 />
+            <PlRow label="— Pass-through" value={-(data.costOfGoodsSold.passThroughCost ?? 0)} indent2 />
             <PlRow label="— Labor (P4P)" value={-data.costOfGoodsSold.laborCost} indent2 />
             <PlRow label="— Fuel" value={-data.costOfGoodsSold.fuelCost} indent2 />
             <PlRow label="Gross Profit" value={data.grossProfit} bold />

@@ -4,7 +4,7 @@ import { db, inventoryItemsTable, inventoryPartSizesTable, inventoryPartTypesTab
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { missingChemicalSizeNames } from "../lib/chemicalInventory";
-import { categoryNames, readSizeCoverage, readSizeVolume, rewriteCategory } from "../lib/inventoryCatalog";
+import { categoryNames, readSizeCoverage, readSizeLength, readSizeVolume, rewriteCategory } from "../lib/inventoryCatalog";
 
 const router: IRouter = Router();
 
@@ -49,6 +49,8 @@ function formatSize(row: typeof inventoryPartSizesTable.$inferSelect) {
     volumeUnit: row.volumeUnit ?? null,
     coverageAmount: row.coverageAmount ?? null,
     coverageUnit: row.coverageUnit ?? null,
+    lengthAmount: row.lengthAmount ?? null,
+    lengthUnit: row.lengthUnit ?? null,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -240,6 +242,8 @@ router.post("/inventory/sizes", requireOfficeRole, async (req, res): Promise<voi
   if (!volume.ok) { res.status(400).json({ error: volume.error }); return; }
   const coverage = readSizeCoverage(req.body?.coverageAmount, req.body?.coverageUnit);
   if (!coverage.ok) { res.status(400).json({ error: coverage.error }); return; }
+  const length = readSizeLength(req.body?.lengthAmount, req.body?.lengthUnit);
+  if (!length.ok) { res.status(400).json({ error: length.error }); return; }
   const [count] = await db.select({ n: sql<number>`count(*)::int` }).from(inventoryPartSizesTable)
     .where(eq(inventoryPartSizesTable.tenantId, tenantId));
   const [row] = await db.insert(inventoryPartSizesTable).values({
@@ -251,6 +255,8 @@ router.post("/inventory/sizes", requireOfficeRole, async (req, res): Promise<voi
     volumeUnit: volume.unit,
     coverageAmount: coverage.amount,
     coverageUnit: coverage.unit,
+    lengthAmount: length.amount,
+    lengthUnit: length.unit,
   }).returning();
   res.status(201).json(formatSize(row));
 });
@@ -285,6 +291,12 @@ router.patch("/inventory/sizes/:id", requireOfficeRole, async (req, res): Promis
     if (!coverage.ok) { res.status(400).json({ error: coverage.error }); return; }
     updates.coverageAmount = coverage.amount;
     updates.coverageUnit = coverage.unit;
+  }
+  if (Object.prototype.hasOwnProperty.call(req.body ?? {}, "lengthAmount") || Object.prototype.hasOwnProperty.call(req.body ?? {}, "lengthUnit")) {
+    const length = readSizeLength(req.body?.lengthAmount, req.body?.lengthUnit);
+    if (!length.ok) { res.status(400).json({ error: length.error }); return; }
+    updates.lengthAmount = length.amount;
+    updates.lengthUnit = length.unit;
   }
   const [row] = await db.update(inventoryPartSizesTable).set(updates)
     .where(and(eq(inventoryPartSizesTable.id, id), eq(inventoryPartSizesTable.tenantId, tenantId)))

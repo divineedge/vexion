@@ -51,7 +51,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useDebounce } from '@/hooks/use-debounce';
 import { upsertInventoryLocation } from '@/lib/inventoryLocations';
 import { groupInventoryItems, type InventoryGroupBy } from '@/lib/inventoryGrouping';
-import { categoryChoices, feetFromLength, formatInventoryQuantity, formatSizeCoverage, formatSizeVolume, inventoryListFigures, inventorySizeOptions, isPipeTypeName, namedId, parseLinkedPartsDraft, parseReorderPoint, pipeSellPerFoot, readUsesDefaultMarkup, rewriteCategory, showsStockAlert, sizeIdAcrossTypes, unitForChemicalSize } from '@/lib/inventoryPartForm';
+import { categoryChoices, feetFromLength, formatInventoryQuantity, formatSizeCoverage, formatSizeLength, formatSizeVolume, inventoryListFigures, inventorySizeOptions, isPipeTypeName, namedId, onHandQuantityLabel, parseLinkedPartsDraft, parseReorderPoint, pipeSellPerFoot, readUsesDefaultMarkup, rewriteCategory, showsStockAlert, sizeIdAcrossTypes, unitForChemicalSize } from '@/lib/inventoryPartForm';
 import { LinkedPartsEditor, type LinkRow } from '@/components/inventory/LinkedPartsEditor';
 import { ShrinkageReport } from '@/components/inventory/ShrinkageReport';
 
@@ -426,11 +426,13 @@ export default function InventoryPage() {
     const size = partSizes.find(row => String(row.id) === option.value);
     return {
       ...option,
-      detail: [formatSizeVolume(size?.volumeAmount, size?.volumeUnit), formatSizeCoverage(size?.coverageAmount, size?.coverageUnit)].filter(Boolean).join(" · ") || null,
+      detail: [formatSizeVolume(size?.volumeAmount, size?.volumeUnit), formatSizeCoverage(size?.coverageAmount, size?.coverageUnit), formatSizeLength(size?.lengthAmount, size?.lengthUnit)].filter(Boolean).join(" · ") || null,
       volumeAmount: size?.volumeAmount ?? null,
       volumeUnit: size?.volumeUnit ?? null,
       coverageAmount: size?.coverageAmount ?? null,
       coverageUnit: size?.coverageUnit ?? null,
+      lengthAmount: size?.lengthAmount ?? null,
+      lengthUnit: size?.lengthUnit ?? null,
     };
   }), [partSizes]);
   const { data: storedCategories } = useQuery({
@@ -566,7 +568,7 @@ export default function InventoryPage() {
     return fallback;
   };
 
-  const renameSize = async (value: string, next: { name: string; volumeAmount: number | null; volumeUnit: string | null; coverageAmount: number | null; coverageUnit: string | null }) => {
+  const renameSize = async (value: string, next: { name: string; volumeAmount: number | null; volumeUnit: string | null; coverageAmount: number | null; coverageUnit: string | null; lengthAmount: number | null; lengthUnit: string | null }) => {
     try {
       const saved = await customFetch<{ name: string; updatedItems: number }>(`/api/inventory/sizes/${value}`, {
         method: 'PATCH',
@@ -577,6 +579,8 @@ export default function InventoryPage() {
           volumeUnit: next.volumeUnit,
           coverageAmount: next.coverageAmount,
           coverageUnit: next.coverageUnit,
+          lengthAmount: next.lengthAmount,
+          lengthUnit: next.lengthUnit,
         }),
       });
       toast.success(`Updated ${saved.name} on ${saved.updatedItems} item${saved.updatedItems === 1 ? '' : 's'}`);
@@ -1775,7 +1779,7 @@ export default function InventoryPage() {
 
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">{pipePart ? 'Feet on hand' : 'Quantity'}</label>
+                <label className="text-sm font-medium">{onHandQuantityLabel(form.unit, partSizes.find(size => String(size.id) === form.sizeId)?.lengthUnit, pipePart)}</label>
                 <Input type="number" min={0} step="any" title={pipePart ? 'Feet of this pipe currently in stock' : 'Current stock quantity on hand'} data-testid="input-inventory-quantity" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
                 {sheetMode === 'edit' && selectedItem?.stockItemId != null && (
                   <p className="text-xs text-muted-foreground">This quantity is shared. Saving it changes the original item's on-hand stock too.</p>
@@ -2145,7 +2149,9 @@ export default function InventoryPage() {
               </div>
               {adjustDelta && !isNaN(parseInt(adjustDelta, 10)) && (
                 <p className={`text-xs font-medium ${parseInt(adjustDelta, 10) > 0 ? 'text-emerald-600' : 'text-destructive'}`}>
-                  {parseInt(adjustDelta, 10) > 0 ? `+${adjustDelta} units will be added` : `${adjustDelta} units will be removed`}
+                  {parseInt(adjustDelta, 10) > 0
+                    ? `+${adjustDelta} ${items?.find(item => item.id === adjustItemId)?.unit || 'units'} will be added`
+                    : `${adjustDelta} ${items?.find(item => item.id === adjustItemId)?.unit || 'units'} will be removed`}
                 </p>
               )}
             </div>

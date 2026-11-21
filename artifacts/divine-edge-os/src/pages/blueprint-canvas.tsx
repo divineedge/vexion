@@ -21,6 +21,7 @@ import {
   PackageCheck, GitFork, Cpu, Droplets, Receipt,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { MeasuredInventoryUse } from '@/components/blueprint/MeasuredInventoryUse';
 import { Badge } from '@/components/ui/badge';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -197,12 +198,14 @@ function filteredInventoryItems(items: InventoryItem[] | undefined, category: st
  * have to tab over to the Inventory page to know what they have or what a part is for.
  */
 function InventoryLinkField({
-  items, category, value, onChange,
+  items, category, value, onChange, blueprintId, elementId,
 }: {
   items: InventoryItem[] | undefined;
   category?: string;
   value: number | null | undefined;
   onChange: (id: number | null) => void;
+  blueprintId?: number;
+  elementId?: string;
 }) {
   const options = filteredInventoryItems(items, category);
   const selected = value != null ? items?.find(i => i.id === value) : undefined;
@@ -233,6 +236,14 @@ function InventoryLinkField({
             <p className="text-[11px] text-muted-foreground leading-snug">{selected.description}</p>
           )}
         </div>
+      )}
+      {blueprintId && elementId && (
+        <MeasuredInventoryUse
+          blueprintId={blueprintId}
+          items={items}
+          elementId={elementId}
+          linkedItemId={value ?? null}
+        />
       )}
     </div>
   );
@@ -1962,6 +1973,8 @@ export default function BlueprintCanvasPage() {
                           category="Sprinkler Heads"
                           value={pt.nozzleInventoryItemId}
                           onChange={id => updatePoint({ nozzleInventoryItemId: id })}
+                          blueprintId={id}
+                          elementId={`${pt.id}-nozzle`}
                         />
                       </div>
                     )}
@@ -1978,6 +1991,8 @@ export default function BlueprintCanvasPage() {
                   category={pointElementMeta(pt.elementType).inventoryCategory}
                   value={pt.inventoryItemId}
                   onChange={id => updatePoint({ inventoryItemId: id })}
+                  blueprintId={id}
+                  elementId={pt.id}
                 />
               </div>
             );
@@ -2031,6 +2046,8 @@ export default function BlueprintCanvasPage() {
                   category={ln.elementType === 'retainingWall' ? 'Concrete' : LINE_INVENTORY_CATEGORY}
                   value={ln.inventoryItemId}
                   onChange={id => updateLine({ inventoryItemId: id })}
+                  blueprintId={id}
+                  elementId={ln.id}
                 />
               </div>
             );
@@ -2079,6 +2096,8 @@ export default function BlueprintCanvasPage() {
                   category={meta.inventoryCategory}
                   value={area.inventoryItemId}
                   onChange={id => updateArea({ inventoryItemId: id })}
+                  blueprintId={id}
+                  elementId={area.id}
                 />
               </div>
             );
@@ -2418,6 +2437,7 @@ export default function BlueprintCanvasPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0 flex-1 overflow-y-auto">
+            <MeasuredInventoryUse blueprintId={id} items={blueprintInventoryItems} />
             {/* Real-world measurements */}
             {scalePxPerFt && (
               <div className="p-4 border-b bg-muted/10 space-y-1">

@@ -102,6 +102,17 @@ describe("size coverage", () => {
     expect(quantityAfterReplacement(4, 0, 1)).toBe(3);
   });
 
+  it("deducts 250 square feet from 1,000 square feet and leaves 750", () => {
+    const plan = planInventoryDeductions([line({
+      amount: 250,
+      unit: "sq ft",
+      inventoryUnit: "sq ft",
+      onHand: 1000,
+    })], "use");
+    expect(plan).toEqual({ ok: true, deductions: [{ inventoryItemId: 7, quantity: 250, unit: "sqft" }] });
+    expect(quantityAfterReplacement(1000, 0, 250)).toBe(750);
+  });
+
   it("does not convert square feet into gallons or pounds", () => {
     const gallons = planInventoryDeductions([line({
       amount: 100,
@@ -122,6 +133,46 @@ describe("size coverage", () => {
     })]);
     expect(pounds.ok).toBe(false);
     if (!pounds.ok) expect(pounds.message).toMatch(/Area cannot be converted to gallons or pounds/i);
+  });
+});
+
+describe("length", () => {
+  it("deducts 25 feet from stock measured in feet and leaves the remaining feet", () => {
+    const plan = planInventoryDeductions([line({
+      amount: 25,
+      unit: "feet",
+      inventoryUnit: "ft",
+      onHand: 100,
+      sizeLength: { amount: 10, unit: "ft" },
+    })], "use");
+    expect(plan).toEqual({ ok: true, deductions: [{ inventoryItemId: 7, quantity: 25, unit: "ft" }] });
+    expect(quantityAfterReplacement(100, 0, 25)).toBe(75);
+  });
+
+  it("converts inches into feet and does not subtract inches as feet", () => {
+    const plan = planInventoryDeductions([line({
+      amount: 24,
+      unit: "inches",
+      inventoryUnit: "feet",
+      onHand: 10,
+    })], "use");
+    expect(plan).toEqual({ ok: true, deductions: [{ inventoryItemId: 7, quantity: 2, unit: "ft" }] });
+    expect(quantityAfterReplacement(10, 0, 2)).toBe(8);
+  });
+
+  it("does not convert length into gallons, ounces, pounds, or square feet", () => {
+    const gallons = planInventoryDeductions([line({ amount: 25, unit: "ft", inventoryUnit: "gal", onHand: 4 })], "use");
+    expect(gallons.ok).toBe(false);
+    if (!gallons.ok) expect(gallons.message).toMatch(/Length cannot be converted to gallons, ounces, or pounds/i);
+
+    const area = planInventoryDeductions([line({ amount: 25, unit: "ft", inventoryUnit: "sq ft", onHand: 1000 })], "use");
+    expect(area.ok).toBe(false);
+    if (!area.ok) expect(area.message).toMatch(/Length cannot be converted to square feet/i);
+
+    const intoLength = planInventoryDeductions([line({ amount: 250, unit: "sq ft", inventoryUnit: "ft", onHand: 100 })], "use");
+    expect(intoLength.ok).toBe(false);
+    if (!intoLength.ok) expect(intoLength.message).toMatch(/Length cannot be converted to square feet/i);
+    expect(quantityAfterReplacement(100, 0, 0)).toBe(100);
   });
 });
 

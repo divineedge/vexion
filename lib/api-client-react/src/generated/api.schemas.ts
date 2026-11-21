@@ -3825,6 +3825,10 @@ export interface InventorySize {
   coverageAmount?: number | null;
   /** sqft. Area is not converted to gallons or pounds. */
   coverageUnit?: string | null;
+  /** Length this size stores, such as 10 feet or 6 inches. Null when the size has no length. */
+  lengthAmount?: number | null;
+  /** ft or in. Feet and inches convert. Length is not converted to area, volume, or weight. */
+  lengthUnit?: string | null;
   createdAt: string;
 }
 
@@ -3835,6 +3839,8 @@ export interface InventorySizeInput {
   volumeUnit?: string | null;
   coverageAmount?: number | null;
   coverageUnit?: string | null;
+  lengthAmount?: number | null;
+  lengthUnit?: string | null;
 }
 
 export interface InventorySizeUpdate {
@@ -3843,6 +3849,8 @@ export interface InventorySizeUpdate {
   volumeUnit?: string | null;
   coverageAmount?: number | null;
   coverageUnit?: string | null;
+  lengthAmount?: number | null;
+  lengthUnit?: string | null;
 }
 
 export interface InventorySupplier {

@@ -7,6 +7,7 @@
 export const OUNCES_PER_GALLON = 128;
 /** US liquid gallon is 3.785411784 liters. */
 export const OUNCES_PER_LITER = OUNCES_PER_GALLON / 3.785411784;
+export const INCHES_PER_FOOT = 12;
 
 export const CHEMICAL_SIZE_NAMES = ["Gallons", "Ounces", "Pounds"] as const;
 
@@ -18,6 +19,15 @@ export type SizeVolume = { amount: number; unit: string };
 
 /** Area one inventory unit covers, such as 100 square feet per roll. */
 export type SizeCoverage = { amount: number; unit: string };
+
+/** Length one size stores, such as 10 feet or 6 inches. */
+export type SizeLength = { amount: number; unit: string };
+
+export type ParsedLengthUnit = {
+  canonical: "ft" | "in";
+  /** Multiply an amount in this unit to get inches. */
+  toInches: number;
+};
 
 export type ParsedAreaUnit = {
   canonical: "sqft" | "acre" | "sqm";
@@ -53,6 +63,8 @@ export type SprayUsageLine = {
   sizeVolume?: SizeVolume | null;
   /** Set when the item's size covers an area, such as 100 square feet per roll. */
   sizeCoverage?: SizeCoverage | null;
+  /** Set when the item's size stores a length, such as feet or inches. */
+  sizeLength?: SizeLength | null;
 };
 
 export type DeductionPlan =
@@ -66,6 +78,8 @@ const POUNDS = new Set(["lb", "lbs", "pound", "pounds"]);
 const SQUARE_FEET = new Set(["sqft", "sq ft", "square feet", "square foot", "ft2", "ft²"]);
 const ACRES = new Set(["acre", "acres"]);
 const SQUARE_METERS = new Set(["sqm", "sq m", "m2", "square meter", "square meters", "square metre", "square metres"]);
+const FEET = new Set(["ft", "foot", "feet", "linear ft", "linear feet", "pipe ft", "pipe feet", "ln ft"]);
+const INCHES = new Set(["in", "inch", "inches", '"', "″"]);
 
 export function roundStock(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
@@ -100,6 +114,16 @@ export function parseAreaUnit(raw: string | null | undefined): ParsedAreaUnit | 
   return null;
 }
 
+/** Feet and inches. Square feet stay area, so they are not a length. */
+export function parseLengthUnit(raw: string | null | undefined): ParsedLengthUnit | null {
+  if (parseAreaUnit(raw)) return null;
+  const label = normalizeStockLabel(raw ?? "");
+  if (!label) return null;
+  if (FEET.has(label)) return { canonical: "ft", toInches: INCHES_PER_FOOT };
+  if (INCHES.has(label)) return { canonical: "in", toInches: 1 };
+  return null;
+}
+
 /** Square feet for an area amount. Gallons and pounds are not converted. */
 export function areaInSquareFeet(amount: number, unit: string): { ok: true; sqft: number } | { ok: false; message: string } {
   const area = parseAreaUnit(unit);
@@ -117,11 +141,46 @@ export function chemicalUnitCode(sizeOrUnit: string | null | undefined): Canonic
   return parseStockUnit(sizeOrUnit)?.canonical ?? null;
 }
 
-/** Prefer a chemical size name (Gallons, Ounces, Pounds). Fall back to the item unit. */
-export function inventoryStockUnit(sizeName: string | null | undefined, unit: string | null | undefined): string | null {
-  if (parseStockUnit(sizeName)) return sizeName!.trim();
-  if (parseStockUnit(unit)) return unit!.trim();
+/**
+ * Unit the on-hand quantity is stored in.
+ * A size name wins, then the item unit, then a length stored on the size,
+ * then pipe that is priced per foot.
+ */
+export function inventoryStockUnit(
+  sizeName: string | null | undefined,
+  unit: string | null | undefined,
+  options?: { pricePerFoot?: number | null; lengthUnit?: string | null },
+): string | null {
+  if (parseStockUnit(sizeName) || parseAreaUnit(sizeName) || parseLengthUnit(sizeName)) return sizeName!.trim();
+  if (parseStockUnit(unit) || parseAreaUnit(unit) || parseLengthUnit(unit)) return unit!.trim();
+  if (options?.lengthUnit && parseLengthUnit(options.lengthUnit)) return options.lengthUnit.trim();
+  const stored = (unit ?? "").trim().toLowerCase();
+  if (options?.pricePerFoot != null && (stored === "" || stored === "each")) return "ft";
   return null;
+}
+
+/** Unit shown next to on-hand quantity. Length stays feet or inches, not a piece count. */
+export function displayInventoryUnit(
+  sizeName: string | null | undefined,
+  unit: string | null | undefined,
+  pricePerFoot?: number | null,
+  lengthUnit?: string | null,
+): string {
+  const stored = (unit ?? "").trim();
+  const storedEach = stored === "" || stored.toLowerCase() === "each";
+  if (pricePerFoot != null && storedEach && !parseAreaUnit(sizeName) && !parseStockUnit(sizeName) && !parseLengthUnit(sizeName)) return "ft";
+  if (parseAreaUnit(sizeName)) return "sq ft";
+  const sizeChemical = chemicalUnitCode(sizeName);
+  if (sizeChemical) return sizeChemical;
+  const sizeLength = parseLengthUnit(sizeName);
+  if (sizeLength) return sizeLength.canonical;
+  if (parseAreaUnit(stored)) return "sq ft";
+  const storedLength = parseLengthUnit(stored);
+  if (storedLength) return storedLength.canonical;
+  if (lengthUnit && parseLengthUnit(lengthUnit) && storedEach && !parseStockUnit(stored) && !parseAreaUnit(stored)) {
+    return parseLengthUnit(lengthUnit)!.canonical;
+  }
+  return stored || "each";
 }
 
 export function unitLabel(raw: string | null | undefined): string {
@@ -130,8 +189,16 @@ export function unitLabel(raw: string | null | undefined): string {
   if (parsed?.canonical === "oz") return "ounces";
   if (parsed?.canonical === "l") return "liters";
   if (parsed?.canonical === "lb") return "pounds";
+  if (parseAreaUnit(raw)) return "sq ft";
+  const length = parseLengthUnit(raw);
+  if (length?.canonical === "ft") return "feet";
+  if (length?.canonical === "in") return "inches";
   const text = (raw ?? "").trim();
   return text || "units";
+}
+
+export function remainingMeasureLabel(quantity: number, unit: string): string {
+  return `${formatStockAmount(quantity)} ${unitLabel(unit)}`;
 }
 
 export function missingChemicalSizeNames(existingNames: readonly string[]): string[] {
@@ -161,6 +228,26 @@ export function convertStockAmount(
   return { ok: true, amount: roundStock((amount * from.toBase) / to.toBase), unit: to.canonical };
 }
 
+/** Feet and inches convert at 12 inches per foot. Length does not become area, volume, or weight. */
+export function convertLengthAmount(
+  amount: number,
+  fromUnit: string,
+  toUnit: string,
+): { ok: true; amount: number; unit: "ft" | "in" } | { ok: false; message: string } {
+  const from = parseLengthUnit(fromUnit);
+  const to = parseLengthUnit(toUnit);
+  if (!from || !to) {
+    if (parseAreaUnit(fromUnit) || parseAreaUnit(toUnit)) {
+      return { ok: false, message: "Length cannot be converted to square feet." };
+    }
+    if (parseStockUnit(fromUnit) || parseStockUnit(toUnit)) {
+      return { ok: false, message: "Length cannot be converted to gallons, ounces, or pounds." };
+    }
+    return { ok: false, message: `Units do not match. Inventory is in ${unitLabel(toUnit)} and this use is in ${unitLabel(fromUnit)}.` };
+  }
+  return { ok: true, amount: roundStock((amount * from.toInches) / to.toInches), unit: to.canonical };
+}
+
 /**
  * Amount to remove from inventory for one spray line.
  * A size volume is the chemical in one inventory unit (a 2.5 gallon jug).
@@ -171,8 +258,41 @@ export function convertStockAmount(
  * record amount is converted into that stock unit instead, so the record and
  * the inventory stay in the same units.
  */
-export function deductionForUse(line: Pick<SprayUsageLine, "amount" | "unit" | "inventoryUnit" | "sizeVolume" | "sizeCoverage">):
+export function deductionForUse(line: Pick<SprayUsageLine, "amount" | "unit" | "inventoryUnit" | "sizeVolume" | "sizeCoverage" | "sizeLength">):
   { ok: true; amount: number; unit: string } | { ok: false; message: string } {
+  const useArea = parseAreaUnit(line.unit) != null;
+  const useLength = parseLengthUnit(line.unit) != null;
+  const stockArea = parseAreaUnit(line.inventoryUnit) != null;
+  const stockLength = parseLengthUnit(line.inventoryUnit) != null;
+  const stockChemical = parseStockUnit(line.inventoryUnit) != null;
+  const useChemical = parseStockUnit(line.unit) != null;
+  if ((useArea && stockLength) || (useLength && stockArea)) {
+    return { ok: false, message: "Length cannot be converted to square feet." };
+  }
+  if ((useLength && stockChemical) || (useChemical && stockLength)) {
+    return { ok: false, message: "Length cannot be converted to gallons, ounces, or pounds." };
+  }
+  if (useArea && stockChemical) {
+    return { ok: false, message: "Area cannot be converted to gallons or pounds." };
+  }
+  if (useChemical && stockArea) {
+    return { ok: false, message: "Area cannot be converted to gallons or pounds." };
+  }
+  if (useArea && stockArea) {
+    const used = areaInSquareFeet(line.amount, line.unit);
+    if (!used.ok) return used;
+    return { ok: true, amount: used.sqft, unit: "sqft" };
+  }
+  if (useLength && stockLength) {
+    return convertLengthAmount(line.amount, line.unit, line.inventoryUnit ?? "");
+  }
+  if (useLength) {
+    const stored = line.sizeLength && line.sizeLength.amount > 0 ? parseLengthUnit(line.sizeLength.unit) : null;
+    if (stored && !stockChemical && !stockArea) {
+      return convertLengthAmount(line.amount, line.unit, line.sizeLength?.unit ?? "");
+    }
+    return { ok: false, message: "This item is not measured in feet or inches." };
+  }
   const coverage = line.sizeCoverage;
   const coverageSqft = coverage && coverage.amount > 0 ? parseAreaUnit(coverage.unit) : null;
   if (coverage && coverageSqft && parseAreaUnit(line.unit)) {
@@ -217,7 +337,7 @@ export function deductionForUse(line: Pick<SprayUsageLine, "amount" | "unit" | "
   return convertStockAmount(line.amount, line.unit, line.inventoryUnit ?? "");
 }
 
-export function planInventoryDeductions(lines: readonly SprayUsageLine[]): DeductionPlan {
+export function planInventoryDeductions(lines: readonly SprayUsageLine[], action: "application" | "use" = "application"): DeductionPlan {
   const grouped = new Map<number, { quantity: number; unit: string; name: string; onHand: number }>();
   for (const line of lines) {
     if (line.inventoryItemId == null) continue;
@@ -231,7 +351,7 @@ export function planInventoryDeductions(lines: readonly SprayUsageLine[]): Deduc
         message: converted.message.includes("This size is")
           ? converted.message.replace("This size", name)
           : converted.message.includes("Units do not match")
-            ? `Units do not match. ${name} is stocked in ${unitLabel(inventoryUnit)} and this application uses ${unitLabel(line.unit)}.${converted.message.includes("Pounds cannot") ? " Pounds cannot be converted to gallons or ounces." : ""}`
+            ? `Units do not match. ${name} is stocked in ${unitLabel(inventoryUnit)} and this ${action} uses ${unitLabel(line.unit)}.${converted.message.includes("Pounds cannot") ? " Pounds cannot be converted to gallons or ounces." : ""}`
             : converted.message,
       };
     }
@@ -250,7 +370,7 @@ export function planInventoryDeductions(lines: readonly SprayUsageLine[]): Deduc
     if (row.quantity - row.onHand > 1e-6) {
       return {
         ok: false,
-        message: `Not enough ${row.name} in inventory. This application needs ${formatStockAmount(row.quantity)} ${unitLabel(row.unit)} and ${formatStockAmount(row.onHand)} ${unitLabel(row.unit)} is on hand.`,
+        message: `Not enough ${row.name} in inventory. This ${action} needs ${formatStockAmount(row.quantity)} ${unitLabel(row.unit)} and ${formatStockAmount(row.onHand)} ${unitLabel(row.unit)} is on hand.`,
       };
     }
     deductions.push({ inventoryItemId, quantity: row.quantity, unit: row.unit });

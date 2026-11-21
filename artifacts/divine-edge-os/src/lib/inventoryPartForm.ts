@@ -51,6 +51,21 @@ export function formatSizeCoverage(amount: number | null | undefined, unit: stri
   return `${formatInventoryQuantity(amount)} ${label}`;
 }
 
+export function formatSizeLength(amount: number | null | undefined, unit: string | null | undefined): string | null {
+  if (amount == null || !(amount > 0) || !unit) return null;
+  const label = unit === "in" || unit === "inch" || unit === "inches" ? "inches" : "feet";
+  return `${formatInventoryQuantity(amount)} ${label}`;
+}
+
+/** Label for the on-hand quantity when the part is measured instead of counted. */
+export function onHandQuantityLabel(unit: string | null | undefined, lengthUnit?: string | null, pipe = false): string {
+  const key = `${unit ?? ""} ${lengthUnit ?? ""}`.toLowerCase();
+  if (key.includes("sq")) return "Square feet on hand";
+  if (/\b(in|inch|inches)\b/.test(key)) return "Inches on hand";
+  if (pipe || /\b(ft|feet|foot)\b/.test(key) || key.includes("pipe feet")) return "Feet on hand";
+  return "Quantity";
+}
+
 export function formatInventoryQuantity(value: number): string {
   if (!Number.isFinite(value)) return "0";
   const rounded = Math.round(value * 1_000_000) / 1_000_000;

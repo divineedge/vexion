@@ -41,7 +41,7 @@ import {
   ArrowLeft, Building, Phone, Mail, Edit, Plus, Calendar, MapPin,
   Save, X, User, FileText, Tag, DollarSign, Home, Briefcase, Megaphone, AlertTriangle, Link as LinkIcon,
   MessageSquare, Send, PhoneOff, MailMinus, ChevronRight, PlayCircle, ClipboardList, Eye, RefreshCw,
-  MailWarning, CreditCard, Pencil, Archive, ArchiveRestore, Trash2,
+  MailWarning, CreditCard, Pencil, Archive, ArchiveRestore, Trash2, EyeOff,
 } from 'lucide-react';
 import { Link } from 'wouter';
 import CustomerAvatar from '@/components/media/CustomerAvatar';
@@ -230,10 +230,29 @@ function InlineNotesEditor({ customerId, initialNotes }: { customerId: number; i
   );
 }
 
+function customerRouteId(param: string | undefined): number {
+  const fromPath = typeof window !== "undefined"
+    ? window.location.pathname.match(/\/customers\/(\d+)(?:\/|$)/)?.[1]
+    : undefined;
+  for (const raw of [param, fromPath]) {
+    if (raw && /^\d+$/.test(raw)) {
+      const parsed = Number(raw);
+      if (Number.isSafeInteger(parsed) && parsed > 0) return parsed;
+    }
+  }
+  return Number.NaN;
+}
+
+function requestStatus(error: unknown): number | undefined {
+  return typeof error === "object" && error !== null && "status" in error && typeof (error as { status: unknown }).status === "number"
+    ? (error as { status: number }).status
+    : undefined;
+}
+
 export default function CustomerDetailPage() {
   const params = useParams();
-  const customerIdForCredits = Number((params as Record<string, string | undefined>).id);
-  const id = Number(params.id);
+  const id = customerRouteId(params.id);
+  const customerIdForCredits = id;
   const [, setLocation] = useLocation();
   const { user, canManageOffice } = useAuth();
   const { can } = usePermissions();
@@ -246,6 +265,7 @@ export default function CustomerDetailPage() {
   const [editing, setEditing] = useState(false);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteBlocked, setDeleteBlocked] = useState<string | null>(null);
   const [deletePropertiesConfirmed, setDeletePropertiesConfirmed] = useState(false);
   const [recordActionBusy, setRecordActionBusy] = useState(false);
   const [form, setForm] = useState<FormData>({});
@@ -363,9 +383,10 @@ export default function CustomerDetailPage() {
 
   const debouncedAddress = useDebounce(propForm.address, 500);
 
-  const { data: customer, isLoading } = useGetCustomer(id, {
-    query: { enabled: !!id, queryKey: getGetCustomerQueryKey(id) },
+  const customerQuery = useGetCustomer(id, {
+    query: { enabled: Number.isInteger(id) && id > 0, queryKey: getGetCustomerQueryKey(id) },
   });
+  const { data: customer, isPending, isError, error, fetchStatus } = customerQuery;
   const { data: customerBlueprints } = useQuery({
     queryKey: ['customer-blueprints', id],
     enabled: Number.isFinite(id) && id > 0,
@@ -646,7 +667,39 @@ export default function CustomerDetailPage() {
       setDeleteDialogOpen(false);
       setLocation('/customers');
     } catch (error) {
+      if (requestStatus(error) === 409) {
+        setDeleteBlocked(backendError(error, 'This customer has history and cannot be deleted.'));
+        return;
+      }
       toast.error(backendError(error, 'Unable to permanently delete customer'));
+    } finally {
+      setRecordActionBusy(false);
+    }
+  };
+  const handleHideCustomer = async () => {
+    setRecordActionBusy(true);
+    try {
+      await customFetch(`/api/customers/${id}/hide`, { method: 'POST' });
+      qc.invalidateQueries({ queryKey: getGetCustomerQueryKey(id) });
+      qc.invalidateQueries({ queryKey: ['customers'] });
+      toast.success('Customer hidden from the list. Their jobs, invoices, and blueprints are unchanged.');
+      setDeleteDialogOpen(false);
+      setLocation('/customers');
+    } catch (error) {
+      toast.error(backendError(error, 'Unable to hide customer'));
+    } finally {
+      setRecordActionBusy(false);
+    }
+  };
+  const handleUnhideCustomer = async () => {
+    setRecordActionBusy(true);
+    try {
+      await customFetch(`/api/customers/${id}/unhide`, { method: 'POST' });
+      qc.invalidateQueries({ queryKey: getGetCustomerQueryKey(id) });
+      qc.invalidateQueries({ queryKey: ['customers'] });
+      toast.success('Customer is back on the list');
+    } catch (error) {
+      toast.error(backendError(error, 'Unable to show customer'));
     } finally {
       setRecordActionBusy(false);
     }
@@ -718,7 +771,16 @@ export default function CustomerDetailPage() {
     }
   };
 
-  if (isLoading) return <div className="p-8 text-center text-muted-foreground">Loading...</div>;
+  if (!Number.isInteger(id) || id <= 0) return <div className="p-8 text-center text-muted-foreground">Customer not found.</div>;
+  if (!customer && (isPending || fetchStatus === 'fetching')) return <div className="p-8 text-center text-muted-foreground">Loading...</div>;
+  if (!customer && isError && requestStatus(error) !== 404) {
+    return (
+      <div className="p-8 text-center space-y-3">
+        <p className="text-muted-foreground">This customer could not be opened.</p>
+        <Button variant="outline" onClick={() => customerQuery.refetch()}>Try again</Button>
+      </div>
+    );
+  }
   if (!customer) return <div className="p-8 text-center text-muted-foreground">Customer not found.</div>;
 
   const totalJobValue = (jobs ?? []).reduce((s, j) => s + (j.totalAmount ?? 0), 0);
@@ -973,13 +1035,30 @@ export default function CustomerDetailPage() {
                 {(customer as any).archivedAt ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
                 {(customer as any).archivedAt ? 'Unarchive' : 'Archive'}
               </Button>
-              <Button variant="destructive" className="gap-2" title="Permanently delete this customer" onClick={() => setDeleteDialogOpen(true)}>
+              {!(customer as any).mergedIntoCustomerId && (
+                (customer as any).hiddenAt ? (
+                  <Button variant="outline" className="gap-2" title="Show this customer in the list again" disabled={recordActionBusy} onClick={handleUnhideCustomer} data-testid="button-unhide-customer">
+                    <Eye className="w-4 h-4" /> Unhide
+                  </Button>
+                ) : (
+                  <Button variant="outline" className="gap-2" title="Hide this customer from the list without deleting their history" disabled={recordActionBusy} onClick={handleHideCustomer} data-testid="button-hide-customer">
+                    <EyeOff className="w-4 h-4" /> Hide
+                  </Button>
+                )
+              )}
+              <Button variant="destructive" className="gap-2" title="Permanently delete this customer" onClick={() => { setDeleteBlocked(null); setDeletePropertiesConfirmed(false); setDeleteDialogOpen(true); }}>
                 <Trash2 className="w-4 h-4" /> Delete
               </Button>
             </>
           )}
         </div>
       </div>
+
+      {(customer as any).hiddenAt && !(customer as any).mergedIntoCustomerId && (
+        <div className="rounded-lg border border-slate-300 bg-slate-50 text-slate-800 px-4 py-3 text-sm" role="status" data-testid="banner-customer-hidden">
+          This customer is hidden from the list. Jobs, invoices, and blueprints are unchanged.
+        </div>
+      )}
 
       {(customer as any).mergedIntoCustomerId && (
         <div className="rounded-lg border border-amber-300/60 bg-amber-50 text-amber-900 px-4 py-3 text-sm flex flex-wrap items-center gap-2" role="status" data-testid="banner-customer-merged">
@@ -2087,28 +2166,36 @@ export default function CustomerDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <Dialog open={deleteDialogOpen} onOpenChange={open => { setDeleteDialogOpen(open); if (!open) setDeleteBlocked(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Permanently delete customer?</DialogTitle>
+            <DialogTitle>{deleteBlocked ? 'This customer has history' : 'Permanently delete customer?'}</DialogTitle>
             <DialogDescription>
-              This permanently deletes {customer.name} and all {properties?.length ?? 0} {properties?.length === 1 ? 'property' : 'properties'} on this customer. This cannot be undone.
+              {deleteBlocked
+                ? `${deleteBlocked} Hide them from the customer list, or merge them into the customer you want to keep.`
+                : `This permanently deletes ${customer.name} and all ${properties?.length ?? 0} ${properties?.length === 1 ? 'property' : 'properties'} on this customer when nothing else depends on them. This cannot be undone.`}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
-            <Checkbox
-              id="confirm-delete-customer-properties"
-              checked={deletePropertiesConfirmed}
-              onCheckedChange={(checked) => setDeletePropertiesConfirmed(checked === true)}
-              disabled={recordActionBusy}
-            />
-            <label htmlFor="confirm-delete-customer-properties" className="cursor-pointer text-sm leading-5">
-              I understand that this will permanently delete the customer and their properties.
-            </label>
-          </div>
+          {!deleteBlocked && (
+            <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+              <Checkbox
+                id="confirm-delete-customer-properties"
+                checked={deletePropertiesConfirmed}
+                onCheckedChange={(checked) => setDeletePropertiesConfirmed(checked === true)}
+                disabled={recordActionBusy}
+              />
+              <label htmlFor="confirm-delete-customer-properties" className="cursor-pointer text-sm leading-5">
+                I understand that this will permanently delete the customer and their properties.
+              </label>
+            </div>
+          )}
           <DialogFooter>
             <Button variant="outline" disabled={recordActionBusy} onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-            <Button variant="destructive" disabled={recordActionBusy || !deletePropertiesConfirmed} onClick={handleDeleteCustomer}>{recordActionBusy ? 'Deleting…' : 'Permanently Delete'}</Button>
+            {deleteBlocked ? (
+              <Button disabled={recordActionBusy} onClick={handleHideCustomer} data-testid="button-hide-instead">{recordActionBusy ? 'Hiding…' : 'Hide from list'}</Button>
+            ) : (
+              <Button variant="destructive" disabled={recordActionBusy || !deletePropertiesConfirmed} onClick={handleDeleteCustomer}>{recordActionBusy ? 'Deleting…' : 'Permanently Delete'}</Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

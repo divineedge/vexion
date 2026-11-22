@@ -849,6 +849,16 @@ paths:
           schema:
             type: boolean
           description: Return only archived customers
+        - name: includeHidden
+          in: query
+          schema:
+            type: boolean
+          description: Include customers hidden from the default list. Hidden customers stay out of the list unless this or hiddenOnly is set. Merge search uses this so a hidden duplicate can still be found.
+        - name: hiddenOnly
+          in: query
+          schema:
+            type: boolean
+          description: Return only customers hidden from the default list
       responses:
         "200":
           description: List of customers
@@ -12303,6 +12313,10 @@ components:
           type: ["string", "null"]
           format: date-time
           description: "Timestamp when the customer was archived; null when active"
+        hiddenAt:
+          type: ["string", "null"]
+          format: date-time
+          description: "Timestamp when the customer was hidden from the default list; null when visible. Hiding does not change jobs, invoices, or blueprints."
 
     ReminderFailure:
       type: object

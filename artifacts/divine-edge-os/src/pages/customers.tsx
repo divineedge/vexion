@@ -278,7 +278,7 @@ export default function CustomersPage() {
   const [openBalanceFilter, setOpenBalanceFilter] = useState(false);
   const [typeFilter, setTypeFilter] = useState('all');
   const [tagFilter, setTagFilter] = useState('__all__');
-  const [archiveView, setArchiveView] = useState<'active' | 'archived' | 'all'>('active');
+  const [archiveView, setArchiveView] = useState<'active' | 'archived' | 'all' | 'hidden'>('active');
   const [sortField, setSortField] = useState<'name' | 'totalSpend' | 'createdAt' | 'lastServiceDate'>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const customerPageSize = 200;
@@ -352,6 +352,8 @@ export default function CustomersPage() {
     includeArchived: archiveView === 'all' ? true : undefined,
     archivedOnly: archiveView === 'archived' ? true : undefined,
     activeOnly: archiveView === 'active' ? true : undefined,
+    includeHidden: archiveView === 'hidden' ? true : undefined,
+    hiddenOnly: archiveView === 'hidden' ? true : undefined,
   };
 
   const customerPages = useInfiniteQuery({
@@ -408,7 +410,12 @@ export default function CustomersPage() {
 
   const visibleCustomers = (data?.items ?? [])
     // Defensive: never show archived or merged rows in the Active view, even from stale cache.
-    .filter(c => archiveView !== 'active' || (!(c as any).archivedAt && !(c as any).mergedIntoCustomerId))
+    .filter(c => {
+      const hidden = Boolean((c as any).hiddenAt);
+      if (archiveView === 'hidden') return hidden;
+      if (hidden) return false;
+      return archiveView !== 'active' || (!(c as any).archivedAt && !(c as any).mergedIntoCustomerId);
+    })
     .filter(c => typeFilter === 'all' || (c as any).customerType === typeFilter)
     .filter(c => !openBalanceFilter || ((c as any).paymentStanding?.overdueAmount ?? 0) > 0)
     .filter(c => tagFilter === '__all__' || ((c as any).tags ?? []).includes(tagFilter))
@@ -633,7 +640,7 @@ export default function CustomersPage() {
           <ImportExportControls
             entity="customers"
             entityLabel="Customers"
-            exportQuery={{ q: debouncedSearch || undefined, hasReminderFailure: reminderFailureFilter ? 'true' : undefined, ...(archiveView === 'all' ? { includeArchived: 'true' } : archiveView === 'archived' ? { archivedOnly: 'true' } : { activeOnly: 'true' }), ...(typeFilter !== 'all' ? { customerType: typeFilter } : {}) }}
+            exportQuery={{ q: debouncedSearch || undefined, hasReminderFailure: reminderFailureFilter ? 'true' : undefined, ...(archiveView === 'all' ? { includeArchived: 'true' } : archiveView === 'archived' ? { archivedOnly: 'true' } : archiveView === 'hidden' ? { includeHidden: 'true', hiddenOnly: 'true' } : { activeOnly: 'true' }), ...(typeFilter !== 'all' ? { customerType: typeFilter } : {}) }}
             onImportComplete={() => qc.invalidateQueries({ queryKey: getListCustomersQueryKey() })}
           />
           {canManageOffice && (
@@ -667,13 +674,14 @@ export default function CustomersPage() {
             {data?.customerLimit != null && data.activeCustomerCount >= data.customerLimit && (
               <span className="text-sm text-amber-700" title="New customers are blocked until the software plan is upgraded">Plan limit reached ({data.customerLimit.toLocaleString()} customers). Upgrade to add more.</span>
             )}
-            <Select value={archiveView} onValueChange={value => setArchiveView(value as 'active' | 'archived' | 'all')}>
-              <SelectTrigger className="h-9 w-36 text-sm" title="Choose active, archived, or all customers" data-testid="select-customer-archive-view">
+            <Select value={archiveView} onValueChange={value => setArchiveView(value as 'active' | 'archived' | 'all' | 'hidden')}>
+              <SelectTrigger className="h-9 w-40 text-sm" title="Choose active, archived, hidden, or all customers" data-testid="select-customer-archive-view">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="archived">Archived</SelectItem>
+                <SelectItem value="hidden">Hidden</SelectItem>
                 <SelectItem value="all">All customers</SelectItem>
               </SelectContent>
             </Select>
@@ -815,6 +823,8 @@ export default function CustomersPage() {
                       ? 'No customers with open balances found.'
                       : archiveView === 'archived'
                         ? 'No archived customers found.'
+                        : archiveView === 'hidden'
+                          ? 'No hidden customers found.'
                         : (<span>No customers found.{!search && tagFilter === '__all__' && typeFilter === 'all' && <> <button className="text-primary hover:underline" onClick={() => { setUseMailingAsService(true); setCreating(true); }}>Add one →</button></>}</span>)}
                 </TableCell></TableRow>
               ) : (

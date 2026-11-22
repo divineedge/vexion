@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  bundledAddOnTotal,
   customerPriceFromMarkup,
   customerTotalForParts,
   estimateLinePayload,
@@ -7,6 +8,7 @@ import {
   passThroughPricePatch,
   searchKindLabel,
   unitPriceForParts,
+  unitPriceWithAddOns,
 } from "./lineEntry";
 
 describe("pass-through markup", () => {
@@ -94,6 +96,30 @@ describe("multi-part customer total", () => {
     expect(stored.serviceId).toBeNull();
     expect(stored.components).toHaveLength(2);
     expect(stored.unitPrice).toBe(37);
+  });
+
+  it("rolls two parts and a pass-through into one customer price", () => {
+    const parts = [
+      { inventoryItemId: 1, name: "Valve", quantity: 2, unit: "each", unitPrice: 10 },
+      { inventoryItemId: 2, name: "Fitting", quantity: 4, unit: "each", unitPrice: 4.25 },
+    ];
+    const charges = [
+      { catalogId: 3, description: "Dump truck load", quantity: 1, unit: "Load", internalCost: 100, markup: 25, unitPrice: 125 },
+    ];
+    expect(bundledAddOnTotal(parts, [])).toBe(37);
+    expect(unitPriceWithAddOns(80, 0, bundledAddOnTotal(parts, []))).toBe(117);
+    const stored = estimateLinePayload({
+      description: "Repair supplies",
+      qty: 1,
+      unitPrice: unitPriceWithAddOns(0, 0, bundledAddOnTotal(parts, charges)),
+      kind: "service",
+      bundledParts: parts,
+      bundledCharges: charges,
+    });
+    expect(stored.unitPrice).toBe(162);
+    expect(stored.bundledParts).toHaveLength(2);
+    expect(stored.bundledCharges).toEqual(charges);
+    expect(stored.inventoryItemId).toBeNull();
   });
 
   it("keeps a kit pointed at the inventory item and does not invent components", () => {

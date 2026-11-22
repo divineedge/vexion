@@ -7,17 +7,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-/** Inventory item ids stored on multi-part lines. Duplicates are already merged. */
+function collectPartIds(list: unknown, ids: Set<number>) {
+  if (!Array.isArray(list)) return;
+  for (const component of list) {
+    if (!isRecord(component)) continue;
+    const id = component.inventoryItemId;
+    if (typeof id === "number" && Number.isInteger(id) && id > 0) ids.add(id);
+  }
+}
+
+/** Inventory item ids stored on multi-part lines and on bundled parts. */
 export function attachedPartIds(items: unknown[]): number[] {
   const ids = new Set<number>();
   if (!Array.isArray(items)) return [];
   for (const item of items) {
-    if (!isRecord(item) || !Array.isArray(item.components)) continue;
-    for (const component of item.components) {
-      if (!isRecord(component)) continue;
-      const id = component.inventoryItemId;
-      if (typeof id === "number" && Number.isInteger(id) && id > 0) ids.add(id);
-    }
+    if (!isRecord(item)) continue;
+    collectPartIds(item.components, ids);
+    collectPartIds(item.bundledParts, ids);
   }
   return [...ids];
 }

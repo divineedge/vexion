@@ -23,7 +23,8 @@ import {
 import { format } from 'date-fns';
 import { MeasuredInventoryUse } from '@/components/blueprint/MeasuredInventoryUse';
 import { Badge } from '@/components/ui/badge';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { addSatelliteTileLayer } from '@/lib/satelliteTiles';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -415,6 +416,12 @@ export default function BlueprintCanvasPage() {
   const queryClient = useQueryClient();
 
   const { data: blueprint, isLoading } = useGetBlueprint(id, { query: { enabled: !!id, queryKey: getGetBlueprintQueryKey(id) } });
+  const { data: planningState } = useQuery({
+    queryKey: ['blueprint-planning-lock', id],
+    enabled: Number.isFinite(id) && id > 0,
+    queryFn: () => customFetch<{ blueprint: { planningLocked: boolean; planningLockedReason: string | null } }>(`/api/blueprint-planning/blueprints/${id}`),
+  });
+  const planningLocked = planningState?.blueprint.planningLocked === true;
   const updateBlueprint = useUpdateBlueprint();
   const deleteBlueprintMutation = useDeleteBlueprint();
   const [deleteBlueprintOpen, setDeleteBlueprintOpen] = useState(false);
@@ -1021,26 +1028,7 @@ export default function BlueprintCanvasPage() {
       attributionControl: false,
       fadeAnimation: false,
     });
-    {
-      // Use Google Maps satellite tiles when a key is configured (same source + freshness as property map).
-      // Falls back to ESRI World Imagery when no key is present.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const GMAPS_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
-      if (GMAPS_KEY) {
-        L.tileLayer('https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-          subdomains: ['0', '1', '2', '3'] as unknown as string,
-          attribution: '&copy; <a href="https://maps.google.com">Google Maps</a>',
-          maxZoom: 22,
-          tileSize: 256,
-        }).addTo(map);
-      } else {
-        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-          attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics',
-          maxZoom: 22,
-          maxNativeZoom: 19,
-        }).addTo(map);
-      }
-    }
+      addSatelliteTileLayer(L, map);
     leafletMapRef.current = map;
     mapAnchorRef.current = { lat: property.lat, lng: property.lng, localX: widthPx / 2, localY: heightPx / 2 };
 
@@ -1103,6 +1091,7 @@ export default function BlueprintCanvasPage() {
   };
 
   const handleSvgClick = (e: MouseEvent) => {
+    if (planningLocked) return;
     const coords = getCoordinates(e);
     
     if (tool === 'addNode') {
@@ -1297,6 +1286,7 @@ export default function BlueprintCanvasPage() {
   };
 
   const handleSave = () => {
+    if (planningLocked) { toast.error(planningState?.blueprint.planningLockedReason === 'Job completed' ? 'This blueprint is locked because the job was completed.' : 'This blueprint is locked because the estimate was accepted.'); return; }
     const canvasData = { points, lines, areas };
     const updateData: Record<string, unknown> = { canvasData };
     if (scalePxPerFt != null) updateData.scalePxPerFt = scalePxPerFt;
@@ -1487,6 +1477,11 @@ export default function BlueprintCanvasPage() {
                 </Badge>
               )}
             </div>
+            {planningLocked && (
+              <p className="text-sm text-amber-700" data-testid="blueprint-locked-banner">
+                Locked{planningState?.blueprint.planningLockedReason ? ` — ${planningState.blueprint.planningLockedReason}` : ''}. You can view where the lines were run. Edits are turned off.
+              </p>
+            )}
           </div>
         </div>
         <div className="flex gap-2">
@@ -1500,7 +1495,10 @@ export default function BlueprintCanvasPage() {
               <HelpCircle className="w-4 h-4" /> Legacy Points ({totalLegacyCount})
             </Button>
           )}
-          <Button variant="outline" onClick={() => setDeleteBlueprintOpen(true)} className="gap-2 text-destructive border-destructive/40 hover:text-destructive">
+          <Button variant="outline" onClick={() => setLocation(`/blueprints/${id}/plan`)} className="gap-2" data-testid="open-blueprint-plan">
+            Plan
+          </Button>
+          <Button variant="outline" onClick={() => setDeleteBlueprintOpen(true)} disabled={planningLocked} className="gap-2 text-destructive border-destructive/40 hover:text-destructive">
             <Trash2 className="w-4 h-4" /> Delete Blueprint
           </Button>
           {lastMigration && (
@@ -1508,10 +1506,10 @@ export default function BlueprintCanvasPage() {
               <Undo2 className="w-4 h-4" /> Undo Migration
             </Button>
           )}
-          <Button variant="outline" onClick={handleSave} disabled={updateBlueprint.isPending} className="gap-2">
+          <Button variant="outline" onClick={handleSave} disabled={planningLocked || updateBlueprint.isPending} className="gap-2">
             <Save className="w-4 h-4" /> Save
           </Button>
-          <Button onClick={handleCalculate} disabled={calcEstimate.isPending || updateBlueprint.isPending} className="gap-2">
+          <Button onClick={handleCalculate} disabled={planningLocked || calcEstimate.isPending || updateBlueprint.isPending} className="gap-2">
             <Calculator className="w-4 h-4" /> Calculate Estimate
           </Button>
         </div>
@@ -2104,7 +2102,7 @@ export default function BlueprintCanvasPage() {
           })()}
 
           {/* Canvas */}
-          <div ref={canvasContainerRef} className={`flex-1 bg-gray-50 dark:bg-zinc-950 relative overflow-hidden ${isPanning ? 'cursor-grabbing' : tool === 'select' ? 'cursor-grab' : 'cursor-crosshair'}`}>
+          <div ref={canvasContainerRef} className={`flex-1 bg-gray-50 dark:bg-zinc-950 relative overflow-hidden ${planningLocked ? 'pointer-events-none' : isPanning ? 'cursor-grabbing' : tool === 'select' ? 'cursor-grab' : 'cursor-crosshair'}`}>
             {/* Live map: a real Leaflet/Esri tile layer, driven programmatically off viewTransform (see effects
                 above) — dragging/zooming the SVG on top pans & zooms this actual map underneath. */}
             {hasLiveMap && <div ref={mapContainerRef} className="absolute inset-0 z-0" />}

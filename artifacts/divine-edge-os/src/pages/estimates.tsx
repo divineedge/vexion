@@ -39,10 +39,13 @@ import {
   useGetTenantSettings, getGetTenantSettingsQueryKey,
   useListInventoryItems, getListInventoryItemsQueryKey,
 } from '@workspace/api-client-react';
-import { ServiceBundlePicker, normalizeBundle, bundlePayload, type BundledService, type CatalogServiceLite } from '@/components/estimates/ServiceBundlePicker';
-import { InventoryItemCombobox } from '@/components/inventory/InventoryItemCombobox';
-import { LineSourcePicker } from '@/components/billing/LineSourcePicker';
-import { lineExtended, lineSource, qtyWithUnit, type LineSource } from '@/lib/customLinePrice';
+import { ServiceBundlePicker, normalizeBundle, type BundledService, type CatalogServiceLite } from '@/components/estimates/ServiceBundlePicker';
+import { LineCatalogSearch } from '@/components/billing/LineCatalogSearch';
+import { PassThroughFields } from '@/components/billing/PassThroughFields';
+import { AttachedPartsField } from '@/components/billing/AttachedPartsField';
+import { BillingCatalog } from '@/components/billing/BillingCatalog';
+import { lineExtended, qtyWithUnit } from '@/lib/customLinePrice';
+import { estimateLinePayload, linePatchFromHit, lineSaveError, type LineComponent } from '@/lib/lineEntry';
 import { servicePriceForProperty, propertyServiceMeasurements } from '@/lib/pricingMatrix';
 import { useDebounce } from '@/hooks/use-debounce';
 import { format } from 'date-fns';
@@ -98,10 +101,13 @@ interface LineItem {
   planTemplateId?: number;
   planTemplateName?: string;
   planBillingCycle?: string;
-  kind?: 'service' | 'part' | 'custom';
+  kind?: 'service' | 'part' | 'custom' | 'plan' | 'kit';
   inventoryItemId?: number | null;
+  sku?: string | null;
   unit?: string | null;
   internalCost?: number | null;
+  catalogId?: number | null;
+  components?: LineComponent[] | null;
 }
 
 type CatalogService = CatalogServiceLite;
@@ -127,62 +133,6 @@ function emptyItem(): LineItem {
 
 function calcItem(item: LineItem) {
   return lineExtended(item);
-}
-
-function clearedCatalog(source: LineSource, item: LineItem): Partial<LineItem> {
-  if (source === 'custom') {
-    return {
-      kind: 'custom',
-      serviceId: undefined,
-      serviceName: undefined,
-      secondaryServiceId: undefined,
-      secondaryServiceName: undefined,
-      bundledServices: [],
-      inventoryItemId: null,
-      planTemplateId: undefined,
-      planTemplateName: undefined,
-      planBillingCycle: undefined,
-      markup: 0,
-      discount: 0,
-      category: !item.serviceId && !item.inventoryItemId && (item.category ?? 'labor') === 'labor' ? 'other' : item.category,
-    };
-  }
-  if (source === 'part') {
-    return { kind: 'part', serviceId: undefined, serviceName: undefined, secondaryServiceId: undefined, secondaryServiceName: undefined, bundledServices: [], planTemplateId: undefined, unit: null, internalCost: null, category: item.category === 'labor' ? 'parts' : item.category };
-  }
-  return { kind: 'service', inventoryItemId: null, unit: null, internalCost: null };
-}
-
-function customPayload(i: LineItem) {
-  return {
-    id: i.id,
-    kind: 'custom' as const,
-    description: i.description.trim(),
-    qty: i.qty,
-    quantity: i.qty,
-    unitPrice: i.unitPrice,
-    unit: i.unit?.trim() || null,
-    internalCost: i.internalCost == null || Number.isNaN(Number(i.internalCost)) ? null : Number(i.internalCost),
-    markup: 0,
-    discount: 0,
-    isOptional: i.isOptional,
-    optionalPitchLine: i.optionalPitchLine || null,
-    groupId: i.groupId || null,
-    category: i.category && i.category !== 'labor' ? i.category : 'other',
-    acceptedByCustomer: !i.isOptional,
-    serviceId: null,
-    serviceName: null,
-    secondaryServiceId: null,
-    secondaryServiceName: null,
-    bundledServices: [],
-    inventoryItemId: null,
-    partId: null,
-    sku: null,
-    planTemplateId: null,
-    planTemplateName: null,
-    planBillingCycle: null,
-    priceOverridden: false,
-  };
 }
 
 /** Returns the cost category for a line item, defaulting to 'labor'. */
@@ -464,10 +414,8 @@ export default function EstimatesPage() {
   const subtotal = billableItems(lineItems).reduce((sum, i) => sum + calcItem(i), 0);
 
   function handleCreate() {
-    const customMissing = lineItems.find(i => i.kind === 'custom' && !i.description.trim());
-    if (customMissing) { toast.error('Custom line needs a description'); return; }
-    const partMissing = lineItems.find(i => i.kind === 'part' && !i.inventoryItemId);
-    if (partMissing) { toast.error('Pick an inventory part, or switch that line to Custom / Pass-Through'); return; }
+    const lineError = lineSaveError(lineItems);
+    if (lineError) { toast.error(lineError); return; }
     createEstimate.mutate({
       data: {
         customerId: form.customerId ? parseInt(form.customerId, 10) : undefined,
@@ -477,28 +425,7 @@ export default function EstimatesPage() {
         notes: form.notes || undefined,
         ...(createTerms !== null ? { termsText: normalizeWording(createTerms) } : {}),
         templateId: form.templateId ? parseInt(form.templateId, 10) : undefined,
-        lineItems: lineItems.map(i => i.kind === 'custom' ? customPayload(i) : {
-          id: i.id,
-          description: i.description,
-          qty: i.qty,
-          unitPrice: i.unitPrice,
-          markup: i.markup,
-          discount: i.discount,
-          isOptional: i.isOptional,
-          optionalPitchLine: i.optionalPitchLine || null,
-          groupId: i.groupId || null,
-          category: i.category ?? 'labor',
-          acceptedByCustomer: !i.isOptional,
-          serviceId: i.kind === 'part' ? null : (i.serviceId ?? null),
-          serviceName: i.kind === 'part' ? null : (i.serviceName ?? null),
-          inventoryItemId: i.kind === 'part' ? (i.inventoryItemId ?? null) : null,
-          kind: i.kind === 'part' ? 'part' : undefined,
-          priceOverridden: i.priceOverridden === true,
-          ...bundlePayload(i.kind === 'part' ? { ...i, serviceId: undefined } : i),
-          planTemplateId: i.kind === 'part' ? null : (i.planTemplateId ?? null),
-          planTemplateName: i.kind === 'part' ? null : (i.planTemplateName ?? null),
-          planBillingCycle: i.kind === 'part' ? null : (i.planBillingCycle ?? null),
-        }),
+        lineItems: lineItems.map(i => estimateLinePayload(i)),
         estimatedDurationMin: form.estimatedDurationMin
           ? Math.round(parseFloat(form.estimatedDurationMin) * (estimateDurationUnit === 'hours' ? 60 : 1))
           : undefined,
@@ -629,9 +556,11 @@ export default function EstimatesPage() {
   function cancelEditLineItems() { setEditingLineItems(false); setEditLineItemsList([]); }
   function saveEditLineItems() {
     if (!selectedEstimate) return;
+    const lineError = lineSaveError(editLineItemsList);
+    if (lineError) { toast.error(lineError); return; }
     const total = billableItems(editLineItemsList).reduce((s, i) => s + calcItem(i), 0);
     updateEstimate.mutate(
-      { id: selectedEstimate.id, data: { lineItems: editLineItemsList.map(i => i.kind === 'custom' ? customPayload(i) : { ...i, ...bundlePayload(i) }), totalAmount: total } as any },
+      { id: selectedEstimate.id, data: { lineItems: editLineItemsList.map(i => estimateLinePayload(i)), totalAmount: total } as any },
       {
         onSuccess: () => {
           toast.success('Line items saved');
@@ -728,6 +657,9 @@ export default function EstimatesPage() {
     setLineItems(items => items.map((item, i) => i === idx ? { ...item, ...patch } : item));
   }
 
+  const billingTabParam = new URLSearchParams(search).get('tab');
+  const billingTab = billingTabParam === 'passthrough' || billingTabParam === 'kits' ? billingTabParam : null;
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <TemplatesSheet open={templatesOpen} onOpenChange={setTemplatesOpen}>
@@ -746,6 +678,11 @@ export default function EstimatesPage() {
           <p className="text-muted-foreground mt-1">Send price proposals and convert approvals into jobs.{Array.isArray(estimates) && (estimates as any[]).length > 0 ? ` · ${(estimates as any[]).length} total` : ''}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex rounded-md border p-0.5" role="tablist" aria-label="Billing catalog">
+            <Button size="sm" variant={billingTab ? 'ghost' : 'default'} data-testid="tab-estimates" onClick={() => setLocation('/estimates')}>Estimates</Button>
+            <Button size="sm" variant={billingTab === 'passthrough' ? 'default' : 'ghost'} data-testid="tab-passthrough" onClick={() => setLocation('/estimates?tab=passthrough')}>Pass-through</Button>
+            <Button size="sm" variant={billingTab === 'kits' ? 'default' : 'ghost'} data-testid="tab-kits" onClick={() => setLocation('/estimates?tab=kits')}>Kits</Button>
+          </div>
           <Button size="sm" variant="outline" onClick={() => setTemplatesOpen(true)} data-testid="button-estimate-templates">Estimate Templates</Button>
           <div className="flex rounded-md border p-0.5" aria-label="Estimate lifecycle view">
             <Button size="sm" variant={!showArchivedEstimates ? 'default' : 'ghost'} onClick={() => setShowArchivedEstimates(false)}>Active Estimates</Button>
@@ -765,6 +702,7 @@ export default function EstimatesPage() {
         </div>
       </div>
 
+      {billingTab ? <BillingCatalog tab={billingTab} /> : <>
       {/* Pipeline summary */}
       {pipeline && (
         <div className="grid grid-cols-2 gap-4">
@@ -982,6 +920,7 @@ export default function EstimatesPage() {
           )}
         </CardContent>
       </Card>
+      </>}
 
       {/* Create Estimate Sheet */}
       <Sheet open={createOpen} onOpenChange={open => { if (!open) { setCreateOpen(false); setLineItems([emptyItem()]); } }}>
@@ -1213,37 +1152,6 @@ export default function EstimatesPage() {
               <div className="flex items-center justify-between gap-2">
                 <h3 className="font-semibold text-sm">Line Items</h3>
                 <div className="flex items-center gap-2">
-                  {/* Add plan as line item */}
-                  {(catalogPlans ?? []).length > 0 && (
-                    <Select
-                      value=""
-                      onValueChange={planId => {
-                        const plan = catalogPlans?.find(p => String(p.id) === planId);
-                        if (!plan) return;
-                        setLineItems(items => [...items, {
-                          ...emptyItem(),
-                          description: plan.name + (plan.description ? ` — ${plan.description}` : ''),
-                          unitPrice: plan.price,
-                          planTemplateId: plan.id,
-                          planTemplateName: plan.name,
-                          planBillingCycle: plan.billingCycle,
-                        }]);
-                      }}
-                    >
-                      <SelectTrigger className="h-8 text-xs gap-1 w-auto px-2.5" title="Add a service plan as a line item">
-                        <Package className="w-3.5 h-3.5 shrink-0" />
-                        <span>Add Plan</span>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(catalogPlans ?? []).map(p => (
-                          <SelectItem key={p.id} value={String(p.id)}>
-                            <span>{p.name}</span>
-                            <span className="ml-2 text-muted-foreground">${p.price.toFixed(2)}/{p.billingCycle}</span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
                   <Button variant="outline" size="sm" onClick={() => setLineItems(i => [...i, emptyItem()])}>
                     <Plus className="w-3.5 h-3.5 mr-1.5" /> Add Item
                   </Button>
@@ -1257,33 +1165,22 @@ export default function EstimatesPage() {
 
                     {/* Catalog picker row */}
                     <div className="flex items-center gap-2 flex-wrap">
-                      <LineSourcePicker
-                        value={lineSource(item)}
+                      <LineCatalogSearch
                         testId={`estimate-line-${idx}`}
-                        onChange={source => updateLineItem(idx, clearedCatalog(source, item))}
+                        onSelect={(hit, extras) => {
+                          const patch = linePatchFromHit(hit) as Partial<LineItem>;
+                          if (hit.kind === 'service' && extras?.service) patch.unitPrice = catalogPrice(extras.service);
+                          updateLineItem(idx, patch);
+                        }}
                       />
-                      {lineSource(item) === 'service' && (
+                      {item.kind !== 'part' && item.kind !== 'custom' && item.kind !== 'kit' && item.kind !== 'plan' && (
                       <ServiceBundlePicker
+                        hidePrimary
                         item={item}
                         catalog={catalogServices}
                         priceFor={catalogPrice}
                         onChange={patch => updateLineItem(idx, { ...patch, priceOverridden: false, kind: 'service' })}
                       />
-                      )}
-                      {lineSource(item) === 'part' && (
-                        <InventoryItemCombobox
-                          className="flex-1 min-w-[180px]"
-                          value={item.inventoryItemId ?? null}
-                          placeholder="Pick a part..."
-                          onSelect={part => updateLineItem(idx, {
-                            kind: 'part',
-                            inventoryItemId: part.id,
-                            description: part.name,
-                            unitPrice: Number(part.unitPrice ?? 0),
-                            priceOverridden: true,
-                            category: 'parts',
-                          })}
-                        />
                       )}
 
                       {/* Badges */}
@@ -1301,39 +1198,43 @@ export default function EstimatesPage() {
                       </Button>
                     </div>
 
-                    {lineSource(item) === 'part' && (
+                    {item.kind === 'part' && (
                       <p className="text-[10px] text-muted-foreground">Stock is used on the job, not when this estimate is saved.</p>
                     )}
-                    {lineSource(item) === 'custom' && (
+                    {item.kind === 'kit' && (
+                      <p className="text-[10px] text-muted-foreground" data-testid={`estimate-line-${idx}-kit-note`}>Kit line. Stock moves when this kit is used on a job, not when this estimate is saved.</p>
+                    )}
+                    {item.kind === 'custom' && (
                       <p className="text-[10px] text-muted-foreground">Pass-through charge. No service catalog entry and no inventory deduction.</p>
                     )}
 
-                    {/* Description */}
-                    <Input data-testid={`estimate-line-${idx}-description`} title="Line item description shown to the customer" placeholder={lineSource(item) === 'custom' ? 'Dump Truck Load, Equipment Rental' : 'Description'} value={item.description} onChange={e => updateLineItem(idx, { description: e.target.value })} />
+                    <Input data-testid={`estimate-line-${idx}-description`} title="Line item description shown to the customer" placeholder={item.kind === 'custom' ? 'Dump Truck Load, Equipment Rental' : 'Description'} value={item.description} onChange={e => updateLineItem(idx, { description: e.target.value })} />
 
-                    {/* Qty / Price / Markup / Discount */}
-                    <div className={`grid gap-2 ${lineSource(item) === 'custom' ? 'grid-cols-4' : 'grid-cols-4'}`}>
+                    {item.kind === 'custom' ? (
+                      <div className="space-y-2">
+                        <div className="space-y-1 max-w-[8rem]">
+                          <label className="text-xs text-muted-foreground">Qty</label>
+                          <Input data-testid={`estimate-line-${idx}-qty`} type="number" min={1} step={1} title="Number of units" value={item.qty} onChange={e => updateLineItem(idx, { qty: parseFloat(e.target.value) || 1 })} />
+                        </div>
+                        <PassThroughFields
+                          testId={`estimate-line-${idx}`}
+                          unit={item.unit}
+                          internalCost={item.internalCost}
+                          markup={item.markup}
+                          unitPrice={item.unitPrice}
+                          onChange={patch => updateLineItem(idx, patch)}
+                        />
+                      </div>
+                    ) : (
+                    <div className="grid grid-cols-4 gap-2">
                       <div className="space-y-1">
                         <label className="text-xs text-muted-foreground">Qty</label>
                         <Input data-testid={`estimate-line-${idx}-qty`} type="number" min={1} step={1} title="Number of units" value={item.qty} onChange={e => updateLineItem(idx, { qty: parseFloat(e.target.value) || 1 })} />
                       </div>
-                      {lineSource(item) === 'custom' && (
-                        <div className="space-y-1">
-                          <label className="text-xs text-muted-foreground">Unit</label>
-                          <Input data-testid={`estimate-line-${idx}-unit`} title="Optional unit label" placeholder="Load, Day, Each" value={item.unit ?? ''} onChange={e => updateLineItem(idx, { unit: e.target.value })} />
-                        </div>
-                      )}
                       <div className="space-y-1">
                         <label className="text-xs text-muted-foreground">Unit Price</label>
                         <Input data-testid={`estimate-line-${idx}-price`} type="number" min={0} step={0.01} title="Price per unit. Editing this keeps your amount when the property measurement changes." value={item.unitPrice} onChange={e => updateLineItem(idx, { unitPrice: parseFloat(e.target.value) || 0, priceOverridden: true })} />
                       </div>
-                      {lineSource(item) === 'custom' ? (
-                        <div className="space-y-1">
-                          <label className="text-xs text-muted-foreground">Internal cost</label>
-                          <Input data-testid={`estimate-line-${idx}-cost`} type="number" min={0} step={0.01} title="Optional office cost. The customer total is quantity times unit price." placeholder="Optional" value={item.internalCost ?? ''} onChange={e => updateLineItem(idx, { internalCost: e.target.value === '' ? null : parseFloat(e.target.value) })} />
-                        </div>
-                      ) : (
-                        <>
                       <div className="space-y-1">
                         <label className="text-xs text-muted-foreground">Markup %</label>
                         <Input type="number" min={0} step={1} title="Markup percentage added on top of unit price" value={item.markup} onChange={e => updateLineItem(idx, { markup: parseFloat(e.target.value) || 0 })} />
@@ -1342,9 +1243,17 @@ export default function EstimatesPage() {
                         <label className="text-xs text-muted-foreground">Discount %</label>
                         <Input type="number" min={0} step={1} title="Discount percentage subtracted from the marked-up price" value={item.discount} onChange={e => updateLineItem(idx, { discount: parseFloat(e.target.value) || 0 })} />
                       </div>
-                        </>
-                      )}
                     </div>
+                    )}
+                    <AttachedPartsField
+                      testId={`estimate-line-${idx}`}
+                      lineQty={item.qty}
+                      components={item.components}
+                      seed={item.kind !== 'kit' && item.inventoryItemId ? { inventoryItemId: item.inventoryItemId, name: item.description || 'Part', quantity: item.qty || 1, unit: item.unit ?? null, unitPrice: item.unitPrice } : null}
+                      priceOverridden={item.priceOverridden}
+                      clearInventoryItem={item.kind !== 'kit'}
+                      onChange={patch => updateLineItem(idx, patch.components == null ? { ...patch, components: null } : patch)}
+                    />
                     <div className="flex items-center gap-3 flex-wrap">
                       <label className="flex items-center gap-2 cursor-pointer text-sm">
                         <input type="checkbox" checked={item.isOptional} onChange={e => updateLineItem(idx, { isOptional: e.target.checked })} className="rounded" />
@@ -1823,37 +1732,35 @@ export default function EstimatesPage() {
                       {editLineItemsList.map((item, idx) => (
                         <div key={item.id} className="space-y-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <LineSourcePicker
-                              value={lineSource(item)}
+                            <LineCatalogSearch
                               testId={`estimate-edit-line-${idx}`}
-                              onChange={source => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, ...clearedCatalog(source, i) } : i))}
+                              onSelect={(hit, extras) => setEditLineItemsList(list => list.map((row, k) => {
+                                if (k !== idx) return row;
+                                const patch = linePatchFromHit(hit) as Partial<LineItem>;
+                                if (hit.kind === 'service' && extras?.service) patch.unitPrice = catalogPrice(extras.service);
+                                return { ...row, ...patch };
+                              }))}
                             />
-                            {lineSource(item) === 'service' && (
+                            {item.kind !== 'part' && item.kind !== 'custom' && item.kind !== 'kit' && item.kind !== 'plan' && (
                               <ServiceBundlePicker
+                                hidePrimary
                                 compact
                                 item={item}
                                 catalog={catalogServices}
                                 priceFor={catalogPrice}
-                                onChange={patch => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, ...patch, priceOverridden: false, kind: 'service' } : i))}
-                              />
-                            )}
-                            {lineSource(item) === 'part' && (
-                              <InventoryItemCombobox
-                                className="flex-1 min-w-[160px]"
-                                value={item.inventoryItemId ?? null}
-                                placeholder="Pick a part..."
-                                onSelect={part => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, kind: 'part', inventoryItemId: part.id, description: part.name, unitPrice: Number(part.unitPrice ?? 0), priceOverridden: true, category: 'parts' } : i))}
+                                onChange={patch => setEditLineItemsList(list => list.map((row, k) => k === idx ? { ...row, ...patch, priceOverridden: false, kind: 'service' } : row))}
                               />
                             )}
                           </div>
-                          {lineSource(item) === 'custom' && <p className="text-[10px] text-muted-foreground">Pass-through charge. No service catalog entry and no inventory deduction.</p>}
-                          {lineSource(item) === 'part' && <p className="text-[10px] text-muted-foreground">Stock is used on the job, not when this estimate is saved.</p>}
+                          {item.kind === 'custom' && <p className="text-[10px] text-muted-foreground">Pass-through charge. No service catalog entry and no inventory deduction.</p>}
+                          {item.kind === 'part' && <p className="text-[10px] text-muted-foreground">Stock is used on the job, not when this estimate is saved.</p>}
+                          {item.kind === 'kit' && <p className="text-[10px] text-muted-foreground">Kit line. Stock moves when this kit is used on a job, not when this estimate is saved.</p>}
                           <div className="flex items-center gap-2">
                             <input
                               className="flex-1 border rounded-md px-2 py-1.5 text-sm bg-background"
                               value={item.description}
-                              onChange={e => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, description: e.target.value } : i))}
-                              placeholder={lineSource(item) === 'custom' ? 'Dump Truck Load, Equipment Rental' : 'Description'}
+                              onChange={e => setEditLineItemsList(list => list.map((row, k) => k === idx ? { ...row, description: e.target.value } : row))}
+                              placeholder={item.kind === 'custom' ? 'Dump Truck Load, Equipment Rental' : 'Description'}
                               title="Line item description"
                               data-testid={`estimate-edit-line-${idx}-description`}
                             />
@@ -1861,35 +1768,19 @@ export default function EstimatesPage() {
                               type="number" min={0.01} step={0.01}
                               className="w-16 border rounded-md px-2 py-1.5 text-sm bg-background text-right"
                               value={item.qty}
-                              onChange={e => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, qty: parseFloat(e.target.value) || 0 } : i))}
+                              onChange={e => setEditLineItemsList(list => list.map((row, k) => k === idx ? { ...row, qty: parseFloat(e.target.value) || 0 } : row))}
                               title="Quantity"
                             />
+                            {item.kind !== 'custom' && (
+                              <>
                             <span className="text-muted-foreground text-xs shrink-0">×</span>
                             <input
                               type="number" min={0} step={0.01}
                               className="w-24 border rounded-md px-2 py-1.5 text-sm bg-background text-right"
                               value={item.unitPrice}
-                              onChange={e => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, unitPrice: parseFloat(e.target.value) || 0, priceOverridden: true } : i))}
+                              onChange={e => setEditLineItemsList(list => list.map((row, k) => k === idx ? { ...row, unitPrice: parseFloat(e.target.value) || 0, priceOverridden: true } : row))}
                               title="Unit price ($)"
                             />
-                            {lineSource(item) === 'custom' && (
-                              <>
-                                <input
-                                  className="w-20 border rounded-md px-2 py-1.5 text-sm bg-background"
-                                  value={item.unit ?? ''}
-                                  placeholder="Load"
-                                  title="Optional unit label"
-                                  data-testid={`estimate-edit-line-${idx}-unit`}
-                                  onChange={e => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, unit: e.target.value } : i))}
-                                />
-                                <input
-                                  type="number" min={0} step={0.01}
-                                  className="w-20 border rounded-md px-2 py-1.5 text-sm bg-background text-right"
-                                  value={item.internalCost ?? ''}
-                                  placeholder="Cost"
-                                  title="Optional internal cost"
-                                  onChange={e => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, internalCost: e.target.value === '' ? null : parseFloat(e.target.value) } : i))}
-                                />
                               </>
                             )}
                             <span className="text-sm font-medium w-16 text-right shrink-0" data-testid={`estimate-edit-line-${idx}-total`}>${calcItem(item).toFixed(2)}</span>
@@ -1899,6 +1790,25 @@ export default function EstimatesPage() {
                               title="Remove this line item"
                             ><X className="w-3.5 h-3.5" /></button>
                           </div>
+                          {item.kind === 'custom' && (
+                            <PassThroughFields
+                              testId={`estimate-edit-line-${idx}`}
+                              unit={item.unit}
+                              internalCost={item.internalCost}
+                              markup={item.markup}
+                              unitPrice={item.unitPrice}
+                              onChange={patch => setEditLineItemsList(list => list.map((row, k) => k === idx ? { ...row, ...patch } : row))}
+                            />
+                          )}
+                          <AttachedPartsField
+                            testId={`estimate-edit-line-${idx}`}
+                            lineQty={item.qty}
+                            components={item.components}
+                            seed={item.kind !== 'kit' && item.inventoryItemId ? { inventoryItemId: item.inventoryItemId, name: item.description || 'Part', quantity: item.qty || 1, unit: item.unit ?? null, unitPrice: item.unitPrice } : null}
+                            priceOverridden={item.priceOverridden}
+                            clearInventoryItem={item.kind !== 'kit'}
+                            onChange={patch => setEditLineItemsList(list => list.map((row, k) => k === idx ? { ...row, ...patch, components: patch.components ?? null } : row))}
+                          />
                           <select
                             className="text-xs border rounded px-1.5 py-0.5 bg-background text-muted-foreground w-36"
                             value={item.category ?? 'labor'}

@@ -33,7 +33,8 @@ import {
   type ImportExportEntityConfig,
   type LineItemCsvShape,
 } from "../lib/importExport";
-import { acceptanceAmount, lineExtendedPrice, prepareLineItems, LineItemError } from "../lib/customLineItems";
+import { acceptanceAmount, lineExtendedPrice, LineItemError } from "../lib/customLineItems";
+import { prepareStoredLineItems } from "../lib/attachedParts";
 
 const router: IRouter = Router();
 
@@ -137,7 +138,7 @@ const estimatesImportExportConfig: ImportExportEntityConfig = {
     const errors: string[] = [];
     const customerEmail = requireString(raw.customerEmail, "Customer Email", errors);
     let lineItems: ReturnType<typeof decodeLineItemsCell> = [];
-    try { lineItems = prepareLineItems(decodeLineItemsCell(raw.lineItems, errors), "estimate"); }
+    try { lineItems = await prepareStoredLineItems(tenantId, decodeLineItemsCell(raw.lineItems, errors), "estimate"); }
     catch (error) { errors.push(error instanceof Error ? error.message : "Invalid line items"); }
     if (errors.length > 0 || !customerEmail) return { ok: false, errors };
 
@@ -452,7 +453,7 @@ router.post("/estimates", async (req, res): Promise<void> => {
     }
   }
 
-  try { items = prepareLineItems(items, "estimate"); }
+  try { items = await prepareStoredLineItems(tenantId, items, "estimate"); }
   catch (error) {
     res.status(error instanceof LineItemError ? error.status : 400).json({ error: error instanceof Error ? error.message : "Invalid line items" });
     return;
@@ -596,7 +597,7 @@ router.patch("/estimates/:id", async (req, res): Promise<void> => {
   }
   if (lineItems !== undefined) {
     let items: EstimateLineItem[];
-    try { items = prepareLineItems(lineItems, "estimate"); }
+    try { items = await prepareStoredLineItems(tenantId, lineItems, "estimate"); }
     catch (error) {
       res.status(error instanceof LineItemError ? error.status : 400).json({ error: error instanceof Error ? error.message : "Invalid line items" });
       return;

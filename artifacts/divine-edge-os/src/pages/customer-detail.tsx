@@ -387,6 +387,11 @@ export default function CustomerDetailPage() {
     query: { enabled: Number.isInteger(id) && id > 0, queryKey: getGetCustomerQueryKey(id) },
   });
   const { data: customer, isPending, isError, error, fetchStatus } = customerQuery;
+  const { data: customerBlueprints } = useQuery({
+    queryKey: ['customer-blueprints', id],
+    enabled: Number.isFinite(id) && id > 0,
+    queryFn: () => customFetch<{ id: number; name: string; address: string | null; planningLocked: boolean; planningLockedReason: string | null }[]>(`/api/blueprint-planning/customers/${id}/blueprints`),
+  });
   const { data: properties } = useListProperties(
     { customerId: id },
     { query: { enabled: !!id, queryKey: getListPropertiesQueryKey({ customerId: id }) } },
@@ -1100,6 +1105,7 @@ export default function CustomerDetailPage() {
           <TabsTrigger value="messages" title="SMS and email message history">Messages ({messages?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="staff-notes" title="Private staff notes — never visible to the customer">Staff Notes</TabsTrigger>
           <TabsTrigger value="plans" title="Active and past service plans">Plans {customerPlans && customerPlans.length > 0 ? `(${customerPlans.filter(p => p.status === 'active').length} active)` : ''}</TabsTrigger>
+          <TabsTrigger value="blueprints" title="Blueprints already drawn for this customer">Blueprints ({customerBlueprints?.length ?? 0})</TabsTrigger>
         </TabsList>
         </div>
 
@@ -2000,6 +2006,35 @@ export default function CustomerDetailPage() {
         {/* Plans tab */}
         <TabsContent value="plans" className="focus-visible:outline-none">
           <CustomerPlansTab customerId={id} properties={(properties ?? []).map(p => ({ id: p.id, address: p.address }))} />
+        </TabsContent>
+
+        <TabsContent value="blueprints" className="focus-visible:outline-none">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Blueprints</CardTitle>
+              <CardDescription>Plans already drawn for this customer. Open one to update prices or keep editing while it is unlocked.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {(customerBlueprints ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No blueprints for this customer yet.</p>
+              ) : (
+                <ul className="space-y-2" data-testid="customer-blueprints">
+                  {(customerBlueprints ?? []).map(blueprint => (
+                    <li key={blueprint.id} className="flex items-center justify-between gap-3 border rounded-md px-3 py-2">
+                      <div>
+                        <p className="font-medium">{blueprint.name}</p>
+                        <p className="text-xs text-muted-foreground">{blueprint.address || 'No property address'}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {blueprint.planningLocked && <Badge variant="outline">Locked</Badge>}
+                        <Button size="sm" variant="outline" onClick={() => setLocation(`/blueprints/${blueprint.id}/plan`)}>Open plan</Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 

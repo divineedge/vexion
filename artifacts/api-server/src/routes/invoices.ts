@@ -11,7 +11,8 @@ import crypto from "crypto";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { invoiceDocumentDefaults } from "../lib/invoiceDocumentDefaults";
 import { customerInvoiceGrouping, propertyInvoiceGroups, labelPropertyLine, type PropertyInvoiceLine } from "../lib/invoicePropertyGrouping";
-import { LineItemError, prepareLineItems } from "../lib/customLineItems";
+import { LineItemError } from "../lib/customLineItems";
+import { prepareStoredLineItems } from "../lib/attachedParts";
 import { isAdminRole, isOwnerRole } from "../lib/roles";
 import { decryptSecretConfig } from "../lib/secretsCrypto";
 import { sendLobLetter, type LobConfig } from "../lib/lobProvider";
@@ -410,7 +411,7 @@ router.post("/invoices", async (req, res): Promise<void> => {
   let lineItems = (bodyLineItems !== undefined && bodyLineItems !== null)
     ? bodyLineItems
     : templateFields.templateLineItems;
-  try { lineItems = prepareLineItems(lineItems, "invoice"); }
+  try { lineItems = await prepareStoredLineItems(tenantId, lineItems, "invoice"); }
   catch (error) {
     res.status(error instanceof LineItemError ? error.status : 400).json({ error: error instanceof Error ? error.message : "Invalid line items" });
     return;
@@ -567,7 +568,7 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
   // Full line-item replacement — recalculate subtotal and total, preserve existing tax rate
   if (lineItems !== undefined && Array.isArray(lineItems)) {
     let items: { description: string; quantity: number; unitPrice: number; total?: number }[];
-    try { items = prepareLineItems(lineItems, "invoice"); }
+    try { items = await prepareStoredLineItems(tenantId, lineItems, "invoice"); }
     catch (error) {
       res.status(error instanceof LineItemError ? error.status : 400).json({ error: error instanceof Error ? error.message : "Invalid line items" });
       return;

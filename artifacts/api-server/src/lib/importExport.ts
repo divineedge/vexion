@@ -947,7 +947,7 @@ export function decodeLineItemsCell(raw: string | undefined, errors: string[]): 
       description: fields.description,
       qty,
       unitPrice,
-      markup: kind === "custom" ? 0 : markup,
+      markup,
       discount: kind === "custom" ? 0 : discount,
       isOptional,
       acceptedByCustomer: isOptional ? (fields.accepted ?? "").toLowerCase() === "true" : true,

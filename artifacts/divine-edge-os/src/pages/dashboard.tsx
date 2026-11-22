@@ -14,7 +14,7 @@ import {
   type ActionTask, type DashboardLayout, type OperationsPayload,
 } from '@/components/dashboard/operations';
 import { useAuth } from '@/contexts/AuthContext';
-import { AlertTriangle, Briefcase, Check, CloudRain, DollarSign, LayoutGrid, SlidersHorizontal, Wrench } from 'lucide-react';
+import { AlertTriangle, Briefcase, Check, CloudRain, DollarSign, LayoutGrid, ListEnd, Package, ScrollText, SlidersHorizontal, Wrench } from 'lucide-react';
 
 const queryKey = ['operations-dashboard'];
 
@@ -51,7 +51,10 @@ export default function DashboardPage() {
       queryClient.invalidateQueries({ queryKey });
       toast.success('Task completed');
     },
-    onError: () => toast.error('That task was not completed'),
+    onError: (error: unknown) => {
+      const data = error && typeof error === 'object' && 'data' in error ? (error as { data?: { error?: string } }).data : undefined;
+      toast.error(data?.error || 'That task was not completed');
+    },
   });
 
   const layout = operations.data?.layout as DashboardLayout | undefined;
@@ -71,7 +74,7 @@ export default function DashboardPage() {
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500" data-testid="dashboard-operations">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Operations</h1>
+          <h1 className="text-3xl font-bold tracking-tight" data-testid="dashboard-title">Dashboard</h1>
           <p className="text-muted-foreground mt-1">Action center for today's work, money, and alerts.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -88,62 +91,34 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <Card data-testid="action-tasks">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Needs action</CardTitle>
-          <div className="flex flex-wrap gap-3 pt-2">
-            {TASK_SOURCE_OPTIONS.map(option => (
-              <label key={option.value} className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={layout?.taskSources.includes(option.value) ?? true}
-                  onCheckedChange={checked => toggleSource(option.value, checked === true)}
-                  aria-label={option.label}
-                />
-                {option.label}
-              </label>
-            ))}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {operations.isLoading && <p className="text-sm text-muted-foreground">Loading tasks…</p>}
-          {operations.isError && <p className="text-sm text-destructive">Tasks could not be loaded.</p>}
-          {operations.data && tasks.length === 0 && (
-            <p className="py-6 text-center text-sm text-muted-foreground" data-testid="action-tasks-empty">
-              {layout?.taskSources.length ? 'Nothing needs action from the sources you selected.' : 'Choose at least one source to see tasks.'}
-            </p>
-          )}
-          {tasks.map(task => (
-            <div key={`${task.source}-${task.sourceId}`} className="flex items-start justify-between gap-3 rounded-md border px-3 py-2.5" data-testid={`task-${task.source}-${task.sourceId}`}>
-              <button className="min-w-0 text-left" onClick={() => setLocation(task.href)}>
-                <p className="text-sm font-medium">{task.title}</p>
-                <p className="text-xs text-muted-foreground truncate">{task.detail}</p>
-              </button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={completeTask.isPending}
-                data-testid={`button-complete-${task.source}-${task.sourceId}`}
-                onClick={() => completeTask.mutate(task)}
-              >
-                <Check className="mr-1 h-3.5 w-3.5" /> Done
-              </Button>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
       {operations.isLoading && <p className="text-sm text-muted-foreground">Loading widgets…</p>}
-      {operations.isError && <p className="text-sm text-destructive">The operations dashboard could not be loaded.</p>}
+      {operations.isError && <p className="text-sm text-destructive">The dashboard could not be loaded.</p>}
       {operations.data && visible.length === 0 && (
         <p className="text-sm text-muted-foreground">Every widget is hidden. Customize the dashboard to show the default set again.</p>
       )}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {visible.map(widget => (
-          <div key={widget.key} data-testid={`widget-${widget.key}`}>
+          <div key={widget.key} className={widget.key === 'needs_action' ? 'lg:col-span-2' : undefined} data-testid={`widget-${widget.key}`}>
+            {widget.key === 'needs_action' && (
+              <NeedsAction
+                tasks={tasks}
+                layout={layout}
+                loading={operations.isLoading}
+                error={operations.isError}
+                pending={completeTask.isPending}
+                onToggle={toggleSource}
+                onOpen={setLocation}
+                onComplete={task => completeTask.mutate(task)}
+              />
+            )}
             {widget.key === 'jobs_completed' && widgets?.jobsCompleted && <JobsWidget data={widgets.jobsCompleted} />}
             {widget.key === 'invoices_revenue' && widgets?.invoicesRevenue && <InvoicesWidget data={widgets.invoicesRevenue} />}
+            {widget.key === 'invoice_attention' && widgets?.invoiceAttention && <InvoiceAttentionWidget data={widgets.invoiceAttention} onOpen={setLocation} />}
+            {widget.key === 'profit_and_loss' && widgets?.profitAndLoss && <ProfitWidget data={widgets.profitAndLoss} onOpen={setLocation} />}
             {widget.key === 'payroll_summary' && widgets?.payrollSummary && <PayrollWidget data={widgets.payrollSummary} />}
             {widget.key === 'schedule' && widgets?.schedule && <ScheduleWidget data={widgets.schedule} onOpen={setLocation} />}
+            {widget.key === 'job_waitlist' && widgets?.jobWaitlist && <WaitlistWidget data={widgets.jobWaitlist} onOpen={setLocation} />}
+            {widget.key === 'inventory_reorder' && widgets?.inventoryReorder && <InventoryWidget data={widgets.inventoryReorder} onOpen={setLocation} />}
             {widget.key === 'report_snapshots' && widgets?.reportSnapshots && <ReportsWidget data={widgets.reportSnapshots} onOpen={setLocation} />}
             {widget.key === 'alerts' && widgets?.alerts && <AlertsWidget data={widgets.alerts} onOpen={setLocation} />}
           </div>
@@ -159,6 +134,65 @@ export default function DashboardPage() {
         onReset={() => resetLayout.mutate()}
       />
     </div>
+  );
+}
+
+function NeedsAction({
+  tasks, layout, loading, error, pending, onToggle, onOpen, onComplete,
+}: {
+  tasks: ActionTask[];
+  layout: DashboardLayout | undefined;
+  loading: boolean;
+  error: boolean;
+  pending: boolean;
+  onToggle: (source: string, checked: boolean) => void;
+  onOpen: (href: string) => void;
+  onComplete: (task: ActionTask) => void;
+}) {
+  return (
+    <Card data-testid="action-tasks" className="h-full">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Needs Action</CardTitle>
+        <div className="flex flex-wrap gap-3 pt-2">
+          {TASK_SOURCE_OPTIONS.map(option => (
+            <label key={option.value} className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={layout?.taskSources.includes(option.value) ?? true}
+                onCheckedChange={checked => onToggle(option.value, checked === true)}
+                aria-label={option.label}
+              />
+              {option.label}
+            </label>
+          ))}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {loading && <p className="text-sm text-muted-foreground">Loading tasks…</p>}
+        {error && <p className="text-sm text-destructive">Tasks could not be loaded.</p>}
+        {!loading && !error && tasks.length === 0 && (
+          <p className="py-6 text-center text-sm text-muted-foreground" data-testid="action-tasks-empty">
+            {layout?.taskSources.length ? 'Nothing needs action from the sources you selected.' : 'Choose at least one source to see tasks.'}
+          </p>
+        )}
+        {tasks.map(task => (
+          <div key={`${task.source}-${task.sourceId}`} className="flex items-start justify-between gap-3 rounded-md border px-3 py-2.5" data-testid={`task-${task.source}-${task.sourceId}`}>
+            <button className="min-w-0 text-left" onClick={() => onOpen(task.href)}>
+              <p className="text-sm font-medium">{task.title}</p>
+              <p className="text-xs text-muted-foreground truncate">{task.detail}</p>
+            </button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              data-testid={`button-complete-${task.source}-${task.sourceId}`}
+              onClick={() => onComplete(task)}
+            >
+              <Check className="mr-1 h-3.5 w-3.5" /> Done
+            </Button>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -201,6 +235,93 @@ function InvoicesWidget({ data }: { data: NonNullable<OperationsPayload['widgets
           <Metric label="Open" value={data.restricted ? String(data.openCount) : `${data.openCount} · ${money(data.openTotal)}`} />
           <Metric label="Overdue" value={data.restricted ? String(data.overdueCount) : `${data.overdueCount} · ${money(data.overdueTotal)}`} />
           <Metric label="Collected" value={data.restricted ? String(data.collectedCount) : `${data.collectedCount} · ${money(data.collectedTotal)}`} />
+        </div>
+      )}
+    </WidgetFrame>
+  );
+}
+
+function InvoiceAttentionWidget({ data, onOpen }: { data: NonNullable<OperationsPayload['widgets']['invoiceAttention']>; onOpen: (href: string) => void }) {
+  return (
+    <WidgetFrame title={widgetTitle('invoice_attention')} icon={<DollarSign className="h-4 w-4" />} timeframe={data.timeframe}>
+      {data.empty ? <EmptyNote>No new invoices to send, and none are due soon or overdue.</EmptyNote> : (
+        <div className="space-y-3">
+          {data.toSend.length > 0 && <InvoiceLines label="Need to send" invoices={data.toSend} restricted={data.restricted} onOpen={onOpen} />}
+          {data.due.length > 0 && <InvoiceLines label="Due soon or overdue" invoices={data.due} restricted={data.restricted} onOpen={onOpen} />}
+        </div>
+      )}
+    </WidgetFrame>
+  );
+}
+
+function InvoiceLines({ label, invoices, restricted, onOpen }: { label: string; invoices: NonNullable<OperationsPayload['widgets']['invoiceAttention']>['toSend']; restricted: boolean; onOpen: (href: string) => void }) {
+  return (
+    <div>
+      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      {invoices.map(invoice => (
+        <button key={invoice.id} className="flex w-full items-center justify-between gap-2 rounded px-1 py-1.5 text-left hover:bg-muted/50" onClick={() => onOpen(invoice.href)} data-testid={`invoice-row-${invoice.id}`}>
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-medium">{invoice.invoiceNumber}</span>
+            <span className="block text-xs text-muted-foreground">{invoice.customerName ?? 'No customer'}{invoice.overdue ? ' · Overdue' : ''}</span>
+          </span>
+          <span className="shrink-0 text-sm font-medium">{restricted ? 'Hidden' : money(invoice.total)}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ProfitWidget({ data, onOpen }: { data: NonNullable<OperationsPayload['widgets']['profitAndLoss']>; onOpen: (href: string) => void }) {
+  return (
+    <WidgetFrame title={widgetTitle('profit_and_loss')} icon={<ScrollText className="h-4 w-4" />} timeframe={data.timeframe}>
+      {data.restricted ? <EmptyNote>Profit and loss is hidden for this role.</EmptyNote> : data.empty ? <EmptyNote>No paid invoices or expenses in this timeframe.</EmptyNote> : (
+        <button className="w-full space-y-2 text-left" onClick={() => onOpen(data.href)}>
+          <div className="grid grid-cols-2 gap-3">
+            <Metric label="Revenue" value={money(data.revenue)} />
+            <Metric label="Cost of goods" value={money(data.costOfGoodsSold)} />
+            <Metric label="Gross profit" value={money(data.grossProfit)} />
+            <Metric label="Expenses" value={money(data.operatingExpenses)} />
+          </div>
+          <p className="text-sm font-medium">Net income {money(data.netIncome)}</p>
+        </button>
+      )}
+    </WidgetFrame>
+  );
+}
+
+function WaitlistWidget({ data, onOpen }: { data: NonNullable<OperationsPayload['widgets']['jobWaitlist']>; onOpen: (href: string) => void }) {
+  return (
+    <WidgetFrame title={widgetTitle('job_waitlist')} icon={<ListEnd className="h-4 w-4" />}>
+      {data.empty ? <EmptyNote>No jobs are waiting to be scheduled.</EmptyNote> : (
+        <div className="space-y-1">
+          {data.jobs.map(job => (
+            <button key={job.id} className="flex w-full items-center justify-between gap-2 rounded px-1 py-1.5 text-left hover:bg-muted/50" onClick={() => onOpen(job.href)} data-testid={`waitlist-job-${job.id}`}>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium">{job.title}</span>
+                <span className="block text-xs text-muted-foreground">{job.customerName ?? 'No customer'}</span>
+              </span>
+              <Badge variant="outline" className="shrink-0">Waitlist</Badge>
+            </button>
+          ))}
+          {data.count > data.jobs.length && <p className="text-xs text-muted-foreground">{data.count - data.jobs.length} more on the waitlist</p>}
+        </div>
+      )}
+    </WidgetFrame>
+  );
+}
+
+function InventoryWidget({ data, onOpen }: { data: NonNullable<OperationsPayload['widgets']['inventoryReorder']>; onOpen: (href: string) => void }) {
+  return (
+    <WidgetFrame title={widgetTitle('inventory_reorder')} icon={<Package className="h-4 w-4" />}>
+      {data.empty ? <EmptyNote>No items are at or below their reorder point.</EmptyNote> : (
+        <div className="space-y-1">
+          {data.items.map(item => (
+            <button key={item.id} className="flex w-full items-center justify-between gap-2 rounded px-1 py-1.5 text-left text-sm hover:bg-muted/50" onClick={() => onOpen(item.href)} data-testid={`reorder-item-${item.id}`}>
+              <span className="min-w-0 truncate">{item.name}</span>
+              <span className="shrink-0 text-muted-foreground">{item.quantity} / {item.reorderPoint} {item.unit}</span>
+            </button>
+          ))}
+          {data.count > data.items.length && <p className="text-xs text-muted-foreground">{data.count - data.items.length} more need reorder</p>}
         </div>
       )}
     </WidgetFrame>

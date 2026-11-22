@@ -363,8 +363,7 @@ export default function PropertySatelliteMap({
 
   // Measurement mode for the zone type currently selected in the toolbar. This is what
   // decides whether the next drawing session produces a closed polygon (area) or an open
-  // polyline (linear) — it's locked in once drawing starts, since the zone-type picker is
-  // hidden while drawingMode is true.
+  // polyline (linear). The area and linear controls stay above the map while drawing.
   const drawMode: MeasurementCapture = captureMode;
   const drawModeRef = useRef(drawMode);
   useEffect(() => {
@@ -542,54 +541,8 @@ export default function PropertySatelliteMap({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Map container */}
-      <div className="relative rounded-lg overflow-hidden border" style={{ height: 380 }}>
-        <div ref={mapContainerRef} style={{ height: '100%', width: '100%' }} />
-
-        {/* Drawing overlay controls */}
-        {drawingMode && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-amber-600 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-3 text-sm font-medium">
-            <span>
-              {drawMode === 'linear'
-                ? `Click map to add points along the line (${drawingPoints.length} points)`
-                : `Click map to add vertices (${drawingPoints.length} points)`}
-            </span>
-            {drawMode === 'linear' && drawingPoints.length >= 2 && (
-              <button
-                className="bg-white text-amber-700 px-3 py-0.5 rounded-full font-semibold hover:bg-amber-50 transition"
-                onClick={() => finishZone()}
-              >
-                Finish Line
-              </button>
-            )}
-            {drawMode !== 'linear' && drawingPoints.length >= 3 && (
-              <button
-                className="bg-white text-amber-700 px-3 py-0.5 rounded-full font-semibold hover:bg-amber-50 transition"
-                onClick={() => finishZone()}
-              >
-                Close Polygon
-              </button>
-            )}
-            <button
-              className="text-white/80 hover:text-white underline"
-              onClick={cancelDrawing}
-            >
-              Cancel
-            </button>
-          </div>
-        )}
-
-        {/* Satellite label */}
-        <div className="absolute bottom-2 left-2 z-[1000] bg-black/60 text-white text-[10px] px-2 py-0.5 rounded font-mono pointer-events-none" data-testid="property-satellite-status">
-          {satelliteStatus === 'loaded' ? 'Satellite loaded' : satelliteStatus === 'failed' ? 'Satellite failed' : 'Satellite'}
-        </div>
-      </div>
-
-      {/* Toolbar */}
       {!readonly && (
-        <div className="flex flex-wrap gap-2 items-center">
-          {!drawingMode ? (
-            <>
+        <div className="flex flex-wrap gap-2 items-center" data-testid="measurement-controls">
               <div className="flex items-center gap-2 flex-1">
                 {/* Zone type selector with color swatch */}
                 <div className="flex items-center gap-1.5 flex-1 max-w-[220px]">
@@ -650,16 +603,35 @@ export default function PropertySatelliteMap({
               >
                 {editingGeofence ? 'Cancel Geofence' : 'Edit Geofence'}
               </button>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {drawMode === 'linear'
-                ? 'Click on the map to place points along the line, then finish it.'
-                : 'Click on the map to place vertices, then close the polygon. Area and perimeter update together.'}
-            </p>
-          )}
         </div>
       )}
+
+      <div className="relative rounded-lg overflow-hidden border" style={{ height: 420 }} data-testid="property-measure-map">
+        <div ref={mapContainerRef} style={{ height: '100%', width: '100%' }} />
+
+        {drawingMode && (
+          <div className="absolute top-3 left-3 z-[1000] max-w-[16rem] bg-amber-600 text-white px-3 py-1.5 rounded-md shadow-lg flex flex-col items-start gap-1 text-xs font-medium">
+            <span>
+              {drawMode === 'linear'
+                ? `Line points: ${drawingPoints.length}`
+                : `Area points: ${drawingPoints.length}`}
+            </span>
+            <span className="flex items-center gap-2">
+              {drawMode === 'linear' && drawingPoints.length >= 2 && (
+                <button className="bg-white text-amber-700 px-2 py-0.5 rounded font-semibold" onClick={() => finishZone()}>Finish Line</button>
+              )}
+              {drawMode !== 'linear' && drawingPoints.length >= 3 && (
+                <button className="bg-white text-amber-700 px-2 py-0.5 rounded font-semibold" onClick={() => finishZone()}>Close Polygon</button>
+              )}
+              <button className="underline" onClick={cancelDrawing}>Cancel</button>
+            </span>
+          </div>
+        )}
+
+        <div className="absolute bottom-2 left-2 z-[1000] bg-black/60 text-white text-[10px] px-2 py-0.5 rounded font-mono pointer-events-none" data-testid="property-satellite-status">
+          {satelliteStatus === 'loaded' ? 'Satellite loaded' : satelliteStatus === 'failed' ? 'Satellite failed' : 'Satellite'}
+        </div>
+      </div>
 
       {/* Geofence editor */}
       {editingGeofence && !readonly && (
@@ -710,6 +682,7 @@ export default function PropertySatelliteMap({
           {zones.map((zone) => (
             <div
               key={zone.id}
+              data-testid="measured-zone"
               className={`flex items-center gap-3 px-3 py-2 rounded-lg border text-sm transition-opacity ${!zone.enabled ? 'opacity-50' : ''}`}
             >
               <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: zone.color }} />

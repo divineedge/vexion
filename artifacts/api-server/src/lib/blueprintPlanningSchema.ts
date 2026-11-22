@@ -90,6 +90,16 @@ export function drizzleMigrationMatchesInlineSql(): boolean {
   return normalize(file) === normalize(BLUEPRINT_PLANNING_MIGRATION);
 }
 
+export const BLUEPRINT_HEAD_RULES_MIGRATION = `ALTER TABLE blueprint_planning_settings ADD COLUMN IF NOT EXISTS head_rules jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS planning_rules jsonb;
+ALTER TABLE blueprint_catalog_links ADD COLUMN IF NOT EXISTS head_type text;
+ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS nozzle text;
+ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS throw_ft double precision;
+ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS arc_degrees double precision;
+ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS pattern text;
+`;
+
 export async function installBlueprintPlanningSchema(): Promise<void> {
   await pool.query(BLUEPRINT_PLANNING_MIGRATION);
+  await pool.query(BLUEPRINT_HEAD_RULES_MIGRATION);
 }

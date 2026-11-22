@@ -17,6 +17,8 @@ export type PlanFeature = {
   areaKind?: "lawn" | "gravel" | "bark" | "other" | null;
 };
 
+export type HeadTypeName = "sprinkler" | "drip";
+
 export type CatalogLinkInput = {
   roleKey: string;
   sourceKind: "inventory" | "kit" | "service" | "passthrough";
@@ -27,7 +29,27 @@ export type CatalogLinkInput = {
   internalCost: number | null;
   onHand: number | null;
   customerLabel?: string | null;
+  /** Sprinkler and drip emitters use different spacing. Null on a sprinkler role means sprinkler. */
+  headType?: HeadTypeName | null;
+  nozzle?: string | null;
+  throwFt?: number | null;
+  arcDegrees?: number | null;
+  pattern?: string | null;
 };
+
+/** Company or blueprint spacing for a head type, or for one specific head. */
+export type HeadRule = {
+  headType: HeadTypeName;
+  headKey: string | null;
+  minSpacingFt: number | null;
+  maxSpacingFt: number | null;
+};
+
+/** Null means this blueprint keeps the company rules. A partial list changes only those rules. */
+export type BlueprintRuleOverride = {
+  headRules?: HeadRule[];
+  zoneExclusions?: { a: string; b: string }[];
+} | null;
 
 export type PlanningSettingsInput = {
   sprinklerMinSpacingFt: number | null;
@@ -36,6 +58,7 @@ export type PlanningSettingsInput = {
   yardsPerTruckLoad: number | null;
   bufferPercent: number;
   zoneExclusions: { a: string; b: string }[];
+  headRules?: HeadRule[];
 };
 
 export type PlanComponent = {
@@ -77,8 +100,13 @@ export type DrawnHead = {
   zone: number;
   headKey: string;
   name: string;
+  headType: HeadTypeName;
   lat: number;
   lng: number;
+  /** Short label from the nozzle, throw, arc, or pattern stored on the head. Null when the nozzle is not stored. */
+  nozzle: string | null;
+  /** Which of nozzle, throw, arc, or pattern is not stored on this head. */
+  nozzleNote: string | null;
 };
 
 export type DrawnLine = {
@@ -212,6 +240,87 @@ function round2(value: number): number {
 
 export function headKey(link: Pick<CatalogLinkInput, "sourceKind" | "sourceId">): string {
   return `${link.sourceKind}:${link.sourceId}`;
+}
+
+export function linkHeadType(link: Pick<CatalogLinkInput, "roleKey" | "headType">): HeadTypeName {
+  if (link.headType === "drip" || link.roleKey === "drip") return "drip";
+  return "sprinkler";
+}
+
+function cleanHeadRule(rule: HeadRule): HeadRule | null {
+  if (rule.headType !== "sprinkler" && rule.headType !== "drip") return null;
+  const min = rule.minSpacingFt == null ? null : Number(rule.minSpacingFt);
+  const max = rule.maxSpacingFt == null ? null : Number(rule.maxSpacingFt);
+  if (min != null && !Number.isFinite(min)) return null;
+  if (max != null && !Number.isFinite(max)) return null;
+  return {
+    headType: rule.headType,
+    headKey: rule.headKey ? String(rule.headKey).slice(0, 80) : null,
+    minSpacingFt: min,
+    maxSpacingFt: max,
+  };
+}
+
+export function companyHeadRules(settings: PlanningSettingsInput): HeadRule[] {
+  const stored = (settings.headRules ?? []).flatMap(rule => {
+    const cleaned = cleanHeadRule(rule);
+    return cleaned ? [cleaned] : [];
+  });
+  const hasSprinklerType = stored.some(rule => rule.headType === "sprinkler" && !rule.headKey && rule.minSpacingFt != null && rule.maxSpacingFt != null);
+  if (!hasSprinklerType && settings.sprinklerMinSpacingFt != null && settings.sprinklerMaxSpacingFt != null) {
+    stored.unshift({
+      headType: "sprinkler",
+      headKey: null,
+      minSpacingFt: settings.sprinklerMinSpacingFt,
+      maxSpacingFt: settings.sprinklerMaxSpacingFt,
+    });
+  }
+  return stored;
+}
+
+/** Company rules apply until a blueprint stores a change. An override replaces only the matching rule. */
+export function resolvePlanningRules(company: PlanningSettingsInput, override: BlueprintRuleOverride): PlanningSettingsInput {
+  const merged = companyHeadRules(company).map(rule => ({ ...rule }));
+  for (const raw of override?.headRules ?? []) {
+    const rule = cleanHeadRule(raw);
+    if (!rule || rule.minSpacingFt == null || rule.maxSpacingFt == null) continue;
+    const index = merged.findIndex(item => item.headType === rule.headType && (item.headKey ?? null) === (rule.headKey ?? null));
+    if (index >= 0) merged[index] = rule;
+    else merged.push(rule);
+  }
+  const sprinkler = merged.find(rule => rule.headType === "sprinkler" && !rule.headKey);
+  return {
+    ...company,
+    headRules: merged,
+    sprinklerMinSpacingFt: sprinkler?.minSpacingFt ?? company.sprinklerMinSpacingFt,
+    sprinklerMaxSpacingFt: sprinkler?.maxSpacingFt ?? company.sprinklerMaxSpacingFt,
+    zoneExclusions: override?.zoneExclusions ?? company.zoneExclusions,
+  };
+}
+
+export function spacingFor(settings: PlanningSettingsInput, headType: HeadTypeName, key: string | null): { minSpacingFt: number; maxSpacingFt: number } | null {
+  const rules = companyHeadRules(settings);
+  const specific = key ? rules.find(rule => rule.headType === headType && rule.headKey === key && rule.minSpacingFt != null && rule.maxSpacingFt != null) : undefined;
+  const typed = rules.find(rule => rule.headType === headType && !rule.headKey && rule.minSpacingFt != null && rule.maxSpacingFt != null);
+  const chosen = specific ?? typed;
+  if (!chosen || chosen.minSpacingFt == null || chosen.maxSpacingFt == null) return null;
+  return { minSpacingFt: chosen.minSpacingFt, maxSpacingFt: chosen.maxSpacingFt };
+}
+
+/** A short nozzle label from details stored on the head. Nothing here is calculated. */
+export function suggestNozzle(specs: { nozzle?: string | null; throwFt?: number | null; arcDegrees?: number | null; pattern?: string | null }): { nozzle: string | null; missing: string | null } {
+  const missing: string[] = [];
+  const nozzle = specs.nozzle?.trim() || "";
+  if (!nozzle) missing.push("nozzle");
+  if (!(typeof specs.throwFt === "number" && Number.isFinite(specs.throwFt) && specs.throwFt > 0)) missing.push("throw");
+  if (!(typeof specs.arcDegrees === "number" && Number.isFinite(specs.arcDegrees) && specs.arcDegrees > 0)) missing.push("arc");
+  if (!specs.pattern?.trim()) missing.push("pattern");
+  if (!nozzle) return { nozzle: null, missing: missing.length ? `Missing ${missing.join(", ")}` : null };
+  const bits = [nozzle];
+  if (!missing.includes("throw")) bits.push(`${specs.throwFt} ft`);
+  if (!missing.includes("arc")) bits.push(`${specs.arcDegrees}°`);
+  if (!missing.includes("pattern")) bits.push(specs.pattern!.trim());
+  return { nozzle: bits.join(" · "), missing: missing.length ? `Missing ${missing.join(", ")}` : null };
 }
 
 function conflicts(a: string, b: string, exclusions: { a: string; b: string }[]): boolean {
@@ -407,10 +516,18 @@ export function missingPlanSetup(jobType: string, settings: PlanningSettingsInpu
     if (!links.some(link => link.roleKey === role)) missing.push(`Link ${ROLE_LABELS[role] ?? role} in blueprint planning settings`);
   }
   if (jobType === "sprinkler") {
-    if (settings.sprinklerMinSpacingFt == null || settings.sprinklerMaxSpacingFt == null) {
-      missing.push("Set how close sprinklers can be and how far apart they go");
-    } else if (settings.sprinklerMinSpacingFt > settings.sprinklerMaxSpacingFt) {
-      missing.push("The closest sprinkler spacing has to be less than or equal to the farthest");
+    const emitters = links.filter(link => link.roleKey === "sprinkler" || link.roleKey === "drip" || link.headType === "sprinkler" || link.headType === "drip");
+    const types = new Set(emitters.map(linkHeadType));
+    if (!types.size || types.has("sprinkler")) {
+      const spacing = spacingFor(settings, "sprinkler", null);
+      if (!spacing) missing.push("Set how close sprinklers can be and how far apart they go");
+      else if (spacing.minSpacingFt > spacing.maxSpacingFt) missing.push("The closest sprinkler spacing has to be less than or equal to the farthest");
+    }
+    if (types.has("drip")) {
+      const spacing = spacingFor(settings, "drip", null);
+      const uncovered = emitters.filter(link => linkHeadType(link) === "drip" && !spacingFor(settings, "drip", headKey(link)));
+      if (uncovered.length) missing.push("Set how close drip emitters can be and how far apart they go");
+      else if (spacing && spacing.minSpacingFt > spacing.maxSpacingFt) missing.push("The closest drip spacing has to be less than or equal to the farthest");
     }
     const lawn = features.some(feature => feature.kind === "work_area" && feature.areaKind === "lawn" && feature.points.length >= 3);
     const outline = features.some(feature => feature.kind === "outline" && feature.points.length >= 3);
@@ -477,15 +594,43 @@ export function buildPlan(input: {
   if (jobType === "sprinkler") {
     const areas = input.features.filter(feature => feature.kind === "work_area" && feature.areaKind === "lawn" && feature.points.length >= 3);
     const polygons = areas.length > 0 ? areas : input.features.filter(feature => feature.kind === "outline" && feature.points.length >= 3);
-    const sprinklers = linksFor(input.links, "sprinkler");
-    const placed = polygons.flatMap(area => placeSprinklers(area.points, settings.sprinklerMinSpacingFt!, settings.sprinklerMaxSpacingFt!));
-    const keys = assignHeadKeys(placed, sprinklers, settings.zoneExclusions);
-    const zones = assignZones(keys, settings.zoneExclusions);
+    const sprinklers = input.links.filter(link => link.roleKey === "sprinkler" || link.roleKey === "drip" || link.headType === "sprinkler" || link.headType === "drip");
+    const groups = new Map<string, CatalogLinkInput[]>();
+    for (const link of sprinklers) {
+      const spacing = spacingFor(settings, linkHeadType(link), headKey(link));
+      const specific = spacingFor(settings, linkHeadType(link), headKey(link)) && (settings.headRules ?? []).some(rule => rule.headKey === headKey(link) && rule.headType === linkHeadType(link) && rule.minSpacingFt != null && rule.maxSpacingFt != null);
+      const groupId = specific ? `head:${headKey(link)}` : `type:${linkHeadType(link)}`;
+      groups.set(groupId, [...(groups.get(groupId) ?? []), link]);
+    }
+    const placedPoints: LatLng[] = [];
+    const placedKeys: string[] = [];
+    for (const group of groups.values()) {
+      const sample = group[0];
+      const spacing = spacingFor(settings, linkHeadType(sample), headKey(sample));
+      if (!spacing) continue;
+      const points = polygons.flatMap(area => placeSprinklers(area.points, spacing.minSpacingFt, spacing.maxSpacingFt));
+      const keys = assignHeadKeys(points, group, settings.zoneExclusions);
+      placedPoints.push(...points);
+      placedKeys.push(...keys);
+    }
+    const zones = assignZones(placedKeys, settings.zoneExclusions);
     zoneCount = zones.length === 0 ? 0 : Math.max(...zones) + 1;
-    heads = placed.map((point, index) => {
-      const key = keys[index];
+    heads = placedPoints.map((point, index) => {
+      const key = placedKeys[index];
       const link = sprinklers.find(item => headKey(item) === key) ?? sprinklers[0];
-      return { id: `head_${index + 1}`, zone: zones[index] ?? 0, headKey: key, name: link?.name ?? "Sprinkler", lat: point.lat, lng: point.lng };
+      const suggestion = suggestNozzle(link ?? {});
+      if (suggestion.missing && link && !questions.includes(`${link.name}: ${suggestion.missing}`)) questions.push(`${link.name}: ${suggestion.missing}`);
+      return {
+        id: `head_${index + 1}`,
+        zone: zones[index] ?? 0,
+        headKey: key,
+        name: link?.name ?? "Sprinkler",
+        headType: link ? linkHeadType(link) : "sprinkler",
+        lat: point.lat,
+        lng: point.lng,
+        nozzle: suggestion.nozzle,
+        nozzleNote: suggestion.missing,
+      };
     });
     const hookup = input.features.find(feature => feature.kind === "water_hookup" && feature.points.length >= 1);
     const hookPoint = hookup?.points[0];

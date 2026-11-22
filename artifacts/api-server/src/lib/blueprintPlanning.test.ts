@@ -6,6 +6,8 @@ import {
   nextVersionStatuses,
   orderListFromLines,
   polygonAreaSqFt,
+  resolvePlanningRules,
+  spacingFor,
   type CatalogLinkInput,
   type PlanFeature,
   type PlanningSettingsInput,
@@ -114,6 +116,35 @@ describe("blueprint planning", () => {
     const rolled = customerLines.find(line => line.id === "pipe_and_fittings");
     expect(rolled?.components.map(part => part.roleKey)).toEqual(expect.arrayContaining(["pipe", "elbow", "tee"]));
     expect(result.plan.lines.some(line => line.kind === "main")).toBe(true);
+  });
+
+  it("places drip emitters on their own spacing and suggests a nozzle only from stored details", () => {
+    const links = [
+      ...required.filter(item => item.roleKey !== "sprinkler"),
+      link("sprinkler", 11, { name: "Spray", headType: "sprinkler", nozzle: "VAN", throwFt: 15, arcDegrees: 180, pattern: "matched" }),
+      link("sprinkler", 12, { name: "Drip line", headType: "drip" }),
+    ];
+    const company: PlanningSettingsInput = {
+      ...settings,
+      headRules: [
+        { headType: "sprinkler", headKey: null, minSpacingFt: 15, maxSpacingFt: 40 },
+        { headType: "drip", headKey: null, minSpacingFt: 6, maxSpacingFt: 12 },
+      ],
+    };
+    const result = buildPlan({ jobType: "sprinkler", features: sprinklerFeatures(), settings: company, links });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const spray = result.plan.heads.filter(head => head.headKey === "inventory:11");
+    const drip = result.plan.heads.filter(head => head.headKey === "inventory:12");
+    expect(drip.length).toBeGreaterThan(spray.length);
+    expect(spray[0]?.nozzle).toBe("VAN · 15 ft · 180° · matched");
+    expect(drip[0]?.nozzle).toBeNull();
+    expect(drip[0]?.nozzleNote).toMatch(/nozzle/);
+    const override = resolvePlanningRules(company, { headRules: [{ headType: "sprinkler", headKey: null, minSpacingFt: 20, maxSpacingFt: 30 }] });
+    expect(spacingFor(company, "sprinkler", null)?.maxSpacingFt).toBe(40);
+    expect(spacingFor(override, "sprinkler", null)).toEqual({ minSpacingFt: 20, maxSpacingFt: 30 });
+    expect(spacingFor(override, "drip", null)?.maxSpacingFt).toBe(12);
+    expect(company.headRules?.[0]?.minSpacingFt).toBe(15);
   });
 
   it("calculates gravel yards and asks for density instead of inventing tons or loads", () => {

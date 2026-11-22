@@ -38,13 +38,15 @@ type Version = {
   total: number | null;
   lines: CustomerLine[];
   orderList: OrderRow[];
-  plan: { heads?: { id: string; zone: number; name: string; lat: number; lng: number; headKey: string }[]; lines?: { id: string; kind: string; points: LatLng[]; zone: number | null }[]; curbFeet?: number | null; questions?: string[]; materials?: { label: string; yards: number | null; tons: number | null; truckLoads: number | null; question: string | null }[]; zoneCount?: number };
+  plan: { heads?: { id: string; zone: number; name: string; lat: number; lng: number; headKey: string; headType?: string; nozzle?: string | null; nozzleNote?: string | null }[]; lines?: { id: string; kind: string; points: LatLng[]; zone: number | null }[]; curbFeet?: number | null; questions?: string[]; materials?: { label: string; yards: number | null; tons: number | null; truckLoads: number | null; question: string | null }[]; zoneCount?: number };
   inputs: { jobType?: string; features?: Feature[] };
   estimateId: number | null;
 };
+type HeadRule = { headType: 'sprinkler' | 'drip'; headKey: string | null; minSpacingFt: number | null; maxSpacingFt: number | null };
 type Bundle = {
-  blueprint: { id: number; name: string; planningInputs: { jobType?: string; features?: Feature[] }; planningLocked: boolean; planningLockedReason: string | null; chosenPlanVersionId: number | null };
+  blueprint: { id: number; name: string; planningInputs: { jobType?: string; features?: Feature[] }; planningLocked: boolean; planningLockedReason: string | null; chosenPlanVersionId: number | null; planningRules: { headRules?: HeadRule[] } | null };
   property: { id: number; address: string; lat: number | null; lng: number | null; customerId: number } | null;
+  settings: { sprinklerMinSpacingFt: number | null; sprinklerMaxSpacingFt: number | null; headRules?: HeadRule[] };
   versions: Version[];
   archivedVersions: Version[];
 };
@@ -97,6 +99,8 @@ export default function BlueprintPlanPage() {
   const [satelliteStatus, setSatelliteStatus] = useState<SatelliteStatus>('loading');
   const [missing, setMissing] = useState<string[]>([]);
   const [versionName, setVersionName] = useState('Full plan');
+  const [overrideMin, setOverrideMin] = useState('');
+  const [overrideMax, setOverrideMax] = useState('');
   const [lineEdits, setLineEdits] = useState<Record<number, CustomerLine[]>>({});
   const drawing = features ?? ((data?.blueprint.planningInputs?.features as Feature[] | undefined) ?? []);
   const locked = data?.blueprint.planningLocked === true;
@@ -266,6 +270,37 @@ export default function BlueprintPlanPage() {
 
           <div className="space-y-3">
             <Card>
+              <CardHeader><CardTitle className="text-base">Rules for this blueprint</CardTitle></CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <p data-testid="company-sprinkler-rule">Company sprinklers: {data?.settings?.sprinklerMinSpacingFt ?? '—'}–{data?.settings?.sprinklerMaxSpacingFt ?? '—'} ft</p>
+                <p data-testid="company-drip-rule">Company drip: {(data?.settings?.headRules ?? []).find(rule => rule.headType === 'drip' && !rule.headKey)?.minSpacingFt ?? '—'}–{(data?.settings?.headRules ?? []).find(rule => rule.headType === 'drip' && !rule.headKey)?.maxSpacingFt ?? '—'} ft</p>
+                <p data-testid="blueprint-rule">{data?.blueprint.planningRules?.headRules?.some(rule => rule.headType === 'sprinkler' && !rule.headKey) ? `This blueprint only: ${data.blueprint.planningRules.headRules.find(rule => rule.headType === 'sprinkler' && !rule.headKey)?.minSpacingFt}–${data.blueprint.planningRules.headRules.find(rule => rule.headType === 'sprinkler' && !rule.headKey)?.maxSpacingFt} ft` : 'This blueprint uses the company sprinkler spacing.'}</p>
+                <div className="flex flex-wrap gap-2">
+                  <Input className="w-24 h-8" type="number" placeholder="Closest" value={overrideMin} disabled={locked} onChange={event => setOverrideMin(event.target.value)} />
+                  <Input className="w-24 h-8" type="number" placeholder="Farthest" value={overrideMax} disabled={locked} onChange={event => setOverrideMax(event.target.value)} />
+                  <Button size="sm" variant="outline" disabled={locked} data-testid="save-blueprint-spacing" onClick={async () => {
+                    const min = Number(overrideMin);
+                    const max = Number(overrideMax);
+                    if (!(min > 0) || !(max > 0)) { toast.error('Enter the closest and farthest spacing for this blueprint'); return; }
+                    try {
+                      await customFetch(`/api/blueprint-planning/blueprints/${id}/rules`, { method: 'PUT', body: JSON.stringify({ headRules: [{ headType: 'sprinkler', headKey: null, minSpacingFt: min, maxSpacingFt: max }] }) });
+                      toast.success('This blueprint uses its own sprinkler spacing');
+                      await refetch();
+                    } catch (error) { toast.error(errorMessage(error)); }
+                  }}>Use on this blueprint</Button>
+                  <Button size="sm" variant="ghost" disabled={locked} onClick={async () => {
+                    try {
+                      await customFetch(`/api/blueprint-planning/blueprints/${id}/rules`, { method: 'PUT', body: JSON.stringify({ clear: true }) });
+                      setOverrideMin('');
+                      setOverrideMax('');
+                      toast.success('This blueprint uses the company rules');
+                      await refetch();
+                    } catch (error) { toast.error(errorMessage(error)); }
+                  }}>Use company spacing</Button>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
               <CardHeader><CardTitle className="text-base">Plan</CardTitle></CardHeader>
               <CardContent className="space-y-2">
                 <Input value={versionName} onChange={event => setVersionName(event.target.value)} disabled={locked} placeholder="Version name" />
@@ -285,6 +320,11 @@ export default function BlueprintPlanPage() {
                   <p key={material.label} className="text-sm">{material.label}: {material.yards ?? '—'} yards{material.tons != null ? `, ${material.tons} tons` : ''}{material.truckLoads != null ? `, ${material.truckLoads} loads` : ''}</p>
                 ))}
                 {selected && <p data-testid="zone-count">Zones: {selected.plan.zoneCount ?? 0}. Heads: {selected.plan.heads?.length ?? 0}.</p>}
+                {Array.from(new Map((selected?.plan.heads ?? []).map(head => [head.headKey, head])).values()).map(head => (
+                  <p key={head.headKey} className="text-xs" data-testid={`placed-nozzle-${head.headKey}`}>
+                    {head.name}: {head.nozzle ? head.nozzle : 'No nozzle'}{head.nozzleNote ? ` — ${head.nozzleNote}` : ''}
+                  </p>
+                ))}
               </CardContent>
             </Card>
 
@@ -380,7 +420,7 @@ function PlanMap({ lat, lng, features, draft, heads, lines, satelliteStatus, onS
   lng?: number | null;
   features: Feature[];
   draft: LatLng[];
-  heads: { id: string; zone: number; lat: number; lng: number; name: string }[];
+  heads: { id: string; zone: number; lat: number; lng: number; name: string; nozzle?: string | null; nozzleNote?: string | null }[];
   lines: { id: string; kind: string; points: LatLng[] }[];
   satelliteStatus: SatelliteStatus;
   onSatelliteStatus: (status: SatelliteStatus) => void;
@@ -436,7 +476,7 @@ function PlanMap({ lat, lng, features, draft, heads, lines, satelliteStatus, onS
       }
       for (const head of heads) {
         L.circleMarker([head.lat, head.lng], { radius: 5, color: '#fff', weight: 2, fillColor: zoneColors[head.zone % zoneColors.length], fillOpacity: 1 })
-          .addTo(map).bindTooltip(`${head.name} · zone ${head.zone + 1}`);
+          .addTo(map).bindTooltip(`${head.nozzle ? head.nozzle : 'No nozzle'}${head.nozzleNote ? ` · ${head.nozzleNote}` : ''}`, { direction: 'top', offset: [0, -4] });
       }
       if (focus && focus.length >= 2) map.fitBounds(L.latLngBounds(focus.map(point => [point.lat, point.lng])), { padding: [24, 24] });
     });

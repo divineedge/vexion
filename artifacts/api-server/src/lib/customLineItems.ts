@@ -30,7 +30,11 @@ export function lineQuantity(item: { qty?: unknown; quantity?: unknown }): numbe
   return number ?? 0;
 }
 
-/** Customer extended price. Custom lines are quantity × unit price, with no markup or discount. */
+/**
+ * Customer extended price.
+ * A pass-through line charges its customer unit price. Markup on that line is a percent of
+ * internal cost and is already written into the unit price before save, so it is not applied again.
+ */
 export function lineExtendedPrice(item: {
   kind?: unknown;
   qty?: unknown;
@@ -117,6 +121,8 @@ function normalizeCustom(item: LineRecord, mode: "estimate" | "invoice"): LineRe
   }
   if (internalCost !== null && internalCost < 0) throw new LineItemError("Custom line internal cost must be zero or more");
   const unit = optionalLabel(item.unit ?? item.unitLabel);
+  const markupRaw = item.markup === null || item.markup === undefined || item.markup === "" ? 0 : finite(item.markup);
+  if (markupRaw === null || markupRaw < 0) throw new LineItemError("Custom line markup must be zero or more");
   const total = Math.round(qty * unitPrice * 100) / 100;
   return {
     ...item,
@@ -129,7 +135,7 @@ function normalizeCustom(item: LineRecord, mode: "estimate" | "invoice"): LineRe
     unitLabel: undefined,
     internalCost,
     total,
-    markup: 0,
+    markup: markupRaw,
     discount: 0,
     serviceId: null,
     serviceName: null,
@@ -146,15 +152,62 @@ function normalizeCustom(item: LineRecord, mode: "estimate" | "invoice"): LineRe
   };
 }
 
+function roundComponentQty(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+/** One row per inventory item. The same part listed twice is stored once, with the quantities added. */
+export function normalizeComponents(value: unknown): { inventoryItemId: number; name: string; quantity: number; unit: string | null }[] {
+  if (value == null) return [];
+  if (!Array.isArray(value)) throw new LineItemError("Attached parts must be a list");
+  const byId = new Map<number, { inventoryItemId: number; name: string; quantity: number; unit: string | null }>();
+  for (const raw of value) {
+    if (!isRecord(raw)) throw new LineItemError("Each attached part must be an inventory item");
+    const id = finite(raw.inventoryItemId);
+    if (id === null || !Number.isInteger(id) || id <= 0) throw new LineItemError("Each attached part must be an inventory item");
+    const qty = finite(raw.quantity ?? raw.qty);
+    if (qty === null || qty <= 0) throw new LineItemError("Each attached part needs a quantity greater than zero");
+    const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.trim().slice(0, 200) : "Part";
+    const unit = typeof raw.unit === "string" && raw.unit.trim() ? raw.unit.trim().slice(0, 40) : null;
+    const existing = byId.get(id);
+    if (existing) existing.quantity = roundComponentQty(existing.quantity + qty);
+    else byId.set(id, { inventoryItemId: id, name, quantity: roundComponentQty(qty), unit });
+  }
+  return [...byId.values()];
+}
+
 /**
- * Rewrite only kind:"custom" lines. Service and part lines keep the same object.
- * Custom lines store null service and part ids and never reference inventory.
+ * Keep attached parts on the line. A kit keeps its inventory item id so job use can deduct
+ * that kit once. Any other line with attached parts clears a single part id so those parts
+ * are not deducted again as the line itself.
+ */
+function applyAttachedParts<T>(item: T): T {
+  if (!isRecord(item) || !Object.prototype.hasOwnProperty.call(item, "components")) return item;
+  const components = normalizeComponents(item.components);
+  const next: LineRecord = { ...item, components };
+  if (components.length > 0 && item.kind !== "kit") {
+    next.inventoryItemId = null;
+    next.partId = null;
+  }
+  return next as T;
+}
+
+/**
+ * Rewrite custom lines and lines that store attached parts or a kit.
+ * Service and part lines with neither stay the same object.
+ * Nothing here deducts inventory.
  */
 export function prepareLineItems<T>(items: T[], mode: "estimate" | "invoice"): T[] {
   if (!Array.isArray(items)) throw new LineItemError("Line items must be a list");
   return items.map(item => {
-    if (!isCustomLine(item)) return item;
-    return normalizeCustom(item, mode) as T;
+    const withParts = applyAttachedParts(item);
+    if (isRecord(withParts) && withParts.kind === "kit") {
+      const id = finite(withParts.inventoryItemId);
+      if (id === null || !Number.isInteger(id) || id <= 0) throw new LineItemError("Kit line needs an inventory kit");
+      return { ...withParts, kind: "kit", inventoryItemId: id } as T;
+    }
+    if (!isCustomLine(withParts)) return withParts;
+    return normalizeCustom(withParts as LineRecord, mode) as T;
   });
 }
 

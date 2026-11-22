@@ -4,6 +4,7 @@ import {
   acceptanceAmount,
   customLineEconomics,
   lineExtendedPrice,
+  normalizeComponents,
   prepareLineItems,
 } from "./customLineItems";
 
@@ -51,7 +52,7 @@ describe("custom pass-through lines", () => {
       internalCost: 40,
       unitPrice: 75,
       total: 150,
-      markup: 0,
+      markup: 25,
       discount: 0,
       serviceId: null,
       inventoryItemId: null,
@@ -93,5 +94,41 @@ describe("custom pass-through lines", () => {
     expect(errors).toEqual([]);
     expect(decoded[0]).toMatchObject({ kind: "custom", description: "Equipment Rental", qty: 3, unitPrice: 20, unit: "Day", internalCost: 5 });
     expect(sumLineItems(decoded)).toBe(60);
+  });
+
+  it("stores each attached part once and does not treat that as a stock deduction", () => {
+    const [line] = prepareLineItems([{
+      kind: "part",
+      description: "Supplies for the repair",
+      qty: 1,
+      unitPrice: 37,
+      inventoryItemId: 9,
+      components: [
+        { inventoryItemId: 4, name: "Valve", quantity: 2, unit: "ea" },
+        { inventoryItemId: 4, name: "Valve", quantity: 1, unit: "ea" },
+        { inventoryItemId: 8, name: "Elbow", quantity: 4 },
+      ],
+    }], "estimate");
+    expect(line).toMatchObject({
+      description: "Supplies for the repair",
+      unitPrice: 37,
+      inventoryItemId: null,
+      components: [
+        { inventoryItemId: 4, name: "Valve", quantity: 3, unit: "ea" },
+        { inventoryItemId: 8, name: "Elbow", quantity: 4, unit: null },
+      ],
+    });
+    expect(lineExtendedPrice(line as { qty: number; unitPrice: number })).toBe(37);
+  });
+
+  it("rejects an attached part that is not an inventory id", () => {
+    expect(() => normalizeComponents([{ inventoryItemId: "nope", quantity: 1 }])).toThrow(/inventory item/);
+  });
+
+  it("keeps a kit line pointed at the inventory kit and does not copy components onto it", () => {
+    const kit = { kind: "kit", description: "Repair kit", qty: 1, unitPrice: 40, inventoryItemId: 12 };
+    const [line] = prepareLineItems([kit], "estimate");
+    expect(line).toMatchObject({ kind: "kit", inventoryItemId: 12, description: "Repair kit" });
+    expect(line).not.toHaveProperty("components");
   });
 });

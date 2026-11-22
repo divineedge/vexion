@@ -20,13 +20,18 @@ import { estimateTemplatesTable } from "./estimateTemplates";
  *   isOptional: boolean,
  *   optionalPitchLine?: string,
  *   acceptedByCustomer: boolean,
- *   kind?: "service" | "part" | "custom",
+ *   kind?: "service" | "part" | "custom" | "plan" | "kit",
  *   inventoryItemId?: number | null,
  *   unit?: string | null,          // custom pass-through label, e.g. Load, Day, Each
  *   internalCost?: number | null,  // optional office cost; customer total ignores it
+ *   markup?: number,               // pass-through: percent of internal cost, already in unitPrice
+ *   catalogId?: number | null,     // saved pass-through default, when one was chosen
+ *   components?: { inventoryItemId: number, name: string, quantity: number, unit: string | null }[],
  * }
  * A custom pass-through line uses kind "custom", a description, qty, optional unit,
- * optional internalCost, and unitPrice. serviceId and inventoryItemId stay null.
+ * optional internalCost, customer unitPrice, and markup. serviceId and inventoryItemId stay null.
+ * A kit line uses kind "kit" and the inventory kit's item id. Stock is not deducted here.
+ * components stores extra inventory parts and quantities on one customer-facing line.
  * Existing objects are left as stored.
  *
  * CSV/XLSX import-export packs this array into a single "Line Items" cell —

@@ -69,6 +69,8 @@ interface Props {
   catalog: CatalogServiceLite[] | null | undefined;
   onChange: (patch: Partial<BundleFields>) => void;
   compact?: boolean;
+  /** The combined line search already picks the primary service. */
+  hidePrimary?: boolean;
   /** Matrix and measurement price for a catalog service. Falls back to the catalog base price. */
   priceFor?: (service: CatalogServiceLite) => number;
 }
@@ -78,7 +80,7 @@ interface Props {
  * Price math only runs on explicit selection changes. The primary's frozen price is derived
  * as current unitPrice minus current extras, so manual overrides survive add/remove.
  */
-export function ServiceBundlePicker({ item, catalog, onChange, compact, priceFor }: Props) {
+export function ServiceBundlePicker({ item, catalog, onChange, compact, priceFor, hidePrimary }: Props) {
   const n = normalizeBundle(item, catalog);
   const extras = n.bundledServices ?? [];
   const services = catalog ?? [];
@@ -127,6 +129,7 @@ export function ServiceBundlePicker({ item, catalog, onChange, compact, priceFor
   return (
     <div className="flex flex-col gap-2 flex-1 min-w-0">
       <div className="flex items-center gap-2 flex-wrap">
+        {!hidePrimary && (
         <SearchableCombobox
           className={compact ? 'flex-1 min-w-[140px]' : 'flex-1 min-w-[160px]'}
           options={services.map(opt)}
@@ -140,6 +143,7 @@ export function ServiceBundlePicker({ item, catalog, onChange, compact, priceFor
           ariaLabel="Primary service"
           title="Pick a service from the catalog"
         />
+        )}
         {n.serviceId && (
           <SearchableCombobox
             className="w-44"

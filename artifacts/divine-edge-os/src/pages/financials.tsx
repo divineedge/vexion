@@ -55,8 +55,9 @@ import { Button } from '@/components/ui/button';
 import { LineCatalogSearch } from '@/components/billing/LineCatalogSearch';
 import { PassThroughFields } from '@/components/billing/PassThroughFields';
 import { AttachedPartsField } from '@/components/billing/AttachedPartsField';
-import { BillingCatalog } from '@/components/billing/BillingCatalog';
-import { invoiceLinePayload, linePatchFromHit, lineSaveError, type LineComponent } from '@/lib/lineEntry';
+import { BillingCatalog, PassThroughListButton } from '@/components/billing/BillingCatalog';
+import { LineBundlePicker } from '@/components/billing/LineBundlePicker';
+import { bundledAddOnTotal, invoiceLinePayload, linePatchFromHit, lineSaveError, type BundledCharge, type BundledPart, type LineComponent } from '@/lib/lineEntry';
 import { qtyWithUnit } from '@/lib/customLinePrice';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -89,7 +90,7 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: 'bg-gray-200 text-gray-500 border-transparent',
 };
 
-interface LineItemRow { description: string; quantity: number; unitPrice: number; total: number; propertyId?: number | null; jobId?: number | null; serviceId?: number | null; serviceName?: string | null; inventoryItemId?: number | null; sku?: string | null; costPrice?: number | null; priceOverridden?: boolean; kind?: 'service' | 'part' | 'custom' | 'plan' | 'kit' | null; unit?: string | null; internalCost?: number | null; markup?: number; catalogId?: number | null; planTemplateId?: number | null; planTemplateName?: string | null; planBillingCycle?: string | null; components?: LineComponent[] | null; }
+interface LineItemRow { description: string; quantity: number; unitPrice: number; total: number; propertyId?: number | null; jobId?: number | null; serviceId?: number | null; serviceName?: string | null; inventoryItemId?: number | null; sku?: string | null; costPrice?: number | null; priceOverridden?: boolean; kind?: 'service' | 'part' | 'custom' | 'plan' | 'kit' | null; unit?: string | null; internalCost?: number | null; markup?: number; catalogId?: number | null; planTemplateId?: number | null; planTemplateName?: string | null; planBillingCycle?: string | null; components?: LineComponent[] | null; bundledParts?: BundledPart[] | null; bundledCharges?: BundledCharge[] | null; }
 type InvoiceGrouping = 'combined' | 'by_property';
 
 // ── Create Invoice Sheet ────────────────────────────────────────────────────────
@@ -264,7 +265,8 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
       if (!line.serviceId || line.priceOverridden || line.jobId != null || line.kind === 'custom' || line.kind === 'part' || line.kind === 'kit' || line.kind === 'plan') return line;
       const service = (services ?? []).find(row => row.id === line.serviceId);
       if (!service) return line;
-      const unitPrice = pricedService(service, propertyForLine(line));
+      const addOns = bundledAddOnTotal(line.bundledParts, line.bundledCharges);
+      const unitPrice = Math.round((pricedService(service, propertyForLine(line)) + addOns) * 100) / 100;
       return unitPrice === line.unitPrice ? line : { ...line, unitPrice, total: line.quantity * unitPrice };
     }));
   }, [defaultPropertyId, customerProperties, services]);
@@ -274,7 +276,7 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
       const updated = { ...li, [field]: value, priceOverridden: field === 'unitPrice' ? true : li.priceOverridden };
       if (field === 'propertyId' && li.serviceId && !li.priceOverridden) {
         const service = (services ?? []).find(row => row.id === li.serviceId);
-        if (service) updated.unitPrice = pricedService(service, propertyForLine(li, value as number | null));
+        if (service) updated.unitPrice = Math.round((pricedService(service, propertyForLine(li, value as number | null)) + bundledAddOnTotal(li.bundledParts, li.bundledCharges)) * 100) / 100;
       }
       updated.total = updated.quantity * updated.unitPrice;
       return updated;
@@ -550,6 +552,19 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
                         return updated;
                       }))}
                     />
+                    <LineBundlePicker
+                      testId={`invoice-line-${i}`}
+                      description={li.description}
+                      unitPrice={li.unitPrice}
+                      bundledParts={li.bundledParts}
+                      bundledCharges={li.bundledCharges}
+                      onChange={patch => setLineItems(prev => prev.map((row, index) => {
+                        if (index !== i) return row;
+                        const updated = { ...row, ...patch };
+                        updated.total = updated.quantity * updated.unitPrice;
+                        return updated;
+                      }))}
+                    />
                     <Button
                       variant="ghost"
                       size="icon"
@@ -610,9 +625,10 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
                       internalCost={li.internalCost}
                       markup={li.markup}
                       unitPrice={li.unitPrice}
-                      onChange={patch => setLineItems(prev => prev.map((row, index) => {
+                          onChange={patch => setLineItems(prev => prev.map((row, index) => {
                         if (index !== i) return row;
-                        const updated = { ...row, ...patch };
+                        const addOns = bundledAddOnTotal(row.bundledParts, row.bundledCharges);
+                        const updated = { ...row, ...patch, ...(patch.unitPrice != null ? { unitPrice: Math.round((patch.unitPrice + addOns) * 100) / 100 } : {}) };
                         updated.total = updated.quantity * updated.unitPrice;
                         return updated;
                       }))}
@@ -1201,6 +1217,19 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
                           return updated;
                         }))}
                       />
+                      <LineBundlePicker
+                        testId={`invoice-edit-line-${i}`}
+                        description={li.description}
+                        unitPrice={li.unitPrice}
+                        bundledParts={li.bundledParts}
+                        bundledCharges={li.bundledCharges}
+                        onChange={patch => setLineItems(prev => prev.map((row, index) => {
+                          if (index !== i) return row;
+                          const updated = { ...row, ...patch };
+                          updated.total = updated.quantity * updated.unitPrice;
+                          return updated;
+                        }))}
+                      />
                       {li.kind === 'custom' && <p className="text-[10px] text-muted-foreground">Pass-through charge. No service catalog entry and no inventory deduction.</p>}
                       {li.kind === 'kit' && <p className="text-[10px] text-muted-foreground">Kit line. Stock moves when this kit is used on a job, not when this invoice is saved.</p>}
                       {li.kind === 'part' && <p className="text-[10px] text-muted-foreground">Invoice lines bill the customer. Record stock usage on the job.</p>}
@@ -1220,7 +1249,8 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
                           unitPrice={li.unitPrice}
                           onChange={patch => setLineItems(prev => prev.map((row, index) => {
                             if (index !== i) return row;
-                            const updated = { ...row, ...patch };
+                            const addOns = bundledAddOnTotal(row.bundledParts, row.bundledCharges);
+                            const updated = { ...row, ...patch, ...(patch.unitPrice != null ? { unitPrice: Math.round((patch.unitPrice + addOns) * 100) / 100 } : {}) };
                             updated.total = updated.quantity * updated.unitPrice;
                             return updated;
                           }))}
@@ -1590,6 +1620,7 @@ export default function FinancialsPage() {
             entityLabel="Invoices"
             onImportComplete={() => qc.invalidateQueries({ queryKey: getListInvoicesQueryKey() })}
           />
+          <PassThroughListButton />
           <Button className="gap-2" title="Create a new invoice" onClick={() => setCreateInvoiceOpen(true)}><Plus className="w-4 h-4" /> New Invoice</Button>
         </div>
       </div>

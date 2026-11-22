@@ -9,6 +9,41 @@ export interface LineComponent {
   unitPrice?: number;
 }
 
+/** Inventory part rolled into a customer line. Stock is not deducted from the estimate or invoice. */
+export interface BundledPart {
+  inventoryItemId: number;
+  name: string;
+  quantity: number;
+  unit: string | null;
+  unitPrice: number;
+}
+
+/** Saved or one-off pass-through charge rolled into a customer line. */
+export interface BundledCharge {
+  catalogId: number | null;
+  description: string;
+  quantity: number;
+  unit: string | null;
+  internalCost: number | null;
+  markup: number;
+  unitPrice: number;
+}
+
+/** Dollars added to the line's unit price by bundled parts and pass-through charges. */
+export function bundledAddOnTotal(
+  parts: { quantity: number; unitPrice: number }[] | null | undefined,
+  charges: { quantity: number; unitPrice: number }[] | null | undefined,
+): number {
+  const partSum = (parts ?? []).reduce((sum, part) => sum + part.quantity * part.unitPrice, 0);
+  const chargeSum = (charges ?? []).reduce((sum, charge) => sum + charge.quantity * charge.unitPrice, 0);
+  return Math.round((partSum + chargeSum) * 100) / 100;
+}
+
+/** Keep the primary price and replace the bundled dollars. */
+export function unitPriceWithAddOns(currentUnitPrice: number, previousAddOns: number, nextAddOns: number): number {
+  return Math.round(((Number(currentUnitPrice) || 0) - previousAddOns + nextAddOns) * 100) / 100;
+}
+
 export type CatalogHit =
   | { kind: "custom-new" }
   | { kind: "pass"; id: number; description: string; unit: string | null; internalCost: number | null; unitPrice: number; markup: number }
@@ -172,6 +207,8 @@ type PayloadLine = {
   planTemplateName?: string | null;
   planBillingCycle?: string | null;
   components?: LineComponent[] | null;
+  bundledParts?: BundledPart[] | null;
+  bundledCharges?: BundledCharge[] | null;
   jobId?: number | null;
   propertyId?: number | null;
   costPrice?: number | null;
@@ -183,6 +220,34 @@ function storedKind(line: PayloadLine): "custom" | "part" | "plan" | "kit" | "se
   if (line.inventoryItemId) return "part";
   if (Array.isArray(line.components) && line.components.some(component => component && component.inventoryItemId > 0 && component.quantity > 0)) return "part";
   return "service";
+}
+
+function cleanBundledParts(line: PayloadLine): BundledPart[] | undefined {
+  if (!Array.isArray(line.bundledParts)) return undefined;
+  return line.bundledParts
+    .filter(part => part && part.inventoryItemId > 0 && part.quantity > 0)
+    .map(part => ({
+      inventoryItemId: part.inventoryItemId,
+      name: part.name?.trim() || "Part",
+      quantity: part.quantity,
+      unit: part.unit?.trim() || null,
+      unitPrice: Number(part.unitPrice) || 0,
+    }));
+}
+
+function cleanBundledCharges(line: PayloadLine): BundledCharge[] | undefined {
+  if (!Array.isArray(line.bundledCharges)) return undefined;
+  return line.bundledCharges
+    .filter(charge => charge && (charge.description ?? "").trim() && charge.quantity > 0)
+    .map(charge => ({
+      catalogId: charge.catalogId ?? null,
+      description: charge.description.trim(),
+      quantity: charge.quantity,
+      unit: charge.unit?.trim() || null,
+      internalCost: charge.internalCost == null || Number.isNaN(Number(charge.internalCost)) ? null : Number(charge.internalCost),
+      markup: Number(charge.markup) || 0,
+      unitPrice: Number(charge.unitPrice) || 0,
+    }));
 }
 
 function cleanComponents(line: PayloadLine): LineComponent[] | undefined {
@@ -200,6 +265,8 @@ function cleanComponents(line: PayloadLine): LineComponent[] | undefined {
 export function estimateLinePayload(line: PayloadLine) {
   const kind = storedKind(line);
   const components = cleanComponents(line);
+  const bundledParts = cleanBundledParts(line);
+  const bundledCharges = cleanBundledCharges(line);
   const multi = !!components && components.length > 0;
   const qty = line.qty ?? line.quantity ?? 1;
   const shared = {
@@ -217,6 +284,8 @@ export function estimateLinePayload(line: PayloadLine) {
     acceptedByCustomer: !line.isOptional,
     priceOverridden: line.priceOverridden === true,
     ...(components ? { components } : {}),
+    ...(bundledParts ? { bundledParts } : {}),
+    ...(bundledCharges ? { bundledCharges } : {}),
   };
   if (kind === "custom") {
     return {

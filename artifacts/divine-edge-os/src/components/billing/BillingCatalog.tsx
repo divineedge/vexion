@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { customFetch, useListInventoryItems, getListInventoryItemsQueryKey, type InventoryItem } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { customerPriceFromMarkup } from "@/lib/lineEntry";
 import type { PassThroughRow } from "./LineCatalogSearch";
@@ -214,5 +215,26 @@ function KitsTab() {
         </Button>
       </CardContent>
     </Card>
+  );
+}
+
+/** Opens the pass-through list from the estimates or invoices page header. */
+export function PassThroughListButton({ testId = "button-passthrough" }: { testId?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button type="button" size="sm" variant="outline" data-testid={testId} title="Open saved pass-through charges" onClick={() => setOpen(true)}>
+        Pass-through
+      </Button>
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent className="w-full sm:max-w-xl overflow-y-auto" data-testid="passthrough-sheet">
+          <SheetHeader className="pb-4">
+            <SheetTitle>Pass-through</SheetTitle>
+            <SheetDescription>Charges that are not a catalog service or a stocked part. Markup is a percent of the internal cost.</SheetDescription>
+          </SheetHeader>
+          <BillingCatalog tab="passthrough" />
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }

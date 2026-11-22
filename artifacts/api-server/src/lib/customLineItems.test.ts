@@ -125,6 +125,30 @@ describe("custom pass-through lines", () => {
     expect(() => normalizeComponents([{ inventoryItemId: "nope", quantity: 1 }])).toThrow(/inventory item/);
   });
 
+  it("keeps bundled parts and pass-through charges on the line without clearing its part", () => {
+    const [line] = prepareLineItems([{
+      kind: "part",
+      description: "Repair",
+      qty: 1,
+      unitPrice: 162,
+      inventoryItemId: 4,
+      bundledParts: [
+        { inventoryItemId: 8, name: "Fitting", quantity: 2, unit: "each", unitPrice: 4.25 },
+        { inventoryItemId: 8, name: "Fitting", quantity: 2, unit: "each", unitPrice: 4.25 },
+      ],
+      bundledCharges: [
+        { description: "Dump truck load", quantity: 1, unit: "Load", internalCost: 100, markup: 25, unitPrice: 125 },
+      ],
+    }], "estimate");
+    expect(line).toMatchObject({
+      inventoryItemId: 4,
+      unitPrice: 162,
+      bundledParts: [{ inventoryItemId: 8, name: "Fitting", quantity: 4, unit: "each", unitPrice: 4.25 }],
+      bundledCharges: [{ catalogId: null, description: "Dump truck load", quantity: 1, unitPrice: 125, markup: 25 }],
+    });
+    expect(lineExtendedPrice(line as { qty: number; unitPrice: number })).toBe(162);
+  });
+
   it("keeps a kit line pointed at the inventory kit and does not copy components onto it", () => {
     const kit = { kind: "kit", description: "Repair kit", qty: 1, unitPrice: 40, inventoryItemId: 12 };
     const [line] = prepareLineItems([kit], "estimate");

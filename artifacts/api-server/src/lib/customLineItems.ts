@@ -192,15 +192,87 @@ function applyAttachedParts<T>(item: T): T {
   return next as T;
 }
 
+function optionalMoney(value: unknown, label: string): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const amount = finite(value);
+  if (amount === null || amount < 0) throw new LineItemError(`${label} must be zero or more`);
+  return Math.round(amount * 10000) / 10000;
+}
+
+/** Extra inventory parts bundled onto one customer line. The line's own item id is left alone. */
+export function normalizeBundledParts(value: unknown): { inventoryItemId: number; name: string; quantity: number; unit: string | null; unitPrice: number }[] {
+  if (value == null) return [];
+  if (!Array.isArray(value)) throw new LineItemError("Bundled parts must be a list");
+  const byId = new Map<number, { inventoryItemId: number; name: string; quantity: number; unit: string | null; unitPrice: number }>();
+  for (const raw of value) {
+    if (!isRecord(raw)) throw new LineItemError("Each bundled part must be an inventory item");
+    const id = finite(raw.inventoryItemId);
+    if (id === null || !Number.isInteger(id) || id <= 0) throw new LineItemError("Each bundled part must be an inventory item");
+    const qty = finite(raw.quantity ?? raw.qty);
+    if (qty === null || qty <= 0) throw new LineItemError("Each bundled part needs a quantity greater than zero");
+    const unitPrice = optionalMoney(raw.unitPrice, "Bundled part price") ?? 0;
+    const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.trim().slice(0, 200) : "Part";
+    const unit = typeof raw.unit === "string" && raw.unit.trim() ? raw.unit.trim().slice(0, 40) : null;
+    const existing = byId.get(id);
+    if (existing) {
+      existing.quantity = roundComponentQty(existing.quantity + qty);
+      existing.unitPrice = unitPrice;
+    } else byId.set(id, { inventoryItemId: id, name, quantity: roundComponentQty(qty), unit, unitPrice });
+  }
+  return [...byId.values()];
+}
+
+/** Saved or one-off pass-through charges bundled onto one customer line. */
+export function normalizeBundledCharges(value: unknown): { catalogId: number | null; description: string; quantity: number; unit: string | null; internalCost: number | null; markup: number; unitPrice: number }[] {
+  if (value == null) return [];
+  if (!Array.isArray(value)) throw new LineItemError("Bundled pass-through charges must be a list");
+  return value.map(raw => {
+    if (!isRecord(raw)) throw new LineItemError("Each bundled pass-through charge needs a description");
+    const description = typeof raw.description === "string" ? raw.description.trim() : "";
+    if (!description) throw new LineItemError("Each bundled pass-through charge needs a description");
+    if (description.length > 500) throw new LineItemError("A bundled pass-through description must be 500 characters or less");
+    const qty = finite(raw.quantity ?? raw.qty);
+    if (qty === null || qty <= 0) throw new LineItemError("Each bundled pass-through charge needs a quantity greater than zero");
+    const catalogRaw = raw.catalogId;
+    const catalogId = catalogRaw === null || catalogRaw === undefined || catalogRaw === "" ? null : finite(catalogRaw);
+    if (catalogId !== null && (!Number.isInteger(catalogId) || catalogId <= 0)) throw new LineItemError("A bundled pass-through catalog item is not valid");
+    const unitPrice = optionalMoney(raw.unitPrice, "Bundled pass-through price");
+    if (unitPrice === null) throw new LineItemError("Bundled pass-through price must be zero or more");
+    const markup = optionalMoney(raw.markup, "Bundled pass-through markup") ?? 0;
+    return {
+      catalogId,
+      description: description.slice(0, 500),
+      quantity: roundComponentQty(qty),
+      unit: typeof raw.unit === "string" && raw.unit.trim() ? raw.unit.trim().slice(0, 40) : null,
+      internalCost: optionalMoney(raw.internalCost, "Bundled pass-through internal cost"),
+      markup,
+      unitPrice,
+    };
+  });
+}
+
+/** Keep bundled parts and charges on the line. Does not change the line's own part id and does not deduct stock. */
+function applyBundleFields<T>(item: T): T {
+  if (!isRecord(item)) return item;
+  const hasParts = Object.prototype.hasOwnProperty.call(item, "bundledParts");
+  const hasCharges = Object.prototype.hasOwnProperty.call(item, "bundledCharges");
+  if (!hasParts && !hasCharges) return item;
+  return {
+    ...item,
+    ...(hasParts ? { bundledParts: normalizeBundledParts(item.bundledParts) } : {}),
+    ...(hasCharges ? { bundledCharges: normalizeBundledCharges(item.bundledCharges) } : {}),
+  } as T;
+}
+
 /**
- * Rewrite custom lines and lines that store attached parts or a kit.
- * Service and part lines with neither stay the same object.
+ * Rewrite custom lines and lines that store attached parts, bundled parts, bundled charges, or a kit.
+ * Service and part lines with none of those keys stay the same object.
  * Nothing here deducts inventory.
  */
 export function prepareLineItems<T>(items: T[], mode: "estimate" | "invoice"): T[] {
   if (!Array.isArray(items)) throw new LineItemError("Line items must be a list");
   return items.map(item => {
-    const withParts = applyAttachedParts(item);
+    const withParts = applyBundleFields(applyAttachedParts(item));
     if (isRecord(withParts) && withParts.kind === "kit") {
       const id = finite(withParts.inventoryItemId);
       if (id === null || !Number.isInteger(id) || id <= 0) throw new LineItemError("Kit line needs an inventory kit");

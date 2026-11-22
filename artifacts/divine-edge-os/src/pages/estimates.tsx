@@ -43,9 +43,10 @@ import { ServiceBundlePicker, normalizeBundle, type BundledService, type Catalog
 import { LineCatalogSearch } from '@/components/billing/LineCatalogSearch';
 import { PassThroughFields } from '@/components/billing/PassThroughFields';
 import { AttachedPartsField } from '@/components/billing/AttachedPartsField';
-import { BillingCatalog } from '@/components/billing/BillingCatalog';
+import { BillingCatalog, PassThroughListButton } from '@/components/billing/BillingCatalog';
+import { LineBundlePicker } from '@/components/billing/LineBundlePicker';
 import { lineExtended, qtyWithUnit } from '@/lib/customLinePrice';
-import { estimateLinePayload, linePatchFromHit, lineSaveError, type LineComponent } from '@/lib/lineEntry';
+import { bundledAddOnTotal, estimateLinePayload, linePatchFromHit, lineSaveError, type BundledCharge, type BundledPart, type LineComponent } from '@/lib/lineEntry';
 import { servicePriceForProperty, propertyServiceMeasurements } from '@/lib/pricingMatrix';
 import { useDebounce } from '@/hooks/use-debounce';
 import { format } from 'date-fns';
@@ -108,6 +109,8 @@ interface LineItem {
   internalCost?: number | null;
   catalogId?: number | null;
   components?: LineComponent[] | null;
+  bundledParts?: BundledPart[] | null;
+  bundledCharges?: BundledCharge[] | null;
 }
 
 type CatalogService = CatalogServiceLite;
@@ -310,7 +313,8 @@ export default function EstimatesPage() {
       const service = catalogServices?.find(row => row.id === item.serviceId);
       if (!service) return item;
       const extras = (item.bundledServices ?? []).reduce((sum, extra) => sum + extra.unitPrice, 0);
-      const unitPrice = Math.round((catalogPrice(service) + extras) * 100) / 100;
+      const addOns = bundledAddOnTotal(item.bundledParts, item.bundledCharges);
+      const unitPrice = Math.round((catalogPrice(service) + extras + addOns) * 100) / 100;
       return unitPrice === item.unitPrice ? item : { ...item, unitPrice };
     }));
   }, [createOpen, form.propertyId, catalogServices, selectedCreateProperty]);
@@ -694,6 +698,7 @@ export default function EstimatesPage() {
             exportQuery={{ status: statusFilter || undefined }}
             onImportComplete={() => qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() })}
           />
+          <PassThroughListButton />
           {canManageOffice && (
             <Button title="Create a new estimate" onClick={() => setCreateOpen(true)} className="gap-2" data-testid="button-new-estimate">
               <Plus className="w-4 h-4" /> New Estimate
@@ -1182,6 +1187,14 @@ export default function EstimatesPage() {
                         onChange={patch => updateLineItem(idx, { ...patch, priceOverridden: false, kind: 'service' })}
                       />
                       )}
+                      <LineBundlePicker
+                        testId={`estimate-line-${idx}`}
+                        description={item.description}
+                        unitPrice={item.unitPrice}
+                        bundledParts={item.bundledParts}
+                        bundledCharges={item.bundledCharges}
+                        onChange={patch => updateLineItem(idx, patch)}
+                      />
 
                       {/* Badges */}
                       {(item.bundledServices?.length ?? 0) > 0 && (
@@ -1222,7 +1235,10 @@ export default function EstimatesPage() {
                           internalCost={item.internalCost}
                           markup={item.markup}
                           unitPrice={item.unitPrice}
-                          onChange={patch => updateLineItem(idx, patch)}
+                          onChange={patch => {
+                            const addOns = bundledAddOnTotal(item.bundledParts, item.bundledCharges);
+                            updateLineItem(idx, patch.unitPrice != null ? { ...patch, unitPrice: Math.round((patch.unitPrice + addOns) * 100) / 100 } : patch);
+                          }}
                         />
                       </div>
                     ) : (
@@ -1751,6 +1767,14 @@ export default function EstimatesPage() {
                                 onChange={patch => setEditLineItemsList(list => list.map((row, k) => k === idx ? { ...row, ...patch, priceOverridden: false, kind: 'service' } : row))}
                               />
                             )}
+                            <LineBundlePicker
+                              testId={`estimate-edit-line-${idx}`}
+                              description={item.description}
+                              unitPrice={item.unitPrice}
+                              bundledParts={item.bundledParts}
+                              bundledCharges={item.bundledCharges}
+                              onChange={patch => setEditLineItemsList(list => list.map((row, k) => k === idx ? { ...row, ...patch } : row))}
+                            />
                           </div>
                           {item.kind === 'custom' && <p className="text-[10px] text-muted-foreground">Pass-through charge. No service catalog entry and no inventory deduction.</p>}
                           {item.kind === 'part' && <p className="text-[10px] text-muted-foreground">Stock is used on the job, not when this estimate is saved.</p>}
@@ -1797,7 +1821,11 @@ export default function EstimatesPage() {
                               internalCost={item.internalCost}
                               markup={item.markup}
                               unitPrice={item.unitPrice}
-                              onChange={patch => setEditLineItemsList(list => list.map((row, k) => k === idx ? { ...row, ...patch } : row))}
+                              onChange={patch => setEditLineItemsList(list => list.map((row, k) => {
+                                if (k !== idx) return row;
+                                const addOns = bundledAddOnTotal(row.bundledParts, row.bundledCharges);
+                                return { ...row, ...patch, ...(patch.unitPrice != null ? { unitPrice: Math.round((patch.unitPrice + addOns) * 100) / 100 } : {}) };
+                              }))}
                             />
                           )}
                           <AttachedPartsField

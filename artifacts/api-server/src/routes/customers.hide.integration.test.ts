@@ -94,12 +94,46 @@ describe.sequential.skipIf(!RUN)("customer open, hide, and merge", () => {
     return response.body as { id: number; name: string };
   }
 
-  it("returns the saved customer from the detail route", async () => {
+  it("returns the saved customer from the detail route and the default list", async () => {
     const customer = await createCustomer("Open Me");
     const response = await request(app).get(`/api/customers/${customer.id}`);
     expect(response.status).toBe(200);
     expect(response.body.id).toBe(customer.id);
     expect(response.body.name).toBe("Open Me");
+    const listed = await request(app).get("/api/customers").query({ activeOnly: "true", q: "Open Me" });
+    expect(listed.status).toBe(200);
+    expect(listed.body.items.map((item: { id: number }) => item.id)).toContain(customer.id);
+  });
+
+  it("still lists customers when hidden_at has not been added", async () => {
+    const customer = await createCustomer("Still Listed");
+    await pool.query("ALTER TABLE customers RENAME COLUMN hidden_at TO hidden_at_absent");
+    try {
+      const response = await request(app).get("/api/customers").query({ activeOnly: "true", q: "Still Listed" });
+      expect(response.status).toBe(200);
+      expect(response.body.items.map((item: { id: number }) => item.id)).toContain(customer.id);
+      const hiddenView = await request(app).get("/api/customers").query({ hiddenOnly: "true", includeHidden: "true", q: "Still Listed" });
+      expect(hiddenView.status).toBe(200);
+      expect(hiddenView.body.items.map((item: { id: number }) => item.id)).not.toContain(customer.id);
+    } finally {
+      await pool.query(`
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'customers' AND column_name = 'hidden_at_absent'
+          ) THEN
+            IF EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'customers' AND column_name = 'hidden_at'
+            ) THEN
+              ALTER TABLE customers DROP COLUMN hidden_at;
+            END IF;
+            ALTER TABLE customers RENAME COLUMN hidden_at_absent TO hidden_at;
+          END IF;
+        END $$;
+      `);
+    }
   });
 
   it("deletes a customer with no history and hides one that has a job", async () => {

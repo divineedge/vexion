@@ -8,9 +8,10 @@ import { duplicateCustomerConflict, explicitDuplicateOverride, formatPostalAddre
 import { HrError } from '../lib/hrAccess';
 import type { ImportDuplicateConflict } from '../lib/importExport';
 import {z} from 'zod';
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { db, customersTable, propertiesTable, jobsTable, invoicesTable, estimatesTable, activityLogTable, propertyOwnershipHistoryTable, customerOtpSessionsTable, stopServiceFlagsTable, communicationsLogTable, tenantsTable } from "@workspace/db";
 import { eq, and, or, ilike, sql, desc, isNull, isNotNull, ne, inArray } from "drizzle-orm";
+import { customerColumnsWithoutHidden, isHiddenColumnMissing } from "../lib/customerVisibility";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { syncCustomerToMailchimp } from "../lib/mailchimpSync";
 import { isAdminRole } from "../lib/roles";
@@ -710,11 +711,18 @@ async function fetchLastReminderFailures(tenantId: number, customerIds: number[]
   return map;
 }
 
-router.get("/customers", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
+type CustomerListPage = {
+  rows: Array<typeof customersTable.$inferSelect>;
+  count: number;
+  pageNum: number;
+  limitNum: number | null;
+};
+
+async function readCustomerListRows(req: Request, tenantId: number, applyHiddenFilter: boolean): Promise<CustomerListPage | { empty: true; pageNum: number; limitNum: number | null }> {
   const { q, page, limit, hasReminderFailure, includeArchived, archivedOnly, includeHidden, hiddenOnly } = req.query as Record<string, string>;
   const { page: pageNum, limit: limitNum } = customerListPage(page, limit);
   const offset = limitNum == null ? 0 : (pageNum - 1) * limitNum;
+  if (!applyHiddenFilter && hiddenOnly === "true") return { empty: true, pageNum, limitNum };
 
   const archiveWhere = hiddenOnly === "true"
     ? and(eq(customersTable.tenantId, tenantId), isNotNull(customersTable.hiddenAt))
@@ -725,7 +733,7 @@ router.get("/customers", async (req, res): Promise<void> => {
     : includeArchived === "true"
       ? eq(customersTable.tenantId, tenantId)
       : and(eq(customersTable.tenantId, tenantId), isNull(customersTable.archivedAt));
-  const hiddenWhere = hiddenOnly === "true" || includeHidden === "true" ? undefined : isNull(customersTable.hiddenAt);
+  const hiddenWhere = applyHiddenFilter && hiddenOnly !== "true" && includeHidden !== "true" ? isNull(customersTable.hiddenAt) : undefined;
   const baseWhere=and(archiveWhere,isNull(customersTable.mergedIntoCustomerId),hiddenWhere);
   let where = q
     ? and(baseWhere, or(
@@ -753,10 +761,7 @@ router.get("/customers", async (req, res): Promise<void> => {
       WHERE status = 'failed'
     `) as unknown as { rows: Array<{ customer_id: number }> };
     const ids = failedCustomerIds.rows.map(r => r.customer_id).filter((id): id is number => id !== null);
-    if (ids.length === 0) {
-      res.json({ items: [], total: 0, page: pageNum, limit: limitNum });
-      return;
-    }
+    if (ids.length === 0) return { empty: true, pageNum, limitNum };
     where = and(where, inArray(customersTable.id, ids));
   }
 
@@ -764,15 +769,47 @@ router.get("/customers", async (req, res): Promise<void> => {
     .select({ count: sql<number>`count(*)::int` })
     .from(customersTable)
     .where(where);
-
-  const customerQuery = db
-    .select()
+  const columns = applyHiddenFilter ? undefined : customerColumnsWithoutHidden();
+  const customerQuery = (columns ? db.select(columns) : db.select())
     .from(customersTable)
     .where(where)
     .orderBy(desc(customersTable.createdAt));
-  const rows = limitNum == null
+  const rows = (limitNum == null
     ? await customerQuery
-    : await customerQuery.limit(limitNum).offset(offset);
+    : await customerQuery.limit(limitNum).offset(offset)) as CustomerListPage["rows"];
+  return { rows, count: Number(count), pageNum, limitNum };
+}
+
+async function loadCustomerListRows(req: Request, tenantId: number): Promise<CustomerListPage | { empty: true; pageNum: number; limitNum: number | null }> {
+  try {
+    return await readCustomerListRows(req, tenantId, true);
+  } catch (error) {
+    if (!isHiddenColumnMissing(error)) throw error;
+    logger.error({ err: error }, "Customer list queried hidden_at before that column existed. Visible customers are still returned.");
+    try {
+      await db.execute(sql`ALTER TABLE customers ADD COLUMN IF NOT EXISTS hidden_at timestamptz`);
+    } catch (alterError) {
+      logger.error({ err: alterError }, "Could not add customers.hidden_at. Listing customers without the hidden filter.");
+      return readCustomerListRows(req, tenantId, false);
+    }
+    try {
+      return await readCustomerListRows(req, tenantId, true);
+    } catch (retryError) {
+      if (!isHiddenColumnMissing(retryError)) throw retryError;
+      logger.error({ err: retryError }, "Customer list still cannot read hidden_at. Listing customers without the hidden filter.");
+      return readCustomerListRows(req, tenantId, false);
+    }
+  }
+}
+
+router.get("/customers", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const loaded = await loadCustomerListRows(req, tenantId);
+  if ("empty" in loaded) {
+    res.json({ items: [], total: 0, page: loaded.pageNum, limit: loaded.limitNum });
+    return;
+  }
+  const { rows, count, pageNum, limitNum } = loaded;
 
   const referrerIds = rows.map((row) => row.referringCustomerId).filter((value): value is number => value !== null);
   const [propCounts, primaryProperties, failureMap, lastServiceRows, referrers] = await Promise.all([

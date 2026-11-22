@@ -815,6 +815,10 @@ export default function CustomersPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Loading customers...</TableCell></TableRow>
+              ) : customerPages.isError ? (
+                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                  The customer list could not be loaded. <button className="text-primary hover:underline" onClick={() => void customerPages.refetch()}>Try again</button>
+                </TableCell></TableRow>
               ) : visibleCustomers.length === 0 ? (
                 <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                   {reminderFailureFilter

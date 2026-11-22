@@ -361,6 +361,9 @@ export default function BlueprintsPage() {
           <Button variant="outline" title="Upload a PDF to use as a blueprint background or reference" className="gap-2" onClick={() => setPdfUploadOpen(true)}>
             <Upload className="w-4 h-4" /> Upload PDF
           </Button>
+          <Button variant="outline" title="Choose which parts, kits, labor, and charges a blueprint plan can use" className="gap-2" onClick={() => setLocation('/blueprint-planning')}>
+            Planning setup
+          </Button>
           <Button title="Create a new blank blueprint" className="gap-2" onClick={() => setNewBpOpen(true)}>
             <Plus className="w-4 h-4" /> New Blueprint
           </Button>

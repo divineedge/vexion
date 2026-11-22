@@ -7,6 +7,7 @@ import React, { useEffect, useRef, useCallback, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import { geofenceRadiusForDisplay, geofenceRadiusToMeters } from '@/lib/geofenceUnits';
 import { formatArea, formatLinearFeet, measureSection, type MeasurementCapture } from '@/lib/satelliteMeasurements';
+import { addSatelliteTileLayer, type SatelliteStatus } from '@/lib/satelliteTiles';
 
 export interface MeasurementZone {
   id: string;
@@ -147,6 +148,7 @@ export default function PropertySatelliteMap({
   const [currentLat, setCurrentLat] = useState(lat ?? 25.7617);
   const [currentLng, setCurrentLng] = useState(lng ?? -80.1918);
   // localGeofenceRadius is in the display unit (ft or m); geofenceRadius prop is always meters
+  const [satelliteStatus, setSatelliteStatus] = useState<SatelliteStatus>('loading');
   const [localGeofenceRadius, setLocalGeofenceRadius] = useState(() =>
     geofenceRadiusForDisplay(geofenceRadius, geofenceUnit)
   );
@@ -238,32 +240,7 @@ export default function PropertySatelliteMap({
       const map = L.map(mapContainerRef.current!, { zoomControl: true }).setView([initLat, initLng], 18);
       mapRef.current = map;
 
-      // Satellite tile layer.
-      // Google tile server provides ~1–2 yr imagery (same source as Google Maps).
-      // Works directly as a Leaflet tile layer — no plugin or API call needed.
-      // Falls back to ESRI World Imagery when no Google key is configured.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const GMAPS_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
-      if (GMAPS_KEY) {
-        L.tileLayer(
-          'https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-          {
-            subdomains: ['0', '1', '2', '3'],
-            attribution: '&copy; <a href="https://maps.google.com">Google Maps</a>',
-            maxZoom: 22,
-            tileSize: 256,
-          }
-        ).addTo(map);
-      } else {
-        // ESRI World Imagery fallback (no API key required)
-        L.tileLayer(
-          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-          {
-            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics',
-            maxZoom: 22,
-          }
-        ).addTo(map);
-      }
+      addSatelliteTileLayer(L, map, setSatelliteStatus);
 
       // Property pin
       const pin = L.marker([initLat, initLng], { draggable: !readonly })
@@ -603,8 +580,8 @@ export default function PropertySatelliteMap({
         )}
 
         {/* Satellite label */}
-        <div className="absolute bottom-2 left-2 z-[1000] bg-black/60 text-white text-[10px] px-2 py-0.5 rounded font-mono pointer-events-none">
-          SATELLITE
+        <div className="absolute bottom-2 left-2 z-[1000] bg-black/60 text-white text-[10px] px-2 py-0.5 rounded font-mono pointer-events-none" data-testid="property-satellite-status">
+          {satelliteStatus === 'loaded' ? 'Satellite loaded' : satelliteStatus === 'failed' ? 'Satellite failed' : 'Satellite'}
         </div>
       </div>
 

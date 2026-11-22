@@ -69,6 +69,8 @@ const ADDITIVE_SETTINGS_SQL = [
   `ALTER TABLE estimates ADD COLUMN IF NOT EXISTS response_handled_by_user_id integer`,
   `ALTER TABLE equipment ADD COLUMN IF NOT EXISTS maintenance_alert_ack text`,
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS rain_warning_cleared_on text`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS due_attention_handled_at timestamptz`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS due_attention_handled_by_user_id integer`,
   `CREATE INDEX IF NOT EXISTS inventory_items_stock_item_idx ON inventory_items (stock_item_id)`,
   `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS inventory_group_by text NOT NULL DEFAULT 'type'`,
   `CREATE TABLE IF NOT EXISTS inventory_reservations (id uuid PRIMARY KEY, company_id integer NOT NULL REFERENCES tenants(id), inventory_item_id integer NOT NULL REFERENCES inventory_items(id), job_id integer NOT NULL REFERENCES jobs(id), invoice_line_id uuid, quantity numeric(12, 3) NOT NULL, consumed_quantity numeric(12, 3) NOT NULL DEFAULT 0, unit_cost numeric(12, 4) NOT NULL DEFAULT 0, status text NOT NULL DEFAULT 'reserved' CHECK (status IN ('reserved', 'reconciled')), created_at timestamptz NOT NULL DEFAULT now())`,

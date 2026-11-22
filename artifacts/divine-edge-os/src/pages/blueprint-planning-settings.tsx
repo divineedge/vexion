@@ -24,7 +24,8 @@ const ROLES = [
 ] as const;
 
 type CatalogItem = { id: number; name: string; available: boolean; detail?: string };
-type LinkRow = { roleKey: string; sourceKind: string; sourceId: number; customerLabel: string | null; headKey: string; name?: string };
+type HeadRule = { headType: 'sprinkler' | 'drip'; headKey: string | null; minSpacingFt: number | null; maxSpacingFt: number | null };
+type LinkRow = { roleKey: string; sourceKind: string; sourceId: number; customerLabel: string | null; headKey: string; headType?: string | null; name?: string };
 type Catalog = {
   settings: {
     sprinklerMinSpacingFt: number | null;
@@ -33,10 +34,11 @@ type Catalog = {
     yardsPerTruckLoad: number | null;
     bufferPercent: number;
     zoneExclusions: { a: string; b: string }[];
+    headRules?: HeadRule[];
   };
   requiredRoles: Record<string, string[]>;
   links: LinkRow[];
-  inventory: CatalogItem[];
+  inventory: (CatalogItem & { nozzle?: string | null; throwFt?: number | null; arcDegrees?: number | null; pattern?: string | null })[];
   kits: CatalogItem[];
   services: (CatalogItem & { category: string | null })[];
   passthroughs: (CatalogItem & { unit: string | null; unitPrice: number })[];
@@ -44,6 +46,55 @@ type Catalog = {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Could not save';
+}
+
+function HeadSpecsRow({ link, item, links, onSaved }: {
+  link: LinkRow;
+  item?: Catalog['inventory'][number];
+  links: LinkRow[];
+  onSaved: () => void;
+}) {
+  const [nozzle, setNozzle] = useState(item?.nozzle ?? '');
+  const [throwFt, setThrowFt] = useState(item?.throwFt == null ? '' : String(item.throwFt));
+  const [arcDegrees, setArcDegrees] = useState(item?.arcDegrees == null ? '' : String(item.arcDegrees));
+  const [pattern, setPattern] = useState(item?.pattern ?? '');
+  return (
+    <div className="grid gap-2 border-b pb-3 sm:grid-cols-[12rem_8rem_1fr]" data-testid={`head-specs-${link.sourceId}`}>
+      <div>
+        <p className="text-sm font-medium">{link.name || link.headKey}</p>
+        <Select value={link.headType === 'drip' ? 'drip' : 'sprinkler'} onValueChange={value => {
+          const next = links.map(row => row.sourceKind === link.sourceKind && row.sourceId === link.sourceId ? { ...row, headType: value } : row);
+          void customFetch('/api/blueprint-planning/links', {
+            method: 'PUT',
+            body: JSON.stringify({ links: next.map(row => ({ roleKey: row.roleKey, sourceKind: row.sourceKind, sourceId: row.sourceId, customerLabel: row.customerLabel, headType: row.headType ?? null })) }),
+          }).then(onSaved).catch(error => toast.error(errorMessage(error)));
+        }}>
+          <SelectTrigger className="w-36 h-8" data-testid={`head-type-${link.sourceId}`}><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="sprinkler">Sprinkler</SelectItem>
+            <SelectItem value="drip">Drip emitter</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex flex-wrap gap-2 sm:col-span-2">
+        <Input className="w-28 h-8" placeholder="Nozzle" aria-label="Nozzle" value={nozzle} onChange={event => setNozzle(event.target.value)} />
+        <Input className="w-24 h-8" type="number" placeholder="Throw ft" aria-label="Throw" value={throwFt} onChange={event => setThrowFt(event.target.value)} />
+        <Input className="w-24 h-8" type="number" placeholder="Arc" aria-label="Arc" value={arcDegrees} onChange={event => setArcDegrees(event.target.value)} />
+        <Input className="w-28 h-8" placeholder="Pattern" aria-label="Pattern" value={pattern} onChange={event => setPattern(event.target.value)} />
+        <Button type="button" size="sm" variant="outline" data-testid={`save-head-specs-${link.sourceId}`} onClick={() => {
+          void customFetch(`/api/blueprint-planning/heads/${link.sourceId}/specs`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              nozzle,
+              throwFt: throwFt === '' ? null : Number(throwFt),
+              arcDegrees: arcDegrees === '' ? null : Number(arcDegrees),
+              pattern,
+            }),
+          }).then(onSaved).catch(error => toast.error(errorMessage(error)));
+        }}>Save nozzle</Button>
+      </div>
+    </div>
+  );
 }
 
 export default function BlueprintPlanningSettingsPage() {
@@ -63,10 +114,16 @@ export default function BlueprintPlanningSettingsPage() {
   const sprinklerChoices = useMemo(() => (data?.links ?? []).filter(link => link.roleKey === 'sprinkler'), [data?.links]);
 
   const saveSettings = async (next: Catalog['settings']) => {
+    const headRules = [
+      ...(next.sprinklerMinSpacingFt != null && next.sprinklerMaxSpacingFt != null
+        ? [{ headType: 'sprinkler' as const, headKey: null, minSpacingFt: next.sprinklerMinSpacingFt, maxSpacingFt: next.sprinklerMaxSpacingFt }]
+        : []),
+      ...((next.headRules ?? []).filter(rule => rule.headType === 'drip' || rule.headKey)),
+    ];
     try {
       const saved = await customFetch<Catalog['settings']>('/api/blueprint-planning/settings', {
         method: 'PUT',
-        body: JSON.stringify(next),
+        body: JSON.stringify({ ...next, headRules }),
       });
       setDraft(saved);
       toast.success('Planning settings saved');
@@ -94,7 +151,7 @@ export default function BlueprintPlanningSettingsPage() {
     try {
       await customFetch('/api/blueprint-planning/links', {
         method: 'PUT',
-        body: JSON.stringify({ links: links.map(link => ({ roleKey: link.roleKey, sourceKind: link.sourceKind, sourceId: link.sourceId, customerLabel: link.customerLabel })) }),
+        body: JSON.stringify({ links: links.map(link => ({ roleKey: link.roleKey, sourceKind: link.sourceKind, sourceId: link.sourceId, customerLabel: link.customerLabel, headType: link.headType ?? null })) }),
       });
       qc.invalidateQueries({ queryKey: ['blueprint-planning-catalog'] });
     } catch (error) {
@@ -133,6 +190,22 @@ export default function BlueprintPlanningSettingsPage() {
           </label>
           <label className="text-sm">Farthest apart (ft)
             <Input type="number" min="0" value={settings.sprinklerMaxSpacingFt ?? ''} onChange={event => setDraft({ ...settings, sprinklerMaxSpacingFt: event.target.value === '' ? null : Number(event.target.value) })} />
+          </label>
+          <label className="text-sm">Closest drip emitters (ft)
+            <Input type="number" min="0" data-testid="drip-min-spacing" value={(settings.headRules ?? []).find(rule => rule.headType === 'drip' && !rule.headKey)?.minSpacingFt ?? ''} onChange={event => {
+              const minSpacingFt = event.target.value === '' ? null : Number(event.target.value);
+              const current = (settings.headRules ?? []).find(rule => rule.headType === 'drip' && !rule.headKey);
+              const rest = (settings.headRules ?? []).filter(rule => !(rule.headType === 'drip' && !rule.headKey));
+              setDraft({ ...settings, headRules: [...rest, { headType: 'drip', headKey: null, minSpacingFt, maxSpacingFt: current?.maxSpacingFt ?? null }] });
+            }} />
+          </label>
+          <label className="text-sm">Farthest drip emitters (ft)
+            <Input type="number" min="0" data-testid="drip-max-spacing" value={(settings.headRules ?? []).find(rule => rule.headType === 'drip' && !rule.headKey)?.maxSpacingFt ?? ''} onChange={event => {
+              const maxSpacingFt = event.target.value === '' ? null : Number(event.target.value);
+              const current = (settings.headRules ?? []).find(rule => rule.headType === 'drip' && !rule.headKey);
+              const rest = (settings.headRules ?? []).filter(rule => !(rule.headType === 'drip' && !rule.headKey));
+              setDraft({ ...settings, headRules: [...rest, { headType: 'drip', headKey: null, minSpacingFt: current?.minSpacingFt ?? null, maxSpacingFt }] });
+            }} />
           </label>
           <label className="text-sm">Order buffer %
             <Input type="number" min="0" value={settings.bufferPercent} onChange={event => setDraft({ ...settings, bufferPercent: Number(event.target.value) })} />
@@ -186,6 +259,18 @@ export default function BlueprintPlanningSettingsPage() {
               );
             })}
           </ul>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Head type and nozzle</CardTitle>
+          <CardDescription>These company rules apply to every blueprint. Sprinklers and drip emitters keep their own spacing. A nozzle suggestion uses only the nozzle, throw, arc, or pattern stored here.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {sprinklerChoices.length === 0 ? <p className="text-sm text-muted-foreground">Link a sprinkler first.</p> : sprinklerChoices.map(link => (
+            <HeadSpecsRow key={link.headKey} link={link} item={data.inventory.find(row => row.id === link.sourceId)} links={data.links} onSaved={() => qc.invalidateQueries({ queryKey: ['blueprint-planning-catalog'] })} />
+          ))}
         </CardContent>
       </Card>
 

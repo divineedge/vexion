@@ -25,8 +25,11 @@ import {
   linesTotal,
   nextVersionStatuses,
   orderListFromLines,
+  resolvePlanningRules,
+  type BlueprintRuleOverride,
   type CatalogLinkInput,
   type CustomerLine,
+  type HeadRule,
   type PlanFeature,
   type PlanningSettingsInput,
 } from "../lib/blueprintPlanning";
@@ -49,6 +52,38 @@ function finiteOrNull(value: unknown): number | null {
   return Number.isFinite(number) ? number : null;
 }
 
+function parseHeadRules(value: unknown): HeadRule[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(entry => {
+    if (!entry || typeof entry !== "object") return [];
+    const rule = entry as { headType?: unknown; headKey?: unknown; minSpacingFt?: unknown; maxSpacingFt?: unknown };
+    if (rule.headType !== "sprinkler" && rule.headType !== "drip") return [];
+    const min = finiteOrNull(rule.minSpacingFt);
+    const max = finiteOrNull(rule.maxSpacingFt);
+    const cleaned: HeadRule = {
+      headType: rule.headType,
+      headKey: typeof rule.headKey === "string" && rule.headKey.trim() ? rule.headKey.trim().slice(0, 80) : null,
+      minSpacingFt: min,
+      maxSpacingFt: max,
+    };
+    return [cleaned];
+  }).slice(0, 100);
+}
+
+function parseRuleOverride(value: unknown): BlueprintRuleOverride {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const body = value as { headRules?: unknown; zoneExclusions?: unknown };
+  const headRules = parseHeadRules(body.headRules).filter(rule => rule.minSpacingFt != null && rule.maxSpacingFt != null);
+  const zoneExclusions = Array.isArray(body.zoneExclusions) ? body.zoneExclusions.flatMap(entry => {
+    if (!entry || typeof entry !== "object") return [];
+    const pair = entry as { a?: unknown; b?: unknown };
+    if (typeof pair.a !== "string" || typeof pair.b !== "string" || pair.a === pair.b) return [];
+    return [{ a: pair.a.slice(0, 80), b: pair.b.slice(0, 80) }];
+  }).slice(0, 100) : undefined;
+  if (!headRules.length && !zoneExclusions) return null;
+  return { headRules, ...(zoneExclusions ? { zoneExclusions } : {}) };
+}
+
 function settingsView(row: typeof blueprintPlanningSettingsTable.$inferSelect | undefined): PlanningSettingsInput {
   const exclusions = Array.isArray(row?.zoneExclusions) ? row.zoneExclusions : [];
   return {
@@ -63,6 +98,7 @@ function settingsView(row: typeof blueprintPlanningSettingsTable.$inferSelect | 
       if (typeof pair.a !== "string" || typeof pair.b !== "string") return [];
       return [{ a: pair.a, b: pair.b }];
     }),
+    headRules: parseHeadRules(row?.headRules),
   };
 }
 
@@ -181,6 +217,11 @@ async function plannerLinks(tenantId: number): Promise<CatalogLinkInput[]> {
         internalCost: item.unitPrice,
         onHand: row.sourceKind === "kit" ? await kitBuildable(tenantId, item.id, quantities) : stock?.quantity ?? 0,
         customerLabel: row.customerLabel,
+        headType: row.headType === "drip" ? "drip" : row.headType === "sprinkler" ? "sprinkler" : null,
+        nozzle: item.nozzle,
+        throwFt: item.throwFt,
+        arcDegrees: item.arcDegrees,
+        pattern: item.pattern,
       });
     } else if (row.sourceKind === "service") {
       const service = serviceById.get(row.sourceId);
@@ -290,7 +331,7 @@ router.get("/blueprint-planning/catalog", async (req, res): Promise<void> => {
     roles: ROLE_LABELS,
     requiredRoles: { sprinkler: ["pipe", "sprinkler", "labor", "valve_kit", "manifold_kit", "box", "timer"], gravel: ["gravel"], bark: ["bark"], general: [] },
     links: links.filter(link => link.active).map(link => ({ ...link, name: nameFor(link.sourceKind, link.sourceId), headKey: `${link.sourceKind}:${link.sourceId}` })),
-    inventory: items.map(item => ({ id: item.id, name: item.name, sku: item.sku, unit: item.unit, quantity: item.quantity, category: item.category, available: item.availableForBlueprint })),
+    inventory: items.map(item => ({ id: item.id, name: item.name, sku: item.sku, unit: item.unit, quantity: item.quantity, category: item.category, available: item.availableForBlueprint, nozzle: item.nozzle, throwFt: item.throwFt, arcDegrees: item.arcDegrees, pattern: item.pattern })),
     kits: items.filter(item => kitParents.has(item.id)).map(item => ({ id: item.id, name: item.name, sku: item.sku, unit: item.unit, available: available.get(`kit:${item.id}`) === true })),
     services: services.map(service => ({ id: service.id, name: service.name, category: service.category, pricingMode: service.pricingMode, basePrice: service.basePrice, hourlyRate: service.hourlyRate, available: available.get(`service:${service.id}`) === true })),
     passthroughs: passthroughs.map(row => ({ id: row.id, name: row.name, unit: row.unit, unitPrice: row.unitPrice, internalCost: row.internalCost, available: row.availableForBlueprint })),
@@ -314,6 +355,7 @@ router.put("/blueprint-planning/settings", async (req, res): Promise<void> => {
     yardsPerTruckLoad: finiteOrNull(req.body?.yardsPerTruckLoad),
     bufferPercent: buffer == null ? 10 : Math.min(100, Math.max(0, buffer)),
     zoneExclusions: exclusions,
+    headRules: parseHeadRules(req.body?.headRules),
     updatedAt: new Date(),
   };
   await db.insert(blueprintPlanningSettingsTable).values(values).onConflictDoUpdate({
@@ -325,6 +367,7 @@ router.put("/blueprint-planning/settings", async (req, res): Promise<void> => {
       yardsPerTruckLoad: values.yardsPerTruckLoad,
       bufferPercent: values.bufferPercent,
       zoneExclusions: values.zoneExclusions,
+      headRules: values.headRules,
       updatedAt: new Date(),
     },
   });
@@ -365,7 +408,7 @@ router.put("/blueprint-planning/availability", async (req, res): Promise<void> =
 router.put("/blueprint-planning/links", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   if (!Array.isArray(req.body?.links)) { res.status(400).json({ error: "links array is required" }); return; }
-  const links: { tenantId: number; roleKey: string; sourceKind: string; sourceId: number; customerLabel: string | null; active: boolean }[] = [];
+  const links: { tenantId: number; roleKey: string; sourceKind: string; sourceId: number; customerLabel: string | null; headType: string | null; active: boolean }[] = [];
   for (const entry of req.body.links) {
     const roleKey = String(entry?.roleKey ?? "");
     const sourceKind = String(entry?.sourceKind ?? "");
@@ -380,6 +423,7 @@ router.put("/blueprint-planning/links", async (req, res): Promise<void> => {
       sourceKind,
       sourceId,
       customerLabel: typeof entry?.customerLabel === "string" && entry.customerLabel.trim() ? entry.customerLabel.trim().slice(0, 120) : null,
+      headType: entry?.headType === "drip" || entry?.headType === "sprinkler" ? entry.headType : null,
       active: true,
     });
   }
@@ -469,6 +513,7 @@ router.get("/blueprint-planning/blueprints/:id", async (req, res): Promise<void>
       chosenPlanVersionId: blueprint.chosenPlanVersionId,
       planningLocked: lock?.locked ?? false,
       planningLockedReason: lock?.reason ?? null,
+      planningRules: parseRuleOverride(blueprint.planningRules),
     },
     property: property ? {
       id: property.id,
@@ -482,6 +527,41 @@ router.get("/blueprint-planning/blueprints/:id", async (req, res): Promise<void>
     versions: versions.filter(version => version.status !== "archived").map(versionJson),
     archivedVersions: versions.filter(version => version.status === "archived").map(versionJson),
   });
+});
+
+router.put("/blueprint-planning/heads/:id/specs", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = pathId(req.params.id);
+  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+  const textOrNull = (value: unknown) => typeof value === "string" && value.trim() ? value.trim().slice(0, 80) : null;
+  const [updated] = await db.update(inventoryItemsTable).set({
+    nozzle: textOrNull(req.body?.nozzle),
+    throwFt: finiteOrNull(req.body?.throwFt),
+    arcDegrees: finiteOrNull(req.body?.arcDegrees),
+    pattern: textOrNull(req.body?.pattern),
+  }).where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId))).returning({
+    id: inventoryItemsTable.id,
+    nozzle: inventoryItemsTable.nozzle,
+    throwFt: inventoryItemsTable.throwFt,
+    arcDegrees: inventoryItemsTable.arcDegrees,
+    pattern: inventoryItemsTable.pattern,
+  });
+  if (!updated) { res.status(404).json({ error: "Head not found" }); return; }
+  res.json(updated);
+});
+
+router.put("/blueprint-planning/blueprints/:id/rules", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = pathId(req.params.id);
+  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (await rejectIfBlueprintLocked(res, tenantId, id)) return;
+  const planningRules = req.body?.clear === true ? null : parseRuleOverride(req.body);
+  const [updated] = await db.update(blueprintsTable).set({ planningRules })
+    .where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId)))
+    .returning({ id: blueprintsTable.id });
+  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  const company = await readSettings(tenantId);
+  res.json({ planningRules, effective: resolvePlanningRules(company, planningRules) });
 });
 
 router.put("/blueprint-planning/blueprints/:id/inputs", async (req, res): Promise<void> => {
@@ -507,7 +587,12 @@ router.post("/blueprint-planning/blueprints/:id/calculate", async (req, res): Pr
   const inputs = parseInputs(req.body?.inputs ?? blueprint.planningInputs);
   if (!inputs) { res.status(400).json({ error: "Drawing could not be read" }); return; }
   await db.update(blueprintsTable).set({ planningInputs: inputs }).where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId)));
-  const result = buildPlan({ jobType: inputs.jobType, features: inputs.features, settings: await readSettings(tenantId), links: await plannerLinks(tenantId) });
+  const result = buildPlan({
+    jobType: inputs.jobType,
+    features: inputs.features,
+    settings: resolvePlanningRules(await readSettings(tenantId), parseRuleOverride(blueprint.planningRules)),
+    links: await plannerLinks(tenantId),
+  });
   if (!result.ok) {
     res.status(422).json({ error: "Set up the blueprint links before calculating this plan.", missing: result.missing });
     return;

@@ -48,6 +48,8 @@ export const blueprintsTable = pgTable("blueprints", {
   /** Set when an estimate from this blueprint is accepted or its job is completed. */
   planningLocked: boolean("planning_locked").notNull().default(false),
   planningLockedReason: text("planning_locked_reason"),
+  /** Null uses the company head rules. A partial list overrides only the rules stored here. */
+  planningRules: jsonb("planning_rules"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
@@ -83,6 +85,8 @@ export const blueprintPlanningSettingsTable = pgTable("blueprint_planning_settin
   yardsPerTruckLoad: doublePrecision("yards_per_truck_load"),
   bufferPercent: doublePrecision("buffer_percent").notNull().default(10),
   zoneExclusions: jsonb("zone_exclusions").notNull().default([]),
+  /** Per head type, and per specific head when one is set. Every blueprint uses these unless it stores an override. */
+  headRules: jsonb("head_rules").notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
@@ -121,6 +125,8 @@ export const blueprintCatalogLinksTable = pgTable("blueprint_catalog_links", {
   sourceKind: text("source_kind").notNull(),
   sourceId: integer("source_id").notNull(),
   customerLabel: text("customer_label"),
+  /** sprinkler or drip. Null on a sprinkler role means sprinkler. */
+  headType: text("head_type"),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

@@ -168,6 +168,14 @@ export const inventoryItemsTable = pgTable("inventory_items", {
    * rows and share one stock pile instead of keeping a second quantity.
    */
   stockItemId: integer("stock_item_id").references((): any => inventoryItemsTable.id),
+  /** Stored nozzle name for a sprinkler or drip head. Null when the head has none. */
+  nozzle: text("nozzle"),
+  /** Stored throw distance in feet. Not calculated. */
+  throwFt: doublePrecision("throw_ft"),
+  /** Stored arc in degrees. Not calculated. */
+  arcDegrees: doublePrecision("arc_degrees"),
+  /** Stored spray or drip pattern name. Not calculated. */
+  pattern: text("pattern"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

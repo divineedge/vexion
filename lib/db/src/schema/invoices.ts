@@ -83,6 +83,12 @@ export const invoicesTable = pgTable("invoices", {
   lateFeeDaysGrace: integer("late_fee_days_grace"),
   /** Soft archive timestamp. Customer archive cascades use the same timestamp as the customer. */
   archivedAt: timestamp("archived_at", { withTimezone: true }),
+  /**
+   * Set when someone handles a due or nearly due invoice from the dashboard.
+   * The invoice status, balance, and other invoice pages stay as they were.
+   */
+  dueAttentionHandledAt: timestamp("due_attention_handled_at", { withTimezone: true }),
+  dueAttentionHandledByUserId: integer("due_attention_handled_by_user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (table) => [

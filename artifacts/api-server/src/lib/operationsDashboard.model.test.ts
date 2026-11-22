@@ -1,25 +1,39 @@
 import { describe, expect, it } from "vitest";
 import { ackCovers, joinSignature, scheduleDueParts } from "./equipmentMaintenance";
-import { defaultLayout, normalizeLayout, timeframeRange } from "./operationsDashboard";
+import { classifyInvoiceAttention, defaultLayout, normalizeLayout, timeframeRange } from "./operationsDashboard";
 
 describe("operations dashboard layout", () => {
   it("keeps the default widget set and rejects an unknown filter", () => {
     const layout = defaultLayout();
     expect(layout.widgets.map(widget => widget.key)).toEqual([
-      "jobs_completed", "invoices_revenue", "payroll_summary", "schedule", "report_snapshots", "alerts",
+      "needs_action", "jobs_completed", "invoices_revenue", "invoice_attention", "profit_and_loss",
+      "payroll_summary", "schedule", "job_waitlist", "inventory_reorder", "report_snapshots", "alerts",
     ]);
     expect(layout.widgets.every(widget => widget.visible)).toBe(true);
+    expect(layout.taskSources).toEqual(expect.arrayContaining(["invoice_to_send", "invoice_due"]));
     const saved = normalizeLayout({
       widgets: [{ key: "alerts", visible: false, timeframe: "today", filter: "weather" }],
       taskSources: ["followup", "followup"],
     });
     expect(saved?.widgets.find(widget => widget.key === "alerts")).toMatchObject({ visible: false, filter: "weather" });
-    expect(saved?.widgets).toHaveLength(6);
+    expect(saved?.widgets.find(widget => widget.key === "needs_action")?.visible).toBe(true);
+    expect(saved?.widgets).toHaveLength(layout.widgets.length);
     expect(saved?.taskSources).toEqual(["followup"]);
     expect(normalizeLayout({
       widgets: [{ key: "alerts", visible: true, timeframe: "today", filter: "nope" }],
       taskSources: [],
     })).toBeNull();
+  });
+
+  it("keeps unsent invoices on the send list and due invoices on the due list", () => {
+    const now = new Date("2026-11-21T15:00:00Z");
+    const range = timeframeRange("month", "UTC", now);
+    const base = { createdAt: now, handled: false, balance: 40 };
+    expect(classifyInvoiceAttention({ ...base, status: "draft", dueAt: new Date("2026-11-20T00:00:00Z") }, range, now)).toBe("send");
+    expect(classifyInvoiceAttention({ ...base, status: "sent", dueAt: new Date("2026-11-23T00:00:00Z") }, range, now)).toBe("due");
+    expect(classifyInvoiceAttention({ ...base, status: "sent", dueAt: new Date("2026-12-20T00:00:00Z") }, range, now)).toBeNull();
+    expect(classifyInvoiceAttention({ ...base, status: "sent", dueAt: new Date("2026-11-20T00:00:00Z"), handled: true }, range, now)).toBeNull();
+    expect(classifyInvoiceAttention({ ...base, status: "paid", dueAt: now, balance: 0 }, range, now)).toBeNull();
   });
 
   it("bounds a timeframe to the tenant calendar", () => {

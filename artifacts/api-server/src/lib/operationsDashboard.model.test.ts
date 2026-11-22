@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ackCovers, joinSignature, scheduleDueParts } from "./equipmentMaintenance";
 import { classifyInvoiceAttention, defaultLayout, normalizeLayout, timeframeRange } from "./operationsDashboard";
@@ -34,6 +35,15 @@ describe("operations dashboard layout", () => {
     expect(classifyInvoiceAttention({ ...base, status: "sent", dueAt: new Date("2026-12-20T00:00:00Z") }, range, now)).toBeNull();
     expect(classifyInvoiceAttention({ ...base, status: "sent", dueAt: new Date("2026-11-20T00:00:00Z"), handled: true }, range, now)).toBeNull();
     expect(classifyInvoiceAttention({ ...base, status: "paid", dueAt: now, balance: 0 }, range, now)).toBeNull();
+  });
+
+  it("applies the invoice attention columns during server startup", () => {
+    const migration = readFileSync(new URL("../../../../lib/db/drizzle/0116_dashboard_widgets.sql", import.meta.url), "utf8");
+    const startup = readFileSync(new URL("./schemaSafety.ts", import.meta.url), "utf8");
+    const compact = (sql: string) => sql.replace(/\s+/g, " ").trim();
+    const statements = migration.split(";").map(compact).filter(Boolean);
+    expect(statements.length).toBeGreaterThan(0);
+    for (const statement of statements) expect(compact(startup)).toContain(statement);
   });
 
   it("bounds a timeframe to the tenant calendar", () => {

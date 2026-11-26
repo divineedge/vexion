@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { wmoDescription, compassDirection, fmtNum, formatDateKey, hourLabel, pickDefaultPropertyId, todayKeyInZone } from '../src/lib/scheduleWeather';
+import { wmoDescription, compassDirection, fmtNum, formatDateKey, hourLabel, clockHourLabel, forecastHourVisible, pickDefaultPropertyId, todayKeyInZone } from '../src/lib/scheduleWeather';
 
 describe('schedule weather helpers', () => {
   it('describes WMO codes and nulls', () => {
@@ -24,6 +24,12 @@ describe('schedule weather helpers', () => {
     expect(formatDateKey('2025-05-03')).toEqual({ weekday: 'Sat', monthDay: 'May 3' });
     expect(hourLabel('2025-05-03T00:00')).toBe('12:00 AM');
     expect(hourLabel('2025-05-03T14:00')).toBe('2:00 PM');
+    expect(clockHourLabel(0)).toBe('12 AM');
+    expect(clockHourLabel(7)).toBe('7 AM');
+    expect(clockHourLabel(18)).toBe('6 PM');
+    expect(forecastHourVisible('2025-05-03T06:00', 6, 18)).toBe(true);
+    expect(forecastHourVisible('2025-05-03T05:00', 6, 18)).toBe(false);
+    expect(forecastHourVisible('2025-05-03T18:00', 6, 18)).toBe(true);
     expect(todayKeyInZone('America/Chicago', new Date('2025-05-03T03:00:00Z'))).toBe('2025-05-02');
   });
   it('picks nearest pinned property', () => {

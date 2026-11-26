@@ -75,6 +75,20 @@ export function hourLabel(time: string): string {
   return `${h12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
+/** "7 AM" style label for a clock hour 0–23. */
+export function clockHourLabel(hour: number): string {
+  const h12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${h12} ${hour < 12 ? 'AM' : 'PM'}`;
+}
+
+/** True when a forecast timestamp falls inside the saved hour window. */
+export function forecastHourVisible(time: string, startHour: number, endHour: number): boolean {
+  const match = /T(\d{2})/.exec(time);
+  if (!match) return false;
+  const hour = Number(match[1]);
+  return hour >= startHour && hour <= endHour;
+}
+
 /** Pick the pinned property whose job date is nearest to the reference date. */
 export function pickDefaultPropertyId(
   jobs: { propertyId?: number | null; scheduledAt: string }[],

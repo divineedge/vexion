@@ -66,6 +66,7 @@ import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '
 import { invoiceFrequencyLabel, jobCreatePricing, normalizeInvoiceFrequency, type InvoiceFrequency } from '@/lib/jobServicePrice';
 import { useAuth } from '@/contexts/AuthContext';
 import { ScheduleWeather } from '@/components/schedule/ScheduleWeather';
+import { useScheduleForecastView } from '@/lib/scheduleForecastView';
 import { RainRiskBanner } from '@/components/schedule/RainRiskBanner';
 import { TemplateSendButton } from '@/components/communications/TemplateMessaging';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
@@ -81,7 +82,7 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
 import { toast } from 'sonner';
 import {
-  ChevronLeft, ChevronRight, Clock, MapPin, User, Calendar,
+  ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Clock, MapPin, User, Calendar,
   DollarSign, ClipboardList, Plus, Users, FlaskConical, Trash2, Pencil, AlertTriangle,
   Bell, BellOff, Send, Package, Search, Images, RefreshCw, Pause, Play, X,
   SkipForward, ListEnd, Square, Timer, Warehouse, Truck, Wrench,
@@ -270,6 +271,7 @@ function JobDescriptionEditor({ jobId, initialDescription, canEdit }: { jobId: n
 
 export default function SchedulePage() {
   const { user, isTechnician, canManageJobs, canManageOffice } = useAuth();
+  const forecastView = useScheduleForecastView(user?.id);
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
   const search = useSearch();
@@ -1170,7 +1172,7 @@ export default function SchedulePage() {
       <div className="flex flex-col gap-3 shrink-0">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Schedule</h1>
-          {canManageOffice && <RainRiskBanner date={format(new Date(), 'yyyy-MM-dd')} enabled />}
+          {canManageOffice && <RainRiskBanner date={format(new Date(), 'yyyy-MM-dd')} enabled={!forecastView.view.minimizedDays.includes(format(new Date(), 'yyyy-MM-dd'))} />}
           <p className="text-muted-foreground mt-1">
             {view === 'week'
               ? `Week of ${format(startOfWeek(currentDate, { weekStartsOn: 1 }), 'MMMM d, yyyy')}`
@@ -1424,6 +1426,8 @@ export default function SchedulePage() {
           jobs={filteredJobs as any}
           referenceDate={currentDate}
           onNavigateDate={d => { setCurrentDate(d); setView('week'); }}
+          view={forecastView.view}
+          onViewChange={forecastView.update}
         />
       )}
 
@@ -1611,6 +1615,8 @@ export default function SchedulePage() {
                 const isToday = isSameDay(day, new Date());
                 const isOtherMonth = view === 'month' && day.getMonth() !== currentDate.getMonth();
                 const totalCount = dayJobs.length + dayEstimates.length + dayVisits.length;
+                const dateKey = format(day, 'yyyy-MM-dd');
+                const dayMinimized = forecastView.view.minimizedDays.includes(dateKey);
                 return (
                   <div
                     key={day.toISOString()}
@@ -1627,13 +1633,30 @@ export default function SchedulePage() {
                     }}
                   >
                     <div className="flex justify-between items-center mb-2">
-                      <span
-                        className={`text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full cursor-pointer hover:bg-muted transition-colors ${isToday ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'text-muted-foreground'}`}
-                        onClick={() => { setCurrentDate(day); if (view === 'month') setView('week'); }}
-                        title={format(day, 'EEEE, MMM d')}
-                      >
-                        {format(day, 'd')}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span
+                          className={`text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full cursor-pointer hover:bg-muted transition-colors ${isToday ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'text-muted-foreground'}`}
+                          onClick={() => { setCurrentDate(day); if (view === 'month') setView('week'); }}
+                          title={format(day, 'EEEE, MMM d')}
+                        >
+                          {format(day, 'd')}
+                        </span>
+                        <button
+                          type="button"
+                          className="text-muted-foreground hover:text-foreground rounded p-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-expanded={!dayMinimized}
+                          title={dayMinimized ? 'Show this day and its weather' : 'Minimize this day and its weather'}
+                          data-testid={`button-toggle-day-${dateKey}`}
+                          onClick={() => {
+                            const minimizedDays = dayMinimized
+                              ? forecastView.view.minimizedDays.filter(key => key !== dateKey)
+                              : [...forecastView.view.minimizedDays, dateKey];
+                            forecastView.update({ minimizedDays });
+                          }}
+                        >
+                          {dayMinimized ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
                       {totalCount > 0 ? (
                         <div className="flex flex-col items-end">
                           <span className={`text-xs ${dayJobs.some(j => (j as any).holdFromBilling) ? 'text-amber-600 font-medium' : 'text-muted-foreground'}`} title={`${totalCount} item${totalCount !== 1 ? 's' : ''}: ${dayJobs.length} job${dayJobs.length !== 1 ? 's' : ''}, ${dayEstimates.length} estimate${dayEstimates.length !== 1 ? 's' : ''}, ${dayVisits.length} visit${dayVisits.length !== 1 ? 's' : ''}`}>
@@ -1663,6 +1686,11 @@ export default function SchedulePage() {
                         </button>
                       )}
                     </div>
+                    {dayMinimized ? (
+                      <p className="text-[11px] text-muted-foreground" data-testid={`text-day-minimized-${dateKey}`}>
+                        Day minimized{totalCount > 0 ? ` · ${totalCount}` : ''}
+                      </p>
+                    ) : (
                     <div className="flex-1 space-y-1.5 overflow-y-auto pr-1">
                       {/* Jobs */}
                       {dayJobs.map(job => (
@@ -1805,6 +1833,7 @@ export default function SchedulePage() {
                         </div>
                       ))}
                     </div>
+                    )}
                   </div>
                 );
               })}

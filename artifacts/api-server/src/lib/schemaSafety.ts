@@ -63,6 +63,8 @@ const ADDITIVE_SETTINGS_SQL = [
   `CREATE INDEX IF NOT EXISTS blueprint_inventory_uses_blueprint_idx ON blueprint_inventory_uses (tenant_id, blueprint_id)`,
   `CREATE TABLE IF NOT EXISTS user_dashboard_layouts (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, tenant_id integer NOT NULL REFERENCES tenants(id), widgets jsonb NOT NULL, task_sources jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`,
   `CREATE INDEX IF NOT EXISTS user_dashboard_layouts_tenant_idx ON user_dashboard_layouts (tenant_id)`,
+  `CREATE TABLE IF NOT EXISTS user_schedule_forecast_views (user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, tenant_id integer NOT NULL REFERENCES tenants(id), start_hour integer NOT NULL DEFAULT 0, end_hour integer NOT NULL DEFAULT 23, hourly_minimized boolean NOT NULL DEFAULT false, minimized_days jsonb NOT NULL DEFAULT '[]'::jsonb, updated_at timestamptz NOT NULL DEFAULT now())`,
+  `CREATE INDEX IF NOT EXISTS user_schedule_forecast_views_tenant_idx ON user_schedule_forecast_views (tenant_id)`,
   `ALTER TABLE portal_messages ADD COLUMN IF NOT EXISTS handled_at timestamptz`,
   `ALTER TABLE portal_messages ADD COLUMN IF NOT EXISTS handled_by_user_id integer`,
   `ALTER TABLE estimates ADD COLUMN IF NOT EXISTS response_handled_at timestamptz`,

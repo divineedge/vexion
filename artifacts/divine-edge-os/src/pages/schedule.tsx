@@ -96,6 +96,7 @@ import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   eachDayOfInterval, format, isSameDay, addWeeks, subWeeks, addMonths, subMonths,
 } from 'date-fns';
+import { exclusiveScheduleRangeEnd, isWaitlistJob, jobOnCalendarDay } from '@/lib/scheduleCalendar';
 
 function PartLocationBadges({ inventoryItemId }: { inventoryItemId: number }) {
   const [, navTo] = useLocation();
@@ -371,10 +372,12 @@ export default function SchedulePage() {
     : endOfWeek(endOfMonth(currentDate), { weekStartsOn: 1 });
 
   const routeTemplateIdParam = routeFilter !== 'all' ? parseInt(routeFilter, 10) : undefined;
+  const scheduleRangeEnd = exclusiveScheduleRangeEnd(end);
+  const jobListParams = { startDate: start.toISOString(), endDate: scheduleRangeEnd.toISOString(), assigneeId, routeTemplateId: routeTemplateIdParam };
 
   const { data: jobs, isLoading } = useListJobs(
-    { startDate: start.toISOString(), endDate: end.toISOString(), assigneeId, routeTemplateId: routeTemplateIdParam },
-    { query: { queryKey: getListJobsQueryKey({ startDate: start.toISOString(), endDate: end.toISOString(), assigneeId, routeTemplateId: routeTemplateIdParam }) } },
+    jobListParams,
+    { query: { queryKey: getListJobsQueryKey(jobListParams) } },
   );
 
   const { data: selectedJob } = useGetJob(selectedJobId!, {
@@ -944,6 +947,7 @@ export default function SchedulePage() {
   const { data: crews = [] } = useListCrews({ query: { queryKey: getListCrewsQueryKey() } });
   const jobSearchLower = jobSearch.toLowerCase();
   const filteredJobs = (jobs ?? [])
+    .filter(j => !isWaitlistJob(j.status))
     .filter(j => !propertyFilterLower || ((j as any).propertyAddress ?? '').toLowerCase().includes(propertyFilterLower))
     .filter(j => !jobSearch || j.title.toLowerCase().includes(jobSearchLower) || (j.customerName ?? '').toLowerCase().includes(jobSearchLower))
     .filter(j => !holdFilter || (j as any).holdFromBilling || jobNeedsPricing(j))
@@ -956,7 +960,7 @@ export default function SchedulePage() {
     .filter(j => statusFilter === 'all' || j.status === statusFilter)
     .filter(j => !overdueFilter || (j.status !== 'completed' && j.status !== 'cancelled' && new Date(j.scheduledAt) < new Date()))
     .filter(j => !noRouteFilter || !(j as any).routeTemplateId);
-  const getJobsForDay = (date: Date) => filteredJobs.filter(j => isSameDay(new Date(j.scheduledAt), date)).sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+  const getJobsForDay = (date: Date) => filteredJobs.filter(j => jobOnCalendarDay(j, date)).sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
   const getEstimatesForDay = (date: Date) =>
     (estimates ?? []).filter(e => e.scheduledAt && isSameDay(new Date(e.scheduledAt), date)
       && (employeeFilter === 'all' || String(e.assigneeId ?? '') === employeeFilter));
@@ -1015,6 +1019,7 @@ export default function SchedulePage() {
       data: {
         title: draft.title,
         description: draft.description || undefined,
+        status: 'scheduled',
         scheduledAt: scheduledDate.toISOString(),
         estimatedDuration: durationMins,
         priority: draft.priority as 'low' | 'normal' | 'high' | 'urgent',
@@ -1035,6 +1040,8 @@ export default function SchedulePage() {
         pendingJobDraft.current = null;
         setCapConflict(null); setCapError(null);
         toast.success(recurrenceRule ? 'Recurring job series created' : 'Job created');
+        setCurrentDate(scheduledDate);
+        if (view === 'series') setView('week');
         qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
         qc.invalidateQueries({ queryKey: getListRecurringSeriesQueryKey() });
         setCreateOpen(false);
@@ -4604,7 +4611,7 @@ export default function SchedulePage() {
               <div className="text-center py-12 text-muted-foreground">
                 <ListEnd className="w-10 h-10 mx-auto mb-3 opacity-30" />
                 <p className="text-sm font-medium">Waitlist is empty</p>
-                <p className="text-xs mt-1">When creating a job, set its status to "Waitlist" to hold it here until a date is set.</p>
+                <p className="text-xs mt-1">Jobs without a schedule date stay here. A job with a date is placed on that day.</p>
               </div>
             ) : (
               waitlistJobs.map((job: any) => (

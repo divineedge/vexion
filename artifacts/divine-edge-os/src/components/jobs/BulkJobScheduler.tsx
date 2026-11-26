@@ -321,6 +321,7 @@ export function BulkJobScheduler({
             title: title.trim(),
             serviceId: serviceId ? Number(serviceId) : undefined,
             description: description.trim() || undefined,
+            status: 'scheduled',
             scheduledAt,
             priority,
             customerId: Number(row.customerId),

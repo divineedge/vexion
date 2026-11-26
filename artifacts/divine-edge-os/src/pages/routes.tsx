@@ -309,6 +309,7 @@ export default function RoutesDashboardPage() {
       data: {
         title: newJob.title,
         description: newJob.description || undefined,
+        status: 'scheduled',
         scheduledAt: scheduledAtIso,
         estimatedDuration: durationMins,
         serviceId: newJob.serviceId ? parseInt(newJob.serviceId, 10) : undefined,

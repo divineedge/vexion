@@ -75,6 +75,9 @@ describe("daily route metrics", () => {
   it("hides other routes from a crew and limits a manager to their crews", () => {
     expect(capabilitiesFor("crew").switchViews).toBe(false);
     expect(capabilitiesFor("crew").simulateRole).toBe(false);
+    expect(capabilitiesFor("crew").optimizeAll).toBe(false);
+    expect(capabilitiesFor("crew").logCallback).toBe(false);
+    expect(capabilitiesFor("manager")).toMatchObject({ optimizeAll: true, logCallback: true, reassign: false, simulateRole: false });
     expect(capabilitiesFor("owner").simulateRole).toBe(true);
     const crews = [
       { id: 1, managerId: 10, name: "North Route" },

@@ -19,12 +19,13 @@ export interface MetricLeg {
 
 export function capabilitiesFor(role: BoardRole) {
   const office = role === "office" || role === "owner";
+  const dispatchLead = office || role === "manager";
   return {
     switchViews: role !== "crew",
     dispatch: role !== "crew",
     reassign: office,
-    logCallback: office,
-    optimizeAll: office,
+    logCallback: dispatchLead,
+    optimizeAll: dispatchLead,
     optimizeRoute: true,
     lockToggle: role !== "crew",
     simulateRole: office,

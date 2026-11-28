@@ -1,4 +1,5 @@
 import { formsGuardedJobUpdate,FormError,assertCompletedJobCreationAllowed } from "../lib/jobForms";
+import { scheduleRangeOmitsWaitlist } from "../lib/scheduleJobQuery";
 import { paymentGuardedJobInsert, ensureScheduledJobPayment, jobScheduleDepositWarning } from "../lib/paymentPolicy";
 import { capacityCheckedJobUpdate } from "../lib/crewCapacity";
 import { creditedInvoiceInsert } from "../lib/customerCredit";
@@ -572,6 +573,9 @@ router.get("/jobs", async (req, res): Promise<void> => {
     where = and(where, eq(jobsTable.assigneeId, parseInt(assigneeId, 10))) as typeof where;
   }
   if (status) where = and(where, eq(jobsTable.status, status)) as typeof where;
+  // Waitlist rows keep a placeholder scheduled_at. A date-bounded schedule
+  // must not place them on that day. An explicit status=waitlist query still returns them.
+  else if (scheduleRangeOmitsWaitlist(status, Boolean(start || end))) where = and(where, ne(jobsTable.status, "waitlist")) as typeof where;
   if (crewId) where = and(where, eq(jobsTable.crewId, parseInt(crewId, 10))) as typeof where;
   if (customerId) where = and(where, eq(jobsTable.customerId, parseInt(customerId, 10))) as typeof where;
   if (propertyId) where = and(where, eq(jobsTable.propertyId, parseInt(propertyId, 10))) as typeof where;

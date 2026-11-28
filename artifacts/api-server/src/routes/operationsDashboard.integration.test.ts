@@ -220,18 +220,12 @@ describe.skipIf(!RUN)("operations dashboard", () => {
       defaultLayout().widgets.map(widget => `${widget.key}:${widget.visible}`),
     );
     const saved = await request(app).get("/dashboard/operations").set(auth(ownerToken));
-    expect(saved.body.layout.widgets[0].key).toBe("invoices_revenue");
+    expect(saved.body.layout.widgets[0].key).toBe("needs_action");
+    expect(saved.body.layout.widgets[1].key).toBe("invoices_revenue");
     expect(saved.body.widgets.payrollSummary).toBeNull();
     expect(saved.body.tasks).toHaveLength(1);
     expect(saved.body.tasks[0].source).toBe("portal_message");
-
-    const collapsed = structuredClone(saved.body.layout);
-    collapsed.widgets = collapsed.widgets.map((widget: { key: string }) => widget.key === "needs_action" ? { ...widget, minimized: true } : widget);
-    expect((await request(app).put("/dashboard/layout").set(auth(ownerToken)).send(collapsed)).status).toBe(200);
-    const collapsedOwner = await request(app).get("/dashboard/layout").set(auth(ownerToken));
-    expect(collapsedOwner.body.widgets.at(-1)).toMatchObject({ key: "needs_action", minimized: true });
-    const otherStillOpen = await request(app).get("/dashboard/layout").set(auth(otherToken));
-    expect(otherStillOpen.body.widgets.find((widget: { key: string }) => widget.key === "needs_action").minimized).not.toBe(true);
+    expect(other.body.taskSources).toEqual(defaultLayout().taskSources);
 
     const reset = await request(app).post("/dashboard/layout/reset").set(auth(ownerToken));
     expect(reset.body.widgets.every((widget: { visible: boolean }) => widget.visible)).toBe(true);

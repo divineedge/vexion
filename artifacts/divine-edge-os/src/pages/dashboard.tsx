@@ -14,7 +14,7 @@ import {
   type ActionTask, type DashboardLayout, type OperationsPayload,
 } from '@/components/dashboard/operations';
 import { useAuth } from '@/contexts/AuthContext';
-import { AlertTriangle, Briefcase, Check, CloudRain, DollarSign, LayoutGrid, ListEnd, Package, ScrollText, SlidersHorizontal, Wrench } from 'lucide-react';
+import { AlertTriangle, Briefcase, Check, ChevronDown, ChevronUp, CloudRain, DollarSign, LayoutGrid, ListEnd, Package, ScrollText, SlidersHorizontal, Wrench } from 'lucide-react';
 
 const queryKey = ['operations-dashboard'];
 
@@ -60,7 +60,20 @@ export default function DashboardPage() {
   const layout = operations.data?.layout as DashboardLayout | undefined;
   const widgets = operations.data?.widgets as OperationsPayload['widgets'] | undefined;
   const tasks = (operations.data?.tasks ?? []) as ActionTask[];
-  const visible = layout?.widgets.filter(widget => widget.visible) ?? [];
+  const visible = [...(layout?.widgets.filter(widget => widget.visible) ?? [])].sort((left, right) => {
+    if (left.key === 'needs_action') return 1;
+    if (right.key === 'needs_action') return -1;
+    return 0;
+  });
+  const needsActionMinimized = layout?.widgets.find(widget => widget.key === 'needs_action')?.minimized === true;
+
+  const toggleNeedsAction = () => {
+    if (!layout) return;
+    saveLayout.mutate({
+      ...layout,
+      widgets: layout.widgets.map(widget => widget.key === 'needs_action' ? { ...widget, minimized: !widget.minimized } : widget),
+    });
+  };
 
   const toggleSource = (source: string, checked: boolean) => {
     if (!layout) return;
@@ -103,10 +116,12 @@ export default function DashboardPage() {
               <NeedsAction
                 tasks={tasks}
                 layout={layout}
+                minimized={needsActionMinimized}
                 loading={operations.isLoading}
                 error={operations.isError}
                 pending={completeTask.isPending}
                 onToggle={toggleSource}
+                onToggleMinimized={toggleNeedsAction}
                 onOpen={setLocation}
                 onComplete={task => completeTask.mutate(task)}
               />
@@ -138,22 +153,37 @@ export default function DashboardPage() {
 }
 
 function NeedsAction({
-  tasks, layout, loading, error, pending, onToggle, onOpen, onComplete,
+  tasks, layout, minimized, loading, error, pending, onToggle, onToggleMinimized, onOpen, onComplete,
 }: {
   tasks: ActionTask[];
   layout: DashboardLayout | undefined;
+  minimized: boolean;
   loading: boolean;
   error: boolean;
   pending: boolean;
   onToggle: (source: string, checked: boolean) => void;
+  onToggleMinimized: () => void;
   onOpen: (href: string) => void;
   onComplete: (task: ActionTask) => void;
 }) {
   return (
     <Card data-testid="action-tasks" className="h-full">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">Needs Action</CardTitle>
-        <div className="flex flex-wrap gap-3 pt-2">
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="text-base">Needs Action</CardTitle>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-expanded={!minimized}
+            data-testid="button-toggle-needs-action"
+            onClick={onToggleMinimized}
+          >
+            {minimized ? <ChevronDown className="mr-1 h-3.5 w-3.5" /> : <ChevronUp className="mr-1 h-3.5 w-3.5" />}
+            {minimized ? 'Expand' : 'Minimize'}
+          </Button>
+        </div>
+        {!minimized && <div className="flex flex-wrap gap-3 pt-2">
           {TASK_SOURCE_OPTIONS.map(option => (
             <label key={option.value} className="flex items-center gap-2 text-sm">
               <Checkbox
@@ -164,9 +194,9 @@ function NeedsAction({
               {option.label}
             </label>
           ))}
-        </div>
+        </div>}
       </CardHeader>
-      <CardContent className="space-y-2">
+      {!minimized && <CardContent className="space-y-2" data-testid="needs-action-tasks">
         {loading && <p className="text-sm text-muted-foreground">Loading tasks…</p>}
         {error && <p className="text-sm text-destructive">Tasks could not be loaded.</p>}
         {!loading && !error && tasks.length === 0 && (
@@ -191,7 +221,7 @@ function NeedsAction({
             </Button>
           </div>
         ))}
-      </CardContent>
+      </CardContent>}
     </Card>
   );
 }

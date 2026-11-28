@@ -59,6 +59,7 @@ export function CustomizeDashboardDrawer({
   const move = (index: number, direction: -1 | 1) => {
     const target = index + direction;
     if (target < 0 || target >= widgets.length) return;
+    if (widgets[index].key === 'needs_action' || widgets[target].key === 'needs_action') return;
     const next = [...widgets];
     const [item] = next.splice(index, 1);
     next.splice(target, 0, item);
@@ -101,10 +102,10 @@ export function CustomizeDashboardDrawer({
                 </Select>
               </div>
               <div className="flex gap-2">
-                <Button type="button" variant="outline" size="sm" disabled={index === 0 || saving} onClick={() => move(index, -1)}>
+                <Button type="button" variant="outline" size="sm" disabled={widget.key === 'needs_action' || index === 0 || saving} onClick={() => move(index, -1)}>
                   <ArrowUp className="mr-1 h-3.5 w-3.5" /> Up
                 </Button>
-                <Button type="button" variant="outline" size="sm" disabled={index === widgets.length - 1 || saving} onClick={() => move(index, 1)}>
+                <Button type="button" variant="outline" size="sm" disabled={widget.key === 'needs_action' || index >= widgets.length - 1 || widgets[index + 1]?.key === 'needs_action' || saving} onClick={() => move(index, 1)}>
                   <ArrowDown className="mr-1 h-3.5 w-3.5" /> Down
                 </Button>
               </div>

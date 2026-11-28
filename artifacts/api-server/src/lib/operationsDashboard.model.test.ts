@@ -7,10 +7,12 @@ describe("operations dashboard layout", () => {
   it("keeps the default widget set and rejects an unknown filter", () => {
     const layout = defaultLayout();
     expect(layout.widgets.map(widget => widget.key)).toEqual([
-      "needs_action", "jobs_completed", "invoices_revenue", "invoice_attention", "profit_and_loss",
+      "jobs_completed", "invoices_revenue", "invoice_attention", "profit_and_loss",
       "payroll_summary", "schedule", "job_waitlist", "inventory_reorder", "report_snapshots", "alerts",
+      "needs_action",
     ]);
     expect(layout.widgets.every(widget => widget.visible)).toBe(true);
+    expect(layout.widgets.at(-1)).toMatchObject({ key: "needs_action", minimized: false });
     expect(layout.taskSources).toEqual(expect.arrayContaining(["invoice_to_send", "invoice_due"]));
     const saved = normalizeLayout({
       widgets: [{ key: "alerts", visible: false, timeframe: "today", filter: "weather" }],
@@ -20,6 +22,16 @@ describe("operations dashboard layout", () => {
     expect(saved?.widgets.find(widget => widget.key === "needs_action")?.visible).toBe(true);
     expect(saved?.widgets).toHaveLength(layout.widgets.length);
     expect(saved?.taskSources).toEqual(["followup"]);
+    expect(saved?.widgets.at(-1)?.key).toBe("needs_action");
+    const minimized = normalizeLayout({
+      widgets: [
+        { key: "needs_action", visible: true, timeframe: "today", filter: "all", minimized: true },
+        { key: "alerts", visible: false, timeframe: "today", filter: "weather" },
+      ],
+      taskSources: ["followup"],
+    });
+    expect(minimized?.widgets.at(-1)).toMatchObject({ key: "needs_action", minimized: true });
+    expect(minimized?.widgets[0].key).toBe("alerts");
     expect(normalizeLayout({
       widgets: [{ key: "alerts", visible: true, timeframe: "today", filter: "nope" }],
       taskSources: [],

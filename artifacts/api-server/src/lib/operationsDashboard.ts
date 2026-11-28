@@ -24,7 +24,6 @@ import { getCallerRole, isAdminRole } from "./roles";
 import { checkRainBeforeWindow } from "./weatherCheck";
 
 export const WIDGET_KEYS = [
-  "needs_action",
   "jobs_completed",
   "invoices_revenue",
   "invoice_attention",
@@ -35,6 +34,7 @@ export const WIDGET_KEYS = [
   "inventory_reorder",
   "report_snapshots",
   "alerts",
+  "needs_action",
 ] as const;
 export const TIMEFRAMES = ["today", "week", "month", "quarter", "year"] as const;
 export const TASK_SOURCES = [
@@ -52,7 +52,7 @@ export const DUE_SOON_DAYS = 3;
 export type WidgetKey = (typeof WIDGET_KEYS)[number];
 export type Timeframe = (typeof TIMEFRAMES)[number];
 export type TaskSource = (typeof TASK_SOURCES)[number];
-export type WidgetConfig = { key: WidgetKey; visible: boolean; timeframe: Timeframe; filter: string | null };
+export type WidgetConfig = { key: WidgetKey; visible: boolean; timeframe: Timeframe; filter: string | null; minimized?: boolean };
 export type DashboardLayout = { widgets: WidgetConfig[]; taskSources: TaskSource[] };
 
 const FILTERS: Record<WidgetKey, string[]> = {
@@ -110,14 +110,15 @@ export function classifyInvoiceAttention(
   return null;
 }
 
+function widgetConfig(key: WidgetKey, visible: boolean, timeframe: Timeframe, filter: string, minimized?: boolean): WidgetConfig {
+  const config: WidgetConfig = { key, visible, timeframe, filter };
+  if (key === "needs_action") config.minimized = minimized === true;
+  return config;
+}
+
 export function defaultLayout(): DashboardLayout {
   return {
-    widgets: WIDGET_KEYS.map(key => ({
-      key,
-      visible: true,
-      timeframe: DEFAULT_TIMEFRAME[key],
-      filter: DEFAULT_FILTER[key],
-    })),
+    widgets: WIDGET_KEYS.map(key => widgetConfig(key, true, DEFAULT_TIMEFRAME[key], DEFAULT_FILTER[key], false)),
     taskSources: [...TASK_SOURCES],
   };
 }
@@ -130,7 +131,7 @@ export function normalizeLayout(input: unknown): DashboardLayout | null {
   const widgets: WidgetConfig[] = [];
   for (const raw of body.widgets) {
     if (!raw || typeof raw !== "object") return null;
-    const item = raw as { key?: unknown; visible?: unknown; timeframe?: unknown; filter?: unknown };
+    const item = raw as { key?: unknown; visible?: unknown; timeframe?: unknown; filter?: unknown; minimized?: unknown };
     if (typeof item.key !== "string" || !WIDGET_KEYS.includes(item.key as WidgetKey)) return null;
     const key = item.key as WidgetKey;
     if (seen.has(key)) continue;
@@ -139,15 +140,20 @@ export function normalizeLayout(input: unknown): DashboardLayout | null {
     const filter = item.filter == null ? FILTERS[key][0] : String(item.filter);
     if (!FILTERS[key].includes(filter)) return null;
     seen.add(key);
-    widgets.push({ key, visible: item.visible, timeframe: item.timeframe as Timeframe, filter });
+    widgets.push(widgetConfig(key, item.visible, item.timeframe as Timeframe, filter, item.minimized === true));
   }
   for (const key of WIDGET_KEYS) {
-    if (!seen.has(key)) widgets.push({ key, visible: true, timeframe: DEFAULT_TIMEFRAME[key], filter: DEFAULT_FILTER[key] });
+    if (!seen.has(key)) widgets.push(widgetConfig(key, true, DEFAULT_TIMEFRAME[key], DEFAULT_FILTER[key], false));
   }
   const taskSources: TaskSource[] = [];
   for (const source of body.taskSources) {
     if (typeof source !== "string" || !TASK_SOURCES.includes(source as TaskSource)) return null;
     if (!taskSources.includes(source as TaskSource)) taskSources.push(source as TaskSource);
+  }
+  const needsAction = widgets.findIndex(widget => widget.key === "needs_action");
+  if (needsAction >= 0 && needsAction < widgets.length - 1) {
+    const [pinned] = widgets.splice(needsAction, 1);
+    widgets.push(pinned);
   }
   return { widgets, taskSources };
 }
@@ -225,13 +231,6 @@ export async function readLayout(tenantId: number, userId: number): Promise<Dash
   if (!row) return defaultLayout();
   const layout = normalizeLayout({ widgets: row.widgets, taskSources: row.taskSources }) ?? defaultLayout();
   const stored = storedWidgetKeys(row.widgets);
-  if (!stored.includes("needs_action")) {
-    const index = layout.widgets.findIndex(widget => widget.key === "needs_action");
-    if (index > 0) {
-      const [needsAction] = layout.widgets.splice(index, 1);
-      layout.widgets.unshift(needsAction);
-    }
-  }
   if (!stored.includes("invoice_attention")) {
     for (const source of ["invoice_to_send", "invoice_due"] as const) {
       if (!layout.taskSources.includes(source)) layout.taskSources.push(source);

@@ -10,20 +10,23 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import {
-  wmoDescription, compassDirection, fmtNum, isKnown, formatDateKey, hourLabel,
+  wmoDescription, compassDirection, fmtNum, isKnown, formatDateKey, hourLabel, clockHourLabel, forecastHourVisible,
   todayKeyInZone, dateKeyToLocalDate, dateKeyOf,
 } from '@/lib/scheduleWeather';
+import type { ScheduleForecastView } from '@/lib/scheduleForecastView';
 
 interface Props {
   tenantId: number | undefined;
   jobs: { propertyId?: number | null; scheduledAt: string }[];
   referenceDate: Date;
   onNavigateDate: (date: Date) => void;
+  view: ScheduleForecastView;
+  onViewChange: (patch: Partial<ScheduleForecastView>) => void;
 }
 
 const REFRESH_MS = 20 * 60 * 1000;
 
-export function ScheduleWeather({ tenantId, referenceDate, onNavigateDate }: Props) {
+export function ScheduleWeather({ tenantId, referenceDate, onNavigateDate, view, onViewChange }: Props) {
   const [open, setOpen] = useState(true);
   const [manualLocationId, setManualLocationId] = useState<string | null>(null);
 
@@ -48,7 +51,12 @@ export function ScheduleWeather({ tenantId, referenceDate, onNavigateDate }: Pro
   const days = fc?.daily ?? [];
   const refKey = dateKeyOf(referenceDate);
   const activeKey = days.some(d => d.date === refKey) ? refKey : days[0]?.date ?? null;
-  const hours = useMemo(() => (fc?.hourly ?? []).filter(h => h.time.slice(0, 10) === activeKey), [fc, activeKey]);
+  const dayHours = useMemo(() => (fc?.hourly ?? []).filter(h => h.time.slice(0, 10) === activeKey), [fc, activeKey]);
+  const hours = useMemo(
+    () => dayHours.filter(h => forecastHourVisible(h.time, view.startHour, view.endHour)),
+    [dayHours, view.startHour, view.endHour],
+  );
+  const activeHidden = activeKey != null && view.minimizedDays.includes(activeKey);
   const outOfRange = days.length > 0 && (refKey < days[0].date || refKey > days[days.length - 1].date);
 
   const errStatus = (weather.error as { status?: number } | null)?.status;
@@ -89,6 +97,47 @@ export function ScheduleWeather({ tenantId, referenceDate, onNavigateDate }: Pro
             {manualLocationId !== null && locations.length > 0 && (
               <Button variant="ghost" size="sm" className="h-8 text-xs px-2" onClick={() => setManualLocationId(null)} data-testid="button-weather-location-default">Use company default</Button>
             )}
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">Hours</span>
+              <Select
+                value={String(view.startHour)}
+                onValueChange={value => {
+                  const startHour = Number(value);
+                  onViewChange({ startHour, endHour: Math.max(view.endHour, startHour) });
+                }}
+              >
+                <SelectTrigger className="h-8 text-xs w-[92px]" data-testid="select-forecast-start-hour" aria-label="Forecast start hour">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 24 }, (_, hour) => (
+                    <SelectItem key={hour} value={String(hour)} className="text-xs">{clockHourLabel(hour)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-xs text-muted-foreground">to</span>
+              <Select value={String(view.endHour)} onValueChange={value => onViewChange({ endHour: Number(value) })}>
+                <SelectTrigger className="h-8 text-xs w-[92px]" data-testid="select-forecast-end-hour" aria-label="Forecast end hour">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 24 - view.startHour }, (_, index) => view.startHour + index).map(hour => (
+                    <SelectItem key={hour} value={String(hour)} className="text-xs">{clockHourLabel(hour)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs px-2"
+                aria-expanded={!view.hourlyMinimized}
+                data-testid="button-toggle-hourly"
+                onClick={() => onViewChange({ hourlyMinimized: !view.hourlyMinimized })}
+              >
+                {view.hourlyMinimized ? 'Show hourly' : 'Minimize hourly'}
+              </Button>
+            </div>
           </div>
         )}
       </div>
@@ -139,6 +188,7 @@ export function ScheduleWeather({ tenantId, referenceDate, onNavigateDate }: Pro
               <div className="overflow-x-auto -mx-1 px-1 pb-1">
                 <div className="grid grid-flow-col auto-cols-[minmax(92px,1fr)] gap-1.5 min-w-max lg:min-w-0">
                   {days.map((d, i) => {
+                    if (view.minimizedDays.includes(d.date)) return null;
                     const { weekday, monthDay } = formatDateKey(d.date);
                     const extended = i >= 7;
                     const selected = d.date === activeKey;
@@ -177,15 +227,19 @@ export function ScheduleWeather({ tenantId, referenceDate, onNavigateDate }: Pro
                 </div>
               </div>
 
-              {activeKey && (
+              {activeKey && !activeHidden && (
                 <div className="rounded-md border" data-testid="panel-weather-hourly">
                   <div className="flex flex-wrap items-center gap-2 px-2 py-1.5 border-b bg-muted/20 text-xs">
                     <span className="font-semibold">Hourly · {formatDateKey(activeKey).weekday} {formatDateKey(activeKey).monthDay}</span>
-                    <span className="text-muted-foreground">Times in {fc.timezone}</span>
+                    <span className="text-muted-foreground">Times in {fc.timezone} · {clockHourLabel(view.startHour)}–{clockHourLabel(view.endHour)}</span>
                     {days.findIndex(d => d.date === activeKey) >= 7 && <span className="text-amber-700 dark:text-amber-400">Extended range, less certain</span>}
                   </div>
-                  {hours.length === 0 ? (
+                  {view.hourlyMinimized ? (
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground" data-testid="text-hourly-minimized">Hourly forecast minimized</div>
+                  ) : dayHours.length === 0 ? (
                     <div className="p-3 text-xs text-muted-foreground" data-testid="text-weather-no-hourly">Hourly detail is unavailable for this date.</div>
+                  ) : hours.length === 0 ? (
+                    <div className="p-3 text-xs text-muted-foreground" data-testid="text-weather-no-hourly">No forecast in the selected hours.</div>
                   ) : (
                     <div className="max-h-56 overflow-auto">
                       <table className="w-full text-[11px] tabular-nums">

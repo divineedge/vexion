@@ -4,10 +4,25 @@ import { db, propertiesTable, tenantsTable, usersTable } from "@workspace/db";
 import { GetScheduleWeatherQueryParams, GetScheduleWeatherResponse } from "@workspace/api-zod";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { loadScheduleForecast } from "../lib/scheduleWeather";
+import { normalizeForecastView, readForecastView, writeForecastView } from "../lib/scheduleForecastView";
 import { savedWeatherLocations,resolveWeatherTown } from "../lib/weatherLocations";
 
 const router: IRouter = Router();
 const forecastRoles = new Set(["company_owner", "office_manager", "department_manager", "crew_manager"]);
+
+router.get("/schedule/forecast-view", async (req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(await readForecastView(getTenantId(req), getUserId(req)));
+});
+
+router.put("/schedule/forecast-view", async (req, res): Promise<void> => {
+  const view = normalizeForecastView(req.body);
+  if (!view) {
+    res.status(400).json({ error: "Choose the forecast hours and the days to minimize." });
+    return;
+  }
+  res.json(await writeForecastView(getTenantId(req), getUserId(req), view));
+});
 
 router.get("/schedule/weather", async (req, res): Promise<void> => {
   res.setHeader("Cache-Control", "private, no-store");

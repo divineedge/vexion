@@ -77,3 +77,4 @@ export * from "./jobEconomics";
 export * from "./platformBilling";
 export * from "./portalMessageReads";
 export * from "./dashboardLayouts";
+export * from "./scheduleForecastViews";

@@ -3,7 +3,6 @@ export type WidgetConfig = {
   visible: boolean;
   timeframe: 'today' | 'week' | 'month' | 'quarter' | 'year';
   filter: string | null;
-  minimized?: boolean;
 };
 
 export type DashboardLayout = {

@@ -7,14 +7,13 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import { CustomizeDashboardDrawer, widgetTitle } from '@/components/dashboard/CustomizeDashboardDrawer';
 import {
-  money, TASK_SOURCE_OPTIONS, timeframeLabel,
+  money, timeframeLabel,
   type ActionTask, type DashboardLayout, type OperationsPayload,
 } from '@/components/dashboard/operations';
 import { useAuth } from '@/contexts/AuthContext';
-import { AlertTriangle, Briefcase, Check, ChevronDown, ChevronUp, CloudRain, DollarSign, LayoutGrid, ListEnd, Package, ScrollText, SlidersHorizontal, Wrench } from 'lucide-react';
+import { AlertTriangle, Briefcase, Check, CloudRain, DollarSign, LayoutGrid, ListEnd, Package, ScrollText, SlidersHorizontal, Wrench } from 'lucide-react';
 
 const queryKey = ['operations-dashboard'];
 
@@ -61,27 +60,10 @@ export default function DashboardPage() {
   const widgets = operations.data?.widgets as OperationsPayload['widgets'] | undefined;
   const tasks = (operations.data?.tasks ?? []) as ActionTask[];
   const visible = [...(layout?.widgets.filter(widget => widget.visible) ?? [])].sort((left, right) => {
-    if (left.key === 'needs_action') return 1;
-    if (right.key === 'needs_action') return -1;
+    if (left.key === 'needs_action') return -1;
+    if (right.key === 'needs_action') return 1;
     return 0;
   });
-  const needsActionMinimized = layout?.widgets.find(widget => widget.key === 'needs_action')?.minimized === true;
-
-  const toggleNeedsAction = () => {
-    if (!layout) return;
-    saveLayout.mutate({
-      ...layout,
-      widgets: layout.widgets.map(widget => widget.key === 'needs_action' ? { ...widget, minimized: !widget.minimized } : widget),
-    });
-  };
-
-  const toggleSource = (source: string, checked: boolean) => {
-    if (!layout) return;
-    const taskSources = checked
-      ? [...layout.taskSources, source]
-      : layout.taskSources.filter(item => item !== source);
-    saveLayout.mutate({ ...layout, taskSources });
-  };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500" data-testid="dashboard-operations">
@@ -110,18 +92,14 @@ export default function DashboardPage() {
         <p className="text-sm text-muted-foreground">Every widget is hidden. Customize the dashboard to show the default set again.</p>
       )}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {visible.map(widget => (
+        {visible.map(widget => {
+          if (widget.key === 'needs_action' && tasks.length === 0) return null;
+          return (
           <div key={widget.key} className={widget.key === 'needs_action' ? 'lg:col-span-2' : undefined} data-testid={`widget-${widget.key}`}>
             {widget.key === 'needs_action' && (
               <NeedsAction
                 tasks={tasks}
-                layout={layout}
-                minimized={needsActionMinimized}
-                loading={operations.isLoading}
-                error={operations.isError}
                 pending={completeTask.isPending}
-                onToggle={toggleSource}
-                onToggleMinimized={toggleNeedsAction}
                 onOpen={setLocation}
                 onComplete={task => completeTask.mutate(task)}
               />
@@ -137,7 +115,8 @@ export default function DashboardPage() {
             {widget.key === 'report_snapshots' && widgets?.reportSnapshots && <ReportsWidget data={widgets.reportSnapshots} onOpen={setLocation} />}
             {widget.key === 'alerts' && widgets?.alerts && <AlertsWidget data={widgets.alerts} onOpen={setLocation} />}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <CustomizeDashboardDrawer
@@ -153,57 +132,19 @@ export default function DashboardPage() {
 }
 
 function NeedsAction({
-  tasks, layout, minimized, loading, error, pending, onToggle, onToggleMinimized, onOpen, onComplete,
+  tasks, pending, onOpen, onComplete,
 }: {
   tasks: ActionTask[];
-  layout: DashboardLayout | undefined;
-  minimized: boolean;
-  loading: boolean;
-  error: boolean;
   pending: boolean;
-  onToggle: (source: string, checked: boolean) => void;
-  onToggleMinimized: () => void;
   onOpen: (href: string) => void;
   onComplete: (task: ActionTask) => void;
 }) {
   return (
     <Card data-testid="action-tasks" className="h-full">
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between gap-3">
-          <CardTitle className="text-base">Needs Action</CardTitle>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-expanded={!minimized}
-            data-testid="button-toggle-needs-action"
-            onClick={onToggleMinimized}
-          >
-            {minimized ? <ChevronDown className="mr-1 h-3.5 w-3.5" /> : <ChevronUp className="mr-1 h-3.5 w-3.5" />}
-            {minimized ? 'Expand' : 'Minimize'}
-          </Button>
-        </div>
-        {!minimized && <div className="flex flex-wrap gap-3 pt-2">
-          {TASK_SOURCE_OPTIONS.map(option => (
-            <label key={option.value} className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={layout?.taskSources.includes(option.value) ?? true}
-                onCheckedChange={checked => onToggle(option.value, checked === true)}
-                aria-label={option.label}
-              />
-              {option.label}
-            </label>
-          ))}
-        </div>}
+        <CardTitle className="text-base">Needs Action</CardTitle>
       </CardHeader>
-      {!minimized && <CardContent className="space-y-2" data-testid="needs-action-tasks">
-        {loading && <p className="text-sm text-muted-foreground">Loading tasks…</p>}
-        {error && <p className="text-sm text-destructive">Tasks could not be loaded.</p>}
-        {!loading && !error && tasks.length === 0 && (
-          <p className="py-6 text-center text-sm text-muted-foreground" data-testid="action-tasks-empty">
-            {layout?.taskSources.length ? 'Nothing needs action from the sources you selected.' : 'Choose at least one source to see tasks.'}
-          </p>
-        )}
+      <CardContent className="space-y-2" data-testid="needs-action-tasks">
         {tasks.map(task => (
           <div key={`${task.source}-${task.sourceId}`} className="flex items-start justify-between gap-3 rounded-md border px-3 py-2.5" data-testid={`task-${task.source}-${task.sourceId}`}>
             <button className="min-w-0 text-left" onClick={() => onOpen(task.href)}>
@@ -221,7 +162,7 @@ function NeedsAction({
             </Button>
           </div>
         ))}
-      </CardContent>}
+      </CardContent>
     </Card>
   );
 }

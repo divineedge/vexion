@@ -1,9 +1,10 @@
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Switch } from '@/components/ui/switch';
 import { ArrowDown, ArrowUp, RotateCcw } from 'lucide-react';
-import type { DashboardLayout, WidgetConfig } from './operations';
+import { TASK_SOURCE_OPTIONS, type DashboardLayout, type WidgetConfig } from './operations';
 
 const TIMEFRAMES = [
   { value: 'today', label: 'Today' },
@@ -65,6 +66,13 @@ export function CustomizeDashboardDrawer({
     next.splice(target, 0, item);
     update(next);
   };
+  const toggleSource = (source: string, checked: boolean) => {
+    if (!layout) return;
+    const taskSources = checked
+      ? [...layout.taskSources, source]
+      : layout.taskSources.filter(item => item !== source);
+    onChange({ ...layout, taskSources });
+  };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -74,6 +82,24 @@ export function CustomizeDashboardDrawer({
           <SheetDescription>This layout is saved for you. Other people in the company keep their own.</SheetDescription>
         </SheetHeader>
         <div className="mt-6 space-y-3">
+          <div className="rounded-lg border p-3 space-y-3" data-testid="customize-needs-action-alerts">
+            <div>
+              <p className="text-sm font-medium">Needs Action alerts</p>
+              <p className="text-xs text-muted-foreground">Choose which alerts appear for you. The section stays hidden when none of them have an item.</p>
+            </div>
+            {TASK_SOURCE_OPTIONS.map(option => (
+              <label key={option.value} className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={layout?.taskSources.includes(option.value) ?? false}
+                  disabled={!layout || saving}
+                  onCheckedChange={checked => toggleSource(option.value, checked === true)}
+                  aria-label={option.label}
+                  data-testid={`customize-alert-${option.value}`}
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
           {widgets.map((widget, index) => (
             <div key={widget.key} className="rounded-lg border p-3 space-y-3" data-testid={`customize-${widget.key}`}>
               <div className="flex items-center justify-between gap-3">
@@ -102,10 +128,10 @@ export function CustomizeDashboardDrawer({
                 </Select>
               </div>
               <div className="flex gap-2">
-                <Button type="button" variant="outline" size="sm" disabled={widget.key === 'needs_action' || index === 0 || saving} onClick={() => move(index, -1)}>
+                <Button type="button" variant="outline" size="sm" disabled={widget.key === 'needs_action' || index === 0 || widgets[index - 1]?.key === 'needs_action' || saving} onClick={() => move(index, -1)}>
                   <ArrowUp className="mr-1 h-3.5 w-3.5" /> Up
                 </Button>
-                <Button type="button" variant="outline" size="sm" disabled={widget.key === 'needs_action' || index >= widgets.length - 1 || widgets[index + 1]?.key === 'needs_action' || saving} onClick={() => move(index, 1)}>
+                <Button type="button" variant="outline" size="sm" disabled={widget.key === 'needs_action' || index >= widgets.length - 1 || saving} onClick={() => move(index, 1)}>
                   <ArrowDown className="mr-1 h-3.5 w-3.5" /> Down
                 </Button>
               </div>

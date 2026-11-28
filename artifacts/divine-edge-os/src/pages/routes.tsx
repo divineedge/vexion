@@ -47,6 +47,8 @@ import { startOfWeek, addWeeks, subWeeks, format, addDays } from 'date-fns';
 import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '@/components/jobs/JobFormFields';
 import { jobCreatePricing } from '@/lib/jobServicePrice';
 import { BulkJobScheduler } from '@/components/jobs/BulkJobScheduler';
+import DailyRouteBoard from '@/components/routes/DailyRouteBoard';
+import { useAuth } from '@/contexts/AuthContext';
 
 const FREQUENCY_LABEL: Record<string, string> = {
   weekly: 'Weekly',
@@ -66,6 +68,7 @@ function CapacityBadge({ openSpaceHours }: { openSpaceHours: number }) {
 }
 
 export default function RoutesDashboardPage() {
+  const { isTechnician } = useAuth();
   const qc = useQueryClient();
   const [location] = useLocation();
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 0 }));
@@ -98,7 +101,10 @@ export default function RoutesDashboardPage() {
   const [bulkJobOpen, setBulkJobOpen] = useState(false);
   const [newJob, setNewJob] = useState<NewJobForm>(EMPTY_JOB);
   const [capacityWarning, setCapacityWarning] = useState<{ message: string; onConfirm: () => void } | null>(null);
-  const [routeTab, setRouteTab] = useState('dashboard');
+  const [routeTab, setRouteTab] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('routeTemplateId') || params.get('date') ? 'dashboard' : 'today';
+  });
 
   const weekStartStr = format(weekStart, 'yyyy-MM-dd');
   const weekEndStr = format(addDays(weekStart, 6), 'yyyy-MM-dd');
@@ -370,6 +376,10 @@ export default function RoutesDashboardPage() {
     doCreateJobFromRoute(durationMins, recurrenceRule, routeTemplateId, scheduledAtIso);
   };
 
+  if (isTechnician) {
+    return <DailyRouteBoard initialView="crew" />;
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div>
@@ -379,10 +389,15 @@ export default function RoutesDashboardPage() {
 
       <Tabs value={routeTab} onValueChange={setRouteTab}>
         <TabsList>
+          <TabsTrigger value="today">Today</TabsTrigger>
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="by-crew">By Crew</TabsTrigger>
           <TabsTrigger value="manage">Manage</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="today" className="mt-2">
+          <DailyRouteBoard initialView="crew" />
+        </TabsContent>
 
         {/* ── Dashboard tab ── */}
         <TabsContent value="dashboard" className="space-y-4 mt-2">

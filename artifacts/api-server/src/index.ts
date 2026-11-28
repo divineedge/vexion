@@ -16,6 +16,7 @@ import {installInventoryCostSchema} from './lib/inventoryCosting';
 import { installP4pDamageSchema } from "./lib/p4pDamage";
 import { installJobEconomicsSchema } from "./lib/jobEconomicsSchema";
 import { installBlueprintPlanningSchema } from "./lib/blueprintPlanningSchema";
+import { installDailyRouteSchema } from "./lib/dailyRouteSchema";
 import { installAdditiveSettingsSchema, runStartupSchemaStep } from "./lib/schemaSafety";
 
 // drizzle push handles tables but not rate-capture/immutability triggers.
@@ -41,6 +42,7 @@ await runStartupSchemaStep("customer merge", installCustomerMergeSchema);
 await runStartupSchemaStep("p4p damage", installP4pDamageSchema);
 await runStartupSchemaStep("job economics", installJobEconomicsSchema);
 await runStartupSchemaStep("blueprint planning", installBlueprintPlanningSchema);
+await runStartupSchemaStep("daily route", installDailyRouteSchema);
 startEstimateReminderScheduler();
 
 const port = Number(PORT);

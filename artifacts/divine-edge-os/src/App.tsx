@@ -52,6 +52,7 @@ import TasksPage from '@/pages/tasks';
 import FollowupQueuePage from '@/pages/followup-queue';
 import CallsPage from '@/pages/calls';
 import RoutesDashboardPage from '@/pages/routes';
+import DispatchPage from '@/pages/dispatch';
 import TaskBundlesPage from '@/pages/task-bundles';
 import EmployeesPage from '@/pages/employees';
 import EmployeeFilePage from '@/pages/employee-file';
@@ -110,6 +111,7 @@ function ProtectedRoutes() {
         <Route path="/blueprints" component={BlueprintsPage} />
         <Route path="/settings" component={SettingsPage} />
         <Route path="/crews" component={CrewsPage} />
+        <Route path="/dispatch" component={DispatchPage} />
         <Route path="/routes" component={RoutesDashboardPage} />
         <Route path="/efficiency" component={EfficiencyPage} />
         <Route path="/callbacks" component={CallbacksPage} />

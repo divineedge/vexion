@@ -225,6 +225,14 @@ describe.skipIf(!RUN)("operations dashboard", () => {
     expect(saved.body.tasks).toHaveLength(1);
     expect(saved.body.tasks[0].source).toBe("portal_message");
 
+    const collapsed = structuredClone(saved.body.layout);
+    collapsed.widgets = collapsed.widgets.map((widget: { key: string }) => widget.key === "needs_action" ? { ...widget, minimized: true } : widget);
+    expect((await request(app).put("/dashboard/layout").set(auth(ownerToken)).send(collapsed)).status).toBe(200);
+    const collapsedOwner = await request(app).get("/dashboard/layout").set(auth(ownerToken));
+    expect(collapsedOwner.body.widgets.at(-1)).toMatchObject({ key: "needs_action", minimized: true });
+    const otherStillOpen = await request(app).get("/dashboard/layout").set(auth(otherToken));
+    expect(otherStillOpen.body.widgets.find((widget: { key: string }) => widget.key === "needs_action").minimized).not.toBe(true);
+
     const reset = await request(app).post("/dashboard/layout/reset").set(auth(ownerToken));
     expect(reset.body.widgets.every((widget: { visible: boolean }) => widget.visible)).toBe(true);
     const otherAfter = await request(app).get("/dashboard/layout").set(auth(otherToken));

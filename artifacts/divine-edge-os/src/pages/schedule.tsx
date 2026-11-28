@@ -97,7 +97,7 @@ import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   eachDayOfInterval, format, isSameDay, addWeeks, subWeeks, addMonths, subMonths,
 } from 'date-fns';
-import { exclusiveScheduleRangeEnd, isWaitlistJob, jobOnCalendarDay } from '@/lib/scheduleCalendar';
+import { dayBudgetMinutes, dayScheduleHours, exclusiveScheduleRangeEnd, formatScheduleHours, isWaitlistJob, jobOnCalendarDay } from '@/lib/scheduleCalendar';
 
 function PartLocationBadges({ inventoryItemId }: { inventoryItemId: number }) {
   const [, navTo] = useLocation();
@@ -947,6 +947,7 @@ export default function SchedulePage() {
   const [employeeFilter, setEmployeeFilter] = useState<string>('all');
   const canSeeWeather = ['company_owner', 'office_manager', 'department_manager', 'crew_manager'].includes((user as any)?.role ?? '');
   const { data: crews = [] } = useListCrews({ query: { queryKey: getListCrewsQueryKey() } });
+  const budgetMinutes = dayBudgetMinutes(crews, crewFilter);
   const jobSearchLower = jobSearch.toLowerCase();
   const filteredJobs = (jobs ?? [])
     .filter(j => !isWaitlistJob(j.status))
@@ -1624,6 +1625,7 @@ export default function SchedulePage() {
                 const totalCount = dayJobs.length + dayEstimates.length + dayVisits.length;
                 const dateKey = format(day, 'yyyy-MM-dd');
                 const dayMinimized = forecastView.view.minimizedDays.includes(dateKey);
+                const dayHours = dayScheduleHours(dayJobs, budgetMinutes);
                 return (
                   <div
                     key={day.toISOString()}
@@ -1692,6 +1694,11 @@ export default function SchedulePage() {
                           +
                         </button>
                       )}
+                    </div>
+                    <div className="mb-1 space-y-0.5 text-[10px] leading-tight text-muted-foreground" data-testid={`text-day-hours-${dateKey}`}>
+                      <div title="Hours that can be worked this day">Budget {formatScheduleHours(dayHours.budgetHours)}h</div>
+                      <div title="Hours already scheduled from jobs on this day">Scheduled {formatScheduleHours(dayHours.scheduledHours)}h</div>
+                      <div title="Open time left to book" className={dayHours.openHours < 0 ? 'text-destructive font-medium' : ''}>Open {formatScheduleHours(dayHours.openHours)}h</div>
                     </div>
                     {dayMinimized ? (
                       <p className="text-[11px] text-muted-foreground" data-testid={`text-day-minimized-${dateKey}`}>

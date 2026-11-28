@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { exclusiveScheduleRangeEnd, jobOnCalendarDay } from '../src/lib/scheduleCalendar';
+import { dayBudgetMinutes, dayScheduleHours, exclusiveScheduleRangeEnd, formatScheduleHours, jobOnCalendarDay } from '../src/lib/scheduleCalendar';
 
 describe('schedule calendar placement', () => {
   const thursday = new Date(2026, 10, 26, 0, 0, 0, 0);
@@ -15,6 +15,32 @@ describe('schedule calendar placement', () => {
   it('keeps a waitlist job off the calendar day of its placeholder time', () => {
     expect(jobOnCalendarDay({ status: 'waitlist', scheduledAt: thursdayMorning }, thursday)).toBe(false);
     expect(jobOnCalendarDay({ status: 'waitlist', scheduledAt: null }, thursday)).toBe(false);
+  });
+
+  it('turns a 90-minute job into 1.5 scheduled hours and the remaining open time', () => {
+    const hours = dayScheduleHours(
+      [
+        { status: 'scheduled', estimatedDuration: 90 },
+        { status: 'waitlist', estimatedDuration: 120 },
+        { status: 'cancelled', estimatedDuration: 60 },
+      ],
+      480,
+    );
+    expect(hours.budgetHours).toBe(8);
+    expect(hours.scheduledHours).toBe(1.5);
+    expect(hours.openHours).toBe(6.5);
+    expect(formatScheduleHours(hours.scheduledHours)).toBe('1.5');
+    expect(formatScheduleHours(hours.openHours)).toBe('6.5');
+  });
+
+  it('uses each crew day as the budget and keeps the default when no crew is selected', () => {
+    const crews = [
+      { name: 'North', dailyCapacityMinutes: 480 },
+      { name: 'South', dailyCapacityMinutes: 360 },
+    ];
+    expect(dayBudgetMinutes(crews, 'all')).toBe(840);
+    expect(dayBudgetMinutes(crews, 'South')).toBe(360);
+    expect(dayBudgetMinutes([], 'all')).toBe(480);
   });
 
   it('uses the next local midnight as the exclusive range end', () => {

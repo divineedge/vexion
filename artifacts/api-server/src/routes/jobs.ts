@@ -1,5 +1,6 @@
 import { formsGuardedJobUpdate,FormError,assertCompletedJobCreationAllowed } from "../lib/jobForms";
 import { scheduleRangeOmitsWaitlist } from "../lib/scheduleJobQuery";
+import { isJobBillableMinutesMissing, JOB_BILLABLE_MINUTES_SQL } from "../lib/jobBillableMinutes";
 import { paymentGuardedJobInsert, ensureScheduledJobPayment, jobScheduleDepositWarning } from "../lib/paymentPolicy";
 import { capacityCheckedJobUpdate } from "../lib/crewCapacity";
 import { creditedInvoiceInsert } from "../lib/customerCredit";
@@ -585,7 +586,7 @@ router.get("/jobs", async (req, res): Promise<void> => {
   // dropping jobs scheduled in the final millisecond of a day.
   if (end) where = and(where, sql`${jobsTable.scheduledAt} < ${end.toISOString()}::timestamptz`) as typeof where;
 
-  const rows = await db
+  const loadRows = () => db
     .select({
       job: jobsTable,
       customerName: customersTable.name,
@@ -612,6 +613,15 @@ router.get("/jobs", async (req, res): Promise<void> => {
     .leftJoin(servicesTable, and(eq(jobsTable.serviceId, servicesTable.id), eq(servicesTable.tenantId, tenantId)))
     .where(where)
     .orderBy(jobsTable.scheduledAt);
+  let rows: Awaited<ReturnType<typeof loadRows>>;
+  try {
+    rows = await loadRows();
+  } catch (error) {
+    if (!isJobBillableMinutesMissing(error)) throw error;
+    logger.error({ err: error }, "Schedule list queried jobs.billable_minutes before that column existed. Adding it and returning the week's jobs.");
+    await db.execute(sql.raw(JOB_BILLABLE_MINUTES_SQL));
+    rows = await loadRows();
+  }
 
   res.json(rows.map(r => formatJob(r.job, { customerName: r.customerName, customerPhone: r.customerPhone, customerNotes: r.customerNotes, assigneeName: r.assigneeName, propertyAddress: r.propertyAddress, propertyLat:r.propertyLat,propertyLng:r.propertyLng,propertyNotes: r.propertyNotes, crewName: r.crewName, planName: r.planName, routeName: r.routeName, serviceName: r.serviceName, fieldRequirements: r.fieldRequirements })));
 });

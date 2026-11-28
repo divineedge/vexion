@@ -5,6 +5,7 @@ import { INVENTORY_KIT_SQL } from "./inventoryKitSchema";
 import { LINE_CATALOG_SQL } from "./lineCatalogSchema";
 import { logger } from "./logger";
 import { isMissingColumnError } from "./settingsFallback";
+import { JOB_BILLABLE_MINUTES_SQL } from "./jobBillableMinutes";
 
 export { isMissingColumnError };
 
@@ -90,6 +91,7 @@ const ADDITIVE_SETTINGS_SQL = [
   `ALTER TABLE services ADD COLUMN IF NOT EXISTS weekly_rate real NOT NULL DEFAULT 0`,
   `ALTER TABLE services ADD COLUMN IF NOT EXISTS monthly_rate real NOT NULL DEFAULT 0`,
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoice_frequency text NOT NULL DEFAULT 'each_time'`,
+  JOB_BILLABLE_MINUTES_SQL,
   `ALTER TABLE services ADD COLUMN IF NOT EXISTS field_requirements jsonb NOT NULL DEFAULT '{}'::jsonb`,
   `ALTER TABLE services ADD COLUMN IF NOT EXISTS payment_policy jsonb`,
   `CREATE TABLE IF NOT EXISTS matrix_pricing_rules (id serial PRIMARY KEY, tenant_id integer NOT NULL REFERENCES tenants(id), service_id integer NOT NULL REFERENCES services(id) ON DELETE CASCADE, basis text NOT NULL DEFAULT 'area', price_rounding text NOT NULL DEFAULT 'none', created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), CONSTRAINT matrix_pricing_rules_service_unique UNIQUE (service_id))`,

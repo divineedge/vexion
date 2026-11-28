@@ -31,7 +31,7 @@ export function capabilitiesFor(role: BoardRole) {
   return {
     switchViews: role !== "crew",
     dispatch: role !== "crew",
-    reassign: office,
+    reassign: dispatchLead,
     logCallback: dispatchLead,
     optimizeAll: dispatchLead,
     optimizeRoute: true,
@@ -614,6 +614,7 @@ export async function updateDailyJob(tenantId: number, userId: number, jobId: nu
       if (!Number.isInteger(nextCrew)) throw new RouteActionError("crewId is invalid", 400);
       const [crew] = await db.select({ id: crewsTable.id }).from(crewsTable).where(and(eq(crewsTable.id, nextCrew), eq(crewsTable.tenantId, tenantId)));
       if (!crew) throw new RouteActionError("Crew not found", 404);
+      if (!canSeeCrew(access, nextCrew)) throw new RouteActionError("You cannot reassign to that crew", 403);
     }
     const siblings = await db.select({ id: jobsTable.id }).from(jobsTable).where(and(
       eq(jobsTable.tenantId, tenantId),

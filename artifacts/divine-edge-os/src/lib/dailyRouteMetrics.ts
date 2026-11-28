@@ -23,7 +23,7 @@ export function capabilitiesFor(role: BoardRole) {
   return {
     switchViews: role !== "crew",
     dispatch: role !== "crew",
-    reassign: office,
+    reassign: dispatchLead,
     logCallback: dispatchLead,
     optimizeAll: dispatchLead,
     optimizeRoute: true,

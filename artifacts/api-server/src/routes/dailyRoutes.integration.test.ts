@@ -116,7 +116,7 @@ describe("daily route board", () => {
     expect(managed.body.crews.map((crew: { name: string }) => crew.name).sort()).toEqual(["North Route", "South Route"]);
     expect(managed.body.unassigned).toHaveLength(2);
     expect(managed.body.capabilities).toMatchObject({
-      switchViews: true, reassign: false, logCallback: true, optimizeAll: true, simulateRole: false,
+      switchViews: true, reassign: true, logCallback: true, optimizeAll: true, simulateRole: false,
     });
     expect(JSON.stringify(managed.body)).not.toContain("West Route");
 
@@ -193,7 +193,19 @@ describe("daily route board", () => {
     const techCallback = await request(appFor(tenant.id, tech!.id)).post("/routes/daily/callbacks").send({ crewId: north.id, deductionAmount: 10 });
     expect(techCallback.status).toBe(403);
 
-    const movable = north.jobs.find((job: { status: string; crewId: number }) => job.status === "scheduled");
+    const scheduled = north.jobs.filter((job: { status: string }) => job.status === "scheduled");
+    const managerJob = scheduled[0];
+    const movable = scheduled[1];
+    const parked = await request(managerApp).patch(`/routes/daily/jobs/${managerJob.id}`).send({ crewId: null });
+    expect(parked.status).toBe(200);
+    const placed = await request(managerApp).patch(`/routes/daily/jobs/${managerJob.id}`).send({ crewId: south.id });
+    expect(placed.status).toBe(200);
+    const [onSouth] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, managerJob.id), eq(jobsTable.tenantId, tenant.id)));
+    expect(onSouth.crewId).toBe(south.id);
+    const managerWest = await request(managerApp).patch(`/routes/daily/jobs/${movable.id}`).send({ crewId: westId });
+    expect(managerWest.status).toBe(403);
+    const [stayed] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, movable.id), eq(jobsTable.tenantId, tenant.id)));
+    expect(stayed.crewId).toBe(north.id);
     const reassigned = await request(ownerApp).patch(`/routes/daily/jobs/${movable.id}`).send({ crewId: westId });
     expect(reassigned.status).toBe(200);
     const [moved] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, movable.id), eq(jobsTable.tenantId, tenant.id)));

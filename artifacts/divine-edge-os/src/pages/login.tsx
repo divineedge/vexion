@@ -43,7 +43,7 @@ export default function LoginPage() {
           setTwoFactorCode('');
           login(data.user, data.sessionToken);
             const continuation = getLoginDestination();
-            setLocation(continuation ?? (data.user.role === 'technician' ? '/schedule' : '/dashboard'));
+            setLocation(continuation ?? (data.user.role === 'technician' ? '/routes' : '/dashboard'));
         },
         onError: (err: unknown) => {
           const status = (err as { status?: number })?.status ?? (err as { response?: { status?: number } })?.response?.status;

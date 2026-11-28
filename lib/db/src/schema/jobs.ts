@@ -167,6 +167,20 @@ export const jobsTable = pgTable("jobs", {
   /** Calendar day (YYYY-MM-DD) a high-rain warning for this job was cleared. */
   rainWarningClearedOn: text("rain_warning_cleared_on"),
 
+  /** Daily route board: keep this stop in place when the route is optimized. */
+  lockedTimeWindow: boolean("locked_time_window").notNull().default(false),
+  /**
+   * Explicit P4P payout for the daily route board, in dollars.
+   * Null keeps the existing payroll formula (revenue × P4P %). Never replaces payroll.
+   */
+  routePayout: real("route_payout"),
+  /** Callback / redo stop. The board shows $0 payout and a deduction tag. */
+  isCallback: boolean("is_callback").notNull().default(false),
+  /** Positive dollars deducted from the day's net P4P while this callback is active. */
+  callbackDeduction: real("callback_deduction").notNull().default(0),
+  /** Minutes actually worked, set when the stop is completed. */
+  actualMinutes: integer("actual_minutes"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -5,7 +5,7 @@ import {
   DollarSign,
   Megaphone, FlaskConical,
   Settings, FileText, Footprints, BarChart3, Star, Repeat, ListTodo, Calculator, Scale,
-  Map, ClipboardList, PhoneMissed, PhoneIncoming, Inbox, Layers,
+  Map, Route, ClipboardList, PhoneMissed, PhoneIncoming, Inbox, Layers,
   MessageSquare, Store, ClipboardCheck, IdCard, UserPlus, Globe, ShieldCheck, LifeBuoy, Rocket,
   LucideIcon,
 } from 'lucide-react';
@@ -33,6 +33,7 @@ export interface NavSection {
 /** Flat nav shown to technicians */
 export const techNavItems: NavItem[] = [
   { name: 'Dashboard',    href: '/dashboard',    icon: LayoutDashboard },
+  { name: 'My Route',     href: '/routes',       icon: Map },
   { name: 'Schedule',     href: '/schedule',     icon: CalendarDays },
   { name: 'Time Tracking', href: '/time-tracking', icon: Clock },
   { name: 'Tasks',        href: '/tasks',        icon: ListTodo },
@@ -83,6 +84,7 @@ export const adminNavSections: NavSection[] = [
       { name: 'Forms',         href: '/forms',         icon: ClipboardCheck },
       { name: 'Crews',         href: '/crews',         icon: UserCheck },
       { name: 'Routes',        href: '/routes',        icon: Map },
+      { name: 'Dispatch',      href: '/dispatch',      icon: Route },
       { name: 'Blueprints',    href: '/blueprints',    icon: DraftingCompass },
       { name: 'Time Tracking', href: '/time-tracking', icon: Clock },
       { name: 'Efficiency',    href: '/efficiency',    icon: Gauge },

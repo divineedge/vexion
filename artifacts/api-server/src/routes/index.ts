@@ -73,6 +73,7 @@ import reviewsRouter from "./reviews";
 import stopServiceFlagsRouter from "./stopServiceFlags";
 import internalTasksRouter from "./internalTasks";
 import routingRouter from "./routing";
+import dailyRoutesRouter from "./dailyRoutes";
 import taskBundlesRouter from "./taskBundles";
 import followupQueueRouter from "./followupQueue";
 import importBatchesRouter from "./importBatches";
@@ -200,6 +201,9 @@ router.use(chemicalDocumentsRouter);
 router.use(communicationsRouter);
 router.use(estimatesRouter);
 router.use(documentSharingRouter);
+// Daily routes stay ahead of the reviews router, whose middleware requires an
+// office role for every request that reaches it.
+router.use(dailyRoutesRouter);
 router.use(reviewsRouter);
 router.use(equipmentRouter);
 router.use(quotesRouter);

@@ -14,6 +14,7 @@ export * from "./propertyHistory";
 export * from "./propertyServiceLogs";
 export * from "./jobs";
 export * from "./crews";
+export * from "./driveLegs";
 export * from "./inventory";
 export * from "./lineCatalog";
 export * from './inventoryCostLots';

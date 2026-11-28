@@ -12,6 +12,8 @@ export const crewsTable = pgTable("crews", {
   dailyCapacityMinutes: integer("daily_capacity_minutes").notNull().default(480),
   travelBufferMinutes: integer("travel_buffer_minutes").notNull().default(15),
   managerId: integer("manager_id").references(() => usersTable.id),
+  /** Local shift start, minutes from midnight. 420 = 7:00 AM. */
+  shiftStartMinutes: integer("shift_start_minutes").notNull().default(420),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
